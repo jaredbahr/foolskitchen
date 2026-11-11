@@ -117,9 +117,9 @@ static func _neglected(main: Node) -> bool:
 ## expanded_tables, so level-two pieces too), stocked at the normal price.
 ##
 ## With `counter` (#293, coffee_counter) the same shop also has an order counter
-## continuing the bar's line along row 7 (x 13 and 14): the till's staff side is
+## continuing the bar's line along its row (7, or 8 in the deeper room; x 13 and 14): the till's staff side is
 ## the end of the bar's back row, three steps from the coffee machines, its guests
-## stand on row 8 and the queue runs down column 13 and along the south wall.
+## stand on the row below and the queue runs down column 13 and along the south wall.
 static func _coffee_shop(main: Node, counter: bool = false) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor) or not _concept_west_table(main, editor):
@@ -130,9 +130,13 @@ static func _coffee_shop(main: Node, counter: bool = false) -> bool:
 			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
-	if counter and not editor.buy(&"order_counter", Vector2i(13, 7), 0):
+	# In the deeper starter room the counter sits one row further from the
+	# machines, leaving the two-cell aisle a player is warned to keep (#390):
+	# a one-cell gap had staff looping round the full counter (#400).
+	var row: int = 8 if _probe_layout(main).rows.size() >= 17 else 7
+	if counter and not editor.buy(&"order_counter", Vector2i(13, row), 0):
 		return false
-	if not _counter_with_stools(editor, 9, 12) or not _storage_shelves(editor) \
+	if not _counter_with_stools(editor, 9, 12, row) or not _storage_shelves(editor) \
 			or not editor.last_check.unreachable.is_empty():
 		return false
 	return _finish(main, 7 * 60, 15 * 60, [&"coffee", &"tea", &"croissant"],
@@ -192,12 +196,12 @@ static func _storage_shelves(editor: ShopEditor) -> bool:
 	return editor.buy(&"storage_shelf", Vector2i(11, 1), 2) and editor.buy(&"storage_shelf", Vector2i(12, 1), 2)
 
 
-## A counter along row 7 from x0 to x1 (guests to the south on stools at row
-## 8, staff behind it on row 6): an end piece at the open west end.
-static func _counter_with_stools(editor: ShopEditor, x0: int, x1: int) -> bool:
+## A counter along `row` from x0 to x1 (guests to the south on stools at row + 1,
+## staff behind it on row - 1): an end piece at the open west end.
+static func _counter_with_stools(editor: ShopEditor, x0: int, x1: int, row: int = 7) -> bool:
 	for x: int in range(x0, x1 + 1):
 		var piece: StringName = &"bar_end_right" if x == x0 else &"bar_section"
-		if not editor.buy(piece, Vector2i(x, 7), 2) or not editor.buy(&"bar_stool", Vector2i(x, 8), 0):
+		if not editor.buy(piece, Vector2i(x, row), 2) or not editor.buy(&"bar_stool", Vector2i(x, row + 1), 0):
 			return false
 	return true
 

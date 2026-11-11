@@ -8,11 +8,17 @@ const MAX_TOTAL_XP: int = 1000000000
 const MAX_DAILY_COUNT: int = 1000000
 const MAX_PROFIT_MAGNITUDE: int = 1000000000
 const MAX_LEVEL: int = 1000000
+## Tier 2's level in data/balance/career_tiers.tres, for saves from before
+## the ladder (it had no reputation condition, so level alone decides).
+const LEGACY_TIER_TWO_LEVEL: int = 3
 
 var tuning: ProgressionTuning
 var total_xp: int = 0
 var level: int = 1
+## 1 or 2: only whether the home lease is expanded (lease size and rent).
 var property_tier: int = 1
+## The career ladder (D30), 1 to 6. Content gates read this; it is never lost.
+var career_tier: int = 1
 ## Persisted guard against awarding the same closing day twice.
 var last_awarded_day: int = 0
 
@@ -102,9 +108,22 @@ func award_bonus(amount: int) -> Dictionary:
 		"level_after": level, "levels_gained": gained_levels}
 
 
+## Climb the ladder in order after the close's XP and reputation are final.
+## Returns the newly reached tier, or 0 when the tier did not change.
+func raise_career_tier(ladder: CareerTierTuning, reputation: float) -> int:
+	if ladder == null or not ladder.is_valid():
+		return 0
+	var reached: int = ladder.reachable(career_tier, level, reputation)
+	if reached <= career_tier:
+		return 0
+	career_tier = reached
+	return reached
+
+
 func to_dict() -> Dictionary:
 	return {"version": SAVE_VERSION, "total_xp": total_xp, "level": level,
-		"last_awarded_day": last_awarded_day, "property_tier": property_tier}
+		"last_awarded_day": last_awarded_day, "property_tier": property_tier,
+		"career_tier": career_tier}
 
 
 ## Decode a present section transactionally. The Main save provider supplies
@@ -113,8 +132,10 @@ func from_dict(value: Variant) -> bool:
 	if tuning == null or not tuning.is_valid() or not value is Dictionary:
 		return false
 	var row: Dictionary = value
-	if row.size() != (5 if row.has("property_tier") else 4) \
-			or not _whole(row.get("property_tier", 1), 1, 2) or not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) \
+	var expected_size: int = 4 + (1 if row.has("property_tier") else 0) + (1 if row.has("career_tier") else 0)
+	if row.size() != expected_size \
+			or not _whole(row.get("property_tier", 1), 1, 2) \
+			or not _whole(row.get("career_tier", 1), 1, CareerTierTuning.TOP_TIER) or not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) \
 			or not _whole(row.get("total_xp"), 0, MAX_TOTAL_XP) \
 			or not _whole(row.get("level"), 1, MAX_LEVEL) \
 			or not _whole(row.get("last_awarded_day"), 0, MAX_TOTAL_XP):
@@ -127,6 +148,10 @@ func from_dict(value: Variant) -> bool:
 	level = saved_level
 	last_awarded_day = int(row["last_awarded_day"])
 	property_tier = int(row.get("property_tier", 1))
+	# Saves from before the ladder: an expanded lease, or the level that
+	# Tier 2 needs, meant Tier 2 (so the lease offer stays open on load).
+	var legacy_tier: int = 2 if property_tier == 2 or level >= LEGACY_TIER_TWO_LEVEL else 1
+	career_tier = int(row.get("career_tier", legacy_tier))
 	return true
 
 

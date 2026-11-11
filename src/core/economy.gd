@@ -14,6 +14,11 @@ const ORDER_REFUND_NOTE: String = "order_refund"
 var ledger: Ledger = Ledger.new()
 var stock: Stock = Stock.new()
 var loan: LoanAccount = LoanAccount.new()
+## The site whose day is being played (FK-087). Every ledger entry Economy
+## records is stamped with it. Not saved: main.gd sets it from its SiteBook in
+## _wire_session(), which runs after a new game, a load and (later) a site
+## switch, before that site's morning. Change it only via set_active_site().
+var active_site: StringName = Ledger.HOME_SITE
 ## Legacy balance access. Assignments record their difference under OTHER.
 var cash: int:
 	get:
@@ -30,7 +35,8 @@ func _ready() -> void:
 ## Registers this autoload's save section. Idempotent; the game session also
 ## calls it, because some hosts (the test runner) never deliver _ready().
 func register_save_provider() -> void:
-	SaveSystem.register("economy", _capture_save, _restore_save)
+	SaveSystem.register("economy", _capture_books, _restore_books)
+	SaveSystem.register("pantry", _capture_pantry, _restore_pantry)
 
 
 ## Starts a fresh game's books: no history, the given cash, empty stock.
@@ -39,38 +45,101 @@ func reset(starting_cash: int) -> void:
 	ledger.cash = starting_cash
 	stock = Stock.new()
 	loan = LoanAccount.new()
+	active_site = Ledger.HOME_SITE
 	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
 
 
-func _capture_save() -> Dictionary:
-	return {"ledger": ledger.to_dict(), "stock": stock.to_dict(), "loan": loan.to_dict()}
-
-
-func _restore_save(data: Dictionary) -> bool:
-	var ledger_data: Variant = data.get("ledger", null)
-	var stock_data: Variant = data.get("stock", null)
-	if not ledger_data is Dictionary or not stock_data is Dictionary:
+## Makes `site` the one new ledger entries belong to. Returns false, changing
+## nothing, for an id SiteBook would refuse.
+func set_active_site(site: StringName) -> bool:
+	if not Ledger.is_valid_site(site):
 		return false
+	active_site = site
+	return true
+
+
+## The whole money state (books and pantry) as one snapshot. Tests use it to
+## save and put back everything Economy owns; saves use the two sections below.
+func _capture_save() -> Dictionary:
+	var data: Dictionary = _capture_books()
+	data.merge(_capture_pantry())
+	return data
+
+
+## Restores a whole snapshot from _capture_save(). Nothing changes on a refusal.
+func _restore_save(data: Dictionary) -> bool:
+	var parsed: Dictionary = _parse_books(data)
+	var restored_stock: Stock = _parse_stock(data)
+	if parsed.is_empty() or restored_stock == null:
+		return false
+	_install_books(parsed)
+	stock = restored_stock
+	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+	return true
+
+
+## The shared "economy" save section: the ledger (cash) and the loan. These
+## belong to the owner and stay put when sites switch (FK-087).
+func _capture_books() -> Dictionary:
+	return {"ledger": ledger.to_dict(), "loan": loan.to_dict()}
+
+
+func _restore_books(data: Dictionary) -> bool:
+	var parsed: Dictionary = _parse_books(data)
+	if parsed.is_empty():
+		return false
+	_install_books(parsed)
+	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
+	return true
+
+
+## The per-site "pantry" section: the kitchen's stock on hand. Restoring fills
+## the existing Stock in place, so the kitchen's reference stays valid even
+## when SaveSystem.restore_sections rolls a refused site switch back.
+func _capture_pantry() -> Dictionary:
+	return {"stock": stock.to_dict()}
+
+
+func _restore_pantry(data: Dictionary) -> bool:
+	var restored_stock: Stock = _parse_stock(data)
+	if restored_stock == null:
+		return false
+	stock.replace_with(restored_stock)
+	return true
+
+
+## Returns {"ledger", "loan"} models, or {} when the data is not valid books.
+func _parse_books(data: Dictionary) -> Dictionary:
+	var ledger_data: Variant = data.get("ledger", null)
+	if not ledger_data is Dictionary:
+		return {}
 	var restored_loan: LoanAccount = LoanAccount.new()
 	if data.has("loan"):
 		restored_loan = LoanAccount.from_dict(data["loan"])
 		if restored_loan == null:
-			return false
-	var restored_stock: Stock = Stock.from_dict(stock_data)
-	if restored_stock == null:
-		return false
+			return {}
 	var restored_ledger: Ledger = Ledger.from_dict(ledger_data)
-	ledger = restored_ledger
-	stock = restored_stock
-	loan = restored_loan
-	EventBus.cash_changed.emit(cash, 0, Ledger.OTHER)
-	return true
+	if restored_ledger == null:
+		return {}
+	return {"ledger": restored_ledger, "loan": restored_loan}
+
+
+func _install_books(parsed: Dictionary) -> void:
+	ledger = parsed["ledger"]
+	loan = parsed["loan"]
+
+
+func _parse_stock(data: Dictionary) -> Stock:
+	var stock_data: Variant = data.get("stock", null)
+	if not stock_data is Dictionary:
+		return null
+	return Stock.from_dict(stock_data)
 
 
 ## Adds (or, with a negative amount, removes) cash and announces it. The
 ## optional note marks special lines, such as shop-edit undo and redo (FK-085).
 func add_cash(amount: int, reason: StringName, note: String = "") -> void:
-	ledger.record(Clock.day, amount, reason, note)
+	ledger.record(Clock.day, amount, reason, note, active_site)
 	EventBus.cash_changed.emit(cash, amount, reason)
 
 
@@ -100,7 +169,7 @@ func can_buy_upgrade(amount: int) -> bool:
 ## Optional pre-bonus profit changes only the repayment base, never actual cash.
 func settle_loan_day(day: int, repayment_profit: Variant = null) -> Dictionary:
 	var running_cash: int = cash
-	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS, repayment_profit)
+	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS, repayment_profit, active_site)
 	for movement: Dictionary in result.get("movements", []):
 		var amount: int = int(movement["amount"])
 		var reason: StringName = movement["category"]
@@ -122,7 +191,7 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 	if not can_spend_without_loan(price):
 		return false
 	stock.add(id, qty, Clock.day, price)
-	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id))
+	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id), active_site)
 	EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	return true
 
@@ -158,7 +227,7 @@ func buy_haggled_order(lines: Array[Dictionary], percent: int) -> bool:
 			return false
 		added[id] = added.get(id, 0) + qty
 	for lot: Dictionary in lots:
-		ledger.record(Clock.day, -int(lot["total_cost"]), Ledger.INGREDIENTS, String(lot["id"]))
+		ledger.record(Clock.day, -int(lot["total_cost"]), Ledger.INGREDIENTS, String(lot["id"]), active_site)
 	receive(lots)
 	EventBus.cash_changed.emit(cash, -int(quoted["cost"]), Ledger.INGREDIENTS)
 	return true
@@ -191,10 +260,11 @@ func pay_order(lines: Array[Dictionary], cost: int, standing: bool) -> bool:
 	for line: Dictionary in lines:
 		var id: StringName = line["id"]
 		var price: int = int(line["qty"]) * int(line["unit_cost"])
-		ledger.record(Clock.day, -price, Ledger.INGREDIENTS, (AUTO_LINE_PREFIX + String(id)) if standing else String(id))
+		ledger.record(Clock.day, -price, Ledger.INGREDIENTS,
+			(AUTO_LINE_PREFIX + String(id)) if standing else String(id), active_site)
 		EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	if cost > list_total:
-		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE)
+		ledger.record(Clock.day, list_total - cost, Ledger.INGREDIENTS, AUTO_PREMIUM_NOTE, active_site)
 		EventBus.cash_changed.emit(cash, list_total - cost, Ledger.INGREDIENTS)
 	return true
 
@@ -211,5 +281,5 @@ func receive(lines: Array[Dictionary], charged_total: int = -1) -> void:
 func refund_order(amount: int) -> void:
 	if amount <= 0:
 		return
-	ledger.record(Clock.day, amount, Ledger.INGREDIENTS, ORDER_REFUND_NOTE)
+	ledger.record(Clock.day, amount, Ledger.INGREDIENTS, ORDER_REFUND_NOTE, active_site)
 	EventBus.cash_changed.emit(cash, amount, Ledger.INGREDIENTS)

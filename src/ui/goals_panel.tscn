@@ -40,6 +40,14 @@ mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "Career goals"
 
+[node name="CareerTier" type="Label" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+
 [node name="Close" type="Button" parent="Panel/Content/Header"]
 layout_mode = 2
 focus_mode = 0

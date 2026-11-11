@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Seasons change every 28 days, bringing lower and higher ingredient purchase prices. The date names the season, Stock marks seasonal ingredients, and dish details point out ingredients in season. (#395)
+- Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
 - A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)
@@ -179,6 +180,15 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Switching restaurants no longer carries the morning's haggle saving or hand throw-outs into the next restaurant's evening report and Stock notes, and a test plays a real switch to check each restaurant keeps its own books (#418)
+- Money in the books now remembers which restaurant earned or spent it, so once you own a second site, the evening report, business history, records and XP count only the restaurant you are playing that day, while your cash still covers all of them. Income and rent from your other restaurants, buying new premises and renovation get their own lines in the books and never count toward a day's profit. One-restaurant games play and save exactly as before. (#416)
+- The game can now switch which of your shops is open, in the morning: the shop you leave is put away as it is, the other one is brought up to date and set up exactly like a loaded save, and a shop that cannot be set up leaves everything as it was. Nothing in the game uses it yet. (#415)
+- A shop left closed for a few days can now be brought back up to date: its stock, tanks and waiting deliveries are kept as they were, its renown fades, and that morning's special, rush, critic visit and booking offer lapse, with deposits for missed bookings set aside for refund. Groundwork for switching between shops; nothing changes in play. (#414)
+- Saves now have a "sites" section that can hold other restaurants, each frozen as it was on the day you left it. Every existing save loads as your one starter shop, so nothing changes in play yet. (#413)
+- Saves can now restore just a chosen set of sections and put everything back if one of them is refused, and the game's post-load setup is one reusable step. Both are groundwork for switching between shops; nothing changes in play. (#412)
+- The kitchen's stock now saves in its own "pantry" section, apart from cash and the loan, and a new table says which save sections every shop shares and which belong to one shop. Older saves move their stock across when loaded. First step towards owning more than one shop. (#411)
+- Design: how several restaurant sites work (one active site, the rest frozen in the save and run by managers), lot data, lot-only content and the prestige score (#404)
+- The coffee shop test layout leaves a two-cell aisle between the coffee machines and the counter in the deeper starter room, as Build mode now advises; a one-cell gap had the cook looping round the full counter. (#403)
 - The Records screenshot check now plays ordinary days until a close beats a record, since the first day sets every record quietly. (#401)
 - Design: the property market is decided (D28): every Tier 3 lot visible with its perks, fixer-uppers, upstairs on some lots, lot-only ingredients and build items, a prestige score for fine dining, bar gambling, and what carries over when you buy or move. (#381)
 - Five new songs by Jared are in the game files: "Diner Boogie" and "Coffee Shop Morning" for diner and café theme music (#367), two upbeat funk tracks ("Hazy Breakbeat", "Sleek Groove") and a sea shanty, whose places in the game come later. (#379)

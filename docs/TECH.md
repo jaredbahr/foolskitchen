@@ -2281,7 +2281,7 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
   `waited_too_long`. A shop without a counter takes no new branch and draws
   nothing extra (`test_a_cafe_without_a_counter_keeps_its_table_service_exactly`
   replays a recorded café). Probe set-up `coffee_counter` is `coffee_shop` plus a
-  counter continuing the bar along row 7 (x 13-14). Over ten seeds and five
+  counter continuing the bar along its row (7, or 8 in the deeper room; x 13-14). Over ten seeds and five
   days it serves 93.8 guests against `coffee_shop`'s 88.0 (sales 558 vs 524,
   profit 98 vs 67): the till order is half as long and the server never walks to
   a table to take it, a takeaway is handed over at the counter, and a full house
@@ -3356,3 +3356,150 @@ The HUD date includes the season. Stock rows show an optional `In season` or
 `Pricey this season` tag; a dish's ingredient details identify in-season items.
 The existing visual-review job adds one paused real morning Stock capture,
 showing those tags and the HUD date together.
+
+### Sites and the property market (FK-087, D28, D30) — design
+Status: design for #164, revised after review. Parts 2, 4 and 6 can be built
+before part 1; buying a lot and switching wait for part 1 (#408).
+
+**Career tier (D30).** `OwnerProgress.career_tier` (1 to 6, global, saved in
+`owner`) is separate from the home lease. Today's `property_tier` (1 or 2)
+only means "the home lease is expanded"; part 1 moves it into that site's own
+data (`lease_expanded`), and a missing career tier loads as 1, or 2 when the
+old `property_tier` was 2 or the owner was already at Tier 2's level (#419). Tier 2 needs owner level 3 (the level today's lease
+offer needs), with or without buying the lease. Tiers 3 to 6 need an owner
+level **and** the active site's closing reputation. Tiers are climbed in order,
+checked at each close and never lost:
+`data/balance/career_tiers.tres` (placeholders: Tier 3 level 6 and 4.0
+stars, Tier 4 level 9 and 4.2, Tier 5 level 12 and 4.4, Tier 6 level 15 and
+4.5). The evening report announces a new tier. Content gates (`unlock_tier`
+on items, recipes, floors and wall finishes) read `career_tier`; the lease
+offer needs `career_tier >= 2`, and lease size and rent read the site's own
+`lease_expanded` (today `property_tier == 2`).
+
+**Lots (data).** `data/lots/<id>.tres` is a `LotDef`: `id`,
+`display_name`, `blurb`, `base_layout` (its own `ShopLayout` and lot
+margins, which also bound its maximum footprint), `price` (move-in ready) or
+`fixer_price` plus `renovation_bill` and `renovation_days` (2 to 5),
+`daily_rent`, `min_tier`, `min_reputation` (0 = none), `guest_mix`
+(`Dictionary[StringName, float]` over existing customer types), `upstairs_allowed`
+and `tags: Array[StringName]` (`&"seaside"`, `&"rooftop"`). `ContentDB`
+validates them like recipes; a bad lot fails the load. The starter shop is the
+implicit home lot and is never listed. `_base_for_saved_shop` gains a lookup
+by lot id.
+
+**Lot-only content.** `ItemDef` and `IngredientDef` gain `lot_tags` (empty =
+everywhere). The catalogue, blueprint stamps and stock panel show a tagged
+entry only at a site whose lot shares a tag. Lot-only items stay with their
+site when furniture moves (part 5).
+
+**Save sections.** Every registered section is classed once in
+`src/sim/sites/site_sections.gd`; a test fails when one is missing.
+- **Global:** `owner`, `game_state` (seed and RNG streams), `clock` (day and
+  phase), the economy books (`ledger`, `loan`), `blueprints`, `milestones`,
+  `weekly_challenge`, `hints`, `weather`, `collection_toasts` (a collection
+  is celebrated once per career), and the new `sites` section.
+- **Per site:** `shop`, `menu`, `daily_special`, `signature`, `staff`,
+  `plates`, `reviews`, `regulars`, `reorder`, `deliveries`, `demand`, `viral`,
+  `business_history`, `shop_records`, `cat`, `inspection`, `critic`,
+  `bookings`, `rush_hour`, `aquarium`, plus two split out in part 1: `pantry`
+  (the kitchen stock, split out of `economy` in #411) and `site_hours`
+  (opening hours, today in `clock`).
+
+**Where a site's own fields live (#413).** `SiteBook` (`src/sim/sites`)
+holds the active site id and one row per site: id, lot, name, manager (a
+member id in that site's own `staff` section) and, for an inactive site, its
+frozen day and per-site sections, kept in loaded-file JSON shape. Fields that
+only change while a site is active (such as `lease_expanded`) belong in its
+per-site sections and swap with it. Fields that change while it is inactive
+(renovation days left) go on its book row, which needs a new `sites`
+VERSION: the decoder refuses unknown keys rather than drop them.
+
+**Switching (part 1).** Only in the morning, before opening, and only after
+the departing site's morning has run (restock bought, staff changes, plans
+made): that morning's results stay with it. Steps:
+1. Capture the departing site's per-site sections into its frozen copy in
+   `sites`, with today as its frozen day. Deliveries due later stay in its
+   book.
+2. **Thaw** the target's frozen copy in memory: each per-site section with
+   day-bound state gets a `thaw(frozen_day, today)` step (demand decays across
+   the gap like `DemandState.begin_morning`; the daily special clears;
+   signature, viral and rush-hour days shift or lapse; delivery due days move
+   forward by the gap, once, here only).
+3. Stage the thawed copy through a new
+   `SaveSystem.restore_sections(sections, keys)` (#412): every per-site
+   provider restores from the dictionary in registration order; if one
+   refuses, all of them are restored again from a capture taken first, so the
+   active site is exactly as it was (in place: the pantry keeps its `Stock`
+   object). The switch then clears main.gd's `_loaded_*` staging, which holds
+   the rolled-back copy. A refusal never starts a new game. Global sections are never touched
+   (except that rewiring, like any reload, redraws the customers RNG stream). (#411
+   already split the old single `economy` section into the global books and
+   the per-site `pantry`; `SiteSections` lists both sides.)
+4. Install, then rewire the session: the existing post-load setup in
+   `start()` (RNG binding, cleanliness, reviews, customer types, editor,
+   clock attach, build session) moves into one `_wire_session()` used by both
+   start and switch, and the old sim's signals disconnect first.
+5. Run the target's morning entry (`_begin_morning` without the autosave),
+   then autosave once.
+Owner is global and already installed, so its order before `shop` and `menu`
+still holds.
+Built so far (#408 C3): `main.gd` `switch_site(target)` (tests only, no UI
+yet). Validation and install are `_validate_staged_sections` and
+`_install_staged_sections`, shared with the morning load (which also stages
+the global sections); the switch carries today's weather to the new world. A
+frozen copy without a `pantry` gets an empty one (the pantry restores in
+place, so skipping it would keep the departing stock); other missing sections
+take their load defaults. A refusal after a successful restore restores the
+departing capture again (for the pantry) and clears the staging. The
+morning's one supplier haggle is the owner's and is not reset by a switch
+(an offer won and not yet spent still applies at the arriving site). Today's
+main.gd report state follows the site (#408 D2): the haggle receipt names
+its site, so the saving shows only on that site's report; the arriving
+morning resets dishes sold, food cost, expiry, the auto-order and delivery
+notes; and notes kept nowhere else (hand throw-outs, a trimmed cart, staff
+notices, team activity, menu access losses) are dropped on a switch.
+
+**Managers and away sites.** A new staff role **Manager** (hired at Tier 3,
+skill is the existing service skill). An inactive site with a manager earns,
+at each close of the active site:
+`min(rate × mean, mean)` over its last 7 recorded in-person
+`business_history` days (`dish_profit_recorded` only; fewer rows use what
+exists; none means 0). `rate` is 0.70 at skill 1 rising to 1.00 at skill 5.
+That mean is already net of its wages and rent, so a managed site pays nothing
+else. An unmanaged inactive site stays closed and pays only its rent. Away
+days are never written into a site's history. No RNG (D24 amended: a
+deterministic summary, not a seeded sim).
+
+**Ledger.** Each ledger entry records the site that made it (an id; entries
+from saves before part 1 belong to the home site). The day report, business
+history, records and XP read only the active site's entries for the day, so a
+departing site's morning spending stays in its own books. New categories `AWAY_SITE_INCOME`, `AWAY_SITE_RENT`,
+`LOT_PURCHASE` and `RENOVATION`, all in `DayReport.NON_OPERATING_CATEGORIES`,
+so they never reach the active site's operating profit, XP, records,
+business history or weekly challenge.
+
+**Limits and renovation.** `data/balance/sites.tres`: sites allowed by career
+tier (2 at Tier 3, 3 at Tier 5, unlimited at Tier 6). A fixer-upper's site
+stores `renovation_days_left`; while above 0 it can be active for designing but
+cannot open, and the days count down at each close of whichever site is
+active.
+
+**Bookings.** A group booking belongs to its site. If that site is not
+active on the booked day, the booking lapses at that day's close with the
+deposit refunded (`BOOKING_REFUND`) and no reputation change. New offers come
+only to the active site. Built so far (#414): `SiteThaw` refunds such a
+booking when its site is switched back to; part 1's close-time processing of
+away sites must settle it at that day's close instead, after which the thaw
+finds nothing to refund.
+
+**Weekly challenge.** It stays global and counts the active site's sales. A
+featured dish the active site cannot cook simply makes no progress that day.
+
+**Prestige (part 6).** `Prestige.score(grid, content)` is pure: the sum of
+placed items' `prestige`, clamped to the lowest `prestige_cap` present (slots,
+pool table, neon). Staff that add prestige (sommelier, pianist) come later.
+Golden Ladles (0 to 3) come from data thresholds and are awarded only on a
+good critic review, kept per site in `critic`.
+
+**Later parts.** Staff transfer and moving furniture between sites (part 5),
+bar gambling income (part 7), upstairs (part 8).

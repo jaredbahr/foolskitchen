@@ -47,7 +47,7 @@ func after_each() -> void:
 func test_two_providers_round_trip_and_envelope() -> void:
 	assert_eq(_save.save_game("morning"), OK)
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_path("morning")))
-	assert_eq(int(document["version"]), 1)
+	assert_eq(int(document["version"]), SaveScript.FORMAT_VERSION)
 	assert_true(float(document["saved_at"]) > 0.0)
 	_first.clear()
 	_second.clear()
@@ -80,7 +80,7 @@ func test_missing_corrupt_and_future_version_errors() -> void:
 	assert_eq(_save.load_game("missing"), ERR_FILE_NOT_FOUND)
 	_write("broken", "{bad json")
 	assert_eq(_save.load_game("broken"), ERR_PARSE_ERROR)
-	_write("future", JSON.stringify({"version": 2, "data": {}}))
+	_write("future", JSON.stringify({"version": SaveScript.FORMAT_VERSION + 1, "data": {}}))
 	assert_eq(_save.load_game("future"), ERR_FILE_UNRECOGNIZED)
 	assert_eq(_restore_calls, 0)
 
@@ -108,6 +108,29 @@ func test_version_zero_migrates_and_missing_section_is_skipped() -> void:
 	assert_eq(_restore_calls, 1)
 
 
+func test_version_one_moves_stock_into_the_pantry_section() -> void:
+	var pantry: Dictionary = {}
+	var economy: Dictionary = {}
+	_save.register("economy", func() -> Dictionary: return {},
+		func(data: Dictionary) -> bool: economy.merge(data); return true)
+	_save.register("pantry", func() -> Dictionary: return {},
+		func(data: Dictionary) -> bool: pantry.merge(data); return true)
+	_write("v1", JSON.stringify({"version": 1, "data": {"economy": {"ledger": {"cash": 5}, "stock": {"batches": {}}}}}))
+	assert_eq(_save.load_game("v1"), OK)
+	assert_eq(economy, {"ledger": {"cash": 5.0}}, "the books keep everything but the stock")
+	assert_eq(pantry, {"stock": {"batches": {}}}, "the stock becomes the pantry section")
+	assert_eq(_save.keys(), PackedStringArray(["first", "second", "economy", "pantry"]))
+
+
+func test_version_one_economy_without_stock_still_reaches_a_refusing_pantry() -> void:
+	var seen: Array[Dictionary] = []
+	_save.register("pantry", func() -> Dictionary: return {},
+		func(data: Dictionary) -> bool: seen.append(data); return data.has("stock"))
+	_write("v1", JSON.stringify({"version": 1, "data": {"economy": {"ledger": {}}}}))
+	assert_eq(_save.load_game("v1"), FAILED)
+	assert_eq(seen, [{}] as Array[Dictionary])
+
+
 func test_missing_all_sections_and_unknown_sections_are_allowed() -> void:
 	_write("empty", JSON.stringify({"version": 1, "data": {"future_system": {"x": 1}}}))
 	assert_eq(_save.load_game("empty"), OK)
@@ -118,6 +141,45 @@ func test_failed_provider_returns_failed() -> void:
 	_save.register("first", _capture_first, _reject_restore)
 	assert_eq(_save.save_game("fail"), OK)
 	assert_eq(_save.load_game("fail"), FAILED)
+
+
+func test_restore_sections_restores_only_the_named_keys_in_json_shape() -> void:
+	var sections: Dictionary = {"first": {"value": 7}, "second": {"name": "Bistro", "items": []}}
+	assert_eq(_save.restore_sections(sections, PackedStringArray(["second"])), OK)
+	assert_eq(int(_first["value"]), 3, "an unnamed section is left alone")
+	assert_eq(_second["name"], "Bistro")
+	sections["second"]["name"] = "Changed"
+	assert_eq(_second["name"], "Bistro", "the provider gets its own copy")
+	assert_eq(_save.restore_sections({"first": {"value": 9}}, PackedStringArray(["first", "second"])), OK,
+		"a named section that is missing is skipped")
+	assert_true(_first["value"] is float, "numbers arrive as a decoded file has them")
+	assert_eq(_second["name"], "Bistro")
+
+
+func test_restore_sections_refuses_unknown_keys_and_bad_shapes_before_any_restore() -> void:
+	assert_eq(_save.restore_sections({"first": {"value": 1}}, PackedStringArray(["first", "nope"])),
+		ERR_INVALID_PARAMETER)
+	assert_eq(_save.restore_sections({"first": {"value": 1}, "second": []},
+		PackedStringArray(["first", "second"])), ERR_INVALID_PARAMETER)
+	assert_eq(_restore_calls, 0)
+	assert_eq(int(_first["value"]), 3)
+
+
+func test_restore_sections_rolls_back_earlier_sections_when_one_refuses() -> void:
+	var refused: Array[int] = [0]
+	_save.register("second", _capture_second, func(data: Dictionary) -> bool:
+		if data.get("name", "") == "Bad":
+			refused[0] += 1
+			_second = {"name": "half changed"}
+			return false
+		_second = data
+		return true)
+	var sections: Dictionary = {"first": {"value": 50}, "second": {"name": "Bad"}}
+	assert_eq(_save.restore_sections(sections, PackedStringArray(["first", "second"])), FAILED)
+	assert_eq(refused[0], 1)
+	assert_eq(int(_first["value"]), 3, "the section restored before the refusal is put back")
+	assert_eq(_second["name"], "Diner", "the refusing section is put back too")
+	assert_eq(_second["items"], ["bun", "cheese"])
 
 
 func test_malformed_envelopes_and_sections_are_rejected_before_restore() -> void:
@@ -339,7 +401,7 @@ func test_unreadable_backup_is_not_restored_and_unknown_future_is_not_rolled_bac
 	assert_eq(_save.save_game("future"), OK)
 	_first["value"] = 8
 	assert_eq(_save.save_game("future"), OK)
-	_write("future", JSON.stringify({"version": 2, "data": {}}))
+	_write("future", JSON.stringify({"version": SaveScript.FORMAT_VERSION + 1, "data": {}}))
 	assert_eq(_save.load_game("future"), ERR_FILE_UNRECOGNIZED)
 	assert_eq(_restore_calls, 0)
 
