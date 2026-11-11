@@ -14,6 +14,10 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.WEEKLY_CHALLENGE_BONUS: "Weekly challenge",
 	Ledger.BOOKING_DEPOSIT: "Booking deposit",
 	Ledger.BOOKING_REFUND: "Booking refund",
+	Ledger.AWAY_SITE_INCOME: "Income from your other restaurants",
+	Ledger.AWAY_SITE_RENT: "Rent on your other restaurants",
+	Ledger.LOT_PURCHASE: "New premises",
+	Ledger.RENOVATION: "Renovation",
 }
 
 const LEAVE_LABELS: Dictionary = {
