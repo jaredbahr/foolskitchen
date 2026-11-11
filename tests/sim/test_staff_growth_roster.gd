@@ -30,6 +30,7 @@ func test_six_field_legacy_members_and_candidates_load_with_zero_xp_and_mood_thr
 		for row: Dictionary in records:
 			row.erase("growth")
 			row.erase("priorities")
+			row.erase("work")
 			assert_eq(row.size(), 6)
 	var restored: StaffRoster = StaffRoster.new(TUNING)
 	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(legacy))))
