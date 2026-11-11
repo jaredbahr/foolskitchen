@@ -246,3 +246,11 @@ func test_one_site_has_no_away_lines() -> void:
 	assert_false(report.to_dict().has("away_site_lines"), "a one-site report keeps its shape")
 	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT]:
 		assert_eq(Economy.ledger.day_totals(day).get(category, 0), 0)
+
+
+func test_no_manager_is_hired_before_there_is_a_second_site() -> void:
+	_start()
+	_owner().career_tier = 3
+	_offer_manager()
+	assert_false(_main.call("staff_hire", MANAGER_ID), "nothing to manage with one site")
+	assert_false(_main.call("_managers_on_offer"))

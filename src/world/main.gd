@@ -3944,9 +3944,14 @@ func _change_staff(id: StringName, hiring: bool) -> bool:
 	return true
 
 
-## Managers are hired only from the manager tier (FK-087); floor roles always.
+## Managers are hired only from the manager tier (FK-087), and only once the
+## owner has a second site for one to run; floor roles always.
 func _may_hire_role(role: StringName) -> bool:
-	return role != StaffMember.MANAGER or owner_progress.career_tier >= SITE_MANAGERS.hire_tier
+	return role != StaffMember.MANAGER or _managers_on_offer()
+
+
+func _managers_on_offer() -> bool:
+	return owner_progress.career_tier >= SITE_MANAGERS.hire_tier and site_book.site_count() > 1
 
 
 static func _candidate_role(roster: StaffRoster, id: StringName) -> StringName:
@@ -4938,7 +4943,7 @@ func _begin_morning() -> void:
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
-			owner_progress.career_tier >= SITE_MANAGERS.hire_tier)
+			_managers_on_offer())
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
