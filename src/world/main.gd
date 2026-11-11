@@ -277,6 +277,8 @@ var _paint_material: StringName = &""
 var _paint_copied: ItemDef
 var _paint_copied_swatch: StringName = &""
 var _paint_copied_look: PaintLook
+## The Paint panel's "Copy look" was pressed: the next piece clicked is copied.
+var _paint_copy_armed: bool = false
 ## Paint was opened from Build mode's Paint tab: Esc goes back to Build.
 var _paint_from_build: bool = false
 ## The last undo/redo refusal or result, shown in the hint strip until the
@@ -430,6 +432,7 @@ func _bind_world_presentation() -> void:
 		_build_catalogue.swatch_requested.connect(_on_swatch_requested)
 		_build_catalogue.paint_slot_requested.connect(_on_paint_slot_requested)
 		_build_catalogue.paint_material_requested.connect(_on_paint_material_requested)
+		_build_catalogue.copy_look_requested.connect(_on_copy_look_requested)
 	if not _build_catalogue.mode_requested.is_connected(_on_catalogue_mode_requested):
 		_build_catalogue.mode_requested.connect(_on_catalogue_mode_requested)
 		_build_catalogue.paint_requested.connect(_on_catalogue_paint_requested)
@@ -1177,7 +1180,7 @@ func paint_face_at_screen_position(screen_position: Vector2) -> Vector3i:
 ## (inside its room), or with Shift every wall of the room, takes the paint
 ## colour and keeps its finish. Free at any time, like all paint.
 func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
-	if not _paint_variant_item.is_empty():
+	if not _paint_variant_item.is_empty() or _paint_copy_armed:
 		return false
 	if not _paint_active or shop_editor == null:
 		return false
@@ -1190,7 +1193,7 @@ func paint_face(face: Vector3i, whole_room: bool = false) -> bool:
 
 ## Exterior body swatches use the existing palette and morning undo boundary.
 func paint_hung(anchor: Vector3i) -> bool:
-	if not _paint_active or shop_editor == null or not _paint_variant_item.is_empty():
+	if not _paint_active or shop_editor == null or not _paint_variant_item.is_empty() or _paint_copy_armed:
 		return false
 	var accepted: bool = edit_history.paint_hung(anchor, _paint_swatch_id)
 	if accepted:
@@ -1333,6 +1336,11 @@ func preview_paint_cell(cell: Variant, whole_room: bool = false) -> void:
 		view.preview_floor_finishes(_floor_paint_preview(cell, whole_room))
 		return
 	view.clear_floor_preview()
+	if kind == &"item" and _paint_copy_armed:
+		# Copying shows the piece's parts but previews no paint.
+		_show_paint_target(world.grid.item(item_id))
+		view.preview_paint(&"", -1, &"")
+		return
 	if kind == &"item" and _paint_copied != null:
 		var hovered: PlacedItem = world.grid.item(item_id)
 		_show_paint_target(hovered)
@@ -1386,6 +1394,8 @@ func paint_cell(cell: Vector2i, whole_room: bool = false) -> bool:
 			_update_build_controls()
 		return changed
 	var kind: StringName = target.get("kind", &"")
+	if _paint_copy_armed:
+		return copy_paint_look(cell) if kind == &"item" else false
 	if kind == &"floor":
 		# Free at any time; recorded for undo while editing is allowed.
 		var recoloured: bool = edit_history.apply_flooring(_floor_paint_changes(cell, whole_room))
@@ -1676,6 +1686,7 @@ func copy_paint_look(cell: Vector2i) -> bool:
 	var placed: PlacedItem = world.grid.item_at(cell) if world != null else null
 	if placed == null or not placed.def is ItemDef or not (placed.def as ItemDef).paintable:
 		return false
+	_paint_copy_armed = false
 	_paint_copied = placed.def as ItemDef
 	_paint_copied_swatch = placed.swatch_id
 	_paint_copied_look = placed.paint.copy()
@@ -1686,7 +1697,16 @@ func copy_paint_look(cell: Vector2i) -> bool:
 	return true
 
 
+func _on_copy_look_requested() -> void:
+	_clear_copied_look()
+	_paint_copy_armed = true
+	_paint_variant_item = &""
+	if _build_catalogue != null:
+		_build_catalogue.set_copied_look("", true)
+
+
 func _clear_copied_look() -> void:
+	_paint_copy_armed = false
 	_paint_copied = null
 	_paint_copied_look = null
 	if _build_catalogue != null:

@@ -82,6 +82,26 @@ func test_alt_click_copies_a_look_and_pastes_it() -> void:
 	assert_true(_catalogue().copied_look.is_empty(), "picking a colour drops the copied look")
 
 
+func test_copy_look_button_copies_the_next_piece_clicked() -> void:
+	await _start()
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_world(), &"table_2")
+	assert_true(_main.call("set_paint_active", true))
+	_catalogue().part_buttons[1].pressed.emit()
+	_catalogue().swatch_buttons[&"berry"].pressed.emit()
+	assert_true(_main.call("paint_cell", tables[0].origin))
+	var wall: StringName = _editor().wall_swatch_id
+	_catalogue().copy_look_button.pressed.emit()
+	assert_true(_catalogue().copy_look_button.button_pressed)
+	assert_eq(_title(), CatalogueText.PAINT_COPY_ARMED)
+	assert_false(_main.call("paint_cell", Vector2i(0, 6)), "a wall click while copying paints nothing")
+	assert_eq(_editor().wall_swatch_id, wall)
+	assert_true(_main.call("paint_cell", tables[0].origin), "the click copies")
+	assert_eq(tables[0].paint.swatch(&"cushion"), &"berry", "copying changes nothing")
+	assert_eq(_title(), "Paint | Two-seat table look copied - Click pieces to paste it")
+	assert_true(_main.call("paint_cell", tables[1].origin))
+	assert_eq(tables[1].paint.swatch(&"cushion"), &"berry")
+
+
 func _title() -> String:
 	return (_catalogue().get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text
 

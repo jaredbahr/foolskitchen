@@ -23,6 +23,9 @@ signal swatch_requested(swatch_id: StringName)
 ## its material (a PaintFinish id; empty = each part's own, "Auto").
 signal paint_slot_requested(index: int)
 signal paint_material_requested(material: StringName)
+## "Copy look": the next piece clicked in Paint is copied, as Alt-click does
+## (some Linux window managers take Alt-click for themselves).
+signal copy_look_requested()
 ## Walls tool (FK-070): the SimGrid.Segment new edges should get.
 signal wall_tool_requested(segment: int)
 ## Floor tool (FK-080): buy floor on the lot.
@@ -112,6 +115,7 @@ const SWATCH_SIZE: float = 30.0
 const PART_FALLBACK_NAMES: Array[String] = ["Main", "Part 2", "Part 3"]
 const AUTO_TIP: String = "Auto: each part keeps its own material (wood stays wood, cushions stay fabric)"
 const ORIGINAL_TIP: String = "Original: put a part, wall or floor back to how it came"
+const COPY_LOOK_TIP: String = "Copy look (or Alt-click): click a piece to copy its colours and materials, then click pieces to paste"
 ## Floors and Wall finish colour rows: Original/Auto plus the palette in two rows.
 const COLOUR_ROW_COLUMNS: int = 21
 
@@ -198,12 +202,15 @@ var part_buttons: Array[Button] = []
 var material_buttons: Dictionary[StringName, Button] = {}
 ## "Original": the brush puts a part (or a wall or floor) back to how it came.
 var original_button: Button
+var copy_look_button: Button
 var _paint_target: ItemDef
 var _paint_target_swatches: Array[StringName] = []
 var _paint_target_materials: Array[StringName] = []
 var _material_icons: Dictionary[StringName, ImageTexture] = {}
 ## The name of the piece whose look Alt-click copied ("" when none).
 var copied_look: String = ""
+## Main armed "Copy look": the next piece clicked is copied.
+var copy_armed: bool = false
 ## Stable capture path: Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter.
 var vibe_meter: VibeMeter
 var curb_appeal_meter: CurbAppealMeter
@@ -1410,6 +1417,9 @@ func _refresh_title() -> void:
 		IconStyle.decorate_label(title, &"catalogue")
 		return
 	IconStyle.decorate_label(title, &"paint")
+	if copy_armed:
+		title.text = CatalogueText.PAINT_COPY_ARMED
+		return
 	if not copied_look.is_empty():
 		title.text = CatalogueText.paint_copied_title(copied_look)
 		return
@@ -1445,8 +1455,10 @@ func set_paint_target(definition: ItemDef, swatches: Array[StringName] = [], mat
 
 
 ## Main names the piece whose look Alt-click copied ("" clears it).
-func set_copied_look(display_name: String) -> void:
+func set_copied_look(display_name: String, armed: bool = false) -> void:
 	copied_look = display_name
+	copy_armed = armed
+	_refresh_paint_parts()
 	_refresh_title()
 
 
@@ -1498,6 +1510,10 @@ func _prepare_paint_parts() -> void:
 	original_button.tooltip_text = ORIGINAL_TIP
 	original_button.pressed.connect(_on_original_pressed)
 	parts.add_child(original_button)
+	copy_look_button = _chip("CopyLook", "Copy look")
+	copy_look_button.tooltip_text = COPY_LOOK_TIP
+	copy_look_button.pressed.connect(_on_copy_look_pressed)
+	parts.add_child(copy_look_button)
 	var materials: HBoxContainer = HBoxContainer.new()
 	materials.name = "Materials"
 	materials.add_theme_constant_override("separation", 4)
@@ -1559,7 +1575,8 @@ func _refresh_paint_parts() -> void:
 		button.icon = _part_dot(swatch.color) if swatch != null else null
 		button.tooltip_text = CatalogueText.paint_part_tip(button.text, swatch, material) if _paint_target != null \
 			else "Paint this part of the item you click"
-	original_button.set_pressed_no_signal(selected_swatch_id.is_empty())
+	original_button.set_pressed_no_signal(selected_swatch_id.is_empty() and not copy_armed and copied_look.is_empty())
+	copy_look_button.set_pressed_no_signal(copy_armed or not copied_look.is_empty())
 	for id: StringName in material_buttons:
 		material_buttons[id].set_pressed_no_signal(id == selected_paint_material)
 
@@ -1589,6 +1606,12 @@ func _on_material_pressed(id: StringName) -> void:
 	_refresh_paint_parts()
 	_refresh_title()
 	paint_material_requested.emit(id)
+
+
+func _on_copy_look_pressed() -> void:
+	if not visible or not _paint_visible:
+		return
+	copy_look_requested.emit()
 
 
 func _on_original_pressed() -> void:

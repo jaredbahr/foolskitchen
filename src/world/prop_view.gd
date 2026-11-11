@@ -12,8 +12,6 @@ class BodySurface:
 	var source: BaseMaterial3D
 	var original_override: Material
 	var tinted: BaseMaterial3D
-	## Painted copies by colour and material (#431), reused across repaints.
-	var painted: Dictionary[String, BaseMaterial3D] = {}
 
 ## One paint slot's look (#431). Empty `surfaces` means the body surfaces;
 ## a null `color` keeps the surface's own (kit or look) colour; an empty
@@ -194,13 +192,8 @@ func _slot_key(slots: Array[SlotPaint]) -> String:
 func _paint_surface(surface: BodySurface, slot: SlotPaint) -> void:
 	var active: BaseMaterial3D = surface.mesh.get_active_material(surface.index) as BaseMaterial3D
 	var color: Color = slot.color if slot.color is Color else (active.albedo_color if active != null else surface.source.albedo_color)
-	var cache_key: String = "%s/%s" % [color.to_html(), slot.material]
-	var painted: BaseMaterial3D = surface.painted.get(cache_key) as BaseMaterial3D
-	if painted == null:
-		painted = surface.source.duplicate() as BaseMaterial3D
-		PaintMaterials.configure(painted, surface.source, color, slot.material)
-		surface.painted[cache_key] = painted
-	surface.mesh.set_surface_override_material(surface.index, painted)
+	surface.mesh.set_surface_override_material(surface.index,
+		PaintMaterials.shared(surface.source, color, slot.material))
 	if not _touched.has(surface) and not _body_surfaces.has(surface):
 		_touched.append(surface)
 

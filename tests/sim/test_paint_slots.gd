@@ -107,12 +107,36 @@ func test_older_saves_keep_their_flat_body_paint_and_unpainted_items() -> void:
 		"the old flat coat is pinned, not swapped for the new wood default")
 	assert_eq(painted.paint.swatches, {} as Dictionary[StringName, StringName])
 	assert_true(by_origin[plant.origin].paint.is_empty(), "unpainted pieces stay as they came")
-	# Malformed or unknown slot rows are forgiven (looks only).
-	data["items"][0]["paint"] = [["nope", "wood", ""], ["frame", "velvet", "sage"], 5, ["cloth", "fabric"]]
+	# Malformed or unknown slot rows are forgiven (looks only): each bad row is
+	# skipped and a valid row in the same list still installs.
+	var row: Dictionary = {}
+	for value: Dictionary in data["items"]:
+		if Vector2i(int(value["origin"][0]), int(value["origin"][1])) == table.origin:
+			row = value
+	assert_false(row.is_empty())
+	row["paint"] = [["nope", "wood", ""], ["table", "velvet", "sage"], 5, ["cushion", "fabric"],
+		["cushion", "fabric", "mint"], ["table", "wood", "sage"]]
 	layout = ShopEditor.from_dict(data, LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])
-	data["items"][0]["paint"] = "broken"
-	assert_not_null(ShopEditor.from_dict(data, LAYOUT, _content, errors))
+	var installed: PaintLook = _placement_at(layout, table.origin).paint
+	assert_eq(installed.swatch(&"cushion"), &"mint", "the valid cushion row survives")
+	assert_eq(installed.material(&"cushion"), PaintFinish.FABRIC)
+	assert_eq(installed.material(&"table"), PaintFinish.WOOD, "the valid table row's material installs")
+	assert_true(installed.swatch(&"table").is_empty(), "the main colour only ever comes from swatch_id")
+	assert_eq(installed.materials.size(), 2, "the unknown slot and the bad material are skipped")
+	# An over-long list is cut at PaintLook.MAX_ROWS (8, as blueprint codes).
+	var long_rows: Array = []
+	for index: int in PaintLook.MAX_ROWS:
+		long_rows.append(["nope", "wood", ""])
+	long_rows.append(["cushion", "fabric", "mint"])
+	row["paint"] = long_rows
+	layout = ShopEditor.from_dict(data, LAYOUT, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	assert_true(_placement_at(layout, table.origin).paint.is_empty(), "rows past the cap are never read")
+	row["paint"] = "broken"
+	layout = ShopEditor.from_dict(data, LAYOUT, _content, errors)
+	assert_not_null(layout)
+	assert_true(_placement_at(layout, table.origin).paint.is_empty(), "a broken list installs nothing")
 
 
 func test_shift_paints_every_piece_of_a_kind_in_the_room_as_one_undo_step() -> void:
@@ -175,6 +199,13 @@ func test_blueprints_carry_slots_and_older_rows_keep_their_flat_coat() -> void:
 	var decoded: Blueprint = BlueprintCode.decode(BlueprintCode.encode(blueprint), _content, reasons)
 	assert_not_null(decoded)
 	assert_eq(decoded.entries[0].paint.swatch(&"cushion"), &"teal")
+
+
+func _placement_at(layout: ShopLayout, origin: Vector2i) -> ShopPlacement:
+	for placement: ShopPlacement in layout.placements:
+		if placement.origin == origin:
+			return placement
+	return null
 
 
 func _first(id: StringName) -> PlacedItem:

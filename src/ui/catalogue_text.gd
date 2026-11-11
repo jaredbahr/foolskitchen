@@ -198,6 +198,9 @@ static func paint_title(swatch: SwatchDef, original: bool, material: StringName,
 	return "Paint | %s%s%s - Click a wall, floor or item" % [colour, finish, where]
 
 
+const PAINT_COPY_ARMED: String = "Paint | Copy look - Click a piece to copy its look"
+
+
 static func paint_copied_title(piece: String) -> String:
 	return "Paint | %s look copied - Click pieces to paste it" % piece
 

@@ -174,6 +174,9 @@ var _preview_slot: StringName = &""
 var _preview_material: StringName = &""
 ## A pasted look's preview (kind &"look").
 var _preview_look: PaintLook
+## What each item node last drew (item id -> key), so a repaint skips items
+## that are neither previewed nor changed.
+var _drawn_paint: Dictionary[int, String] = {}
 ## Floor types (D25): the editor's looks, a preview overlay (cell -> Finish)
 ## and the per-cell data texture the floor shader reads.
 var _floors: FloorFinishes
@@ -467,6 +470,7 @@ func drawn_agent_colors() -> Dictionary[int, Color]:
 
 func _exit_tree() -> void:
 	_disconnect_grid()
+	PaintMaterials.clear_cache()
 
 
 func _notification(what: int) -> void:
@@ -1343,12 +1347,29 @@ func _apply_paint() -> void:
 	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
 	if floor_shader != null:
 		floor_shader.set_shader_parameter("floor_color", _paint_color(floor_id, _floor_base_color))
+	# A hover on an item that has since gone (sold, undone) is stale: drop it.
+	for stale: int in _preview_items.duplicate():
+		if not item_nodes.has(stale) or world.grid.item(stale) == null:
+			_preview_items.erase(stale)
+	if _preview_items.is_empty() and (_preview_kind == &"slot" or _preview_kind == &"look"):
+		_preview_kind = &""
+		_preview_item_id = -1
+	for id: int in _drawn_paint.keys():
+		if not item_nodes.has(id):
+			_drawn_paint.erase(id)
 	for id: int in item_nodes:
 		var placed: PlacedItem = world.grid.item(id)
 		if placed == null or not placed.def is ItemDef:
 			continue
 		var definition: ItemDef = placed.def as ItemDef
 		var variant_preview: bool = _preview_kind == &"variant" and id == _preview_item_id
+		var previewed: bool = id == _preview_item_id or _preview_items.has(id)
+		var key: String = "%d|%s|%s|%s|%s|%d" % [item_nodes[id].get_instance_id(), placed.variant_id, placed.swatch_id,
+			str(placed.paint.to_rows()), definition.paintable, _paint_content.get_instance_id() if _paint_content != null else 0]
+		if not previewed and _drawn_paint.get(id, "") == key:
+			continue
+		# A previewed item is drawn again when the preview moves on.
+		_drawn_paint[id] = "" if previewed else key
 		item_nodes[id].apply_variant(definition.variant(_preview_swatch_id if variant_preview else placed.variant_id))
 		var swatch_id: StringName = _preview_swatch_id if _preview_kind == &"item" and id == _preview_item_id else placed.swatch_id
 		var look: PaintLook = placed.paint

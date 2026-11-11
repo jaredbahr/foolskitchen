@@ -806,13 +806,24 @@ an active edit/panel/selection first, or opens Settings when none is active.
   slot to `painted`, so its flat coat does not become the new wood default.
   Unknown slots, materials, colours and malformed rows are skipped. Blueprint
   rows (library and `FK1:` codes) carry the same optional `"paint"` key, written
-  whenever the piece is painted, with the same legacy rule.
+  whenever the piece is painted, with the same legacy rule. Older builds can
+  read such saves and libraries (they ignore the key), but their strict code
+  decoder refuses an `FK1:` code whose rows carry `"paint"` (six keys, one
+  more nesting level), so a painted blueprint's code only pastes into this
+  build or newer. Saves and codes both cap paint rows at `PaintLook.MAX_ROWS`
+  (8): a save truncates, a code is refused.
+- `PaintMaterials.shared` keeps one painted copy per (kit source material,
+  colour, material) for every item, capped at 1024 and cleared when the shop
+  view leaves the tree; `ShopView._apply_paint` redraws only previewed items
+  and items whose look changed, and drops a hover whose item is gone.
 - **UI.** Paint shows a Part row (the hovered item's slot names with their
   colours, plus Original, which resets a part, wall or floor), a Material row
   (Auto + the four, with pattern chips) and the palette as an 8-wide grid, one
   family a row. A part an item lacks paints its main slot. Hovering previews the
   brush on that part (`ShopView.preview_slot_paint`); Shift previews and paints
-  every piece of that kind in the room. `--paint-slots` (screenshot.sh) captures
+  every piece of that kind in the room. Alt-click, or the Copy look button
+  (some Linux window managers take Alt-click), copies a piece's look; clicks
+  then paste it (part by part onto other kinds, `PaintLook.mapped`). `--paint-slots` (screenshot.sh) captures
   the panel and a painted room up close.
 - `ItemDef.paintable` and its main slot control furniture painting. A
   `PlacedItem.swatch_id` is cosmetic; moving preserves it, removing drops it,

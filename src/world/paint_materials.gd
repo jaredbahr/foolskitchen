@@ -20,7 +20,37 @@ const ROUGHNESS: Dictionary[StringName, float] = {
 const METALLIC: float = 0.15
 const METAL_SPECULAR: float = 0.85
 
+## Above this many shared painted copies the cache starts again (live meshes
+## keep their own references), so endless hovering never piles up.
+const MAX_CACHED: int = 1024
+
 static var _textures: Dictionary[StringName, ImageTexture] = {}
+## Painted copies shared by every item: (kit source material, colour, finish).
+static var _painted: Dictionary[String, BaseMaterial3D] = {}
+
+
+## The shared painted copy of `source` in `color` and `material`. Items built
+## from one kit model share it, so a Shift-hover over a room of chairs
+## through many colours adds one copy per colour, not one per chair.
+static func shared(source: BaseMaterial3D, color: Color, material: StringName) -> BaseMaterial3D:
+	var key: String = "%d/%s/%s" % [source.get_instance_id(), color.to_html(), material]
+	var painted: BaseMaterial3D = _painted.get(key) as BaseMaterial3D
+	if painted == null:
+		if _painted.size() >= MAX_CACHED:
+			_painted.clear()
+		painted = source.duplicate() as BaseMaterial3D
+		configure(painted, source, color, material)
+		_painted[key] = painted
+	return painted
+
+
+static func cached_count() -> int:
+	return _painted.size()
+
+
+## Drop every shared copy (the shop view leaving the tree, test teardown).
+static func clear_cache() -> void:
+	_painted.clear()
 
 
 ## Configure `target` (a duplicate of `source`) as `material` in `color`.
