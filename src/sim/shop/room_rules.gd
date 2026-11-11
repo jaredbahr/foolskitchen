@@ -45,10 +45,13 @@ static func label(kind: int) -> String:
 
 
 ## Cells guests can walk to from the street, never entering a staff-only room
-## or a back door (the same cells find_guest_path allows).
-static func guest_reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+## or a back door (the same cells find_guest_path allows). Like everyone, a
+## guest never walks on through a seat (#315, #320): a seat ends a walk.
+## `seats_stop` false walks across seats, for the room rules' refusals: a way
+## only seats block is the editor's path warning, never a refusal (#315).
+static func guest_reachable(grid: SimGrid, seats_stop: bool = true) -> Dictionary[Vector2i, bool]:
 	if not grid.has_guest_limits():
-		return WallRules.reachable(grid)
+		return WallRules.reachable(grid, seats_stop)
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []
 	for entry: Vector2i in grid.entries():
@@ -58,7 +61,11 @@ static func guest_reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	while not frontier.is_empty():
 		var next: Array[Vector2i] = []
 		for cell: Vector2i in frontier:
+			if seats_stop and WallRules.is_seat(grid, cell):
+				continue
 			for neighbour: Vector2i in grid.guest_neighbours(cell):
+				if seats_stop and not WallRules.seat_step_ok(grid, cell, neighbour):
+					continue
 				if not seen.has(neighbour):
 					seen[neighbour] = true
 					next.append(neighbour)
@@ -150,8 +157,10 @@ static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[S
 	var out: Dictionary[String, String] = {}
 	if not grid.has_rooms() and WaitingBench.benches(grid).is_empty():
 		return out
+	# Refusals walk across seats: a way only seats block warns instead
+	# (ShopEditor._unreachable and the seat cut-off warning, #315, #320).
 	var anyone: Dictionary[Vector2i, bool] = WallRules.reachable(grid)
-	var guests: Dictionary[Vector2i, bool] = guest_reachable(grid)
+	var guests: Dictionary[Vector2i, bool] = guest_reachable(grid, false)
 	var cut_off: Dictionary[String, String] = {}
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef

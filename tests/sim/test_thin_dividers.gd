@@ -32,7 +32,7 @@ func test_default_divider_recovers_nine_kitchen_cells_and_keeps_the_pass_gap() -
 	_assert_default_divider(_sim.world.grid)
 	for cell: Vector2i in [Vector2i(0, 4), Vector2i(13, 4), Vector2i(3, 0), Vector2i(3, 10)]:
 		assert_eq(_sim.world.grid.terrain(cell), SimGrid.Terrain.WALL, "the outside shell remains thick")
-	assert_eq(ShopEditor.SNAPSHOT_VERSION, 9, "v9 adds patio ownership after v8 interior terrain")
+	assert_eq(ShopEditor.SNAPSHOT_VERSION, 10, "v10 marks the seat-aware aisle repair after v9 patio ownership")
 	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
 	assert_eq(pass_item.origin, Vector2i(5, 4), "no furniture moves to recover the divider row")
 	assert_eq(pass_item.work_cells, [Vector2i(5, 3), Vector2i(5, 5)] as Array[Vector2i])
@@ -115,7 +115,7 @@ func test_v6_save_converts_once_with_rooms_items_and_back_door_intact() -> void:
 	assert_eq(WallRules.delivery_cell(_sim.world.grid), Vector2i(12, 6))
 	var converted: Dictionary = _editor.to_dict()
 	assert_eq(converted["items"], old["items"], "the migration does not move or repaint furniture")
-	assert_eq(int(converted["version"]), 9)
+	assert_eq(int(converted["version"]), 10)
 	var again: ShopLayout = ShopEditor.from_dict(converted, LAYOUT, _content, errors)
 	assert_eq(errors, [] as Array[String])
 	assert_not_null(again)
@@ -155,8 +155,10 @@ func test_legacy_kitchen_finish_and_decor_follow_the_new_face_in_the_same_room()
 
 func test_legacy_face_between_the_same_room_refunds_finish_and_decor_once_without_side_effects() -> void:
 	_install(_legacy_layout())
-	assert_true(_editor.apply_rooms({Vector2i(2, 5): SimGrid.Room.KITCHEN,
-		Vector2i(3, 5): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]))
+	# (2,5) holds the west table's north seat since the template's west table
+	# turned for an aisle (#320); the kitchen corner takes the cells east of it.
+	assert_true(_editor.apply_rooms({Vector2i(3, 5): SimGrid.Room.KITCHEN,
+		Vector2i(4, 5): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]), _editor.last_check.why)
 	var face: Vector3i = Vector3i(3, 3, 2)
 	var faces: Array[Vector3i] = [face]
 	assert_true(_editor.apply_wall_finishes(_editor.wall_lay_changes(faces, &"brick", &"sage", &"cream")))

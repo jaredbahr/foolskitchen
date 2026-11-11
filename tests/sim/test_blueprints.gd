@@ -589,7 +589,7 @@ func test_old_v1_missing_and_unknown_look_keep_both_items_with_default() -> void
 		assert_eq(_content.item(entry.item_id).variant(entry.variant_id).id, &"booth_white")
 	assert_true(notes.is_empty())
 	assert_eq(BlueprintLibrary.VERSION, 1)
-	assert_eq(ShopEditor.SNAPSHOT_VERSION, 9)
+	assert_eq(ShopEditor.SNAPSHOT_VERSION, 10)
 
 
 func test_malformed_optional_look_rejects_transactionally_without_leaking_notes() -> void:

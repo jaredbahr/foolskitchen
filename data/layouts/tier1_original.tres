@@ -30,6 +30,7 @@ origin = Vector2i(5, 4)
 script = ExtResource("1_f5t7v")
 item_id = &"table_2"
 origin = Vector2i(2, 6)
+quarter_turns = 1
 
 [sub_resource type="Resource" id="Resource_8ifey"]
 script = ExtResource("1_f5t7v")

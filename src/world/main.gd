@@ -287,6 +287,8 @@ var _edit_notice: String = ""
 ## FK-101: an older save's kitchen could not be marked; asked once that morning.
 const ROOMS_NOTE: String = "Mark your kitchen in Build → Rooms."
 var _rooms_note: bool = false
+## The morning after an older shop's tables were moved for an aisle (#320).
+var _aisle_note: bool = false
 var _menu_quality: Dictionary[StringName, Dictionary] = {}
 ## Day-local advice only: these choices were enabled before a layout edit
 ## made their station unavailable. Undo removes restored dishes from the note.
@@ -682,6 +684,7 @@ func start() -> void:
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
+	_show_aisle_note(loaded and _loaded_layout != null and _loaded_layout.aisle_moved > 0)
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		_new_game()
@@ -2982,8 +2985,12 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 	if base == null:
 		return _refuse_staged(false, "its shop layout is unknown")
 	staged.base = base
-	var layout: ShopLayout = _loaded_layout if _loaded_layout != null \
-		else LEASE.layout_for(base, owner_progress.property_tier)
+	var layout: ShopLayout = _loaded_layout
+	if layout == null:
+		layout = LEASE.layout_for(base, owner_progress.property_tier)
+		# The template's west table now stands turned for an aisle (#320); in
+		# this save's day it stood in a row of seats that shut the kitchen off.
+		layout.aisle_moved = 1
 	staged.layout = layout
 	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
 	if not choices.is_valid():
@@ -3215,6 +3222,7 @@ func switch_site(target: StringName) -> bool:
 	_loaded_layout = staged.layout
 	_rooms_note = _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
+	_show_aisle_note(_loaded_layout.aisle_moved > 0)
 	if not _wire_session():
 		push_error("Cannot wire the switched site; the session is inconsistent")
 		return false
@@ -4835,6 +4843,14 @@ func _clear_rooms_note() -> void:
 		$HUD.set_rooms_note("")
 
 
+## The aisle repair note (#320) shows for the morning the shop loaded in. It
+## is never saved: the next morning autosave writes the repaired shop, which
+## no longer needs a repair, so the note never comes back.
+func _show_aisle_note(shown: bool) -> void:
+	_aisle_note = shown
+	$HUD.set_aisle_note(AisleRepair.NOTE if shown else "")
+
+
 ## Floor types (D25): lay or recolour floor looks (cell -> Finish), checked
 ## and booked by ShopEditor, undoable.
 func shop_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> bool:
@@ -6245,6 +6261,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_haggle_percent = 0
 	_dismiss_goals()
 	_clear_rooms_note()
+	if _aisle_note:
+		_show_aisle_note(false)
 	# Undo never reaches back across opening (or into a new morning).
 	edit_history.clear()
 	if menu_settings != null:
