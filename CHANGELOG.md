@@ -184,6 +184,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Design doc: how every street outside the restaurant should look, and how each new site gets its own street from the same parts. (#441)
 - Design doc: the game's direction, how new sites and the outside world should feel, six small rule calls, Creative mode, the build tool priorities and the game's feel (D31 to D36). (#428)
 - CI: the Godot checks job now has 25 minutes instead of 15, since the full suite takes about 14. (#427)
 - A new staff role, the Manager, can be hired from Tier 3 once you own a second restaurant: they do no floor work but run a restaurant while you are at your other one. At each closing, a managed restaurant you are away from earns 70% (manager skill 1) to 100% (skill 5) of its average profit over its last seven days you ran it, never more; one without a manager stays closed and pays only its rent. A group booking at a restaurant you are away from is cancelled that day with the deposit refunded, managed or not. The evening report lists each of your other restaurants. Buying a second restaurant has no menu yet, so one-restaurant games play exactly as before. (#420)
