@@ -65,6 +65,9 @@ var wall_menu_sections: Dictionary[Vector3i, int] = {}
 ## Set on an older save whose kitchen could not be inferred (a seat was in
 ## or behind it): the morning asks the player to mark their kitchen.
 var rooms_unmarked: bool = false
+## Set on an older save whose staff could not reach the kitchen (#320): how
+## many tables and chairs AisleRepair moved. The morning says so once.
+var aisle_moved: int = 0
 ## Plain notes from forgiving normalization of older saves, logged on load.
 var load_notes: Array[String] = []
 ## Pure load migration stages refunds; Main applies them after complete success.

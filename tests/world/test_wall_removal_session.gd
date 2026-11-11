@@ -243,7 +243,7 @@ func test_legacy_lost_face_refund_is_applied_only_after_successful_load_and_once
 	assert_eq(_grid().terrain(Vector2i(4, 4)), SimGrid.Terrain.FLOOR)
 	assert_null(_editor().decor.item(Vector3i(3, 3, 2)))
 	var saved: Dictionary = JSON.parse_string(_saved_text())
-	assert_eq(int(saved["data"]["shop"]["version"]), 9)
+	assert_eq(int(saved["data"]["shop"]["version"]), 10)
 	_close_fixture()
 	await _start()
 	assert_eq(Economy.cash, cash + refund, "reloading the current snapshot never pays the migration refund again")
@@ -467,8 +467,10 @@ func _legacy_snapshot_with_lost_face() -> Dictionary:
 	assert_eq(errors, [] as Array[String])
 	var editor: ShopEditor = ShopEditor.new(legacy, content, ShopEditBooks.new(_allow_spend, _ignore_record), layout)
 	editor.set_owner_level(6)
-	assert_true(editor.apply_rooms({Vector2i(2, 5): SimGrid.Room.KITCHEN,
-		Vector2i(3, 5): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]))
+	# (2,5) holds the west table's north seat since the template's west table
+	# turned for an aisle (#320); the kitchen corner takes the cells east of it.
+	assert_true(editor.apply_rooms({Vector2i(3, 5): SimGrid.Room.KITCHEN,
+		Vector2i(4, 5): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]), editor.last_check.why)
 	var face: Vector3i = Vector3i(3, 3, 2)
 	var faces: Array[Vector3i] = [face]
 	assert_true(editor.apply_wall_finishes(editor.wall_lay_changes(faces, &"brick", &"sage", &"cream")))

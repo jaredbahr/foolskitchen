@@ -323,10 +323,11 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 
 func test_table_warning_highlights_match_actual_checked_ids_and_cancelled_proposal() -> void:
 	_editor.set_owner_level(2)
-	assert_true(_editor.buy(&"potted_plant", Vector2i(1, 7)))
+	# The west table stands turned (#320): its seats are north and south.
+	assert_true(_editor.buy(&"potted_plant", Vector2i(2, 5)))
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"potted_plant", Vector2i(4, 7)))
-	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(4, 7))
+	assert_true(_mode.begin_buy(&"potted_plant", Vector2i(2, 8)))
+	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(2, 8))
 	var table_id: int = _id(&"table_2")
 	assert_true(check.ok)
 	assert_true(check.unreachable.has(table_id))
@@ -344,23 +345,24 @@ func test_table_warning_highlights_match_actual_checked_ids_and_cancelled_propos
 
 func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fixed() -> void:
 	var grid: SimGrid = _sim.world.grid
-	# The partial-capacity footprint blocks the kitchen aisle. A reachable
-	# coffee machine keeps this test about seating, not an empty food menu.
+	# A reachable coffee machine keeps this test about seating, not an empty
+	# food menu, whatever the four-seat table blocks.
 	assert_not_null(grid.place_def(_content.item(&"coffee_machine"), Vector2i(12, 5), 2))
 	assert_true(grid.remove(grid.item_at(Vector2i(6, 6)).id))
 	_editor.set_owner_level(2)  # the four-seat table unlocks at level 2
-	# Blocking the kitchen aisle leaves the only way to the sink through seats,
-	# which nobody walks through (#315): that warning joins the capacity one.
-	const PARTIAL: String = "Only 3 of 4 seats usable\nNobody walks through seats: this blocks the way to the sink"
+	# Beside the turned west table (#320) its west seat lands on that table's
+	# north seat, and nobody walks through seats (#315): the second warning
+	# joins the capacity one.
+	const PARTIAL: String = "Only 3 of 4 seats usable\nNobody walks through seats: this blocks the way to a table"
 	assert_true(_mode.enter())
-	assert_true(_mode.begin_buy(&"table_4", Vector2i(6, 5)))
+	assert_true(_mode.begin_buy(&"table_4", Vector2i(4, 6)))
 	assert_true(_mode.current_check.ok, "losing a seat warns without blocking the purchase")
 	assert_false(_mode.current_check.unreachable.has(0), "the other three seats remain reachable")
 	assert_eq(_mode.current_check.seat_warnings.get(0, ""), PARTIAL)
 	assert_eq(_preview.invalid_reason(), PARTIAL)
 	assert_true(_preview.warning_nodes.has(0))
 	assert_true(_mode.commit())
-	var table: PlacedItem = grid.item_at(Vector2i(6, 5))
+	var table: PlacedItem = grid.item_at(Vector2i(4, 6))
 	assert_eq(DiningSeats.usable_cells(grid, table).size(), 3)
 	assert_eq(_mode.seat_warnings().get(table.id, ""), PARTIAL)
 	assert_true(_preview.warning_nodes.has(table.id))
@@ -374,16 +376,16 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	_mode.cancel()
 	assert_eq(_preview.invalid_reason(), PARTIAL)
 	assert_true(_mode.pick_up(table.id))
-	_mode.update_origin(Vector2i(6, 6))
+	_mode.update_origin(Vector2i(5, 7))
 	assert_true(_mode.current_check.ok)
-	# #315: here all four seats are usable, but the south one stands just inside
-	# the door and nobody walks through a seat, so the east half is cut off.
-	const SEAT_CUT: String = "Nobody walks through seats: this blocks the way to a table"
-	assert_eq(_mode.seat_warnings().get(table.id, ""), SEAT_CUT)
-	assert_eq(_preview.invalid_reason(), SEAT_CUT)
+	# Here all four seats are usable. Only what a move newly cuts off is a
+	# seat warning (#315), and the lane it leaves past the west table is one
+	# cell wide, which warns too (#389).
+	assert_eq(_mode.seat_warnings().get(table.id, ""), AisleRules.WARNING)
+	assert_eq(_preview.invalid_reason(), AisleRules.WARNING)
 	assert_true(_mode.commit())
 	assert_eq(DiningSeats.usable_cells(grid, table).size(), 4)
-	assert_eq(_mode.seat_warnings().get(table.id, ""), SEAT_CUT, "it stays on the table until the next change")
+	assert_eq(_mode.seat_warnings().get(table.id, ""), AisleRules.WARNING, "it stays on the table until the next change")
 	assert_true(_preview.warning_nodes.has(table.id))
 
 

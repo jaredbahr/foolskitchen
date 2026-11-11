@@ -145,6 +145,8 @@ func test_missing_shop_and_staff_sections_rebuild_original_world_after_new_world
 	assert_eq(_editor().to_dict()["items"], _without_trays(_original_snapshot(false))["items"])
 	var loaded: ShopLayout = _main.get("_loaded_layout") as ShopLayout
 	assert_not_null(loaded, "the missing section still installs an explicit original-base layout")
+	# Its shop predates the turned tables (#320): the morning says they moved.
+	assert_true((_main.get_node("HUD/Top/Row/AisleNote") as Label).visible)
 	assert_eq((_main.get("sim") as RestaurantSim).staff_spawns, ORIGINAL.staff_spawns)
 	assert_eq((_main.call("_lease_layout") as ShopLayout).pantry_units, ORIGINAL.pantry_units)
 	_empty_next_morning()
@@ -155,6 +157,48 @@ func test_missing_shop_and_staff_sections_rebuild_original_world_after_new_world
 	SaveSystem.delete_slot(SLOT)
 	_start()
 	_assert_base(NEW, 1)
+
+
+## #320: a version-9 save of the original layout, its three tables in one row
+## of seats that shut the kitchen off, loads with the tables turned, says so
+## that morning only, and saves the repaired shop at the next morning.
+func test_original_table_row_save_is_repaired_once_with_a_morning_note() -> void:
+	_start()
+	var doc: Dictionary = _document()
+	var snapshot: Dictionary = _original_snapshot(false)
+	var table: int = 0
+	for item: Dictionary in snapshot["items"]:
+		if item["def_id"] == "table_2":
+			var origin: Vector2i = AisleRepair.ORIGINAL_TABLES[table][0]
+			item["origin"] = [origin.x, origin.y]
+			item["quarter_turns"] = AisleRepair.ORIGINAL_TABLES[table][1]
+			table += 1
+	snapshot["version"] = 9
+	doc["data"]["shop"] = snapshot
+	_write(doc)
+	_close()
+	_start()
+	_assert_base(ORIGINAL)
+	assert_eq(_editor().to_dict()["items"], _without_trays(_original_snapshot(false))["items"],
+		"the tables stand where the repaired template has them")
+	var note: Label = _main.get_node("HUD/Top/Row/AisleNote") as Label
+	assert_true(note.visible, "the morning says the tables moved")
+	assert_eq(note.text, AisleRepair.NOTE)
+	assert_eq(ShopEditor._unreachable((_main.get("world") as SimWorld).grid, _identity()), [] as Array[int])
+	_empty_next_morning()
+	assert_false(note.visible, "the note is for that morning only")
+	assert_eq(int(_document()["data"]["shop"]["version"]), ShopEditor.SNAPSHOT_VERSION)
+	_close()
+	_start()
+	assert_false((_main.get_node("HUD/Top/Row/AisleNote") as Label).visible, "a repaired save never repeats it")
+	assert_eq((_main.get("_loaded_layout") as ShopLayout).aisle_moved, 0)
+
+
+func _identity() -> Dictionary[int, int]:
+	var ids: Dictionary[int, int] = {}
+	for item: PlacedItem in (_main.get("world") as SimWorld).grid.items():
+		ids[item.id] = item.id
+	return ids
 
 
 func test_saved_furniture_covering_owner_home_keeps_old_shop_and_valid_owner_mode() -> void:

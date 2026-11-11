@@ -12,8 +12,11 @@ extends RefCounted
 ## Version 7 is reserved for furniture looks (#220); version 8 normalizes
 ## interior dividers and persists strictly interior thin/thick exceptions.
 ## Version 9 adds separately owned outdoor patio cells.
+## Version 10 adds nothing new to the data: it marks a shop the seat-aware
+## aisle repair (#320) has seen. Older shops whose staff can't walk to the
+## kitchen without crossing seats have tables moved once, on load.
 ## Optional layout_id identifies a newer authored base; old bases omit it.
-const SNAPSHOT_VERSION: int = 9
+const SNAPSHOT_VERSION: int = 10
 const WALLS_CLOSED: String = "Walls can only be changed in the morning or after closing"
 const FLOORS_CLOSED: String = "New floors can only be laid in the morning or after closing"
 const FLOORS_NOT_FLOOR: String = "Floors are laid on the shop floor"
@@ -884,6 +887,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	_decode_walls(data, preview, content, layout)
 	if int(data["version"]) < 8:
 		ThinDividers.convert(layout, preview, content)
+	if int(data["version"]) < 10:
+		AisleRepair.repair(layout, content)
 	return layout
 
 
@@ -2331,8 +2336,10 @@ func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> v
 	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _career_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
 	var recipes: Array[RecipeDef] = _content.recipes()
-	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier).is_empty() \
-			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier).is_empty():
+	# Refused only when walls or furniture other than seats shut the kitchen
+	# off; seats alone get the path warning (#315, #320).
+	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier, false).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier, false).is_empty():
 		check.ok = false
 		check.why = MenuAccess.NO_DISH
 		return
@@ -2424,14 +2431,12 @@ func _fill_warnings(check: EditCheck, grid: SimGrid, ids: Dictionary[int, int]) 
 
 
 ## Nobody walks through a seat (#315): MovementCoordinator never lets anyone
-## use a seat as an aisle, while the standing path check walks across seats.
-## A placement that newly cuts something off for real people (a row of stools
-## across the only gap, say) warns on the item placed: while it is placed or
-## moved, and after the commit until the next layout change. The highlighted
-## `unreachable` items keep the standing check, which probes and the soak
-## treat as a hard condition. Like #269, only what an edit newly cuts off
-## counts, so older layouts never gain warnings; and like all furniture it
-## warns, never blocks.
+## use a seat as an aisle, and the standing path check walks the same way
+## (#320). A placement that newly cuts something off for real people (a row of
+## stools across the only gap, say) also warns on the item placed: while it is
+## placed or moved, and after the commit until the next layout change. Only
+## what an edit newly cuts off counts; and like all furniture it warns, never
+## blocks.
 func _note_seat_cut_off(check: EditCheck, preview: SimGrid, result_id: int) -> void:
 	if not check.ok:
 		return
@@ -2524,11 +2529,15 @@ func _stamp_culprit(blueprint: Blueprint, anchor: Vector2i, rotation: int, stamp
 	return -1
 
 
-## Tables and stations nobody can walk to from the street. `seats_stop`: walk
-## as people do, a seat ending a walk but never carrying it on (#315).
-static func _unreachable(grid: SimGrid, ids: Dictionary[int, int], seats_stop: bool = false) -> Array[int]:
+## Tables and stations nobody can walk to from the street, walking as people
+## do: a seat ends a walk but never carries it on (#315, #320).
+static func _unreachable(grid: SimGrid, ids: Dictionary[int, int]) -> Array[int]:
+	return _unreachable_in(grid, ids, WallRules.reachable(grid, true))
+
+
+## _unreachable() with the reachable cells already known.
+static func _unreachable_in(grid: SimGrid, ids: Dictionary[int, int], reach: Dictionary[Vector2i, bool]) -> Array[int]:
 	var warnings: Array[int] = []
-	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid, seats_stop)
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		var reachable: bool = true

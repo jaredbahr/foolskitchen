@@ -183,11 +183,10 @@ func _assert_all_setups(original: bool) -> void:
 ## #315: every setup still validates with no path warning (on the roomier
 ## starter no seat warning either; a legacy setup's own placement may carry
 ## one until the next change). Walking as
-## people do (a seat ends a walk), nothing is cut off on the roomier starter,
-## joined tables included. The preserved original layout's middle row is all
-## tables and seats, so real people there reach the kitchen only by squeezing
-## through: for every pass, the seat rule and the server's real route agree
-## on whether its guest side can be reached.
+## people do (a seat ends a walk), nothing is cut off, joined tables
+## included. Since #320 the standing check walks that way too, and the
+## original layout's tables stand turned for an aisle: for every pass there,
+## the server's real route reaches its guest side, as the seat rule says.
 func _assert_seats_stop_paths(sim: RestaurantSim, profile: String, original: bool) -> void:
 	var check: EditCheck = (_main.get("shop_editor") as ShopEditor).check_current()
 	assert_true(check.ok, profile)
@@ -197,9 +196,9 @@ func _assert_seats_stop_paths(sim: RestaurantSim, profile: String, original: boo
 	var ids: Dictionary[int, int] = {}
 	for item: PlacedItem in sim.world.grid.items():
 		ids[item.id] = item.id
-	var cut: Array[int] = ShopEditor._unreachable(sim.world.grid, ids, true)
+	var cut: Array[int] = ShopEditor._unreachable(sim.world.grid, ids)
+	assert_eq(cut, [] as Array[int], profile + " leaves everything reachable for real people")
 	if not original:
-		assert_eq(cut, [] as Array[int], profile + " leaves everything reachable for real people")
 		return
 	var server: SimAgent = null
 	for actor: SimAgent in sim.world.agents:
