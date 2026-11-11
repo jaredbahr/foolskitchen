@@ -353,11 +353,11 @@ func test_small_life_is_a_pure_function_of_the_display_clock() -> void:
 		moved_bird = moved_bird or life.bird_nodes[index].transform != birds[index]
 	moved_leaf = life.leaf_transforms != leaves
 	assert_true(moved_sign and moved_bird and moved_leaf, "signs sway, birds move and leaves drift with the clock")
-	# No random stream is touched.
-	var rng: Dictionary = GameState.call("_capture_save")
-	for time: float in [0.0, 3.3, 77.7]:
-		dressing.set_review_time(time)
-	assert_eq(GameState.call("_capture_save"), rng)
+	# No random draws and no wall clock: only the display clock and integer hashes.
+	for path: String in ["res://src/world/neighbourhood_life.gd", "res://src/world/neighbourhood_furniture.gd"]:
+		var source: String = FileAccess.get_file_as_string(path)
+		for banned: String in ["randf", "randi", "Time.", "RandomNumberGenerator"]:
+			assert_false(source.contains(banned), "%s has no %s" % [path, banned])
 	_free_dressing(dressing)
 
 
@@ -393,14 +393,42 @@ func test_life_stops_when_the_dressing_stops_processing() -> void:
 	await _host()
 	var dressing: NeighbourhoodDressing = _dressing(0, RESERVES[0])
 	dressing.set_process(true)
-	dressing.advance_display(3.0)
+	assert_true(dressing.is_processing())
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	await tree.process_frame
+	assert_true(dressing.display_seconds > 0.0, "the tree really drives _process while processing")
+	dressing.set_process(false)
+	assert_false(dressing.is_processing())
+	var seconds: float = dressing.display_seconds
 	var life: NeighbourhoodLife = dressing.life()
 	var frozen: Array[Transform3D] = life.leaf_transforms.duplicate()
 	var sign: Transform3D = life.sign_nodes[0].transform
-	dressing.set_process(false)
-	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	for frame: int in 5:
 		await tree.process_frame
+	assert_eq(dressing.display_seconds, seconds, "the display clock does not advance")
 	assert_eq(life.leaf_transforms, frozen, "nothing animates once the dressing is not processing")
 	assert_eq(life.sign_nodes[0].transform, sign)
 	_free_dressing(dressing)
+
+
+func test_a_dressing_recreated_at_night_has_its_lamps_on_at_once() -> void:
+	await _host()
+	_main = MAIN.instantiate() as Node3D
+	_main.set("use_saves", false)
+	_main.set("owner_creation_requested", false)
+	_viewport.add_child(_main)
+	_main.call("start")
+	Clock.set_speed(0)
+	_main.set_process(false)
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	var world: SimWorld = _main.get("world") as SimWorld
+	world.clock.phase = SimClock.Phase.CLOSED
+	world.clock.phase_tick = 0
+	# Binding the world again builds a brand new shop view and dressing while it is night.
+	_main.call("_bind_world_presentation")
+	var dressing: NeighbourhoodDressing = (_main.get_node("ShopView") as ShopView).neighbourhood_dressing
+	assert_not_null(dressing)
+	assert_eq(world.clock.phase, SimClock.Phase.CLOSED)
+	assert_eq(dressing.lamp_state()["night"], 1.0, "lamps are on straight after show_world")
+	assert_true(dressing.lamp_state()["glow_visible"])

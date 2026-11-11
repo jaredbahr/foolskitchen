@@ -41,6 +41,7 @@ var leaf_transforms: Array[Transform3D] = []
 var _bird_spots: Array[Array] = []
 var _sign_pivots: Array[Vector3] = []
 var _material: StandardMaterial3D
+var _applied_at: float = -1.0
 
 
 func _r(a: int, b: int) -> float:
@@ -182,7 +183,11 @@ func _build_leaves(parent: Node3D) -> void:
 
 # --- motion -----------------------------------------------------------------
 
+## Skipped when the display time has not changed since the last call.
 func apply(seconds: float) -> void:
+	if is_equal_approx(seconds, _applied_at):
+		return
+	_applied_at = seconds
 	_apply_signs(seconds)
 	_apply_birds(seconds)
 	_apply_leaves(seconds)

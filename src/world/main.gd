@@ -369,6 +369,9 @@ func _bind_world_presentation() -> void:
 		if _loaded_layout != null else _base_layout
 	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(presentation_base, 2)).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
+	# A new dressing starts at day: light its lamps now, not a frame later.
+	if view.neighbourhood_dressing != null and world.clock != null:
+		view.neighbourhood_dressing.set_night(DayNightView.street_night(day_light_look()))
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
