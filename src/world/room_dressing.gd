@@ -12,8 +12,8 @@ const PAVEMENT_SWATCH: SwatchDef = preload("res://data/swatches/charcoal.tres")
 ## palette slate (cancels the warm cast) and cream (lifts it off the dark street).
 const PAVEMENT_COOL_SWATCH: SwatchDef = preload("res://data/swatches/slate_blue.tres")
 const PAVEMENT_LIGHT_SWATCH: SwatchDef = preload("res://data/swatches/cream.tres")
-const PAVEMENT_COOL_MIX: float = 0.55
-const PAVEMENT_LIGHT_MIX: float = 0.25
+const PAVEMENT_COOL_MIX: float = 0.40
+const PAVEMENT_LIGHT_MIX: float = 0.45
 const FACE_GAP: float = 0.005
 const CARDINALS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 const SIGN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
