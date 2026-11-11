@@ -32,6 +32,20 @@ const EAVE: float = 0.08
 ## A shop's hanging sign: the bracket's height on the facade and how far it reaches (#423).
 const SIGN_Y: float = 1.6
 const SIGN_LEN: float = 0.32
+## Lot ground behind each house's back wall: the back garden (#440).
+const BACK_YARD: float = 2.6
+## Keep-out inside a lot for the side hedges (half a hedge plus a margin), the back hedge, the eave.
+const GARDEN_SIDE: float = 0.3
+const GARDEN_HEDGE: float = 0.3
+const GARDEN_EAVE: float = 0.16
+## Baked garden contact shadows lie just above the lawn's own baked shadows.
+const GARDEN_SHADOW_Y: float = -0.021
+## A lit window quad stands this far proud of the glass.
+const GLOW_Z: float = 0.0275
+## Window light tiers: 0 stays lit all night, 1 goes dark early in the late hours, 2 later still.
+const GLOW_TIERS: int = 3
+
+enum Garden { VEG, SHED, LINE, SWING, SLIDE, TABLE, BENCH, TREE, BIRDBATH, BORDER, STONES }
 
 class Plan extends RefCounted:
 	var id: String = ""
@@ -59,6 +73,13 @@ class Plan extends RefCounted:
 	var mailbox: bool = false
 	## Building-local x of the hanging sign's bracket (shops only).
 	var sign_x: float = 0.0
+	## Houses: the back door's street offset from the house centre (#440).
+	var back_u: float = 0.0
+	## Street-local garden ground (u, z) and the doorstep patch the garden keeps clear.
+	var garden_zone: Rect2 = Rect2()
+	var doorstep: Rect2 = Rect2()
+	## What stands in the garden: {kind, rect (street-local u, z), height, seed}.
+	var garden: Array[Dictionary] = []
 	## Street-local box of the whole building including its roof, awning and steps.
 	var bounds: AABB = AABB()
 	var lot: Rect2 = Rect2()
@@ -74,6 +95,14 @@ var shift: float = 0.0
 ## Top of the pavement the awnings' stock stands on.
 var paving_top: float = 0.055
 var plans: Array[Plan] = []
+## The key light's ground run per metre of height (street-local u, z) and the lawn's shadow tone,
+## for the gardens' baked contact shadows. Set by the owner before meshing; part of its cache key.
+var light_shift: Vector2 = Vector2(-0.4, 0.5)
+var lawn_shadow: Color = Color(0.3, 0.4, 0.2)
+## Window glow quads gathered while the buildings are meshed, one soup per light tier (#440).
+var _glow_soups: Array[NeighbourhoodGround.Soup] = []
+var _glow_key: int = 0
+var _glow_count: int = 0
 ## One flat-shaded vertex-colour material shared by every building this builder meshes.
 var _material: StandardMaterial3D
 
@@ -100,6 +129,7 @@ func _pick_distinct(count: int, index: int, attribute: int, previous: Array[int]
 
 func plan() -> void:
 	plans.clear()
+	_glow_soups.clear()
 	if street == null:
 		street = StreetSet.standard()
 	_plan_shops()
@@ -128,6 +158,7 @@ func _plan_shops() -> void:
 		var edge: float = local_reserve.position.x - GAP if side < 0.0 else local_reserve.end.x + GAP
 		recent_h.clear()
 		recent_roof.clear()
+		var recent_tone: Array[int] = []
 		for slot: int in street.shops_per_side:
 			var index: int = side_index * street.shops_per_side + slot
 			var p: Plan = Plan.new()
@@ -148,7 +179,9 @@ func _plan_shops() -> void:
 				p.roof_h -= 0.05
 			p.wall_h = minf(p.wall_h, MAX_NEAR_HEIGHT - p.roof_h)
 			p.wall = p.style.wall if p.style != null else street.wall_colors[0]
-			p.roof_col = street.roof_colors[_pick(street.roof_colors.size(), index, 5)]
+			var tone_choice: int = _pick_distinct(street.roof_colors.size(), index, 5, recent_tone)
+			recent_tone = [tone_choice]
+			p.roof_col = street.roof_colors[tone_choice]
 			p.door_col = p.style.door if p.style != null else street.door_colors[0]
 			p.door_x = (-1.0 if _r(index, 6) < 0.5 else 1.0) * (p.width * 0.5 - 0.42)
 			var centre: float = edge + side * p.width * 0.5
@@ -195,6 +228,8 @@ func _plan_houses() -> void:
 	var recent_wall: Array[int] = []
 	var recent_roof: Array[int] = []
 	var recent_h: Array[int] = []
+	var recent_tone: Array[int] = []
+	var recent_kinds: Array[int] = []
 	for index: int in street.house_count:
 		var key: int = 20 + index
 		var p: Plan = Plan.new()
@@ -216,7 +251,9 @@ func _plan_houses() -> void:
 		if recent_wall.size() > 2:
 			recent_wall.pop_front()
 		p.wall = street.wall_colors[wall_choice]
-		p.roof_col = street.roof_colors[_pick(street.roof_colors.size(), key, 9)]
+		var tone_choice: int = _pick_distinct(street.roof_colors.size(), key, 9, recent_tone)
+		recent_tone = [tone_choice]
+		p.roof_col = street.roof_colors[tone_choice]
 		p.door_col = street.door_colors[_pick(street.door_colors.size(), key, 10)]
 		p.door_x = 0.0 if _r(key, 11) < 0.5 else (-1.0 if _r(key, 12) < 0.5 else 1.0) * p.width * 0.22
 		p.chimney = _r(key, 13) < 0.55 and p.roof != StreetSet.Roof.PYRAMID
@@ -231,9 +268,12 @@ func _plan_houses() -> void:
 		var offset: float = (_r(key, 20) - 0.5) * 0.3
 		# Facing the street (-z): local +z maps to street -z, local +x to street -u.
 		p.xf = Transform3D(Basis(Vector3.UP, PI), Vector3(lot_centre + offset, 0.0, door_plane))
-		p.lot = Rect2(cursor, shift + FENCE_V, lot_width, front_yard + p.depth + 0.95)
+		p.lot = Rect2(cursor, shift + FENCE_V, lot_width, front_yard + p.depth + BACK_YARD)
 		cursor += lot_width
 		p.bounds = _bounds_of(p)
+		# The back door sits to one side of the back wall, the back window to the other.
+		p.back_u = (-1.0 if _r(key, 28) < 0.5 else 1.0) * (p.width * 0.5 - 0.62)
+		_plan_garden(p, lot_centre + offset, door_plane + p.depth, recent_kinds)
 		plans.append(p)
 
 
@@ -380,6 +420,8 @@ class Pen extends RefCounted:
 func build_mesh(p: Plan) -> MeshInstance3D:
 	var pen: Pen = Pen.new()
 	pen.xf = p.xf
+	_glow_key = p.seed_value
+	_glow_count = 0
 	_body(pen, p)
 	if p.is_shop:
 		_shop_front(pen, p)
@@ -431,6 +473,7 @@ func _window(pen: Pen, cx: float, cy: float, width: float, height: float, shutte
 	var hh: float = height * 0.5
 	pen.box(Vector3(cx - hw - 0.045, cy - hh - 0.045, 0.0), Vector3(cx + hw + 0.045, cy + hh + 0.045, 0.014), street.trim)
 	pen.box(Vector3(cx - hw, cy - hh, 0.0), Vector3(cx + hw, cy + hh, 0.026), street.glass)
+	_glow(pen, cx, cy, hw, hh)
 	pen.box(Vector3(cx - 0.012, cy - hh, 0.0), Vector3(cx + 0.012, cy + hh, 0.036), street.trim)
 	pen.box(Vector3(cx - hw, cy - 0.012, 0.0), Vector3(cx + hw, cy + 0.012, 0.034), street.trim)
 	pen.box(Vector3(cx - hw - 0.07, cy - hh - 0.08, 0.0), Vector3(cx + hw + 0.07, cy - hh - 0.045, 0.07), street.trim)
@@ -498,12 +541,16 @@ func _shop_front(pen: Pen, p: Plan) -> void:
 	else:
 		pen.box(Vector3(x0 - 0.05, 0.3, 0.0), Vector3(x1 + 0.05, 1.13, 0.016), street.trim)
 		pen.box(Vector3(x0, 0.35, 0.0), Vector3(x1, 1.08, 0.03), street.glass)
+		_glow(pen, centre_x, 0.715, (x1 - x0) * 0.5, 0.365)
 		var panes: int = maxi(1, roundi((x1 - x0) / 0.6))
 		for index: int in range(1, panes):
 			var mx: float = x0 + (x1 - x0) * float(index) / float(panes)
 			pen.box(Vector3(mx - 0.014, 0.35, 0.0), Vector3(mx + 0.014, 1.08, 0.04), street.trim)
 	_awning(pen, p)
-	if not porthole:
+	var displays: bool = style != null and (style.accent == ShopStyle.Accent.TOYS or style.accent == ShopStyle.Accent.PETS)
+	if displays:
+		_window_display(pen, p, style, x0, x1)
+	elif not porthole:
 		_window_box(pen, x0, x1, p)
 	_sign_bracket(pen, p)
 	# Blank sign board above the awning, framed in trim.
@@ -582,6 +629,10 @@ func _accent(pen: Pen, p: Plan, style: ShopStyle, ax: float) -> void:
 					var colour: Color = street.bloom_colors[(p.seed_value + index * 3 + bloom) % street.bloom_colors.size()]
 					pen.lump(Vector3(bx - 0.06 + 0.06 * float(bloom), y0 + 0.27 + 0.02 * float(bloom % 2), reach + 0.08 + 0.04 * float(bloom % 2)),
 						0.06, 0.06, 0.06, float(bloom), colour, colour.darkened(0.2))
+		ShopStyle.Accent.TOYS:
+			_rocking_horse(pen, p, ax, y0, reach)
+		ShopStyle.Accent.PETS:
+			_dog_bed(pen, p, ax, y0, reach)
 		ShopStyle.Accent.PORTHOLE:
 			pen.box(Vector3(ax - 0.17, y0, reach), Vector3(ax + 0.17, y0 + 0.2, reach + 0.24), street.wood)
 			pen.box(Vector3(ax - 0.14, y0 + 0.2, reach + 0.02), Vector3(ax + 0.14, y0 + 0.29, reach + 0.22), street.trim)
@@ -615,9 +666,11 @@ func _side_and_back(pen: Pen, p: Plan) -> void:
 		if p.is_shop and p.depth > 3.8:
 			_window(pen, -p.depth * 0.28, cy, 0.4, 0.4, false, false, p.seed_value + 7)
 	pen.xf = saved * Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 0.0, -p.depth))
-	_window(pen, -p.door_x * 0.6, cy, 0.4, 0.4, p.shutters, false, p.seed_value + 9)
 	if p.is_shop:
+		_window(pen, -p.door_x * 0.6, cy, 0.4, 0.4, p.shutters, false, p.seed_value + 9)
 		_door(pen, p.door_x * 0.5, 0.46, street.wood, false)
+	else:
+		_house_back(pen, p, cy)
 	pen.xf = saved
 
 
@@ -812,10 +865,7 @@ func _yard(pen: Pen, p: Plan) -> void:
 	else:
 		var leaf: Color = street.hedge_colors[_pick(street.hedge_colors.size(), seed_value, 25)]
 		pen.lump(Vector3(tx, 0.14, fence_z + 0.6), 0.22, 0.2, 0.22, 0.5, leaf, leaf.darkened(0.2))
-	# Back garden: a bush against the rear hedge.
-	var back_leaf: Color = street.hedge_colors[_pick(street.hedge_colors.size(), seed_value, 26)]
-	var back_u: float = lot.get_center().x + (_r(seed_value, 27) - 0.5) * (lot.size.x - 1.2)
-	pen.lump(Vector3(back_u, 0.15, lot.end.y - 0.45), 0.24, 0.22, 0.22, 0.8, back_leaf, back_leaf.darkened(0.2))
+	_garden(pen, p)
 	pen.xf = saved
 
 
@@ -889,3 +939,611 @@ func _hedge_line(pen: Pen, from: Vector2, to: Vector2, seed_value: int, line: in
 		var inset: float = 0.06
 		pen.box(Vector3(lo.x, 0.0, lo.y), Vector3(hi.x, shoulder, hi.y), tone.darkened(0.08))
 		pen.box(Vector3(lo.x + inset, shoulder, lo.y + inset), Vector3(hi.x - inset, height, hi.y - inset), tone)
+
+
+# --- windows that light at night (#440) --------------------------------------
+
+## A warm quad just proud of a window's glass. By hash a window is dark all night (curtains
+## drawn), lit all night, or lit until one of two bedtimes in the late hours: the owner
+## draws each tier as its own mesh and fades it with the night level. Never a Light3D.
+func _glow(pen: Pen, cx: float, cy: float, hw: float, hh: float) -> void:
+	_glow_count += 1
+	var roll: float = _r(_glow_key * 41 + _glow_count, 61)
+	if roll < 0.12:
+		return
+	var tier: int = 0
+	if roll >= 0.875:
+		tier = 2
+	elif roll >= 0.75:
+		tier = 1
+	while _glow_soups.size() < GLOW_TIERS:
+		_glow_soups.append(NeighbourhoodGround.Soup.new())
+	var tint: Color = Color(1.0, 0.8, 0.45)
+	if not street.window_glows.is_empty():
+		tint = street.window_glows[_pick(street.window_glows.size(), _glow_key * 41 + _glow_count, 62)]
+	var soup: NeighbourhoodGround.Soup = _glow_soups[tier]
+	var hint: Vector3 = pen.xf.basis * Vector3.BACK
+	# Two bands, the lower a touch deeper, so the pane reads as lit from above.
+	for band: int in 2:
+		var y0: float = cy - hh if band == 0 else cy
+		var colour: Color = tint.darkened(0.16) if band == 0 else tint
+		var a: Vector3 = pen.xf * Vector3(cx - hw, y0, GLOW_Z)
+		var b: Vector3 = pen.xf * Vector3(cx + hw, y0, GLOW_Z)
+		var c: Vector3 = pen.xf * Vector3(cx + hw, y0 + hh, GLOW_Z)
+		var d: Vector3 = pen.xf * Vector3(cx - hw, y0 + hh, GLOW_Z)
+		soup.tri(a, b, c, hint, colour)
+		soup.tri(a, c, d, hint, colour)
+
+
+## The lit-window meshes, one per light tier (null when a tier has no window), in the
+## street-local frame. Call after every building has been meshed.
+func glow_meshes() -> Array[ArrayMesh]:
+	var result: Array[ArrayMesh] = []
+	for tier: int in GLOW_TIERS:
+		if tier < _glow_soups.size() and not _glow_soups[tier].is_empty():
+			result.append(_glow_soups[tier].to_mesh())
+		else:
+			result.append(null)
+	return result
+
+
+# --- shop window displays and the little things set out in front ------------------
+
+func _window_display(pen: Pen, p: Plan, style: ShopStyle, x0: float, x1: float) -> void:
+	var mid: float = (x0 + x1) * 0.5
+	var span: float = (x1 - x0) * 0.5 - 0.1
+	var play: Array[Color] = street.play_colors
+	var shelf: float = 0.38
+	pen.box(Vector3(x0 - 0.02, 0.34, 0.0), Vector3(x1 + 0.02, shelf, 0.19), street.wood)
+	pen.box(Vector3(x0 - 0.03, shelf - 0.012, 0.17), Vector3(x1 + 0.03, shelf, 0.2), street.wood.lightened(0.14))
+	if style.accent == ShopStyle.Accent.TOYS:
+		# A pyramid of building blocks, a teddy and a ball, with bunting across the top.
+		var left: float = mid - span * 0.62
+		var size: float = 0.13
+		for row: int in 2:
+			for col: int in 2 - row:
+				var bx: float = left + float(col) * size + float(row) * size * 0.5
+				var colour: Color = play[(p.seed_value + row * 2 + col) % play.size()]
+				pen.box(Vector3(bx - size * 0.5, shelf + float(row) * size, 0.05),
+					Vector3(bx + size * 0.5, shelf + float(row + 1) * size, 0.05 + size), colour)
+		var bear: Color = street.wood.lightened(0.3)
+		pen.lump(Vector3(mid + span * 0.08, shelf + 0.07, 0.11), 0.1, 0.1, 0.07, 0.3, bear, bear.darkened(0.2))
+		pen.lump(Vector3(mid + span * 0.08, shelf + 0.24, 0.11), 0.07, 0.07, 0.06, 0.6, bear.lightened(0.05), bear.darkened(0.15))
+		for ear: float in [-0.055, 0.055]:
+			pen.lump(Vector3(mid + span * 0.08 + ear, shelf + 0.31, 0.11), 0.03, 0.03, 0.03, 0.0, bear, bear.darkened(0.2))
+		var ball: Color = play[(p.seed_value + 3) % play.size()]
+		pen.lump(Vector3(mid + span * 0.62, shelf + 0.08, 0.12), 0.08, 0.08, 0.08, 0.2, ball, ball.darkened(0.25))
+		var flags: int = maxi(4, roundi(span * 2.0 / 0.2))
+		for index: int in flags:
+			var fx0: float = x0 + 0.06 + (x1 - x0 - 0.12) * float(index) / float(flags)
+			var fx1: float = fx0 + (x1 - x0 - 0.12) / float(flags) * 0.8
+			var sag: float = 1.0 - 0.06 * sin(PI * float(index) / float(flags - 1))
+			pen.tri(Vector3(fx0, 1.02 * sag, 0.034), Vector3(fx1, 1.02 * sag, 0.034),
+				Vector3((fx0 + fx1) * 0.5, 0.9 * sag, 0.034), Vector3.BACK, play[(index + p.seed_value) % play.size()])
+	else:
+		# A fish tank with weed and three fish, and a cat asleep on the shelf.
+		var tank_x: float = mid + span * 0.2
+		var half: float = minf(0.3, span * 0.5)
+		var water: Color = street.glass.lerp(style.awning_a, 0.45).lightened(0.2)
+		pen.box(Vector3(tank_x - half - 0.02, shelf, 0.04), Vector3(tank_x + half + 0.02, shelf + 0.05, 0.19), street.metal)
+		pen.box(Vector3(tank_x - half, shelf + 0.05, 0.05), Vector3(tank_x + half, shelf + 0.4, 0.18), water)
+		pen.box(Vector3(tank_x - half - 0.02, shelf + 0.4, 0.04), Vector3(tank_x + half + 0.02, shelf + 0.44, 0.19), street.metal)
+		pen.box(Vector3(tank_x - half, shelf + 0.05, 0.05), Vector3(tank_x + half, shelf + 0.09, 0.18), street.path)
+		var weed: Color = street.hedge_colors[1 % street.hedge_colors.size()]
+		pen.lump(Vector3(tank_x - half * 0.55, shelf + 0.2, 0.12), 0.05, 0.13, 0.05, 0.0, weed, weed.darkened(0.2))
+		pen.lump(Vector3(tank_x + half * 0.6, shelf + 0.17, 0.12), 0.045, 0.1, 0.045, 1.0, weed.lightened(0.1), weed.darkened(0.2))
+		var fish: Array[Color] = [street.bloom_colors[3 % street.bloom_colors.size()], street.bloom_colors[1 % street.bloom_colors.size()],
+			street.bloom_colors[4 % street.bloom_colors.size()]]
+		for index: int in 3:
+			var fx: float = tank_x - half * 0.45 + float(index) * half * 0.45
+			var fy: float = shelf + 0.18 + 0.07 * float(index % 2)
+			pen.lump(Vector3(fx, fy, 0.185), 0.05, 0.035, 0.02, 0.0, fish[index], fish[index].darkened(0.2))
+			pen.box(Vector3(fx + 0.045, fy - 0.025, 0.178), Vector3(fx + 0.075, fy + 0.025, 0.19), fish[index].darkened(0.1))
+		var fur: Color = street.wall_colors[1 % street.wall_colors.size()].darkened(0.18).lerp(street.wood, 0.3)
+		var cat_x: float = mid - span * 0.65
+		pen.lump(Vector3(cat_x, shelf + 0.07, 0.11), 0.12, 0.08, 0.075, 0.2, fur, fur.darkened(0.2))
+		pen.lump(Vector3(cat_x + 0.1, shelf + 0.1, 0.11), 0.055, 0.05, 0.05, 0.5, fur.lightened(0.05), fur.darkened(0.2))
+		for ear: float in [-0.03, 0.03]:
+			pen.box(Vector3(cat_x + 0.1 + ear - 0.012, shelf + 0.14, 0.095), Vector3(cat_x + 0.1 + ear + 0.012, shelf + 0.18, 0.125), fur.darkened(0.1))
+
+
+## A small rocking horse on the paving in front of the toy shop (#440).
+func _rocking_horse(pen: Pen, p: Plan, ax: float, y0: float, reach: float) -> void:
+	var coat: Color = street.play_colors[p.seed_value % street.play_colors.size()]
+	var mane: Color = street.wood.darkened(0.15)
+	var z0: float = reach + 0.06
+	var z1: float = reach + 0.24
+	for z: float in [z0, z1]:
+		# A rocker is a flat plank with its ends curled up.
+		pen.box(Vector3(ax - 0.17, y0, z - 0.015), Vector3(ax + 0.17, y0 + 0.03, z + 0.015), street.wood)
+		pen.box(Vector3(ax - 0.23, y0 + 0.03, z - 0.015), Vector3(ax - 0.17, y0 + 0.06, z + 0.015), street.wood)
+		pen.box(Vector3(ax + 0.17, y0 + 0.03, z - 0.015), Vector3(ax + 0.23, y0 + 0.06, z + 0.015), street.wood)
+		for leg: float in [-0.12, 0.12]:
+			pen.box(Vector3(ax + leg - 0.02, y0 + 0.03, z - 0.015), Vector3(ax + leg + 0.02, y0 + 0.15, z + 0.015), coat.darkened(0.12))
+	pen.box(Vector3(ax - 0.15, y0 + 0.15, z0 - 0.03), Vector3(ax + 0.12, y0 + 0.26, z1 + 0.03), coat)
+	pen.box(Vector3(ax + 0.08, y0 + 0.22, z0), Vector3(ax + 0.17, y0 + 0.4, z1), coat)
+	pen.box(Vector3(ax + 0.17, y0 + 0.3, (z0 + z1) * 0.5 - 0.03), Vector3(ax + 0.25, y0 + 0.39, (z0 + z1) * 0.5 + 0.03), coat.lightened(0.08))
+	pen.box(Vector3(ax + 0.06, y0 + 0.26, (z0 + z1) * 0.5 - 0.012), Vector3(ax + 0.09, y0 + 0.42, (z0 + z1) * 0.5 + 0.012), mane)
+	pen.box(Vector3(ax - 0.19, y0 + 0.16, (z0 + z1) * 0.5 - 0.012), Vector3(ax - 0.15, y0 + 0.28, (z0 + z1) * 0.5 + 0.012), mane)
+	pen.box(Vector3(ax - 0.05, y0 + 0.26, z0 + 0.02), Vector3(ax + 0.02, y0 + 0.285, z1 - 0.02), street.trim)
+
+
+## A cosy dog bed with a sleepy dog, a bone and a bowl in front of the pet shop (#440).
+func _dog_bed(pen: Pen, p: Plan, ax: float, y0: float, reach: float) -> void:
+	var cushion: Color = street.play_colors[(p.seed_value + 2) % street.play_colors.size()]
+	var rim: Color = street.wood.lightened(0.1)
+	var x0: float = ax - 0.22
+	var x1: float = ax + 0.14
+	var z0: float = reach + 0.02
+	var z1: float = reach + 0.3
+	pen.box(Vector3(x0, y0, z0), Vector3(x1, y0 + 0.03, z1), rim.darkened(0.15))
+	pen.box(Vector3(x0, y0 + 0.03, z0), Vector3(x1, y0 + 0.1, z0 + 0.035), rim)
+	pen.box(Vector3(x0, y0 + 0.03, z1 - 0.035), Vector3(x1, y0 + 0.1, z1), rim)
+	pen.box(Vector3(x0, y0 + 0.03, z0 + 0.035), Vector3(x0 + 0.035, y0 + 0.1, z1 - 0.035), rim)
+	pen.box(Vector3(x1 - 0.035, y0 + 0.03, z0 + 0.035), Vector3(x1, y0 + 0.1, z1 - 0.035), rim)
+	pen.box(Vector3(x0 + 0.035, y0 + 0.03, z0 + 0.035), Vector3(x1 - 0.035, y0 + 0.07, z1 - 0.035), cushion)
+	var fur: Color = street.wall_colors[2 % street.wall_colors.size()].darkened(0.22).lerp(street.wood, 0.25)
+	pen.lump(Vector3(ax - 0.06, y0 + 0.12, (z0 + z1) * 0.5), 0.1, 0.07, 0.08, 0.2, fur, fur.darkened(0.2))
+	pen.lump(Vector3(ax + 0.05, y0 + 0.12, (z0 + z1) * 0.5), 0.05, 0.045, 0.045, 0.4, fur.lightened(0.06), fur.darkened(0.2))
+	for ear: float in [-0.035, 0.035]:
+		pen.box(Vector3(ax + 0.03 - 0.012, y0 + 0.14, (z0 + z1) * 0.5 + ear - 0.012), Vector3(ax + 0.03 + 0.012, y0 + 0.19, (z0 + z1) * 0.5 + ear + 0.012), fur.darkened(0.3))
+	pen.box(Vector3(ax + 0.2, y0, reach + 0.1), Vector3(ax + 0.34, y0 + 0.012, reach + 0.14), street.trim)
+	pen.box(Vector3(ax + 0.19, y0, reach + 0.095), Vector3(ax + 0.21, y0 + 0.02, reach + 0.145), street.trim)
+	pen.box(Vector3(ax + 0.33, y0, reach + 0.095), Vector3(ax + 0.35, y0 + 0.02, reach + 0.145), street.trim)
+	pen.box(Vector3(ax + 0.22, y0, reach + 0.2), Vector3(ax + 0.34, y0 + 0.05, reach + 0.3), street.signal_red.lightened(0.1))
+	pen.box(Vector3(ax + 0.235, y0 + 0.05, reach + 0.215), Vector3(ax + 0.325, y0 + 0.056, reach + 0.285), street.wood.darkened(0.3))
+
+
+# --- the back of a house and its garden (#440) ---------------------------------------
+
+## A glazed back door with a pair of pots on its step, a window to the other side and,
+## on taller houses, one above the door. Back-local x is the street's u from the house centre.
+func _house_back(pen: Pen, p: Plan, cy: float) -> void:
+	_door(pen, p.back_u, 0.46, p.door_col.darkened(0.04), true)
+	for side: float in [-1.0, 1.0]:
+		var px: float = p.back_u + side * 0.4
+		if absf(px) > p.width * 0.5 - 0.12:
+			continue
+		var bloom: Color = street.bloom_colors[(p.seed_value + int(side) + 3) % street.bloom_colors.size()]
+		pen.box(Vector3(px - 0.06, 0.0, 0.07), Vector3(px + 0.06, 0.1, 0.19), street.stone.lerp(p.door_col, 0.3))
+		pen.lump(Vector3(px, 0.15, 0.13), 0.075, 0.07, 0.075, side + 2.0, bloom, bloom.darkened(0.2))
+	_window(pen, -p.back_u, cy, 0.4, 0.4, p.shutters, false, p.seed_value + 9)
+	if p.wall_h >= 1.7:
+		_window(pen, p.back_u, p.wall_h - 0.38, 0.36, 0.34, false, false, p.seed_value + 10)
+
+
+static func garden_size(kind: int) -> Vector2:
+	match kind:
+		Garden.VEG:
+			return Vector2(1.3, 0.7)
+		Garden.SHED:
+			return Vector2(0.85, 0.65)
+		Garden.LINE:
+			return Vector2(1.7, 0.16)
+		Garden.SWING:
+			return Vector2(1.3, 0.62)
+		Garden.SLIDE:
+			return Vector2(0.55, 1.0)
+		Garden.TABLE:
+			return Vector2(0.95, 0.6)
+		Garden.BENCH:
+			return Vector2(0.95, 0.36)
+		Garden.TREE:
+			return Vector2(0.7, 0.7)
+		Garden.BIRDBATH:
+			return Vector2(0.36, 0.36)
+		_:
+			return Vector2(0.3, 0.3)
+
+
+static func garden_height(kind: int) -> float:
+	match kind:
+		Garden.VEG:
+			return 0.18
+		Garden.SHED:
+			return 0.95
+		Garden.LINE:
+			return 1.0
+		Garden.SWING:
+			return 0.95
+		Garden.SLIDE:
+			return 0.55
+		Garden.TABLE:
+			return 0.45
+		Garden.BENCH:
+			return 0.42
+		Garden.TREE:
+			return 1.1
+		Garden.BIRDBATH:
+			return 0.42
+		Garden.BORDER:
+			return 0.15
+		_:
+			return 0.0
+
+
+## Plans one house's back garden from integer hashes: a flower border and stepping stones
+## sometimes, then three or four things from a small set, each at the best free spot in the
+## garden ground (behind the house, inside the side and back hedges), never on the doorstep
+## and never repeating the previous house's choices if there is a different one.
+func _plan_garden(p: Plan, centre_u: float, back_z: float, recent_kinds: Array[int]) -> void:
+	var lot: Rect2 = p.lot
+	var zone: Rect2 = Rect2(lot.position.x + GARDEN_SIDE, back_z + GARDEN_EAVE, lot.size.x - GARDEN_SIDE * 2.0,
+		lot.end.y - GARDEN_HEDGE - back_z - GARDEN_EAVE)
+	p.garden_zone = zone
+	var door_u: float = centre_u + p.back_u
+	p.doorstep = Rect2(door_u - 0.4, back_z, 0.8, 0.8)
+	p.garden.clear()
+	var key: int = p.seed_value
+	var placed: Array[Rect2] = [p.doorstep]
+	var border: bool = _r(key, 72) < 0.55
+	var strip: Rect2 = Rect2(zone.position.x, zone.end.y - 0.3, zone.size.x, 0.3)
+	if border:
+		p.garden.append({"kind": Garden.BORDER, "rect": strip, "height": garden_height(Garden.BORDER), "seed": key})
+		placed.append(strip)
+	if _r(key, 70) < 0.6:
+		var stones: int = 3 + int(_r(key, 71) * 2.0)
+		var limit: float = (strip.position.y if border else zone.end.y) - 0.1
+		var chain: Rect2 = Rect2(door_u - 0.22, back_z + 0.85, 0.44, float(stones) * 0.34)
+		while stones > 2 and chain.end.y > limit:
+			stones -= 1
+			chain.size.y = float(stones) * 0.34
+		if zone.encloses(chain) and chain.end.y <= limit:
+			p.garden.append({"kind": Garden.STONES, "rect": chain, "height": 0.0, "seed": key, "count": stones})
+			placed.append(chain)
+	var pool: Array[int] = [Garden.VEG, Garden.SHED, Garden.LINE, Garden.SWING, Garden.SLIDE, Garden.TABLE, Garden.BENCH,
+		Garden.TREE, Garden.BIRDBATH]
+	var scores: Array[float] = []
+	for kind: int in pool:
+		scores.append(_r(key, 60 + kind) + (0.6 if recent_kinds.has(kind) else 0.0))
+	var wanted: int = 3 + (1 if _r(key, 59) < 0.5 else 0)
+	var chosen: Array[int] = []
+	while chosen.size() < pool.size():
+		var best: int = -1
+		for index: int in pool.size():
+			if not chosen.has(pool[index]) and (best < 0 or scores[index] < scores[best]):
+				best = index
+		chosen.append(pool[best])
+		scores[best] = INF
+	var taken: Array[int] = []
+	for kind: int in chosen:
+		if taken.size() >= wanted:
+			break
+		if (kind == Garden.SWING and taken.has(Garden.SLIDE)) or (kind == Garden.SLIDE and taken.has(Garden.SWING)):
+			continue
+		if (kind == Garden.TABLE and taken.has(Garden.BENCH)) or (kind == Garden.BENCH and taken.has(Garden.TABLE)):
+			continue
+		var rect: Variant = _best_garden_spot(p, zone, kind, placed, door_u)
+		if rect == null:
+			continue
+		var spot: Rect2 = rect as Rect2
+		p.garden.append({"kind": kind, "rect": spot, "height": garden_height(kind), "seed": key * 13 + kind})
+		placed.append(spot)
+		taken.append(kind)
+	recent_kinds.assign(taken)
+
+
+func _best_garden_spot(p: Plan, zone: Rect2, kind: int, placed: Array[Rect2], door_u: float) -> Variant:
+	var size: Vector2 = garden_size(kind)
+	var steps_u: int = int((zone.size.x - size.x) / 0.1)
+	var steps_z: int = int((zone.size.y - size.y) / 0.1)
+	if steps_u < 0 or steps_z < 0:
+		return null
+	var best: Variant = null
+	var best_score: float = INF
+	for iu: int in steps_u + 1:
+		for iz: int in steps_z + 1:
+			var rect: Rect2 = Rect2(zone.position.x + float(iu) * 0.1, zone.position.y + float(iz) * 0.1, size.x, size.y)
+			var free: bool = true
+			for other: Rect2 in placed:
+				if rect.intersects(other.grow(0.14)):
+					free = false
+					break
+			if not free:
+				continue
+			var score: float = _garden_preference(kind, rect, zone, door_u) + 0.45 * _r(p.seed_value * 977 + iu * 53 + iz, 80 + kind)
+			if score < best_score:
+				best_score = score
+				best = rect
+	return best
+
+
+## Lower is better. Sheds and trees like the back corners, play sets the back and away from
+## the door, tables the house wall beside the door, a washing line the middle.
+func _garden_preference(kind: int, rect: Rect2, zone: Rect2, door_u: float) -> float:
+	var centre_u: float = rect.position.x + rect.size.x * 0.5
+	var back: float = (zone.end.y - rect.end.y) / maxf(zone.size.y, 0.1)
+	var edge: float = minf(rect.position.x - zone.position.x, zone.end.x - rect.end.x) / maxf(zone.size.x, 0.1)
+	var door_gap: float = minf(absf(centre_u - door_u) / maxf(zone.size.x, 0.1), 1.0)
+	match kind:
+		Garden.SHED, Garden.TREE:
+			return back * 0.9 + edge * 3.0
+		Garden.SWING:
+			return back * 0.6 + (1.0 - door_gap) * 0.7
+		Garden.SLIDE:
+			return back * 0.5 + edge * 1.5
+		Garden.VEG:
+			return back * 0.5 + edge * 1.2
+		Garden.TABLE:
+			return (1.0 - back) * 1.0 + door_gap * 0.6
+		Garden.BENCH:
+			return back * 0.4 + edge * 0.8
+		Garden.LINE:
+			return absf(back - 0.5)
+		_:
+			return absf(centre_u - (zone.position.x + zone.size.x * 0.5)) / maxf(zone.size.x, 0.1) * 0.8 + (1.0 - back) * 0.2
+
+
+## Everything planned for this house's back garden, drawn in street-local space.
+func _garden(pen: Pen, p: Plan) -> void:
+	for item: Dictionary in p.garden:
+		var rect: Rect2 = item["rect"]
+		var seed_value: int = item["seed"]
+		var height: float = item["height"]
+		match int(item["kind"]):
+			Garden.VEG:
+				_g_veg(pen, rect, seed_value)
+			Garden.SHED:
+				_g_shed(pen, p, rect, seed_value)
+			Garden.LINE:
+				_g_line(pen, rect, seed_value)
+			Garden.SWING:
+				_g_swing(pen, rect, seed_value)
+			Garden.SLIDE:
+				_g_slide(pen, rect, seed_value)
+			Garden.TABLE:
+				_g_table(pen, rect, seed_value)
+			Garden.BENCH:
+				_g_bench(pen, rect, seed_value)
+			Garden.TREE:
+				_g_tree(pen, rect, seed_value)
+			Garden.BIRDBATH:
+				_g_birdbath(pen, rect, seed_value)
+			Garden.BORDER:
+				_g_border(pen, rect, seed_value)
+			Garden.STONES:
+				_g_stones(pen, rect, seed_value, int(item["count"]))
+		if height > 0.0 and int(item["kind"]) != Garden.BORDER:
+			_garden_shadow(pen, rect, height, p.garden_zone)
+
+
+## A baked contact shadow on the lawn, the footprint swept along the key light's run.
+func _garden_shadow(pen: Pen, rect: Rect2, height: float, zone: Rect2) -> void:
+	var corners: PackedVector2Array = PackedVector2Array()
+	var push: Vector2 = light_shift * height
+	for corner: Vector2 in [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]:
+		corners.append(corner)
+		corners.append(corner + push)
+	var hull: PackedVector2Array = Geometry2D.convex_hull(corners)
+	var bounds: Rect2 = zone.grow(0.1)
+	var clip: PackedVector2Array = PackedVector2Array([bounds.position, Vector2(bounds.end.x, bounds.position.y),
+		bounds.end, Vector2(bounds.position.x, bounds.end.y)])
+	for piece: PackedVector2Array in Geometry2D.intersect_polygons(hull, clip):
+		var points: Array[Vector2] = []
+		points.assign(piece)
+		if points.size() < 3:
+			continue
+		var centre: Vector2 = Vector2.ZERO
+		for point: Vector2 in points:
+			centre += point
+		centre /= float(points.size())
+		pen.soup.star(centre, points, GARDEN_SHADOW_Y, lawn_shadow)
+
+
+func _leaf(seed_value: int, attribute: int) -> Color:
+	return street.hedge_colors[_pick(street.hedge_colors.size(), seed_value, attribute)]
+
+
+func _play(seed_value: int, offset: int) -> Color:
+	return street.play_colors[(absi(seed_value) + offset) % street.play_colors.size()]
+
+
+## A raised vegetable bed: three rows of lettuces, cabbages and tomato plants.
+func _g_veg(pen: Pen, r: Rect2, seed_value: int) -> void:
+	pen.box(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.end.x, 0.14, r.position.y + 0.05), street.wood)
+	pen.box(Vector3(r.position.x, 0.0, r.end.y - 0.05), Vector3(r.end.x, 0.14, r.end.y), street.wood)
+	pen.box(Vector3(r.position.x, 0.0, r.position.y + 0.05), Vector3(r.position.x + 0.05, 0.14, r.end.y - 0.05), street.wood)
+	pen.box(Vector3(r.end.x - 0.05, 0.0, r.position.y + 0.05), Vector3(r.end.x, 0.14, r.end.y - 0.05), street.wood)
+	pen.box(Vector3(r.position.x + 0.05, 0.0, r.position.y + 0.05), Vector3(r.end.x - 0.05, 0.11, r.end.y - 0.05), street.soil)
+	for row: int in 3:
+		var z: float = r.position.y + 0.14 + float(row) * (r.size.y - 0.28) * 0.5
+		var crop: int = (absi(seed_value) + row) % 3
+		var count: int = 3 if crop == 1 else 4
+		for index: int in count:
+			var x: float = r.position.x + 0.14 + (r.size.x - 0.28) * (float(index) + 0.5) / float(count)
+			match crop:
+				0:
+					var green: Color = _leaf(seed_value, 100 + index).lightened(0.12)
+					pen.lump(Vector3(x, 0.17, z), 0.085, 0.06, 0.085, float(index), green, green.darkened(0.2))
+				1:
+					var cabbage: Color = _leaf(seed_value, 110).lerp(street.glass, 0.35).lightened(0.1)
+					pen.lump(Vector3(x, 0.18, z), 0.1, 0.075, 0.1, float(index), cabbage, cabbage.darkened(0.2))
+				_:
+					var stake: float = x
+					pen.box(Vector3(stake - 0.008, 0.1, z - 0.008), Vector3(stake + 0.008, 0.3, z + 0.008), street.wood.lightened(0.2))
+					pen.lump(Vector3(x, 0.2, z), 0.06, 0.07, 0.06, float(index), _leaf(seed_value, 120), _leaf(seed_value, 120).darkened(0.25))
+					pen.lump(Vector3(x + 0.04, 0.17, z + 0.03), 0.032, 0.032, 0.032, 0.0, street.signal_red, street.signal_red.darkened(0.2))
+
+
+## A garden shed in a pastel wall, a pitched roof, a door on the side facing the garden and a window.
+func _g_shed(pen: Pen, p: Plan, r: Rect2, seed_value: int) -> void:
+	var wall: Color = street.wall_colors[_pick(street.wall_colors.size(), seed_value, 130)].darkened(0.08)
+	var roof: Color = p.roof_col.darkened(0.1)
+	var zc: float = r.position.y + r.size.y * 0.5
+	pen.box(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.end.x, 0.68, r.end.y), wall)
+	pen.box(Vector3(r.position.x - 0.015, 0.0, r.position.y - 0.015), Vector3(r.end.x + 0.015, 0.06, r.end.y + 0.015), street.stone)
+	for side: float in [-1.0, 1.0]:
+		var zedge: float = r.position.y - 0.07 if side < 0.0 else r.end.y + 0.07
+		var base: Array[Vector3] = [Vector3(r.position.x - 0.07, 0.62, zedge), Vector3(r.end.x + 0.07, 0.62, zedge),
+			Vector3(r.end.x + 0.07, 0.94, zc), Vector3(r.position.x - 0.07, 0.94, zc)]
+		pen.slab(base, _outward_normal(base) * 0.045, roof)
+	for end: float in [r.position.x, r.end.x]:
+		pen.tri(Vector3(end, 0.68, r.position.y), Vector3(end, 0.68, r.end.y), Vector3(end, 0.93, zc),
+			Vector3(1.0 if end > r.position.x else -1.0, 0.0, 0.0), wall)
+	pen.box(Vector3(r.position.x - 0.07, 0.93, zc - 0.02), Vector3(r.end.x + 0.07, 0.97, zc + 0.02), roof.darkened(0.12))
+	# The door faces the middle of the garden; the window looks out at the hedge.
+	var toward_left: bool = (r.position.x + r.size.x * 0.5) > p.garden_zone.position.x + p.garden_zone.size.x * 0.5
+	var face: float = r.position.x if toward_left else r.end.x
+	var out: float = -0.02 if toward_left else 0.02
+	var lo: float = minf(face, face + out)
+	var hi: float = maxf(face, face + out)
+	var door: Color = street.door_colors[_pick(street.door_colors.size(), seed_value, 131)]
+	pen.box(Vector3(lo, 0.0, zc - 0.16), Vector3(hi, 0.56, zc + 0.16), street.trim)
+	lo = minf(face, face + out * 1.6)
+	hi = maxf(face, face + out * 1.6)
+	pen.box(Vector3(lo, 0.0, zc - 0.13), Vector3(hi, 0.53, zc + 0.13), door)
+	pen.box(Vector3(r.position.x + 0.12, 0.3, r.end.y - 0.005), Vector3(r.end.x - 0.12, 0.54, r.end.y + 0.02), street.trim)
+	pen.box(Vector3(r.position.x + 0.15, 0.33, r.end.y), Vector3(r.end.x - 0.15, 0.51, r.end.y + 0.03), street.glass)
+
+
+## Two poles, a line and a few pastel cloths hanging from it.
+func _g_line(pen: Pen, r: Rect2, seed_value: int) -> void:
+	var zc: float = r.position.y + r.size.y * 0.5
+	for x: float in [r.position.x + 0.04, r.end.x - 0.04]:
+		pen.box(Vector3(x - 0.02, 0.0, zc - 0.02), Vector3(x + 0.02, 1.0, zc + 0.02), street.wood)
+		pen.box(Vector3(x - 0.035, 0.0, zc - 0.035), Vector3(x + 0.035, 0.04, zc + 0.035), street.stone)
+		pen.box(Vector3(x - 0.03, 1.0, zc - 0.03), Vector3(x + 0.03, 1.035, zc + 0.03), street.wood.lightened(0.15))
+	pen.box(Vector3(r.position.x + 0.04, 0.945, zc - 0.006), Vector3(r.end.x - 0.04, 0.96, zc + 0.006), street.metal)
+	var x_cursor: float = r.position.x + 0.2
+	var index: int = 0
+	while x_cursor < r.end.x - 0.3:
+		var wide: float = 0.1 + 0.07 * _r(seed_value, 140 + index)
+		var drop: float = 0.16 + 0.14 * _r(seed_value, 150 + index)
+		var colour: Color = street.laundry_colors[(absi(seed_value) + index) % street.laundry_colors.size()]
+		pen.box(Vector3(x_cursor, 0.945 - drop, zc - 0.012), Vector3(x_cursor + wide, 0.955, zc + 0.012), colour)
+		pen.box(Vector3(x_cursor, 0.945 - drop, zc - 0.012), Vector3(x_cursor + wide, 0.945 - drop + 0.025, zc + 0.014), colour.darkened(0.12))
+		x_cursor += wide + 0.12 + 0.08 * _r(seed_value, 160 + index)
+		index += 1
+
+
+## A leg of a play set: a slanted strip from foot to top.
+func _strip(pen: Pen, foot: Vector3, top: Vector3, across: Vector3, colour: Color) -> void:
+	var base: Array[Vector3] = [foot - across, foot + across, top + across, top - across]
+	var normal: Vector3 = (base[1] - base[0]).cross(base[3] - base[0]).normalized()
+	pen.slab(base, normal * 0.04, colour)
+
+
+## A little swing set: two A-frames, a top bar and two swings.
+func _g_swing(pen: Pen, r: Rect2, seed_value: int) -> void:
+	var zc: float = r.position.y + r.size.y * 0.5
+	var frame: Color = _play(seed_value, 0)
+	for x: float in [r.position.x + 0.07, r.end.x - 0.07]:
+		_strip(pen, Vector3(x, 0.0, r.position.y + 0.04), Vector3(x, 0.94, zc), Vector3(0.025, 0.0, 0.0), frame)
+		_strip(pen, Vector3(x, 0.0, r.end.y - 0.04), Vector3(x, 0.94, zc), Vector3(0.025, 0.0, 0.0), frame)
+	pen.box(Vector3(r.position.x + 0.04, 0.9, zc - 0.025), Vector3(r.end.x - 0.04, 0.97, zc + 0.025), frame.darkened(0.12))
+	for index: int in 2:
+		var x: float = r.position.x + r.size.x * (0.34 + 0.32 * float(index))
+		for rope: float in [-0.07, 0.07]:
+			pen.box(Vector3(x + rope - 0.008, 0.26, zc - 0.008), Vector3(x + rope + 0.008, 0.9, zc + 0.008), street.trim.darkened(0.15))
+		pen.box(Vector3(x - 0.1, 0.22, zc - 0.05), Vector3(x + 0.1, 0.26, zc + 0.05), _play(seed_value, 2 + index))
+
+
+## A tiny slide: a platform with a ladder on the house side and a long slope.
+func _g_slide(pen: Pen, r: Rect2, seed_value: int) -> void:
+	var tower: Color = _play(seed_value, 1)
+	var z1: float = r.position.y + 0.3
+	for x: float in [r.position.x + 0.04, r.end.x - 0.04]:
+		for z: float in [r.position.y + 0.04, z1 - 0.04]:
+			pen.box(Vector3(x - 0.025, 0.0, z - 0.025), Vector3(x + 0.025, 0.5, z + 0.025), tower.darkened(0.1))
+	pen.box(Vector3(r.position.x, 0.5, r.position.y), Vector3(r.end.x, 0.55, z1), tower)
+	for rung: int in 3:
+		var y: float = 0.1 + 0.13 * float(rung)
+		pen.box(Vector3(r.position.x + 0.05, y, r.position.y - 0.012), Vector3(r.end.x - 0.05, y + 0.025, r.position.y + 0.012), street.wood.lightened(0.1))
+	var slope: Color = _play(seed_value, 4)
+	var inset: float = 0.07
+	var base: Array[Vector3] = [Vector3(r.position.x + inset, 0.5, z1), Vector3(r.end.x - inset, 0.5, z1),
+		Vector3(r.end.x - inset, 0.07, r.end.y), Vector3(r.position.x + inset, 0.07, r.end.y)]
+	pen.slab(base, Vector3(0.0, 0.03, 0.0), slope)
+	for lip: float in [r.position.x + inset, r.end.x - inset - 0.03]:
+		var rail: Array[Vector3] = [Vector3(lip, 0.5, z1), Vector3(lip + 0.03, 0.5, z1), Vector3(lip + 0.03, 0.07, r.end.y), Vector3(lip, 0.07, r.end.y)]
+		pen.slab(rail, Vector3(0.0, 0.07, 0.0), slope.darkened(0.14))
+
+
+## A little table with two chairs and, sometimes, a parasol.
+func _g_table(pen: Pen, r: Rect2, seed_value: int) -> void:
+	var cx: float = r.position.x + r.size.x * 0.5
+	var cz: float = r.position.y + r.size.y * 0.5
+	var wood: Color = street.wood.lightened(0.1)
+	pen.box(Vector3(cx - 0.21, 0.3, cz - 0.16), Vector3(cx + 0.21, 0.34, cz + 0.16), wood)
+	pen.box(Vector3(cx - 0.035, 0.04, cz - 0.035), Vector3(cx + 0.035, 0.3, cz + 0.035), wood.darkened(0.15))
+	pen.box(Vector3(cx - 0.12, 0.0, cz - 0.1), Vector3(cx + 0.12, 0.04, cz + 0.1), wood.darkened(0.15))
+	for side: float in [-1.0, 1.0]:
+		var x: float = cx + side * 0.36
+		pen.box(Vector3(x - 0.085, 0.0, cz - 0.085), Vector3(x + 0.085, 0.19, cz + 0.085), wood.darkened(0.2))
+		pen.box(Vector3(x - 0.1, 0.19, cz - 0.1), Vector3(x + 0.1, 0.23, cz + 0.1), _play(seed_value, int(side) + 3))
+		var back_x: float = x + side * 0.085
+		pen.box(Vector3(minf(back_x, back_x + side * 0.025), 0.23, cz - 0.1), Vector3(maxf(back_x, back_x + side * 0.025), 0.42, cz + 0.1), wood.darkened(0.1))
+	if _r(seed_value, 170) < 0.5:
+		pen.box(Vector3(cx - 0.008, 0.34, cz - 0.008), Vector3(cx + 0.008, 0.82, cz + 0.008), street.trim)
+		var cloth: Color = _play(seed_value, 5)
+		pen.lump(Vector3(cx, 0.78, cz), 0.36, 0.1, 0.36, 0.2, cloth.lightened(0.1), cloth.darkened(0.15))
+	else:
+		pen.box(Vector3(cx - 0.05, 0.34, cz - 0.04), Vector3(cx + 0.05, 0.37, cz + 0.04), street.trim)
+		var jug: Color = _play(seed_value, 1)
+		pen.box(Vector3(cx - 0.04, 0.34, cz - 0.03), Vector3(cx + 0.04, 0.44, cz + 0.03), jug)
+
+
+## A bench along the back hedge with a pot of flowers on its end.
+func _g_bench(pen: Pen, r: Rect2, seed_value: int) -> void:
+	var wood: Color = street.wood.lightened(0.12)
+	pen.box(Vector3(r.position.x + 0.03, 0.19, r.position.y + 0.04), Vector3(r.end.x - 0.03, 0.23, r.end.y - 0.1), wood)
+	pen.box(Vector3(r.position.x + 0.03, 0.23, r.end.y - 0.1), Vector3(r.end.x - 0.03, 0.4, r.end.y - 0.07), wood.darkened(0.08))
+	for x: float in [r.position.x + 0.07, r.end.x - 0.07]:
+		pen.box(Vector3(x - 0.03, 0.0, r.position.y + 0.06), Vector3(x + 0.03, 0.19, r.end.y - 0.12), wood.darkened(0.25))
+	var bloom: Color = street.bloom_colors[(absi(seed_value) + 2) % street.bloom_colors.size()]
+	pen.box(Vector3(r.end.x - 0.2, 0.23, r.position.y + 0.08), Vector3(r.end.x - 0.08, 0.31, r.position.y + 0.2), street.stone.lerp(bloom, 0.3))
+	pen.lump(Vector3(r.end.x - 0.14, 0.36, r.position.y + 0.14), 0.07, 0.06, 0.07, 0.0, bloom, bloom.darkened(0.2))
+
+
+## A small fruit tree in blossom.
+func _g_tree(pen: Pen, r: Rect2, seed_value: int) -> void:
+	var cx: float = r.position.x + r.size.x * 0.5
+	var cz: float = r.position.y + r.size.y * 0.5
+	var leaf: Color = _leaf(seed_value, 180)
+	pen.box(Vector3(cx - 0.04, 0.0, cz - 0.04), Vector3(cx + 0.04, 0.55, cz + 0.04), street.wood.darkened(0.25))
+	pen.lump(Vector3(cx, 0.84, cz), 0.3, 0.3, 0.3, 0.3, leaf.lightened(0.06), leaf.darkened(0.22))
+	pen.lump(Vector3(cx + 0.05, 1.07, cz - 0.03), 0.2, 0.2, 0.2, 0.9, leaf.lightened(0.12), leaf.darkened(0.15))
+	var fruit: Color = street.signal_red.lightened(0.1) if _r(seed_value, 181) < 0.5 else street.bloom_colors[0]
+	for index: int in 5:
+		var angle: float = 1.3 * float(index) + float(seed_value % 5)
+		pen.lump(Vector3(cx + cos(angle) * 0.27, 0.78 + 0.12 * float(index % 3), cz + sin(angle) * 0.27), 0.034, 0.034, 0.034, 0.0, fruit, fruit.darkened(0.2))
+
+
+## A stone birdbath: foot, stem and a shallow bowl.
+func _g_birdbath(pen: Pen, r: Rect2, _seed_value: int) -> void:
+	var cx: float = r.position.x + r.size.x * 0.5
+	var cz: float = r.position.y + r.size.y * 0.5
+	var stone: Color = street.stone.lightened(0.1)
+	pen.box(Vector3(cx - 0.1, 0.0, cz - 0.1), Vector3(cx + 0.1, 0.05, cz + 0.1), stone.darkened(0.12))
+	pen.box(Vector3(cx - 0.04, 0.05, cz - 0.04), Vector3(cx + 0.04, 0.3, cz + 0.04), stone)
+	pen.box(Vector3(cx - 0.17, 0.3, cz - 0.17), Vector3(cx + 0.17, 0.37, cz + 0.17), stone.lightened(0.06))
+	pen.box(Vector3(cx - 0.14, 0.37, cz - 0.14), Vector3(cx + 0.14, 0.385, cz + 0.14), street.glass.lightened(0.2))
+	var bird: Color = street.bird_colors[0] if not street.bird_colors.is_empty() else street.wood
+	pen.lump(Vector3(cx + 0.05, 0.4, cz - 0.04), 0.04, 0.035, 0.03, 0.0, bird, bird.darkened(0.2))
+
+
+## A bed of flowers along the back hedge.
+func _g_border(pen: Pen, r: Rect2, seed_value: int) -> void:
+	pen.box(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.end.x, 0.05, r.end.y), street.soil)
+	var count: int = maxi(4, roundi(r.size.x / 0.3))
+	for index: int in count:
+		var x: float = r.position.x + (r.size.x - 0.2) * (float(index) + 0.5) / float(count) + 0.1
+		var bloom: Color = street.bloom_colors[(absi(seed_value) + index) % street.bloom_colors.size()]
+		var z: float = r.position.y + 0.1 + 0.1 * float(index % 2)
+		if index % 3 == 0:
+			pen.box(Vector3(x - 0.007, 0.05, z - 0.007), Vector3(x + 0.007, 0.26, z + 0.007), _leaf(seed_value, 190))
+			pen.lump(Vector3(x, 0.29, z), 0.055, 0.05, 0.055, float(index), bloom, bloom.darkened(0.2))
+		else:
+			pen.lump(Vector3(x, 0.11, z), 0.07, 0.06, 0.07, float(index), bloom, bloom.darkened(0.2))
+
+
+## Flat stepping stones leading from the back door out into the garden.
+func _g_stones(pen: Pen, r: Rect2, seed_value: int, count: int) -> void:
+	for index: int in count:
+		var z: float = r.position.y + 0.17 + 0.34 * float(index)
+		var x: float = r.position.x + r.size.x * 0.5 + (_r(seed_value, 200 + index) - 0.5) * 0.12
+		var wide: float = 0.12 + 0.03 * _r(seed_value, 210 + index)
+		var deep: float = 0.09 + 0.02 * _r(seed_value, 220 + index)
+		var tone: Color = street.stone.lerp(street.path, 0.25 * _r(seed_value, 230 + index)).lightened(0.05)
+		pen.box(Vector3(x - wide, 0.0, z - deep), Vector3(x + wide, 0.03, z + deep), tone)
+		pen.box(Vector3(x - wide, 0.03, z - deep), Vector3(x + wide, 0.034, z + deep), tone.lightened(0.08))

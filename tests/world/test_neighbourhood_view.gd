@@ -212,7 +212,7 @@ func test_actors_use_existing_guest_models_and_no_neighbourhood_nodes_add_lights
 		assert_false(node.has_meta("agent_id"))
 		assert_false(node.has_meta("item_id"))
 		# The lamp bulb is the one emissive mesh; it is dark by day (see test_neighbourhood_props).
-		if node is MeshInstance3D and node.name != &"LampBulbs":
+		if node is MeshInstance3D and node.name != &"LampBulbs" and not String(node.name).begins_with("WindowGlow"):
 			var mesh: MeshInstance3D = node as MeshInstance3D
 			for surface: int in mesh.mesh.get_surface_count():
 				var material: Material = mesh.get_active_material(surface)

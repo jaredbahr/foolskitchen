@@ -2236,14 +2236,41 @@ shadowless mesh (`PropBody`) and every prop, plus each street lamp's foot, has a
 shadow in one flat mesh (`PropShadows`) laid just above the paving, so everything stands on its own shadow;
 shadow polygons are the convex hull of the footprint and the footprint pushed along the key light's ground run.
 The planner runs on every dressing rebuild (a few milliseconds, no cache); `furniture_plan()` exposes it.
-`NeighbourhoodBuildings` adds a flower box under each neighbouring shop window (not the laundromat's
-portholes) and a hanging sign bracket on each shop.
+`NeighbourhoodBuildings` adds a flower box under each neighbouring shop window (the toy and pet shops
+set a display shelf there instead) and a hanging sign bracket on each shop.
 
 Night lamps: `Main._refresh_day_light` calls `NeighbourhoodDressing.set_night(DayNightView.street_night(look))`,
 a smoothstep of the day's interior light (0 by day, 1 from dusk), so the street comes on with the shop. The
 two street lamps get an emissive bulb mesh (emission energy and tint follow the night level), a soft additive
 glow disc on the pavement and a camera-facing additive halo, all unlit meshes under `Life` that are hidden by
 day: no `Light3D` is added.
+
+Back gardens, softer roofs and shops (#440). The standard business set is a bakery, florist, sweet shop, tea
+room, toy shop and pet shop (the laundromat is gone; `Accent.TOYS` and `Accent.PETS` add a rocking horse
+and a dog bed out front, and a window display: blocks, a teddy and bunting, or a fish tank and a sleeping cat).
+The roof palette is eight gentle warm and pastel swatch tones, and roof colours (like heights and roof shapes)
+never repeat between neighbours in a row. Each house lot is `BACK_YARD` (2.6 m) deeper behind the back wall;
+`NeighbourhoodBuildings._plan_garden` plans its back garden from integer hashes (no RNG): the garden ground is
+the lot minus the side and back hedges (`GARDEN_SIDE`, `GARDEN_HEDGE`) and the eave, a doorstep patch in front
+of the back door stays clear, then a flower border (55%), stepping stones (60%) and three or four of a small set
+(vegetable bed, shed, washing line, swing, slide, table with parasol or jug, bench, fruit tree, birdbath; no
+ponds or pools) each go at the best free spot by a per-kind preference plus hash noise, never overlapping, never
+repeating the previous house's choices if another exists. `Plan.garden`, `garden_zone` and `doorstep` expose the
+plan to tests (`tests/world/test_neighbourhood_gardens.gd` checks every item stays in its lot, off the hedges, the
+doorstep and the lanes across twelve salts and two shifts). Gardens are drawn into the house's own mesh (no new
+draw calls, about 4k more triangles in all) with opaque baked contact shadows in the lawn's shadow tone
+(`lawn_shadow`, from the ground skin) swept along the key light's run (`light_shift`); both are part of the
+buildings cache key, as are the new `StreetSet` fields (`soil`, `laundry_colors`, `play_colors`, `window_glows`).
+
+Night windows (#440): every `_window` (and the shop display glass) can emit a warm quad just proud of its glass,
+by integer hash: 12% stay dark (curtains), 63% stay lit all night, 12% go dark at an early bedtime and 13% later
+(`GLOW_TIERS`). The quads of each tier are one unlit vertex-coloured mesh (`WindowGlow0..2`, three draw calls under
+`Life`) with its own emissive material per dressing, driven by `NeighbourhoodDressing.set_night(level, late)`:
+`level` is the same `DayNightView.street_night` as the lamps (tiers are hidden at 0) and `late` is
+`DayNightView.street_late(minute)`, 0 until about 21:00 and 1 by 23:30, which fades tier 1 out between 0.3 and 0.5
+and tier 2 between 0.8 and 0.95. Main passes both from the day's minute (`day_light_minute()`); no `Light3D`
+is added. The meshes are cached next to the buildings (`_window_cache`, same key); `window_state()` exposes the
+tiers for tests and captures.
 
 `NeighbourhoodLife` is the small life, a pure function of the dressing's display clock (the review time pins it),
 applied from `_apply_time` so it stops with the dressing's processing. Hanging signs swing about their bracket

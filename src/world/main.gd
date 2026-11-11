@@ -371,7 +371,7 @@ func _bind_world_presentation() -> void:
 	view.show_world(world, maximum_reserve)
 	# A new dressing starts at day: light its lamps now, not a frame later.
 	if view.neighbourhood_dressing != null and world.clock != null:
-		view.neighbourhood_dressing.set_night(DayNightView.street_night(day_light_look()))
+		view.neighbourhood_dressing.set_night(DayNightView.street_night(day_light_look()), DayNightView.street_late(day_light_minute()))
 	view.bind_cleanliness(sim.cleanliness)
 	view.bind_restaurant(sim, content)
 	view.bind_dock(sim.dock)
@@ -5192,7 +5192,7 @@ func _refresh_day_light() -> void:
 	var focus: Vector3 = camera.global_position if camera.is_inside_tree() else camera.position
 	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, focus)
 	if view.neighbourhood_dressing != null:
-		view.neighbourhood_dressing.set_night(DayNightView.street_night(look))
+		view.neighbourhood_dressing.set_night(DayNightView.street_night(look), DayNightView.street_late(day_light_minute()))
 	# Chairs go up after close, but never while editing in the evening, so
 	# Build and Paint always see and pick the furniture where it stands.
 	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active
@@ -5216,7 +5216,12 @@ func lamp_visuals() -> Array[ItemVisual]:
 
 
 func day_light_look() -> DayLight.Look:
-	return DayLight.sample(DayLight.minute_for(world.clock, Clock.tick_fraction(), DAY_LIGHT), DAY_LIGHT)
+	return DayLight.sample(day_light_minute(), DAY_LIGHT)
+
+
+## The minute of the day the shop's light shows, for the street's windows too (#440).
+func day_light_minute() -> float:
+	return DayLight.minute_for(world.clock, Clock.tick_fraction(), DAY_LIGHT)
 
 
 func _refresh_weather() -> void:

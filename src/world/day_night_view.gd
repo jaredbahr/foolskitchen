@@ -16,6 +16,9 @@ const LAMP_LIGHT_CAP: int = 8
 ## A lamp's light by day, as a share of its full night strength.
 const LAMP_DAY_SHARE: float = 0.35
 const SHOP_LIGHT: StringName = &"ShopLights"
+## The street's windows start going dark after this minute of the day and are all done by the next.
+const LATE_FROM_MINUTE: float = 1260.0
+const LATE_TO_MINUTE: float = 1410.0
 ## The shop's lights hang this high over the middle of the floor.
 const SHOP_LIGHT_HEIGHT: float = 2.6
 ## Reach past the farthest floor corner, so the whole room is lit evenly.
@@ -27,6 +30,12 @@ const SHOP_LIGHT_ATTENUATION: float = 0.5
 ## the same dusk the interior follows, so the whole street comes on together.
 static func street_night(look: DayLight.Look) -> float:
 	return smoothstep(0.0, 0.5, look.interior_energy)
+
+
+## How late the night is (#440), 0 until the shop has closed and 1 by its long closed evening: the
+## neighbours' windows go dark one by one as it rises. A pure function of the day's minute.
+static func street_late(minute: float) -> float:
+	return smoothstep(LATE_FROM_MINUTE, LATE_TO_MINUTE, minute)
 
 
 static func apply_rig(rig: Node, look: DayLight.Look) -> void:
