@@ -2267,7 +2267,7 @@ by integer hash: 12% stay dark (curtains), 63% stay lit all night, 12% go dark a
 (`GLOW_TIERS`). The quads of each tier are one unlit vertex-coloured mesh (`WindowGlow0..2`, three draw calls under
 `Life`) with its own emissive material per dressing, driven by `NeighbourhoodDressing.set_night(level, late)`:
 `level` is the same `DayNightView.street_night` as the lamps (tiers are hidden at 0) and `late` is
-`DayNightView.street_late(minute)`, 0 until about 21:00 and 1 by 23:30, which fades tier 1 out between 0.3 and 0.5
+`DayNightView.street_late(minute, close_minute)`, 0 until closing time and 1 150 minutes later, which fades tier 1 out between 0.3 and 0.5
 and tier 2 between 0.8 and 0.95. Main passes both from the day's minute (`day_light_minute()`); no `Light3D`
 is added. The meshes are cached next to the buildings (`_window_cache`, same key); `window_state()` exposes the
 tiers for tests and captures.

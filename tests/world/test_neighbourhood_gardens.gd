@@ -222,6 +222,24 @@ func test_the_business_set_has_a_toy_shop_and_a_pet_shop_and_no_laundromat() -> 
 			mesh.free()
 
 
+func test_shop_window_glow_stands_in_front_of_the_glass_but_behind_the_mullions() -> void:
+	assert_true(NeighbourhoodBuildings.SHOP_GLOW_Z > 0.03, "in front of the shopfront glass box")
+	assert_true(NeighbourhoodBuildings.SHOP_GLOW_Z < 0.04, "behind the 0.04 mullions")
+	var builder: NeighbourhoodBuildings = _builder()
+	for p: NeighbourhoodBuildings.Plan in builder.plans:
+		builder.build_mesh(p).free()
+	var seen_shop_depth: bool = false
+	for mesh: ArrayMesh in builder.glow_meshes():
+		if mesh == null:
+			continue
+		for point: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			# Shop plans face +z with an identity basis, so a shop glow's local depth is its z offset from the building.
+			for p: NeighbourhoodBuildings.Plan in builder.plans:
+				if p.is_shop and absf(point.z - (p.xf.origin.z + NeighbourhoodBuildings.SHOP_GLOW_Z)) < 0.0005 and absf(point.x - p.xf.origin.x) < p.width * 0.5:
+					seen_shop_depth = true
+	assert_true(seen_shop_depth, "the shop display windows glow clear of their glass")
+
+
 func test_the_whole_street_stays_a_modest_number_of_triangles_and_draw_calls() -> void:
 	var builder: NeighbourhoodBuildings = _builder()
 	var triangles: int = 0
@@ -284,7 +302,7 @@ func test_windows_are_lit_at_night_dark_by_day_and_a_few_go_dark_late() -> void:
 	await _host()
 	var dressing: NeighbourhoodDressing = _dressing()
 	var day: Dictionary = dressing.window_state()
-	assert_true(day["quads"] > 40, "the street has lit-window quads to show: %d" % day["quads"])
+	assert_true(day["quads"] > 20, "the street has lit-window quads to show: %d" % day["quads"])
 	assert_eq(day["night"], 0.0)
 	for tier: Dictionary in day["tiers"]:
 		assert_false(tier["visible"], "tier %d windows are hidden by day" % tier["tier"])
@@ -357,9 +375,13 @@ func test_main_lights_the_windows_from_the_clock_and_darkens_some_late() -> void
 	var midday: float = 780.0
 	var evening: float = 1290.0
 	var late: float = 1410.0
-	assert_eq(DayNightView.street_late(midday), 0.0)
-	assert_true(DayNightView.street_late(evening) > 0.0 and DayNightView.street_late(evening) < 1.0)
-	assert_eq(DayNightView.street_late(late), 1.0)
+	assert_eq(DayNightView.street_late(midday, 1260.0), 0.0)
+	assert_true(DayNightView.street_late(evening, 1260.0) > 0.0 and DayNightView.street_late(evening, 1260.0) < 1.0)
+	assert_eq(DayNightView.street_late(late, 1260.0), 1.0)
+	# Bedtimes follow closing time: an earlier close is already late at 21:00 and one at 17:30 is done by 20:00.
+	assert_eq(DayNightView.street_late(1260.0, 1050.0), 1.0)
+	assert_eq(DayNightView.street_late(1050.0, 1050.0), 0.0)
+	assert_true(DayNightView.street_late(1100.0, 1050.0) > 0.0 and DayNightView.street_late(1100.0, 1260.0) == 0.0)
 	await _host()
 	_main = MAIN.instantiate() as Node3D
 	_main.set("use_saves", false)

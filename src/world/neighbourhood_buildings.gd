@@ -42,6 +42,8 @@ const GARDEN_EAVE: float = 0.16
 const GARDEN_SHADOW_Y: float = -0.021
 ## A lit window quad stands this far proud of the glass.
 const GLOW_Z: float = 0.0275
+## The shopfront glass is a thicker box (to z 0.03) under 0.04 mullions: its glow stands between.
+const SHOP_GLOW_Z: float = 0.034
 ## Window light tiers: 0 stays lit all night, 1 goes dark early in the late hours, 2 later still.
 const GLOW_TIERS: int = 3
 
@@ -541,7 +543,7 @@ func _shop_front(pen: Pen, p: Plan) -> void:
 	else:
 		pen.box(Vector3(x0 - 0.05, 0.3, 0.0), Vector3(x1 + 0.05, 1.13, 0.016), street.trim)
 		pen.box(Vector3(x0, 0.35, 0.0), Vector3(x1, 1.08, 0.03), street.glass)
-		_glow(pen, centre_x, 0.715, (x1 - x0) * 0.5, 0.365)
+		_glow(pen, centre_x, 0.715, (x1 - x0) * 0.5, 0.365, SHOP_GLOW_Z)
 		var panes: int = maxi(1, roundi((x1 - x0) / 0.6))
 		for index: int in range(1, panes):
 			var mx: float = x0 + (x1 - x0) * float(index) / float(panes)
@@ -946,7 +948,7 @@ func _hedge_line(pen: Pen, from: Vector2, to: Vector2, seed_value: int, line: in
 ## A warm quad just proud of a window's glass. By hash a window is dark all night (curtains
 ## drawn), lit all night, or lit until one of two bedtimes in the late hours: the owner
 ## draws each tier as its own mesh and fades it with the night level. Never a Light3D.
-func _glow(pen: Pen, cx: float, cy: float, hw: float, hh: float) -> void:
+func _glow(pen: Pen, cx: float, cy: float, hw: float, hh: float, z: float = GLOW_Z) -> void:
 	_glow_count += 1
 	var roll: float = _r(_glow_key * 41 + _glow_count, 61)
 	if roll < 0.12:
@@ -967,10 +969,10 @@ func _glow(pen: Pen, cx: float, cy: float, hw: float, hh: float) -> void:
 	for band: int in 2:
 		var y0: float = cy - hh if band == 0 else cy
 		var colour: Color = tint.darkened(0.16) if band == 0 else tint
-		var a: Vector3 = pen.xf * Vector3(cx - hw, y0, GLOW_Z)
-		var b: Vector3 = pen.xf * Vector3(cx + hw, y0, GLOW_Z)
-		var c: Vector3 = pen.xf * Vector3(cx + hw, y0 + hh, GLOW_Z)
-		var d: Vector3 = pen.xf * Vector3(cx - hw, y0 + hh, GLOW_Z)
+		var a: Vector3 = pen.xf * Vector3(cx - hw, y0, z)
+		var b: Vector3 = pen.xf * Vector3(cx + hw, y0, z)
+		var c: Vector3 = pen.xf * Vector3(cx + hw, y0 + hh, z)
+		var d: Vector3 = pen.xf * Vector3(cx - hw, y0 + hh, z)
 		soup.tri(a, b, c, hint, colour)
 		soup.tri(a, c, d, hint, colour)
 

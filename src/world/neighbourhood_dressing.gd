@@ -1115,7 +1115,7 @@ func window_state() -> Dictionary:
 	var quads: int = 0
 	for index: int in _window_nodes.size():
 		var tier: int = _window_tier(index)
-		var count: int = (_window_nodes[index].mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size() / 6
+		var count: int = (_window_nodes[index].mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size() / 12
 		quads += count
 		tiers.append({"tier": tier, "quads": count, "visible": _window_nodes[index].visible,
 			"level": _window_level(tier), "energy": _window_materials[index].emission_energy_multiplier})
