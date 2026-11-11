@@ -94,6 +94,9 @@ var local_reserve: AABB = AABB()
 var shift: float = 0.0
 var world_centre: Vector2 = Vector2.ZERO
 var buildings: Array[AABB] = []
+## Flat boxes of the house lots across the road (yard, fence and path run to their
+## edges): nothing is planted on them and the far lawn spans them.
+var lots: Array[AABB] = []
 ## Local boxes that cast a baked shadow on the shop's lawn (the shop's built
 ## floor at wall height, and the near neighbours); `light_shift` is how far a
 ## shadow runs along the ground per metre of height, in local (u, z).
@@ -197,9 +200,12 @@ func _node(label: String, soup: Soup) -> MeshInstance3D:
 func _plan_exclusions() -> void:
 	var lot: Rect2 = Rect2(local_reserve.position.x, local_reserve.position.z,
 		local_reserve.size.x, shift - local_reserve.position.z)
-	_blocked.append(lot.grow(0.4))
+	# The side gaps between the lot and its neighbours stay clear too (1.4 m each).
+	_blocked.append(lot.grow(0.7))
 	for box: AABB in buildings:
-		_blocked.append(Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(0.35))
+		_blocked.append(Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(0.4))
+	for box: AABB in lots:
+		_blocked.append(Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(0.15))
 	# The street itself, pavements and road, reaches the full width of the world.
 	_blocked.append(Rect2(world_centre.x - WORLD_HALF - BEYOND, shift - 0.9,
 		(WORLD_HALF + BEYOND) * 2.0, BLOCK_V + 0.9 + 0.45))
@@ -277,10 +283,19 @@ func _lawn_and_lane(base: Soup) -> void:
 	var near: Rect2 = Rect2(left - 2.6, _lane_v + 1.15, right - left + 5.2, shift - 0.16 - (_lane_v + 1.15))
 	base.flat(_rect_points(near, 1.1), LAWN_Y, _lawn)
 	_baked_shadows(base, near)
-	# Across the street: gardens behind the three shopfronts.
+	# Across the street: the gardens of the houses on their lots.
 	var far_front: float = shift + 8.2
 	var far: Rect2 = Rect2(-7.4, far_front, 14.8, 5.8)
+	if not lots.is_empty():
+		var low: Vector2 = Vector2(INF, far_front)
+		var high: Vector2 = Vector2(-INF, far_front)
+		for lot: AABB in lots:
+			low.x = minf(low.x, lot.position.x)
+			high.x = maxf(high.x, lot.end.x)
+			high.y = maxf(high.y, lot.end.z)
+		far = Rect2(low.x - 0.4, far_front, high.x - low.x + 0.8, high.y + 0.6 - far_front)
 	base.flat(_rect_points(far, 1.0), LAWN_Y, _lawn)
+	_baked_shadows(base, far)
 	# A grass verge: a deeper strip hugging the pavement's outer edges.
 	for edge: Vector2 in [Vector2(shift - 0.52, shift - 0.16), Vector2(shift + BLOCK_V + 0.24, shift + BLOCK_V + 0.52)]:
 		var verge: Rect2 = Rect2(world_centre.x - 30.0, edge.x, 60.0, edge.y - edge.x)

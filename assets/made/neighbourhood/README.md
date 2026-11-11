@@ -22,3 +22,5 @@ The GLBs use metres, Y-up, base-centred origins and front -Z. Their source geome
 | street_lamp.glb | 0.30 × 1.65 × 0.45 | lampRoundFloor/lampWall materials and edge softness on an authored post |
 
 A roof placed at the body's 1.40 m top gives a complete 2.32 × 1.85 × 1.82 m building. Placement and moving-car clearance must use full composed/transformed bounds. The generator writes bounds, triangles, material records, source hashes and mesh transforms only to the requested outside audit file; review evidence does not ship in this directory. Pavement and pedestrians reuse the existing `floorHalf.glb` and Mini Character/PersonView assets without editing them.
+
+Note (#422): `shopfront.glb`, `house_body.glb` and `gable_roof.glb` are no longer loaded by the street. The shops and houses are now generated boxes from `StreetSet` / `NeighbourhoodBuildings` (see `docs/TECH.md`). The files stay for reference and for `tools/build_neighbourhood.py`.
