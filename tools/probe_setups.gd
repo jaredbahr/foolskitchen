@@ -124,16 +124,21 @@ static func _coffee_shop(main: Node, counter: bool = false) -> bool:
 	var editor: ShopEditor = _free_editor(main)
 	if editor == null or not _clear_east_table(main, editor) or not _concept_west_table(main, editor):
 		return false
+	var deeper: bool = _probe_layout(main).rows.size() >= 17
+	# On the original layout the lane past the turned middle table at (5, 8)
+	# is the only way to the pass that is not through a seat (#320), so the
+	# small plant stands one cell west, beside the round table.
+	var plant: Vector2i = Vector2i(5, 8) if _probe_layout(main).save_layout_id != &"" else Vector2i(4, 8)
 	for placement: Array in [[&"coffee_machine", Vector2i(9, 5), 2], [&"coffee_machine", Vector2i(10, 5), 2],
 			[&"round_table", Vector2i(2, 8), 0], [&"rounded_chair", Vector2i(1, 8), 1],
-			[&"rounded_chair", Vector2i(4, 9), 3], [&"plant_small_2", Vector2i(5, 8), 0],
+			[&"rounded_chair", Vector2i(4, 9), 3], [&"plant_small_2", plant, 0],
 			[&"side_table", Vector2i(11, 5), 2], [&"plant_small_2", Vector2i(12, 5), 0]]:
 		if not editor.buy(placement[0], placement[1], placement[2]):
 			return false
 	# In the deeper starter room the counter sits one row further from the
 	# machines, leaving the two-cell aisle a player is warned to keep (#390):
 	# a one-cell gap had staff looping round the full counter (#400).
-	var row: int = 8 if _probe_layout(main).rows.size() >= 17 else 7
+	var row: int = 8 if deeper else 7
 	if counter and not editor.buy(&"order_counter", Vector2i(13, row), 0):
 		return false
 	if not _counter_with_stools(editor, 9, 12, row) or not _storage_shelves(editor) \
@@ -335,7 +340,10 @@ static func _joined_tables(main: Node) -> bool:
 	var targets: Array[Vector2i] = [tables[0].origin + Vector2i(1, 1),
 		tables[0].origin + Vector2i(3, 1)]
 	var ids: Array[int] = [tables[0].id, tables[1].id]
-	for index: int in ids.size():
+	# East one first: on the original layout the west table moved first would
+	# stand in the only seat-free lane to the pass while the east one is still
+	# in its old place, and that move is refused (#320).
+	for index: int in range(ids.size() - 1, -1, -1):
 		if not main.call("shop_move", ids[index], targets[index], 1):
 			return false
 	if not main.call("shop_buy", &"chair", targets[0] + Vector2i(1, -1), 2) \
@@ -391,8 +399,9 @@ static func _concept_access_floor(main: Node, editor: ShopEditor) -> bool:
 
 ## These concepts retain the original four-seat left dining group. Restore
 ## its complete pose before adding the unchanged lower table/chairs: merely
-## turning the roomier starter in place overlaps that lower table. The other
-## starter table, item counts and default play remain untouched.
+## turning the roomier starter in place overlaps that lower table. On the
+## original layout the middle table turns for an aisle (#320); otherwise the
+## other starter table, item counts and default play remain untouched.
 static func _concept_west_table(main: Node, editor: ShopEditor) -> bool:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var tables: Array[PlacedItem] = _starter_tables(sim.world.grid)
@@ -400,7 +409,14 @@ static func _concept_west_table(main: Node, editor: ShopEditor) -> bool:
 		return false
 	var west: PlacedItem = tables[0]
 	var target: Vector2i = Vector2i(2, 6)
-	return (west.origin == target and west.quarter_turns == 0) or editor.move(west.id, target, 0)
+	if not ((west.origin == target and west.quarter_turns == 0) or editor.move(west.id, target, 0)):
+		return false
+	# On the original layout that restores its row of seats, which nobody walks
+	# through (#320): the middle table turns where it stands for the aisle.
+	if not _probe_layout(main).save_layout_id.is_empty() or tables.size() < 2:
+		return true
+	var middle: PlacedItem = tables[1]
+	return middle.quarter_turns == 1 or editor.move(middle.id, middle.origin, 1)
 
 
 ## Declared fryer-fixture construction pose, not a service-policy change.

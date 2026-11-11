@@ -72,7 +72,7 @@ func test_valid_buy_and_move_ghosts_use_proposed_group_capacity_without_editing_
 	assert_true(_main.call("set_build_active", true))
 	var before: Dictionary = _editor().to_dict()
 	var cash: int = Economy.cash
-	assert_true(_mode().begin_buy(&"table_2", Vector2i(1, 6)))
+	assert_true(_mode().begin_buy(&"table_2", Vector2i(1, 7)))
 	# Rotate the held model to the same north/south chair orientation.
 	assert_true(_mode().rotate())
 	assert_true(_mode().current_check.ok)
@@ -89,7 +89,7 @@ func test_valid_buy_and_move_ghosts_use_proposed_group_capacity_without_editing_
 	assert_false(_mode().current_check.dining_joined)
 	assert_eq(_mode().dining_summary(), "Seats 2")
 	assert_eq(_editor().to_dict(), before)
-	_mode().update_origin(Vector2i(3, 6))
+	_mode().update_origin(Vector2i(3, 7))
 	assert_false(_mode().current_check.ok)
 	assert_eq(_mode().dining_summary(), "", "an overlapping refusal does not advertise a valid joined capacity")
 	_mode().cancel_ghost()
@@ -106,8 +106,8 @@ func test_normal_editor_refuses_unreserved_member_edits_and_new_joins_while_anot
 	assert_false(_main.call("shop_move", _tables[2].id, Vector2i(12, 8), 1))
 	assert_false(_editor().check_sell(_tables[2].id).ok)
 	assert_eq(_editor().sell(_tables[2].id), -1)
-	assert_false(_editor().check_buy(&"table_2", Vector2i(1, 6), 1).ok)
-	assert_false(_main.call("shop_buy", &"table_2", Vector2i(1, 6), 1))
+	assert_false(_editor().check_buy(&"table_2", Vector2i(1, 7), 1).ok)
+	assert_false(_main.call("shop_buy", &"table_2", Vector2i(1, 7), 1))
 	assert_eq(_editor().to_dict(), before)
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(_tables[0].reserved_by(seat), 246001)
@@ -226,7 +226,9 @@ func _start(with_saves: bool = false) -> void:
 	await _frames(3)
 
 
-func _join_starter_tables(row: int = 6) -> void:
+## Row 7 by default: one row lower and the north seats would shut the pass's
+## dining side in, and nobody walks through seats (#315, #320).
+func _join_starter_tables(row: int = 7) -> void:
 	_tables.assign(ShopBuilder.items_with_def(_world(), &"table_2"))
 	assert_eq(_tables.size(), 3)
 	for index: int in _tables.size():

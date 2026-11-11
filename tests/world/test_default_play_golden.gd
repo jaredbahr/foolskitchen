@@ -30,7 +30,8 @@ func before_each() -> void:
 		"walls": layout.wall_segments.duplicate(), "legacy_rows": layout.legacy_rows.duplicate(),
 		"placements": layout.placements.duplicate(), "spawns": layout.staff_spawns.duplicate(),
 		"layout_id": layout.save_layout_id}
-	var legacy: ShopLayout = LegacyTier1Layout.make()
+	# The recorded days ran with the original table row, before #320 turned it.
+	var legacy: ShopLayout = LegacyTier1Layout.with_table_row(LegacyTier1Layout.make())
 	layout.rows = legacy.rows.duplicate()
 	layout.room_rows = legacy.room_rows.duplicate()
 	layout.wall_segments = legacy.wall_segments.duplicate()

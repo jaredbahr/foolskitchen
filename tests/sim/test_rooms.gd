@@ -332,11 +332,19 @@ func test_guests_never_cut_a_kitchen_corner() -> void:
 	assert_true(path.size() > 2, "round, not through the pinch")
 	for index: int in range(1, path.size()):
 		assert_true(grid.guest_step_ok(path[index - 1], path[index]), "%s -> %s" % [path[index - 1], path[index]])
-	# The edit checks' flood fill agrees with what guests walk.
+	# The edit checks' flood fill agrees with what guests walk: never on
+	# through a seat (#315, #320), though a seat may end the walk.
 	var flood: Dictionary[Vector2i, bool] = RoomRules.guest_reachable(grid)
+	var seats: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in grid.items():
+		for seat: Vector2i in item.seat_cells:
+			seats[seat] = true
 	for cell: Vector2i in grid.cells():
 		if grid.is_guest_walkable(cell):
-			assert_eq(flood.has(cell), not grid.find_guest_path(grid.entries()[0], cell).is_empty(), "%s" % cell)
+			var others: Dictionary[Vector2i, bool] = seats.duplicate()
+			others.erase(cell)
+			var walk: Array[Vector2i] = grid.find_path_avoiding(grid.entries()[0], cell, others, true)
+			assert_eq(flood.has(cell), not walk.is_empty(), "%s" % cell)
 
 
 func test_buried_guests_escape_without_crossing_the_kitchen() -> void:

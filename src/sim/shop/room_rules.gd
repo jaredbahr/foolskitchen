@@ -45,10 +45,11 @@ static func label(kind: int) -> String:
 
 
 ## Cells guests can walk to from the street, never entering a staff-only room
-## or a back door (the same cells find_guest_path allows).
+## or a back door (the same cells find_guest_path allows). Like everyone, a
+## guest never walks on through a seat (#315, #320): a seat ends a walk.
 static func guest_reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	if not grid.has_guest_limits():
-		return WallRules.reachable(grid)
+		return WallRules.reachable(grid, true)
 	var seen: Dictionary[Vector2i, bool] = {}
 	var frontier: Array[Vector2i] = []
 	for entry: Vector2i in grid.entries():
@@ -58,7 +59,11 @@ static func guest_reachable(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	while not frontier.is_empty():
 		var next: Array[Vector2i] = []
 		for cell: Vector2i in frontier:
+			if WallRules.is_seat(grid, cell):
+				continue
 			for neighbour: Vector2i in grid.guest_neighbours(cell):
+				if not WallRules.seat_step_ok(grid, cell, neighbour):
+					continue
 				if not seen.has(neighbour):
 					seen[neighbour] = true
 					next.append(neighbour)
@@ -150,7 +155,7 @@ static func violations(grid: SimGrid, ids: Dictionary[int, int]) -> Dictionary[S
 	var out: Dictionary[String, String] = {}
 	if not grid.has_rooms() and WaitingBench.benches(grid).is_empty():
 		return out
-	var anyone: Dictionary[Vector2i, bool] = WallRules.reachable(grid)
+	var anyone: Dictionary[Vector2i, bool] = WallRules.reachable(grid, true)
 	var guests: Dictionary[Vector2i, bool] = guest_reachable(grid)
 	var cut_off: Dictionary[String, String] = {}
 	for placed: PlacedItem in grid.items():

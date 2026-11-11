@@ -458,16 +458,17 @@ static func seat_step_ok(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) 
 ## target in, even when furniture happens to block it today, because that
 ## furniture can be moved or sold later and the seal would remain. Then with
 ## furniture: a change may not newly cut off something reachable right now;
-## things furniture already blocks stay furniture warnings. Seats are furniture
-## here too: a seat that blocks the way is the editor's path warning
-## (ShopEditor._unreachable, #315), never a refusal of a wall or floor edit.
+## things furniture already blocks stay furniture warnings. The furniture pass
+## walks as people do (#320): a seat ends a walk but never carries it on, so a
+## wall or floor edit that leaves the only way somewhere through seats is
+## refused, while a way seats already block stays the editor's path warning.
 ## `people_only` (undo/redo, FK-085) checks only the people: a restored layout
 ## was already accepted, unusable seats or stations included.
 static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vector2i],
 		people_only: bool = false) -> String:
 	var problem: String = _cut_off(after, reachable(walls_only(before)), reachable(walls_only(after)), people, people_only)
 	if problem.is_empty():
-		problem = _cut_off(after, reachable(before), reachable(after), people, people_only)
+		problem = _cut_off(after, reachable(before, true), reachable(after, true), people, people_only)
 	return problem
 
 

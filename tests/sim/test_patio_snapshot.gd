@@ -56,7 +56,7 @@ func test_json_round_trip_keeps_outdoor_items_paint_finishes_and_sorted_ownershi
 	assert_true(_editor.apply_flooring(_editor.lay_changes([_street(-1, 0)] as Array[Vector2i],
 		&"herringbone", &"sage")), _editor.last_check.why)
 	var expected: Dictionary = _editor.to_dict()
-	assert_eq(expected["version"], 9)
+	assert_eq(expected["version"], 10)
 	var ownership: Array[Array] = []
 	for cell: Vector2i in _left_patio():
 		ownership.append([cell.x, cell.y])

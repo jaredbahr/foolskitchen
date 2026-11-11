@@ -98,7 +98,8 @@ static func _requirements(recipe: RecipeDef) -> Array[StringName]:
 
 
 static func _state(grid: SimGrid) -> Dictionary:
-	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid)
+	# Walking as staff do: a seat ends a walk, never carries it on (#320).
+	var reach: Dictionary[Vector2i, bool] = WallRules.reachable(grid, true)
 	var reachable: Dictionary[StringName, bool] = {}
 	var installed: Dictionary[StringName, bool] = {}
 	var fridge: bool = false
