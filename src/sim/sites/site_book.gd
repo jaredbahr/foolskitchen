@@ -70,6 +70,17 @@ func frozen_sections(id: StringName) -> Dictionary:
 	return (_frozen[id]["sections"] as Dictionary).duplicate(true) if _frozen.has(id) else {}
 
 
+## Replaces one per-site section of a frozen site in place, keeping its frozen
+## day (an away site's booking lapsing at a close, FK-087). Kept in loaded-file
+## JSON shape. Returns false and changes nothing for the active site, an
+## unknown site or a section that is not per-site.
+func set_frozen_section(id: StringName, key: String, section: Dictionary) -> bool:
+	if not _frozen.has(id) or not SiteSections.is_per_site(key):
+		return false
+	(_frozen[id]["sections"] as Dictionary)[key] = _as_json(section)
+	return true
+
+
 ## Adds a new inactive site, frozen as of `day` with the given sections.
 ## Each lot holds at most one site.
 func add_site(id: StringName, lot: StringName, display_name: String, day: int, sections: Dictionary) -> bool:

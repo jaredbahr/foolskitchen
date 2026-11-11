@@ -194,6 +194,7 @@ static func _role_name(staff_role: StringName) -> String:
 		&"cook": return "Cook"
 		&"server": return "Server"
 		&"cleaner": return "Cleaner"
+		&"manager": return "Manager"
 	return "Team member"
 
 
@@ -226,7 +227,8 @@ func can_let_go(id: StringName) -> bool:
 	for member: StaffMember in _members:
 		if member.role == _members[index].role:
 			count += 1
-	return _members[index].role == &"cleaner" or count > 1
+	# Only the last cook or server must stay; cleaners and managers can go.
+	return not [&"cook", &"server"].has(_members[index].role) or count > 1
 
 
 func let_go(id: StringName) -> bool:
@@ -237,7 +239,10 @@ func let_go(id: StringName) -> bool:
 
 
 ## Same-morning loads and refreshes consume no random values, even after hires.
-func draw_candidates(day: int, random: RandomNumberGenerator) -> bool:
+## With `managers` (the manager hiring tier, FK-087) a candidate's role is
+## drawn from the floor roles plus Manager; without it the draw is exactly
+## the floor roles, as before, so lower tiers' pools never change.
+func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = false) -> bool:
 	if day <= 0 or day < candidate_day or random == null:
 		return false
 	if candidate_day == day:
@@ -265,7 +270,10 @@ func draw_candidates(day: int, random: RandomNumberGenerator) -> bool:
 		var name_index: int = random.randi_range(0, names.size() - 1)
 		member.display_name = names[name_index]
 		names.remove_at(name_index)
-		member.role = StaffMember.ROLES[random.randi_range(0, StaffMember.ROLES.size() - 1)]
+		var roles: Array[StringName] = StaffMember.ROLES.duplicate()
+		if managers:
+			roles.append(StaffMember.MANAGER)
+		member.role = roles[random.randi_range(0, roles.size() - 1)]
 		member.skill = random.randi_range(1, 5)
 		member.trait_id = catalogue.traits[random.randi_range(0, catalogue.traits.size() - 1)].id
 		member.wage = _tuning.staff_wage(member.role, member.skill)

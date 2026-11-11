@@ -206,18 +206,26 @@ static func _needs_absent_station(recipe: RecipeDef, built: SimWorld) -> bool:
 
 
 ## Morning-only staffing changes retain existing people and the exact owner.
+## A manager (FK-087) does no floor work: they are checked like everyone but
+## get no worker in the world (the session pays their wage from the roster).
 func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = StaffRoster.CATALOGUE) -> bool:
 	if world == null or world.clock.phase != SimClock.Phase.MORNING or people.size() < 2 or people.size() > StaffRoster.CAPACITY:
 		return false
 	var by_id: Dictionary[StringName, StaffMember] = {}
+	var seen: Dictionary[StringName, bool] = {}
 	var roles: Array[StringName] = []
+	var floor_people: Array[StaffMember] = []
 	for member: StaffMember in people:
-		if member == null or member.id.is_empty() or by_id.has(member.id) \
-				or not StaffMember.ROLES.has(member.role) or not staff_spawns.has(member.role) \
+		if member == null or member.id.is_empty() or seen.has(member.id) \
+				or not StaffMember.is_known_role(member.role) \
+				or (member.role != StaffMember.MANAGER and not staff_spawns.has(member.role)) \
 				or catalogue.find_trait(member.trait_id) == null or member.skill < 1 or member.skill > 5 or member.wage < 0:
 			return false
-		by_id[member.id] = member
+		seen[member.id] = true
 		roles.append(member.role)
+		if member.role != StaffMember.MANAGER:
+			by_id[member.id] = member
+			floor_people.append(member)
 	if not roles.has(&"cook") or not roles.has(&"server"):
 		return false
 	var retained: Dictionary[StringName, bool] = {}
@@ -231,7 +239,7 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 			var member: StaffMember = by_id[employee.member_id]
 			employee.configure_member(member, catalogue.find_trait(member.trait_id))
 			retained[employee.member_id] = true
-	for member: StaffMember in people:
+	for member: StaffMember in floor_people:
 		if retained.has(member.id):
 			continue
 		var employee: StaffAgent = StaffAgent.new(member.role, member.skill)

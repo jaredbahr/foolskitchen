@@ -180,7 +180,9 @@ func refresh() -> void:
 		button.disabled = not editable or not _roster.can_hire(member.id)
 		button.tooltip_text = MORNING_HINT if not editable else ("Tier 1 has room for six staff." if button.disabled else (
 			"Cleaners mop floor spots. No hiring fee; wages are paid at closing."
-			if member.role == &"cleaner" else "Hire for no upfront cost; pay their wage at closing."))
+			if member.role == &"cleaner" else (
+			"Managers do no floor work. They run a restaurant while you are at your other one."
+			if member.role == StaffMember.MANAGER else "Hire for no upfront cost; pay their wage at closing.")))
 
 
 func _team_day_wages() -> int:
@@ -499,6 +501,7 @@ static func _role_name(staff_role: StringName) -> String:
 		&"cook": return "Cook"
 		&"server": return "Server"
 		&"cleaner": return "Cleaner"
+		&"manager": return "Manager"
 	return "Team member"
 
 
