@@ -47,6 +47,8 @@ func test_real_board_completion_credits_only_its_rostered_claimant_once() -> voi
 	_world.board.complete(cooked)
 	_world.board.complete(cooked)
 	assert_eq(_credited, [true] as Array[bool], "the board emits completion once")
+	assert_eq(_member(&"starter_cook").work_today()["cooked"], 1)
+	assert_eq(_member(&"starter_server").work_total()["cooked"], 0)
 	var cooking_xp: int = StaffRoster.GROWTH_TUNING.xp_for_task(&"cook")
 	assert_eq(_member(&"starter_cook").growth_state().earned_today(&"cooking"), cooking_xp)
 	assert_eq(_member(&"starter_server").growth_state().earned_today(&"service"), 0)
@@ -81,6 +83,7 @@ func test_cancel_and_exhausted_drops_never_emit_completed_or_stage_xp() -> void:
 	assert_eq(dropped.state, SimTask.State.CANCELLED)
 	assert_false(StaffTaskCredit.credit_completed(dropped, _world, _roster))
 	assert_true(_credited.is_empty())
+	assert_eq(_member(&"starter_cook").work_today()["cooked"], 0)
 	assert_eq(_member(&"starter_cook").growth_state().earned_today(&"cooking"), 0)
 
 
@@ -101,6 +104,12 @@ func test_owner_unrostered_staff_and_unknown_kind_cannot_credit_xp() -> void:
 	_world.board.post(unknown, 0)
 	assert_true(_world.board.claim(unknown, _staff(&"starter_cook").id, 0))
 	_world.board.complete(unknown)
+	_world.board.complete(unknown)
+	assert_eq(_member(&"starter_cook").work_today()["other"], 1,
+		"a false XP result cannot make the board emit the Other task twice")
+	assert_eq(_member(&"starter_cook").work_total()["cooked"], 0,
+		"the Owner and outsider did not credit a roster member")
+	assert_eq(_member(&"starter_server").work_total()["other"], 0)
 	assert_eq(_credited, [false, false, false] as Array[bool])
 	assert_eq(_member(&"starter_cook").growth_state().earned_today(&"cooking"), 0)
 	assert_eq(_member(&"starter_server").growth_state().earned_today(&"service"), 0)

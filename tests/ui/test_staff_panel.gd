@@ -720,3 +720,55 @@ func _luminance(color: Color) -> float:
 
 func _linear_channel(value: float) -> float:
 	return value / 12.92 if value <= 0.04045 else pow((value + 0.055) / 1.055, 2.4)
+
+
+func test_work_summary_updates_in_place_and_omits_zero_other() -> void:
+	var row: Control = _panel.row_for(&"starter_cook")
+	var work: Label = row.get_node("Work") as Label
+	var action: Button = row.get_node("Top/Action") as Button
+	assert_eq(work.text, "Today: 0 tasks   Total: 0 tasks")
+	assert_true(_roster.record_completed_task(&"starter_cook", &"cook"))
+	_panel.refresh()
+	assert_eq(work.text, "Today: 1 cooked   Total: 1 cooked")
+	assert_false(work.text.contains("other"))
+	assert_true(_panel.row_for(&"starter_cook") == row)
+	assert_true(row.get_node("Top/Action") == action)
+	assert_false(_roster.record_completed_task(&"starter_cook", &"not_a_task"))
+	_panel.refresh()
+	assert_eq(work.text, "Today: 1 cooked · 1 other   Total: 1 cooked · 1 other")
+	assert_false(work.text.contains("not_a_task"))
+	for candidate: StaffMember in _roster.candidates():
+		assert_false(_panel.row_for(candidate.id).has_node("Work"), "candidates have not worked here")
+
+
+func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	_native_host = SubViewport.new()
+	_native_host.size = Vector2i(1600, 900)
+	_native_host.handle_input_locally = true
+	_native_host.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(_native_host)
+	_native_host.add_child(_panel)
+	_panel.show()
+	await _priority_frames(3)
+	var id: StringName = _roster.candidates()[0].id
+	var hire: Button = _panel.row_for(id).get_node("Top/Action") as Button
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	scroll.ensure_control_visible(hire)
+	await _priority_frames(1)
+	var point: Vector2 = hire.get_global_rect().get_center()
+	_native_host.push_input(_priority_mouse(point, true), true)
+	assert_true(hire.is_pressed())
+	assert_true(_roster.record_completed_task(&"starter_cook", &"cook"))
+	await _priority_frames(2)
+	assert_eq((_panel.row_for(&"starter_cook").get_node("Work") as Label).text,
+		"Today: 1 cooked   Total: 1 cooked", "visible work updates without a command refresh")
+	assert_true(_panel.row_for(id).get_node("Top/Action") == hire)
+	assert_true(hire.is_pressed(), "work labels must not replace an in-progress native press")
+	await _priority_frames(1)
+	assert_true(hire.get_global_rect().has_point(point))
+	var before: Dictionary = _roster.to_dict()
+	_native_host.push_input(_priority_mouse(point, false), true)
+	assert_eq(_requests, [id] as Array[StringName])
+	assert_eq(_roster.to_dict(), before, "the panel still only requests a hire")
