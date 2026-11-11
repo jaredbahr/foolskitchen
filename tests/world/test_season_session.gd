@@ -9,6 +9,8 @@ const SLOT: String = "season_session"
 var _mains: Array[Node] = []
 var _old_save_dir: String
 var _save_dir: String
+var _tier_recipe: RecipeDef = null
+var _old_unlock_tier: int = 0
 
 
 func before_each() -> void:
@@ -19,6 +21,9 @@ func before_each() -> void:
 
 
 func after_each() -> void:
+	if _tier_recipe != null:
+		_tier_recipe.unlock_tier = _old_unlock_tier
+		_tier_recipe = null
 	for main: Node in _mains.duplicate():
 		_close(main)
 	SaveSystem.delete_slot(SLOT)
@@ -59,6 +64,37 @@ func test_current_day_stock_tags_menu_hint_and_reads_keep_prices_quality_and_rng
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(Economy.stock.to_dict(), stock)
 	assert_eq(GameState._capture_save(), rng, "stock and menu reads draw no random numbers")
+
+
+func test_career_locked_dish_keeps_its_season_hint_in_real_menu_details() -> void:
+	var main: Node = _start()
+	Clock.sim.day = 28
+	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_eq(owner.career_tier, 1)
+	_tier_recipe = (main.get("content") as ContentDB).recipe(&"tomato_melt")
+	assert_not_null(_tier_recipe)
+	_old_unlock_tier = _tier_recipe.unlock_tier
+	_tier_recipe.unlock_tier = 2 # Temporary test mutation; after_each restores the loaded resource.
+	var menu: MenuSettings = main.get("menu_settings") as MenuSettings
+	owner.award_bonus(owner.threshold_for(2))
+	assert_eq(owner.level, 2, "owner level alone does not unlock the career-tier dish")
+	menu.set_owner_level(owner.level)
+	main.call("_refresh_menu_catalogue")
+	assert_null(menu.recipe(_tier_recipe.id), "the career-locked dish is not offered")
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_true(panel.select_recipe(_tier_recipe.id), "locked dishes stay inspectable")
+	var slots: VBoxContainer = panel.get("_requirements_box") as VBoxContainer
+	assert_true(slots.is_visible_in_tree(), "the selected dish shows its real detail panel")
+	assert_true((slots.get_node("ingredients0") as Label).text.contains("Bread: "))
+	assert_true((slots.get_node("ingredients0") as Label).text.contains("In season"))
+	assert_eq((slots.get_node("other0") as Label).text, "Requires Tier 2")
+	assert_eq((slots.get_node("other0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
+	var row: Control = panel.row_for(_tier_recipe.id)
+	for path: String in ["Top/Enabled", "Price/Minus", "Price/Plus"]:
+		assert_true((row.get_node(path) as Button).disabled, "locked recipes cannot be sold or repriced")
+	assert_false(main.call("menu_set_enabled", _tier_recipe.id, true))
+	assert_false(main.call("menu_set_price", _tier_recipe.id, _tier_recipe.standard_price + 1))
 
 
 func test_manual_cart_haggle_discounts_rounded_seasonal_units_once() -> void:
