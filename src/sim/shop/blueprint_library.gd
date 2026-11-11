@@ -122,6 +122,8 @@ func restore(data: Dictionary, content: ContentDB, messages: Array[String]) -> b
 			var swatch: StringName = StringName(saved.get("swatch_id", ""))
 			entry.swatch_id = swatch if definition.paintable and content.swatch(swatch) != null else &""
 			entry.variant_id = definition.known_variant_id(StringName(saved.get("variant_id", "")))
+			entry.paint = PaintLook.from_rows(saved["paint"], definition, content) if saved.has("paint") \
+				else PaintLook.legacy(definition, entry.swatch_id)
 			blueprint.entries.append(entry)
 		if not blueprint.entries.is_empty():
 			staged.append(blueprint)

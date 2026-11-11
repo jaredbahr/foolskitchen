@@ -83,8 +83,10 @@ static func _from_dict(value: Variant, content: ContentDB, reasons: Array[String
 		if not raw is Dictionary:
 			return _fail(reasons, BlueprintCodeText.INVALID)
 		var row: Dictionary = raw
-		if row.size() != 5 or not row.get("item_id") is String or not row.get("offset") is Array \
-				or not row.get("swatch_id") is String or not row.get("variant_id") is String:
+		# A sixth key is the optional paint slots (#431).
+		if row.size() != (6 if row.has("paint") else 5) or not row.get("item_id") is String or not row.get("offset") is Array \
+				or not row.get("swatch_id") is String or not row.get("variant_id") is String \
+				or not row.get("paint", []) is Array:
 			return _fail(reasons, BlueprintCodeText.INVALID)
 		var definition: ItemDef = content.item(StringName(row["item_id"]))
 		if definition == null:
@@ -110,6 +112,11 @@ static func _from_dict(value: Variant, content: ContentDB, reasons: Array[String
 			return _fail(reasons, BlueprintCodeText.LOOK)
 		if not entry.swatch_id.is_empty() and (not definition.paintable or content.swatch(entry.swatch_id) == null):
 			return _fail(reasons, BlueprintCodeText.LOOK)
+		var paint_rows: Variant = row.get("paint")
+		if paint_rows is Array and (paint_rows as Array).size() > PaintLook.MAX_ROWS:
+			return _fail(reasons, BlueprintCodeText.LOOK)
+		entry.paint = PaintLook.from_rows(paint_rows, definition, content) if row.has("paint") \
+			else PaintLook.legacy(definition, entry.swatch_id)
 		result.entries.append(entry)
 	return result
 
@@ -226,7 +233,8 @@ static func _json_safe(text: String) -> bool:
 			continue
 		if ch == "{" or ch == "[":
 			stack.append(ch)
-			if stack.size() > 4:
+			# Deepest: name/entries/row/paint rows/one paint row (#431).
+			if stack.size() > 5:
 				return false
 		elif ch == "}" or ch == "]":
 			if previous == "," or stack.is_empty() or stack.pop_back() != ("{" if ch == "}" else "["):

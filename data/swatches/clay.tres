@@ -6,3 +6,5 @@ id = &"clay"
 display_name = "Clay"
 color = Color(0.7137255, 0.5333333, 0.4509804, 1)
 theme_tags = Array[StringName]([&"cosy", &"rustic"])
+family = &"neutral"
+family_order = 4

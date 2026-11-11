@@ -14,7 +14,7 @@ const MAX_ENTRIES: int = 200
 
 ## D26: WALL_FINISH puts up or recolours wall finishes; HANG, TAKE_DOWN and
 ## REHANG are wall decor bought, sold and moved.
-enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG, STAMP, VARIANT, HUNG_PAINT, PATIO }
+enum Kind { BUY, MOVE, SELL, WALLS, FLOOR, PAINT, ROOMS, FLOORING, WALL_FINISH, HANG, TAKE_DOWN, REHANG, STAMP, VARIANT, HUNG_PAINT, PATIO, ITEM_LOOK }
 
 ## One placed item across undo and redo. Re-placing an item gives it a new
 ## grid id, so entries share this reference instead of holding raw ids.
@@ -69,6 +69,18 @@ class Entry extends RefCounted:
 	## &"wall", &"floor" or &"item"; colours before and after.
 	var paint_target: StringName = &""
 	var paint_after: StringName = &""
+	## An item's paint slots (#431) with its swatch_id: a buy's, sale's or
+	## look change's own look, kept as a detached copy.
+	var paint: PaintLook
+	## ITEM_LOOK: one Look per repainted item, before and after.
+	var looks_before: Array[Look] = []
+	var looks_after: Array[Look] = []
+
+## One item's whole paint (#431): its main colour and its slot paint.
+class Look extends RefCounted:
+	var item: ItemRef
+	var swatch_id: StringName = &""
+	var paint: PaintLook
 
 ## Why the last undo or redo was refused ("" after a success).
 var last_refusal: String = ""
@@ -120,12 +132,15 @@ func redo_label() -> String:
 
 # --- Edits (each applies through ShopEditor, then records itself) -------------
 
-## A colour (the eyedropper's copy) is a free repaint that is part of the buy.
+## A colour (the eyedropper's copy) is a free repaint that is part of the buy;
+## `look` (its paint slots, #431) comes with it.
 func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id: StringName = &"",
-		variant_id: StringName = &"") -> bool:
+		variant_id: StringName = &"", look: PaintLook = null) -> bool:
 	if not _editor.buy(def_id, origin, quarter_turns, null, variant_id):
 		return false
-	if not swatch_id.is_empty():
+	if look != null and not look.is_empty():
+		_editor.set_item_look(_editor.last_item_id, swatch_id, look)
+	elif not swatch_id.is_empty():
 		_editor.paint_item(_editor.last_item_id, swatch_id)
 	var entry: Entry = Entry.new()
 	entry.kind = Kind.BUY
@@ -134,6 +149,7 @@ func buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swatch_id
 	entry.origin = origin
 	entry.turns = quarter_turns
 	entry.swatch_id = _paint_value(&"item", _editor.last_item_id)
+	entry.paint = _grid.item(_editor.last_item_id).paint.copy()
 	entry.variant_id = _grid.item(_editor.last_item_id).variant_id
 	entry.cash = _editor.last_cash_change
 	entry.label = "buy " + _name(_editor.last_item_id)
@@ -190,6 +206,7 @@ func sell(item_id: int) -> int:
 	entry.origin = placed.origin
 	entry.turns = placed.quarter_turns
 	entry.swatch_id = placed.swatch_id
+	entry.paint = placed.paint.copy()
 	entry.variant_id = placed.variant_id
 	entry.label = "sell " + _name(item_id)
 	entry.item = _ref(item_id)
@@ -444,9 +461,10 @@ func paint_variant(item_id: int, variant_id: StringName) -> bool:
 		return false
 	var before: StringName = placed.variant_id
 	var paint_before: StringName = placed.swatch_id
+	var slots_before: PaintLook = placed.paint.copy()
 	if not _editor.paint_variant(item_id, variant_id):
 		return false
-	if not _editor.can_edit() or (before == placed.variant_id and paint_before.is_empty()):
+	if not _editor.can_edit() or (before == placed.variant_id and paint_before.is_empty() and slots_before.is_empty()):
 		return true
 	var entry: Entry = Entry.new()
 	entry.kind = Kind.VARIANT
@@ -454,9 +472,89 @@ func paint_variant(item_id: int, variant_id: StringName) -> bool:
 	entry.variant_id = before
 	entry.variant_after = placed.variant_id
 	entry.swatch_id = paint_before
+	entry.paint = slots_before
 	entry.label = "change look of " + _name(item_id)
 	_push(entry)
 	return true
+
+
+## Paint one slot (#431) on each of `item_ids` (Shift paints every piece of a
+## kind in the room): one free step, recorded only while editing is allowed.
+## Refused as a whole when any item cannot take it.
+func paint_slot(item_ids: Array[int], slot_id: StringName, material: StringName, swatch_id: StringName) -> bool:
+	var before: Array[Look] = _looks(item_ids)
+	if before.is_empty():
+		return false
+	for look: Look in before:
+		var definition: ItemDef = _grid.item(look.item.id).def as ItemDef
+		if definition.slot_index(slot_id) < 0:
+			return false
+	for look: Look in before:
+		if not _editor.paint_slot(look.item.id, slot_id, material, swatch_id):
+			_put_looks(before)
+			return false
+	_record_looks(before, "paint " + _name(item_ids[0]) if item_ids.size() == 1 else "paint %d pieces" % item_ids.size())
+	return true
+
+
+## Give each of `item_ids` a whole copied look (#431 paste): one free step.
+func apply_look(item_ids: Array[int], swatch_id: StringName, look: PaintLook) -> bool:
+	var before: Array[Look] = _looks(item_ids)
+	if before.is_empty() or look == null:
+		return false
+	for entry: Look in before:
+		if not _editor.look_fits(_grid.item(entry.item.id).def as ItemDef, look):
+			return false
+	for entry: Look in before:
+		if not _editor.set_item_look(entry.item.id, swatch_id, look):
+			_put_looks(before)
+			return false
+	_record_looks(before, "paste a look on " + _name(item_ids[0]) if item_ids.size() == 1 \
+		else "paste a look on %d pieces" % item_ids.size())
+	return true
+
+
+## Detached looks of placed, paintable items; empty when any id is not one.
+func _looks(item_ids: Array[int]) -> Array[Look]:
+	var result: Array[Look] = []
+	for id: int in item_ids:
+		var placed: PlacedItem = _grid.item(id) if _grid != null else null
+		if placed == null or not placed.def is ItemDef or not (placed.def as ItemDef).paintable:
+			return []
+		var look: Look = Look.new()
+		look.item = _ref(id)
+		look.swatch_id = placed.swatch_id
+		look.paint = placed.paint.copy()
+		result.append(look)
+	return result
+
+
+func _put_looks(looks: Array[Look]) -> bool:
+	for look: Look in looks:
+		if not _editor.set_item_look(look.item.id, look.swatch_id, look.paint):
+			return false
+	return true
+
+
+func _record_looks(before: Array[Look], label: String) -> void:
+	if _editor == null or not _editor.can_edit():
+		return
+	var ids: Array[int] = []
+	for look: Look in before:
+		ids.append(look.item.id)
+	var after: Array[Look] = _looks(ids)
+	var changed: bool = false
+	for index: int in before.size():
+		changed = changed or before[index].swatch_id != after[index].swatch_id \
+			or not before[index].paint.equals(after[index].paint)
+	if not changed:
+		return
+	var entry: Entry = Entry.new()
+	entry.kind = Kind.ITEM_LOOK
+	entry.looks_before = before
+	entry.looks_after = after
+	entry.label = label
+	_push(entry)
 
 
 ## `target` is &"wall", &"floor" or &"item" (with `item_id`). Paint is free.
@@ -564,7 +662,10 @@ func _invert(entry: Entry) -> bool:
 		Kind.VARIANT:
 			if not _check(_editor.paint_variant(entry.item.id, entry.variant_id)):
 				return false
-			return _check(_editor.paint_item(entry.item.id, entry.swatch_id))
+			return _check(_editor.set_item_look(entry.item.id, entry.swatch_id,
+				entry.paint if entry.paint != null else PaintLook.new()))
+		Kind.ITEM_LOOK:
+			return _check(_put_looks(entry.looks_before))
 		Kind.PATIO:
 			if not _check(_editor.apply_patio(entry.floor_cells, not entry.floor_adding, exact)):
 				return false
@@ -634,6 +735,8 @@ func _reapply(entry: Entry) -> bool:
 			return _check(_editor.apply_patio(entry.floor_cells, entry.floor_adding, exact))
 		Kind.VARIANT:
 			return _check(_editor.paint_variant(entry.item.id, entry.variant_after))
+		Kind.ITEM_LOOK:
+			return _check(_put_looks(entry.looks_after))
 		Kind.PAINT:
 			return _check(_paint(entry.paint_target, entry.paint_after, entry.item.id if entry.item != null else -1))
 		Kind.ROOMS:
@@ -709,7 +812,9 @@ func _restore(entry: Entry, exact: ShopEditor.Exact) -> bool:
 	var id: int = _editor.last_item_id
 	entry.item.id = id
 	_refs[id] = entry.item
-	if not entry.swatch_id.is_empty():
+	if entry.paint != null and not entry.paint.is_empty():
+		_editor.set_item_look(id, entry.swatch_id, entry.paint)
+	elif not entry.swatch_id.is_empty():
 		_editor.paint_item(id, entry.swatch_id)
 	return true
 

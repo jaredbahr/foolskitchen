@@ -183,7 +183,7 @@ func test_rejects_wrong_types_unknown_items_and_unknown_looks() -> void:
 	wrong_field = base.duplicate(true)
 	wrong_field.variant_id = 17
 	_assert_rejected(_json_code({"name": "Shape", "entries": [wrong_field]}), "variant id must be text")
-	wrong_field = _row("rug_rectangle", Vector2i.ZERO)
+	wrong_field = _row("glass_table", Vector2i.ZERO)
 	wrong_field.swatch_id = "sage"
 	_assert_rejected(_json_code({"name": "Shape", "entries": [wrong_field]}), "a known swatch cannot paint a non-paintable item")
 	wrong_field = base.duplicate(true)
