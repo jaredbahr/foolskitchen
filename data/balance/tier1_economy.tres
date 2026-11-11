@@ -7,7 +7,8 @@ script = ExtResource("1_htw2e")
 wages = Dictionary[StringName, int]({
 &"cook": 30,
 &"server": 25,
-&"cleaner": 20
+&"cleaner": 20,
+&"manager": 45
 })
 staff_wage_curve = PackedFloat32Array(0.7, 0.85, 1.0, 1.2, 1.4)
 starting_plates = 12

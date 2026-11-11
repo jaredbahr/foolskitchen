@@ -12,7 +12,8 @@ extends Resource
 ## Rent charged at the end of every day.
 @export var daily_rent: int = 40
 ## Wage per staff role, charged at the end of every day.
-@export var wages: Dictionary[StringName, int] = {&"cook": 30, &"server": 25, &"cleaner": 20}
+@export var wages: Dictionary[StringName, int] = {&"cook": 30, &"server": 25, &"cleaner": 20,
+	&"manager": 45}
 ## Skill 1..5 wage multipliers; skill 3 keeps the starting role wage.
 @export var staff_wage_curve: PackedFloat32Array = PackedFloat32Array([0.7, 0.85, 1.0, 1.2, 1.4])
 ## Default auto-reorder target per ingredient. Its key order is also the fixed
