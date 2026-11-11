@@ -2460,7 +2460,10 @@ func _on_plate_broken(cost: int) -> void:
 func build_report(day: int) -> DayReport:
 	var report := DayReport.new()
 	report.day = day
-	if int(_haggle_receipt.get("day", 0)) == day:
+	# The receipt names its site: a haggled order bought before a switch
+	# stays out of the arriving site's report (FK-087).
+	if int(_haggle_receipt.get("day", 0)) == day \
+			and StringName(_haggle_receipt.get("site", &"")) == Economy.active_site:
 		report.haggle_percent = int(_haggle_receipt["percent"])
 		report.haggle_saved = int(_haggle_receipt["saved"])
 	report.staff_activity = sim.staff_activity.snapshot()
@@ -3038,12 +3041,14 @@ func switch_site(target: StringName) -> bool:
 	# From here the switch cannot be refused.
 	_disconnect_session()
 	Clock.attach_world(null)
-	# Notes kept from the departing site's morning belong to it.
+	# Notes kept from the departing site's morning belong to it and are saved
+	# nowhere: they are dropped. (The haggle receipt names its site instead.)
 	_menu_access_losses.clear()
 	_last_team_activity.clear()
 	_staff_notice_day = 0
 	_staff_notices.clear()
 	_cart_trimmed.clear()
+	_thrown_today.clear()
 	_install_staged_sections(staged, false)
 	_clear_site_staging()
 	_loaded_layout = staged.layout
@@ -5303,7 +5308,7 @@ func stock_place_order() -> bool:
 	if percent > 0:
 		if not Economy.buy_haggled_order(lines, percent):
 			return false
-		_haggle_receipt = {"day": Clock.sim.day, "percent": percent,
+		_haggle_receipt = {"day": Clock.sim.day, "site": Economy.active_site, "percent": percent,
 			"saved": stock_cart_list_total() - cost}
 		_haggle_percent = 0
 	else:

@@ -3427,7 +3427,13 @@ frozen copy without a `pantry` gets an empty one (the pantry restores in
 place, so skipping it would keep the departing stock); other missing sections
 take their load defaults. A refusal after a successful restore restores the
 departing capture again (for the pantry) and clears the staging. The
-morning's one supplier haggle is the owner's and is not reset by a switch.
+morning's one supplier haggle is the owner's and is not reset by a switch
+(an offer won and not yet spent still applies at the arriving site). Today's
+main.gd report state follows the site (#408 D2): the haggle receipt names
+its site, so the saving shows only on that site's report; the arriving
+morning resets dishes sold, food cost, expiry, the auto-order and delivery
+notes; and notes kept nowhere else (hand throw-outs, a trimmed cart, staff
+notices, team activity, menu access losses) are dropped on a switch.
 
 **Managers and away sites.** A new staff role **Manager** (hired at Tier 3,
 skill is the existing service skill). An inactive site with a manager earns,
