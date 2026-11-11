@@ -257,7 +257,8 @@ func test_actual_static_triangles_avoid_maximum_lease_native_pads_and_service_pa
 	assert_not_null(lamps)
 	if buildings == null or lamps == null:
 		return
-	assert_eq(buildings.get_child_count(), 5)
+	assert_eq(buildings.get_child_count(), dressing.building_footprints().size(), "one mesh per building")
+	assert_eq(buildings.get_child_count(), StreetSet.standard().shops_per_side * 2 + StreetSet.standard().house_count)
 	assert_eq(lamps.get_child_count(), 2)
 	for building: Node3D in buildings.get_children():
 		assert_false(_positive_overlap(_xz_rect(_visible_mesh_bounds(building, view)), _cell_rect(lot).grow(1.25)),

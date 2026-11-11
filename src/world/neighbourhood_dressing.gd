@@ -11,8 +11,7 @@ const PATIO_WARM_MIX: float = 0.45
 const PATIO_EDGE_DARKEN: float = 0.25
 const PATIO_EDGE_WIDTH: float = 0.035
 const MADE_ROOT: String = "res://assets/made/neighbourhood/"
-const ASSETS: Array[String] = ["road_segment", "crossing_segment", "kerb_segment", "shopfront",
-	"house_body", "gable_roof", "compact_car", "street_lamp"]
+const ASSETS: Array[String] = ["road_segment", "crossing_segment", "kerb_segment", "compact_car", "street_lamp"]
 const GUEST_IDS: Array[int] = [1, 4, 6]
 const PHASES: Array[float] = [0.0, 0.33, 0.67]
 const WALK_LANES: Array[float] = [2.755, 6.455, 7.555]
@@ -22,7 +21,6 @@ const WALK_BOTTOM: float = -0.05
 const WALK_TOP: float = 1.10
 const MARGIN: float = 0.05
 const SIDE_MARGIN: float = 6.0
-const BUILDING_GAP: float = 1.25
 const CAR_SPEED: float = 2.8
 const CAR_REST: float = 14.0
 const CAR_LANE: float = 4.005
@@ -86,9 +84,13 @@ var _paving_top: float = 0.055
 var _generation: int = 0
 ## Re-skin a street by setting this before `configure` (null = standard meadow).
 var ground_skin: GroundSkin
+## Re-style a street's buildings by setting this before `configure` (null = the standard row).
+var street_set: StreetSet
 var _ground_key: Array = []
 var _far_key: Array = []
 var _building_boxes: Array[AABB] = []
+var _lot_boxes: Array[AABB] = []
+var _building_casters: Array[AABB] = []
 var _shadow_casters: Array[AABB] = []
 var _light_shift: Vector2 = Vector2.ZERO
 var _visual_half: float = 0.0
@@ -115,6 +117,8 @@ func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictiona
 
 func rebuild() -> void:
 	_ensure_roots()
+	if street_set == null:
+		street_set = StreetSet.standard()
 	var built: Array[Vector2i] = []
 	var patio: Array[Vector2i] = []
 	if _grid != null:
@@ -124,7 +128,8 @@ func rebuild() -> void:
 			elif _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
 				built.append(cell)
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
-		_frontages, _native_pavement, built, ground_skin.signature() if ground_skin != null else "standard"]
+		_frontages, _native_pavement, built, ground_skin.signature() if ground_skin != null else "standard",
+		street_set.signature()]
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -231,6 +236,8 @@ func _clear_static() -> void:
 	_pedestrian_sweeps.clear()
 	_door_approaches.clear()
 	_building_boxes.clear()
+	_lot_boxes.clear()
+	_building_casters.clear()
 	_frame = Transform3D.IDENTITY
 	_outward = Vector3.FORWARD
 	_tangent = Vector3.RIGHT
@@ -533,35 +540,53 @@ func _build_kerbs(width: float, count: int) -> void:
 	prop.free()
 
 
+## The row of shopfronts beside the lot and the houses across the road, built by
+## NeighbourhoodBuildings from the street's StreetSet. Planned every rebuild (cheap),
+## meshed once per street frame and reused from the shared cache afterwards.
 func _build_buildings() -> void:
-	for index: int in 5:
-		var body: PropView = _made_prop("shopfront" if index < 3 else "house_body")
-		var roof: PropView = _made_prop("gable_roof")
-		var body_box: AABB = body.get_combined_aabb()
-		var roof_box: AABB = roof.get_combined_aabb()
-		var full: AABB = body_box.merge(AABB(roof_box.position + Vector3.UP * body_box.end.y, roof_box.size))
-		var u: float = 0.0
-		var v: float = 8.355 + full.size.z * 0.5
-		var yaw: float = 0.0
-		if index < 2:
-			u = _local_reserve.position.x - BUILDING_GAP - full.size.x * 0.5 if index == 0 \
-				else _local_reserve.end.x + BUILDING_GAP + full.size.x * 0.5
-			v = -full.size.z * 0.5 - 0.15
-			yaw = PI
-		else:
-			u = float(index - 3) * 3.3
-		var placement: Transform3D = _placement(u, 0.0, v, yaw)
-		var actual: AABB = placement * full
-		_building_boxes.append(_frame.affine_inverse() * actual)
-		if _clear_bounds(actual):
-			var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
-			batch.add_prop(body, placement)
-			batch.add_prop(roof, placement * Transform3D(Basis.IDENTITY, Vector3.UP * body_box.end.y))
-			_add_batch(batch, "Building%d" % index, "Buildings")
-		else:
+	var builder: NeighbourhoodBuildings = NeighbourhoodBuildings.new()
+	builder.street = street_set
+	builder.local_reserve = _local_reserve
+	builder.shift = _shift
+	builder.paving_top = _paving_top
+	builder.plan()
+	_building_boxes = builder.footprints()
+	_lot_boxes = builder.lots()
+	_building_casters = builder.casters()
+	for plan: NeighbourhoodBuildings.Plan in builder.plans:
+		if not _clear_bounds(_frame * plan.bounds):
 			build_error = "A neighbouring building has no clear outside position"
-		body.free()
-		roof.free()
+			return
+	var group: Node3D = _groups["Buildings"]
+	var key: String = "buildings" + str([_frame, _local_reserve, _shift, _paving_top, street_set.signature()])
+	if _restore_cached(group, key):
+		for child: Node in group.get_children():
+			(child as MeshInstance3D).transform = _frame
+			_static_meshes.append(child as MeshInstance3D)
+		return
+	for plan: NeighbourhoodBuildings.Plan in builder.plans:
+		var mesh: MeshInstance3D = builder.build_mesh(plan)
+		mesh.transform = _frame
+		group.add_child(mesh)
+		_static_meshes.append(mesh)
+	_store_cached(group, key)
+
+
+## Local-frame footprints (height in y) of every building and, flat, the house lots.
+func building_footprints() -> Array[AABB]:
+	return _building_boxes.duplicate()
+
+
+func lot_footprints() -> Array[AABB]:
+	return _lot_boxes.duplicate()
+
+
+## The same boxes in the dressing's own space (the shop view's space), for clearance checks.
+func building_boxes_in_view() -> Array[AABB]:
+	var result: Array[AABB] = []
+	for box: AABB in _building_boxes:
+		result.append(_frame * box)
+	return result
 
 
 ## The world square the camera is held inside, in world metres on the XZ plane.
@@ -576,7 +601,7 @@ func world_rect() -> Rect2:
 func _build_ground() -> void:
 	_shadow_casters = _compute_shadow_casters()
 	_light_shift = _compute_light_shift()
-	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _shadow_casters, _light_shift,
+	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _lot_boxes, _shadow_casters, _light_shift,
 			ground_skin.signature() if ground_skin != null else "standard"]
 	if key == _ground_key and ground_root.get_child_count() > 0:
 		ground_root.transform = _frame
@@ -593,6 +618,7 @@ func _build_ground() -> void:
 	builder.local_reserve = _local_reserve
 	builder.shift = _shift
 	builder.buildings = _building_boxes
+	builder.lots = _lot_boxes
 	builder.skin = ground_skin
 	builder.shadow_casters = _shadow_casters
 	builder.light_shift = _light_shift
@@ -619,7 +645,7 @@ func _compute_light_shift() -> Vector2:
 
 
 ## Boxes whose baked shadows plant them on the lawn: the shop's built floor at
-## wall height and the near-side neighbours.
+## wall height and every neighbouring building and house.
 func _compute_shadow_casters() -> Array[AABB]:
 	var casters: Array[AABB] = []
 	var inverse: Transform3D = _frame.affine_inverse()
@@ -635,9 +661,7 @@ func _compute_shadow_casters() -> Array[AABB]:
 			high = Vector3(maxf(high.x, centre.x + half), 0.0, maxf(high.z, centre.z + half))
 		if low.x <= high.x:
 			casters.append(inverse * AABB(low, Vector3(high.x - low.x, ArtScale.WALL_HEIGHT, high.z - low.z)))
-	for box: AABB in _building_boxes:
-		if box.position.z + box.size.z * 0.5 < _shift:
-			casters.append(box)
+	casters.append_array(_building_casters)
 	return casters
 
 

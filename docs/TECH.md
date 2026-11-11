@@ -2195,6 +2195,31 @@ where it meets grass. The clearing is the camera's world edge:
 framing) caps zoom to `world_zoom_limit()` so that, from any allowed pan and at
 any rotation, the farthest visible ground point (`view_reach`) stays inside it.
 
+The buildings are a street preset of their own (#422): `StreetSet` is a resource holding every
+palette (wall, roof, door, hedge and bloom colours from the existing swatches), the allowed roof shapes
+(gable front or side, hip, pyramid, shed, flat, false front), the wall heights, the fence styles, the
+house count and the list of `ShopStyle` businesses (id, walls, awning stripes, blank sign board, door
+and the one small thing it sets out: crate of loaves, flower buckets, portholes, jars, a table and
+stools). Like `GroundSkin` it is swapped as a whole, so a seaside street (#425) supplies its own set:
+`NeighbourhoodDressing.street_set` (null = `StreetSet.standard()`), part of every cache key.
+`NeighbourhoodBuildings` plans and meshes it. Planning is cheap and pure: an integer hash of each
+building's index and `StreetSet.seed_salt` (`NeighbourhoodGround.hash01`, no RNG) picks sizes,
+heights, roofs and colours, avoiding the previous building's choice so neighbours differ. Two
+shopfronts per side sit `GAP` (1.4 m) from the maximum lot, sharing the street line with awnings
+over the paving and a 0.22 m hairline between row neighbours; five houses across the road each get a
+lot (front fence line at 8.7 m from the street edge) with a gate, a path to the door, side and back
+hedges, a mailbox, flower beds and a bush or small tree. Meshing is generated vertex-coloured boxes
+and slabs (flat-shaded, shadowless, one surface per building, about 8.7k triangles in all, built in
+about 20 ms and cached with the ground by street frame); no new art packs, and the old `shopfront`,
+`house_body` and `gable_roof` models are no longer loaded. Near shops are kept off the lot by
+geometry rather than a fade: the camera pitch is 54.7 degrees, so a point h metres up hides 0.5 h
+of ground per axis along a diagonal view, and every near shop and roof stays under 2.7 m with a gap
+of 1.4 m, so no resting view lets one hide any lot ground (checked per diagonal in
+`test_neighbourhood_buildings.gd`). The ground builder receives the footprints and house lots so it
+plants nothing on them, stretches the far lawn under the lots, and bakes lawn shadows for every
+building (walls at wall height plus a narrower roof core at full height). Planning exposes
+`building_footprints()`, `lot_footprints()` and `building_boxes_in_view()` for tools and tests.
+
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
 the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time
