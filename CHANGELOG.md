@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)
 - A busy service with lots of happy guests can now draw a trending food post. The evening report names the dish, and Menu shows the extra demand, which fades over the next three open services. (#392)

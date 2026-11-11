@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="CareerTierTuning" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/career_tier_tuning.gd" id="1_tuning"]
+[ext_resource type="Script" path="res://src/sim/progression/career_tier.gd" id="2_tier"]
+
+[sub_resource type="Resource" id="tier_2"]
+script = ExtResource("2_tier")
+tier = 2
+min_level = 3
+min_reputation = 0.0
+
+[sub_resource type="Resource" id="tier_3"]
+script = ExtResource("2_tier")
+tier = 3
+min_level = 6
+min_reputation = 4.0
+
+[sub_resource type="Resource" id="tier_4"]
+script = ExtResource("2_tier")
+tier = 4
+min_level = 9
+min_reputation = 4.2
+
+[sub_resource type="Resource" id="tier_5"]
+script = ExtResource("2_tier")
+tier = 5
+min_level = 12
+min_reputation = 4.4
+
+[sub_resource type="Resource" id="tier_6"]
+script = ExtResource("2_tier")
+tier = 6
+min_level = 15
+min_reputation = 4.5
+
+[resource]
+script = ExtResource("1_tuning")
+tiers = Array[ExtResource("2_tier")]([SubResource("tier_2"), SubResource("tier_3"), SubResource("tier_4"), SubResource("tier_5"), SubResource("tier_6")])

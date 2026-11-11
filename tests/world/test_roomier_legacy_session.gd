@@ -84,6 +84,8 @@ func test_pre_roomier_v8_restores_old_looks_and_keeps_old_lease_bounds_after_rel
 	var morning: String = _saved_text()
 	var progress: OwnerProgress = _main.get("owner_progress") as OwnerProgress
 	progress.award_bonus(progress.threshold_for(3))
+	# The lease offer needs career Tier 2 (D30), which a real close grants here.
+	progress.raise_career_tier(preload("res://data/balance/career_tiers.tres") as CareerTierTuning, 3.0)
 	(_main.get("menu_settings") as MenuSettings).set_owner_level(progress.level)
 	_editor().set_owner_level(progress.level)
 	Economy.cash = LEASE.deposit + 10000 # Explicit transaction funding fixture.

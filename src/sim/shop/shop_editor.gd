@@ -63,7 +63,7 @@ var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 var _owner_level: int = 1
-var _property_tier: int = 1
+var _career_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
 var _bought: Dictionary[Vector2i, bool] = {}
@@ -115,10 +115,10 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 		_load_walls(layout)
 
 
-## Main injects the restored owner level before accepting a new purchase.
+## Main injects the restored career tier (D30); content gates read it.
 ## This does not change saved placements, including starter furniture.
-func set_property_tier(tier: int) -> void:
-	_property_tier = clampi(tier, 1, 2)
+func set_career_tier(tier: int) -> void:
+	_career_tier = clampi(tier, 1, CareerTierTuning.TOP_TIER)
 
 
 func set_owner_level(level: int) -> void:
@@ -1289,8 +1289,8 @@ func check_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish], exact: 
 		cost += style.price
 		var old: FloorStyleDef = _content.floor_style(current.style)
 		refund += floori(old.price / 2.0) if old != null else 0
-		if locked.is_empty() and not style.unlocked(_owner_level, _property_tier):
-			locked = style.locked_reason(_owner_level, _property_tier)
+		if locked.is_empty() and not style.unlocked(_owner_level, _career_tier):
+			locked = style.locked_reason(_owner_level, _career_tier)
 	if effective.is_empty():
 		# Undo/redo of looks that are already in place has nothing to do.
 		if exact != null and floor_seen:
@@ -1436,8 +1436,8 @@ func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], ex
 		cost += style.price
 		var old: WallStyleDef = _content.wall_style(current.style)
 		refund += floori(old.price / 2.0) if old != null else 0
-		if locked.is_empty() and not style.unlocked(_owner_level, _property_tier):
-			locked = style.locked_reason(_owner_level, _property_tier)
+		if locked.is_empty() and not style.unlocked(_owner_level, _career_tier):
+			locked = style.locked_reason(_owner_level, _career_tier)
 	if effective.is_empty():
 		if exact != null and face_seen:
 			return EditCheck.new(true)
@@ -2261,11 +2261,11 @@ func _placement_people_problem(preview: SimGrid) -> String:
 func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> void:
 	if restoring:
 		return
-	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _property_tier)
+	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _career_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
 	var recipes: Array[RecipeDef] = _content.recipes()
-	if MenuAccess.cookable(preview, recipes, _owner_level, _property_tier).is_empty() \
-			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _property_tier).is_empty():
+	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier).is_empty() \
+			and not MenuAccess.cookable(_sim.world.grid, recipes, _owner_level, _career_tier).is_empty():
 		check.ok = false
 		check.why = MenuAccess.NO_DISH
 		return

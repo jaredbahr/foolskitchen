@@ -177,9 +177,13 @@ static func prepare(main: Node, context_root: Node, mode: String) -> Dictionary:
 	var grown: Rect2i = Rect2i(lot.position - Vector2i(lease.get("extra_west"), lease.get("extra_north")),
 		lot.size + Vector2i(lease.get("extra_west") + lease.get("extra_east"), lease.get("extra_north")))
 	progress.call("award_bonus", progress.call("threshold_for", lease.get("owner_level")))
+	# The offer needs career Tier 2 (D30), which a real close grants at this level.
+	progress.call("raise_career_tier", load("res://data/balance/career_tiers.tres"), 3.0)
 	menu.call("set_owner_level", progress.get("level"))
 	editor.call("set_owner_level", progress.get("level"))
+	editor.call("set_career_tier", progress.get("career_tier"))
 	main.get_node("Overlay/BuildCatalogue").call("set_owner_level", progress.get("level"))
+	main.get_node("Overlay/BuildCatalogue").call("set_career_tier", progress.get("career_tier"))
 	main.get_node("HUD").call("set_owner_progress", progress.get("level"),
 		progress.call("xp_into_level"), progress.call("xp_in_level"))
 	var economy: Node = context_root.get_node("Economy")
