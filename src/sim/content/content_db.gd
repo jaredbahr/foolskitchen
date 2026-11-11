@@ -204,8 +204,9 @@ static func validate_floor_styles(definitions: Array[FloorStyleDef], swatch_defs
 			errors.append("floor '%s': price must be >= 0" % definition.id)
 		if not FloorStyleDef.Pattern.values().has(int(definition.pattern)):
 			errors.append("floor '%s': unknown pattern" % definition.id)
-		if definition.unlock_level < 1 or definition.unlock_tier < 1:
-			errors.append("floor '%s': unlock level and tier must be >= 1" % definition.id)
+		if definition.unlock_level < 1 or definition.unlock_tier < 1 \
+				or definition.unlock_tier > CareerTierTuning.TOP_TIER:
+			errors.append("floor '%s': unlock level must be >= 1 and tier 1 to %d" % [definition.id, CareerTierTuning.TOP_TIER])
 		for swatch: StringName in [definition.default_swatch, definition.default_accent]:
 			if not swatch.is_empty() and not swatch_ids.has(swatch):
 				errors.append("floor '%s': unknown colour '%s'" % [definition.id, swatch])
@@ -310,8 +311,9 @@ static func validate_wall_styles(definitions: Array[WallStyleDef], swatch_defs: 
 			errors.append("wall finish '%s': price must be >= 0" % definition.id)
 		if not WallStyleDef.Pattern.values().has(int(definition.pattern)):
 			errors.append("wall finish '%s': unknown pattern" % definition.id)
-		if definition.unlock_level < 1 or definition.unlock_tier < 1:
-			errors.append("wall finish '%s': unlock level and tier must be >= 1" % definition.id)
+		if definition.unlock_level < 1 or definition.unlock_tier < 1 \
+				or definition.unlock_tier > CareerTierTuning.TOP_TIER:
+			errors.append("wall finish '%s': unlock level must be >= 1 and tier 1 to %d" % [definition.id, CareerTierTuning.TOP_TIER])
 		for swatch: StringName in [definition.default_swatch, definition.default_accent]:
 			if not swatch.is_empty() and not swatch_ids.has(swatch):
 				errors.append("wall finish '%s': unknown colour '%s'" % [definition.id, swatch])

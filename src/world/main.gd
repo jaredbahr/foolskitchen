@@ -2531,6 +2531,8 @@ func build_report(day: int) -> DayReport:
 	report.reputation_after = reputation.average()
 	report.owner_level_before = owner_progress.level
 	report.owner_level_after = owner_progress.level
+	if _owner_award_day != day and _career_tier_reached > 0 and not _owner_unlocks_today.is_empty():
+		report.owner_unlocks = _owner_unlocks_today.duplicate()
 	if _owner_award_day == day:
 		report.owner_xp_breakdown = {
 			"happy_xp": int(_owner_award_today["happy_xp"]),
@@ -5875,6 +5877,10 @@ func _on_service_closed(day: int) -> void:
 		shop_editor.set_career_tier(owner_progress.career_tier)
 		_build_catalogue.set_career_tier(owner_progress.career_tier)
 		# Newly opened dishes join the menu catalogue at the morning refresh.
+		if _owner_award_day != day:
+			# A tier can rise on a day with no XP: still list what it opens.
+			_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
+				tier_before, owner_progress.career_tier)
 	if _owner_award_day == day:
 		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
 			tier_before, owner_progress.career_tier)
