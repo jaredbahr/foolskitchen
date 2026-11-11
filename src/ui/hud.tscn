@@ -197,6 +197,12 @@ layout_mode = 2
 mouse_filter = 1
 text = "Mark your kitchen in Build → Rooms."
 
+[node name="AisleNote" type="Label" parent="Top/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 1
+text = "We moved a few tables so your staff can reach the kitchen."
+
 [node name="Plates" type="Label" parent="Top/Row"]
 layout_mode = 2
 mouse_filter = 1

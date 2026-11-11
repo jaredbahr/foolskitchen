@@ -3218,12 +3218,49 @@ completes the cut (`_stamp_culprit`, run only when the stamp cuts something
 off). That stays a warning, the
 furniture rule (DESIGN 4.3); only waiting benches keep #269's refusal. As in
 #269 only what an edit newly cuts off counts, so no existing layout gains a
-warning. The standing check (`check_current`, the `unreachable` highlights
-that probes and the soak treat as a hard condition), wall and floor cut-off
-refusals and the room rules still walk across seats: the preserved original
-template's middle row is all tables and seats (its kitchen is reached only by
-squeezing through), so counting seats there would flag every legacy shop and
-refuse wall edits for a furniture problem.
+warning. Since #320 the standing checks walk the same way: the `unreachable`
+highlights (`ShopEditor._unreachable`, which probes and the soak treat as a
+hard condition), the furniture pass of wall and floor cut-off refusals
+(`WallRules.cut_off_problem`), `RoomRules.guest_reachable` (and with it
+`restroom_toilets`, which feeds the sim) and the live menu (`MenuAccess`).
+Furniture still only warns: the room rules' refusals (`RoomRules.violations`)
+and the editor's empty-menu refusal walk across seats (`seats_stop` false), so
+a move that leaves the pass, a station or a seat reachable only through seats
+gets the seat warning (the pass has its own, `WallRules.CUT_PASS`) and the
+highlight, never "The pass needs the kitchen on one side…".
+
+Older shops whose staff can't reach the kitchen that way (#320): the
+preserved original template's middle row is all tables and seats, so its
+servers had no way to the pass. `AisleRepair.repair` runs once on load, for a
+shop snapshot older than version 10 (`ShopEditor.from_dict`) and for a save
+that predates the shop section (Main's staging of the original template). It
+compares what is cut off walking as people do with what is cut off walking
+across seats (items as `_unreachable` names them, street-door cells, toilets)
+and, when people miss anything, moves only tables and chairs until they miss
+nothing. The search is greedy: each round takes the move that fixes the most,
+the shortest on ties (cells moved, plus one for a turn; within `RADIUS` of
+where the item stood, fixed tie order, no RNG). It tries only tables and
+chairs touching the cut-off cells (tables first), scores a pose with one
+flood, and runs the editor's full checks only on a pose that beats the best so
+far. A move must be one the editor accepts (fits, same room kind, chairs face
+a table, no new room problem, no seat in the doorway, no dining seat lost, the
+largest joined table group no smaller, no staff start covered). Load time is
+capped: past `MAX_TRIES` poses or `MAX_CHECKS` full checks it gives up and
+changes nothing (a repair that fails runs again on each load until the next
+morning autosave writes version 10). Each item keeps its variant, colour and placement
+order; when no repair is found nothing moves. On the original layout it
+turns the west table a quarter where it stands, which opens a lane beside the
+pass; the template (`tier1_original.tres`) now holds that arrangement, so a
+save from before the shop section gets it too. The issue's first choice, the
+current starter's row of turned tables, does not fit this shallower room (its
+cells cover the server's start post), and turning all three in place served
+fewer guests than the blocked row in the balance probe (84.7 against 93.7 over
+five days, seeds 1, 7, 42), while the one-table turn served 100.3 (the deeper
+starter 100.7, the roomier 96.3).
+`ShopLayout.aisle_moved` drives the HUD's one-morning note ("We moved a few
+tables so your staff can reach the kitchen.", `HUD.set_aisle_note`, gone at
+opening). It is never saved: the next morning autosave writes version 10,
+which is never repaired again.
 A seat item (chair, stool, booth, bench) is refused outright
 (`ShopEditor.SEAT_IN_DOORWAY`) when one of its seats would stand on a street
 door threshold, a door, an entry or just inside a back door, or would fill

@@ -332,11 +332,19 @@ func test_guests_never_cut_a_kitchen_corner() -> void:
 	assert_true(path.size() > 2, "round, not through the pinch")
 	for index: int in range(1, path.size()):
 		assert_true(grid.guest_step_ok(path[index - 1], path[index]), "%s -> %s" % [path[index - 1], path[index]])
-	# The edit checks' flood fill agrees with what guests walk.
+	# The edit checks' flood fill agrees with what guests walk: never on
+	# through a seat (#315, #320), though a seat may end the walk.
 	var flood: Dictionary[Vector2i, bool] = RoomRules.guest_reachable(grid)
+	var seats: Dictionary[Vector2i, bool] = {}
+	for item: PlacedItem in grid.items():
+		for seat: Vector2i in item.seat_cells:
+			seats[seat] = true
 	for cell: Vector2i in grid.cells():
 		if grid.is_guest_walkable(cell):
-			assert_eq(flood.has(cell), not grid.find_guest_path(grid.entries()[0], cell).is_empty(), "%s" % cell)
+			var others: Dictionary[Vector2i, bool] = seats.duplicate()
+			others.erase(cell)
+			var walk: Array[Vector2i] = grid.find_path_avoiding(grid.entries()[0], cell, others, true)
+			assert_eq(flood.has(cell), not walk.is_empty(), "%s" % cell)
 
 
 func test_buried_guests_escape_without_crossing_the_kitchen() -> void:
@@ -404,3 +412,24 @@ func _can_spend(amount: int) -> bool:
 
 func _record_cash(amount: int, _category: StringName) -> void:
 	_cash += amount
+
+
+## #320 review: in a shop with rooms, a furniture move that leaves the pass
+## (and the kitchen behind it) reachable only through seats warns, never
+## refuses: turning the west table back into the original row of seats.
+func test_seats_cutting_off_the_pass_warn_and_never_refuse() -> void:
+	var west: PlacedItem = _sim.world.grid.item_at(Vector2i(2, 6))
+	assert_eq(west.quarter_turns, 1)
+	var check: EditCheck = _editor.check_move(west.id, Vector2i(2, 6), 0)
+	assert_true(check.ok, check.why)
+	assert_true(String(check.seat_warnings.get(west.id, "")).begins_with("Nobody walks through seats: this blocks the way to the"),
+		"a clear seat warning: %s" % check.seat_warnings)
+	var pass_counter: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
+	assert_true(check.unreachable.has(pass_counter.id), "the pass is highlighted")
+	assert_true(_editor.move(west.id, Vector2i(2, 6), 0), _editor.last_check.why)
+	assert_true(_editor.check_current().ok)
+
+
+func test_the_pass_has_its_own_seat_warning() -> void:
+	assert_eq(WallRules.seat_cut_off_warning(WallRules.CUT_PASS),
+		"Nobody walks through seats: this blocks the way to the pass")

@@ -151,9 +151,18 @@ func test_walls_need_the_session_command() -> void:
 	assert_eq(_mode.state, BuildMode.State.IDLE)
 
 
+## The fixture was drawn for the legacy shop with its original table row. The
+## row's seats already shut the kitchen off for real people (#320), so the
+## room's walls cut off nothing new there; on the turned-table template its
+## west room would leave the only lane to the pass behind a wall.
 func test_review_capture_fixture_is_an_accepted_edit() -> void:
+	var errors: Array[String] = []
+	var historical: RestaurantSim = RestaurantSim.create(
+		LegacyTier1Layout.with_table_row(LegacyTier1Layout.make()), _content, 55, errors)
+	assert_eq(errors, [] as Array[String])
+	var editor: ShopEditor = ShopEditor.new(historical, _content, ShopEditBooks.new(_can_spend, _record_cash))
 	var fixture: Dictionary[Vector3i, int] = CAPTURE.walls_fixture()
-	var check: EditCheck = _editor.check_segments(fixture)
+	var check: EditCheck = editor.check_segments(fixture)
 	assert_true(check.ok, check.why)
 	assert_eq(check.changes.size(), fixture.size())
 

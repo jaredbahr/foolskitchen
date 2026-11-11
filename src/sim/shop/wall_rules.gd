@@ -24,6 +24,7 @@ const NOTHING_HERE: String = "There is no wall here"
 const CUT_DOOR: String = "That would cut off the door"
 const CUT_SINK: String = "That would cut off the sink"
 const CUT_STATION: String = "That would cut off a kitchen station"
+const CUT_PASS: String = "That would cut off the pass"
 const CUT_SEAT: String = "That would cut off a seat"
 const CUT_RESTROOM: String = "That would cut off a restroom fixture"
 const CUT_PERSON: String = "That would shut someone in"
@@ -458,16 +459,17 @@ static func seat_step_ok(grid: SimGrid, from_cell: Vector2i, to_cell: Vector2i) 
 ## target in, even when furniture happens to block it today, because that
 ## furniture can be moved or sold later and the seal would remain. Then with
 ## furniture: a change may not newly cut off something reachable right now;
-## things furniture already blocks stay furniture warnings. Seats are furniture
-## here too: a seat that blocks the way is the editor's path warning
-## (ShopEditor._unreachable, #315), never a refusal of a wall or floor edit.
+## things furniture already blocks stay furniture warnings. The furniture pass
+## walks as people do (#320): a seat ends a walk but never carries it on, so a
+## wall or floor edit that leaves the only way somewhere through seats is
+## refused, while a way seats already block stays the editor's path warning.
 ## `people_only` (undo/redo, FK-085) checks only the people: a restored layout
 ## was already accepted, unusable seats or stations included.
 static func cut_off_problem(before: SimGrid, after: SimGrid, people: Array[Vector2i],
 		people_only: bool = false) -> String:
 	var problem: String = _cut_off(after, reachable(walls_only(before)), reachable(walls_only(after)), people, people_only)
 	if problem.is_empty():
-		problem = _cut_off(after, reachable(before), reachable(after), people, people_only)
+		problem = _cut_off(after, reachable(before, true), reachable(after, true), people, people_only)
 	return problem
 
 
@@ -494,6 +496,8 @@ static func seat_cut_off_warning(cut: String) -> String:
 			return "Nobody walks through seats: this blocks the way to the sink"
 		CUT_STATION:
 			return "Nobody walks through seats: this blocks the way to a kitchen station"
+		CUT_PASS:
+			return "Nobody walks through seats: this blocks the way to the pass"
 		CUT_RESTROOM:
 			return "Nobody walks through seats: this blocks the way to the restroom"
 	return "Nobody walks through seats: this blocks the way to a table"
@@ -520,7 +524,7 @@ static func _cut_off(after: SimGrid, was: Dictionary[Vector2i, bool], now: Dicti
 	door.assign(door_cells(after).keys())
 	if _lost(door, was, now):
 		return CUT_DOOR
-	var groups: Array[Array] = [[], [], [], []]
+	var groups: Array[Array] = [[], [], [], [], []]
 	for placed: PlacedItem in after.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition == null:
@@ -530,17 +534,17 @@ static func _cut_off(after: SimGrid, was: Dictionary[Vector2i, bool], now: Dicti
 				groups[0 if definition.station_type == &"sink" else 1].append(placed.work_cells)
 			ItemDef.Category.PASS:
 				for index: int in range(mini(2, placed.work_cells.size())):
-					groups[1].append([placed.work_cells[index]] as Array[Vector2i])
+					groups[2].append([placed.work_cells[index]] as Array[Vector2i])
 			ItemDef.Category.TABLE:
 				for seat: Vector2i in placed.seat_cells:
-					groups[2].append([seat] as Array[Vector2i])
+					groups[3].append([seat] as Array[Vector2i])
 			ItemDef.Category.RESTROOM:
-				groups[3].append(placed.work_cells)
+				groups[4].append(placed.work_cells)
 	# When nothing that was reachable stays reachable, the street door itself
 	# has been boxed in, so name the door rather than the first station.
 	var lost: Array[String] = []
 	var kept: bool = false
-	var reasons: Array[String] = [CUT_SINK, CUT_STATION, CUT_SEAT, CUT_RESTROOM]
+	var reasons: Array[String] = [CUT_SINK, CUT_STATION, CUT_PASS, CUT_SEAT, CUT_RESTROOM]
 	for index: int in groups.size():
 		for cells: Array in groups[index]:
 			var typed: Array[Vector2i] = []

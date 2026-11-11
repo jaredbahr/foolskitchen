@@ -321,12 +321,13 @@ func test_tables_sit_flush_against_interior_walls() -> void:
 	assert_true(_editor.apply_segments(flush))
 	assert_eq(east.seat_cells, [Vector2i(12, 7)] as Array[Vector2i], "the walled seat is dropped")
 	# A new table can be bought into the corner too, and chairs tucked around it.
-	var corner: Dictionary[Vector3i, int] = {_edge(5, 8, 0): SimGrid.Segment.WALL,
-		_edge(5, 9, 0): SimGrid.Segment.WALL}
+	# (Not by the street door: nobody walks through its seat, #315/#320.)
+	var corner: Dictionary[Vector3i, int] = {_edge(11, 8, 0): SimGrid.Segment.WALL,
+		_edge(11, 9, 0): SimGrid.Segment.WALL}
 	assert_true(_editor.apply_segments(corner), _editor.last_check.why)
-	assert_true(_editor.buy(&"table_2", Vector2i(5, 8)), _editor.last_check.why)
-	var tucked: PlacedItem = grid.item_at(Vector2i(5, 8))
-	assert_eq(tucked.seat_cells, [Vector2i(7, 9)] as Array[Vector2i])
+	assert_true(_editor.buy(&"table_2", Vector2i(9, 8)), _editor.last_check.why)
+	var tucked: PlacedItem = grid.item_at(Vector2i(9, 8))
+	assert_eq(tucked.seat_cells, [Vector2i(8, 9)] as Array[Vector2i])
 	assert_true(_editor.buy(&"chair", Vector2i(10, 5), 2), _editor.last_check.why)
 	assert_true(east.seat_cells.has(Vector2i(10, 5)), "a chair on an open side links")
 

@@ -33,7 +33,8 @@ func before_each() -> void:
 	assert_eq(content.load_all(), PackedStringArray())
 	var errors: Array[String] = []
 	_sim = RestaurantSim.new()
-	_sim.world = ShopBuilder.build(LAYOUT.make(), content, errors)
+	# The original table row (#320 turned it): its seats are the barrier here.
+	_sim.world = ShopBuilder.build(LAYOUT.with_table_row(LAYOUT.make()), content, errors)
 	assert_eq(errors, [] as Array[String])
 	# Declared customer-only/no-menu scenario. No order, payment, patience or
 	# movement state is fabricated; the real arrival reaches its normal no-menu exit.
