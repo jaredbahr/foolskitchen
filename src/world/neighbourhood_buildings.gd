@@ -29,6 +29,9 @@ const FLAT_Y: float = -0.026
 const AWNING_REACH: float = 0.36
 const DOOR_H: float = 1.0
 const EAVE: float = 0.08
+## A shop's hanging sign: the bracket's height on the facade and how far it reaches (#423).
+const SIGN_Y: float = 1.6
+const SIGN_LEN: float = 0.32
 
 class Plan extends RefCounted:
 	var id: String = ""
@@ -54,6 +57,8 @@ class Plan extends RefCounted:
 	var flowers: bool = false
 	var shutters: bool = false
 	var mailbox: bool = false
+	## Building-local x of the hanging sign's bracket (shops only).
+	var sign_x: float = 0.0
 	## Street-local box of the whole building including its roof, awning and steps.
 	var bounds: AABB = AABB()
 	var lot: Rect2 = Rect2()
@@ -157,6 +162,7 @@ func _plan_shops() -> void:
 			if slot == street.shops_per_side - 1:
 				p.exposed |= outward
 			p.flowers = _r(index, 7) < 0.4
+			p.sign_x = signf(p.door_x) * (p.width * 0.5 - 0.09)
 			p.bounds = _bounds_of(p)
 			plans.append(p)
 
@@ -244,6 +250,26 @@ func footprints() -> Array[AABB]:
 	var result: Array[AABB] = []
 	for p: Plan in plans:
 		result.append(p.bounds)
+	return result
+
+
+## Where each shop's hanging sign swings (#423): the pivot on its bracket in street-local
+## space and the shop's own colours. The board itself is built by NeighbourhoodLife.
+func signs() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for p: Plan in plans:
+		if p.is_shop and p.style != null:
+			result.append({"pivot": p.xf * Vector3(p.sign_x, SIGN_Y, 0.0), "main": p.style.awning_a,
+				"accent": p.style.awning_b, "seed": p.seed_value})
+	return result
+
+
+## The street-local x of each shop's front door: pavement furniture keeps clear of them.
+func shop_doors() -> Array[float]:
+	var result: Array[float] = []
+	for p: Plan in plans:
+		if p.is_shop:
+			result.append((p.xf * Vector3(p.door_x, 0.0, 0.0)).x)
 	return result
 
 
@@ -477,6 +503,9 @@ func _shop_front(pen: Pen, p: Plan) -> void:
 			var mx: float = x0 + (x1 - x0) * float(index) / float(panes)
 			pen.box(Vector3(mx - 0.014, 0.35, 0.0), Vector3(mx + 0.014, 1.08, 0.04), street.trim)
 	_awning(pen, p)
+	if not porthole:
+		_window_box(pen, x0, x1, p)
+	_sign_bracket(pen, p)
 	# Blank sign board above the awning, framed in trim.
 	var board_top: float = minf(p.wall_h - 0.08, 1.64)
 	var board_lo: float = 1.38
@@ -493,6 +522,30 @@ func _shop_front(pen: Pen, p: Plan) -> void:
 			_window(pen, wx, (win_lo + win_hi) * 0.5, 0.36, win_hi - win_lo, p.shutters, p.flowers, p.seed_value + index)
 	if style != null:
 		_accent(pen, p, style, centre_x)
+
+
+## A flower box on the shop window's sill, blooms from the street's bloom palette (#423).
+func _window_box(pen: Pen, x0: float, x1: float, p: Plan) -> void:
+	var lo: float = x0 + 0.02
+	var hi: float = x1 - 0.02
+	var top: float = 0.46
+	pen.box(Vector3(lo, 0.34, 0.0), Vector3(hi, top, 0.12), street.wood)
+	pen.box(Vector3(lo - 0.012, top - 0.03, 0.0), Vector3(hi + 0.012, top, 0.132), street.wood.lightened(0.14))
+	pen.box(Vector3(lo + 0.02, top, 0.02), Vector3(hi - 0.02, top + 0.04, 0.1), street.hedge_colors[0])
+	var count: int = maxi(3, roundi((hi - lo) / 0.2))
+	for index: int in count:
+		var along: float = lo + 0.08 + float(index) * (hi - lo - 0.16) / float(count - 1)
+		var bloom: Color = street.bloom_colors[(p.seed_value + index) % street.bloom_colors.size()]
+		var lift: float = 0.02 * float(index % 2)
+		pen.lump(Vector3(along, top + 0.075 + lift, 0.06 + lift), 0.065, 0.065, 0.065, float(index), bloom, bloom.darkened(0.2))
+
+
+## The bracket a hanging sign swings from (the board is NeighbourhoodLife's).
+func _sign_bracket(pen: Pen, p: Plan) -> void:
+	var x: float = p.sign_x
+	pen.box(Vector3(x - 0.035, SIGN_Y - 0.05, 0.0), Vector3(x + 0.035, SIGN_Y + 0.07, 0.025), street.metal)
+	pen.box(Vector3(x - 0.015, SIGN_Y, 0.0), Vector3(x + 0.015, SIGN_Y + 0.035, SIGN_LEN), street.metal)
+	pen.box(Vector3(x - 0.01, SIGN_Y - 0.06, 0.0), Vector3(x + 0.01, SIGN_Y, 0.03), street.metal)
 
 
 func _awning(pen: Pen, p: Plan) -> void:

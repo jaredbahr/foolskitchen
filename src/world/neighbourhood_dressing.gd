@@ -20,6 +20,13 @@ const WALK_HALF: float = 0.50
 const WALK_BOTTOM: float = -0.05
 const WALK_TOP: float = 1.10
 const MARGIN: float = 0.05
+## How far from the lot's edge (in u) street furniture may stand.
+const FURNITURE_REACH: float = 15.0
+## The lamp bulb's centre height on the model, and its colours by day and night (#423).
+const LAMP_BULB_Y: float = 1.565
+const LAMP_DAY: Color = Color(0.93, 0.83, 0.5)
+const LAMP_NIGHT: Color = Color(1.0, 0.8, 0.42)
+const LAMP_BULB_ENERGY: float = 2.4
 const SIDE_MARGIN: float = 6.0
 const CAR_SPEED: float = 2.8
 const CAR_REST: float = 14.0
@@ -95,6 +102,22 @@ var _shadow_casters: Array[AABB] = []
 var _light_shift: Vector2 = Vector2.ZERO
 var _visual_half: float = 0.0
 var _configured: bool = false
+## Street furniture, night lamps and small life (#423).
+var _life_root: Node3D
+var _life: NeighbourhoodLife
+var _furniture: Array[NeighbourhoodFurniture.Placed] = []
+var _crowns: Array[Vector3] = []
+var _building_signs: Array[Dictionary] = []
+var _shop_doors: Array[float] = []
+var _shop_spans: Array[Vector2] = []
+var _lamp_feet: Array[Vector2] = []
+var _lamp_bulbs: MeshInstance3D
+var _lamp_glow: MeshInstance3D
+var _bulb_material: StandardMaterial3D
+var _glow_material: StandardMaterial3D
+var _lamp_halos: Array[MeshInstance3D] = []
+var _halo_material: StandardMaterial3D
+var _night: float = 0.0
 
 
 func _init() -> void:
@@ -191,6 +214,8 @@ func rebuild() -> void:
 	_ensure_actors()
 	_build_routes()
 	_build_lamps()
+	_build_furniture()
+	_build_life()
 	_initialize_players()
 	_configured = build_error.is_empty()
 	static_root.visible = _configured
@@ -198,6 +223,8 @@ func rebuild() -> void:
 	far_root.visible = _configured
 	_actors_root.visible = _configured
 	_traffic_root.visible = _configured
+	_life_root.visible = _configured
+	_apply_night()
 	_apply_time(_effective_time())
 
 
@@ -207,7 +234,7 @@ func _ensure_roots() -> void:
 	static_root = Node3D.new()
 	static_root.name = "Static"
 	add_child(static_root)
-	for label: String in ["Road", "Pavement", "Kerbs", "Buildings", "StreetLamps"]:
+	for label: String in ["Road", "Pavement", "Kerbs", "Buildings", "StreetLamps", "Furniture"]:
 		var group: Node3D = Node3D.new()
 		group.name = label
 		static_root.add_child(group)
@@ -224,6 +251,9 @@ func _ensure_roots() -> void:
 	_traffic_root = Node3D.new()
 	_traffic_root.name = "Traffic"
 	add_child(_traffic_root)
+	_life_root = Node3D.new()
+	_life_root.name = "Life"
+	add_child(_life_root)
 
 
 func _clear_static() -> void:
@@ -232,6 +262,22 @@ func _clear_static() -> void:
 		for child: Node in group.get_children():
 			group.remove_child(child)
 			child.free()
+	for child: Node in _life_root.get_children():
+		_life_root.remove_child(child)
+		child.free()
+	_life = null
+	_lamp_bulbs = null
+	_lamp_glow = null
+	_bulb_material = null
+	_glow_material = null
+	_lamp_halos.clear()
+	_halo_material = null
+	_furniture.clear()
+	_crowns.clear()
+	_building_signs.clear()
+	_shop_doors.clear()
+	_shop_spans.clear()
+	_lamp_feet.clear()
 	_routes.clear()
 	_pedestrian_sweeps.clear()
 	_door_approaches.clear()
@@ -258,6 +304,7 @@ func _hide_actors() -> void:
 	far_root.hide()
 	_actors_root.hide()
 	_traffic_root.hide()
+	_life_root.hide()
 	if car != null:
 		car.hide()
 
@@ -553,6 +600,11 @@ func _build_buildings() -> void:
 	_building_boxes = builder.footprints()
 	_lot_boxes = builder.lots()
 	_building_casters = builder.casters()
+	_building_signs = builder.signs()
+	_shop_doors = builder.shop_doors()
+	for box: AABB in _building_boxes:
+		if box.position.z + box.size.z * 0.5 < _shift:
+			_shop_spans.append(Vector2(box.position.x, box.end.x))
 	for plan: NeighbourhoodBuildings.Plan in builder.plans:
 		if not _clear_bounds(_frame * plan.bounds):
 			build_error = "A neighbouring building has no clear outside position"
@@ -819,6 +871,10 @@ func _safe_route(lane: float, half_x: float, half_z: float) -> Vector2:
 func _build_lamps() -> void:
 	var prop: PropView = _made_prop("street_lamp")
 	var bounds: AABB = prop.get_combined_aabb()
+	var inverse: Transform3D = _frame.affine_inverse()
+	var bulbs: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	var glow: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var halo_at: Array[Vector3] = []
 	for index: int in 2:
 		var placement: Transform3D = _placement(-4.0 if index == 0 else 4.0, 0.0,
 			3.455 if index == 0 else 5.755, PI * 0.5)
@@ -830,9 +886,215 @@ func _build_lamps() -> void:
 			var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
 			batch.add_prop(prop, placement)
 			_add_batch(batch, "StreetLamp%d" % index, "StreetLamps")
+			# The lamp's bulb sits just proud of its panel; the glow is a soft disc on the
+			# pavement beside it. Both are unlit meshes the night level drives (no Light3D).
+			var local: Transform3D = inverse * placement
+			_lamp_feet.append(Vector2(local.origin.x, local.origin.z - _shift))
+			bulbs.xf = local
+			bulbs.box(Vector3(-0.117, LAMP_BULB_Y - 0.04, -0.075 - 0.127), Vector3(0.117, LAMP_BULB_Y + 0.04, -0.075 + 0.127), Color.WHITE)
+			halo_at.append(local * Vector3(0.0, LAMP_BULB_Y, -0.075))
+			var toward: float = -0.55 if index == 0 else 0.55
+			_glow_disc(glow, Vector2(local.origin.x, local.origin.z + toward), _paving_top + 0.008)
 		else:
 			build_error = "A street lamp has no clear outside position"
 	prop.free()
+	if bulbs.soup.is_empty():
+		return
+	_bulb_material = StandardMaterial3D.new()
+	_bulb_material.vertex_color_use_as_albedo = true
+	_bulb_material.albedo_color = LAMP_DAY
+	_bulb_material.emission_enabled = true
+	_bulb_material.emission = LAMP_NIGHT
+	_bulb_material.emission_energy_multiplier = 0.0
+	_bulb_material.disable_receive_shadows = true
+	_lamp_bulbs = MeshInstance3D.new()
+	_lamp_bulbs.name = "LampBulbs"
+	_lamp_bulbs.mesh = bulbs.soup.to_mesh()
+	_lamp_bulbs.material_override = _bulb_material
+	_lamp_bulbs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_lamp_bulbs.transform = _frame
+	_life_root.add_child(_lamp_bulbs)
+	_glow_material = StandardMaterial3D.new()
+	_glow_material.vertex_color_use_as_albedo = true
+	_glow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_glow_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_glow_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_glow_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_glow_material.disable_receive_shadows = true
+	_lamp_glow = MeshInstance3D.new()
+	_lamp_glow.name = "LampGlow"
+	_lamp_glow.mesh = glow.to_mesh()
+	_lamp_glow.material_override = _glow_material
+	_lamp_glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_lamp_glow.transform = _frame
+	_life_root.add_child(_lamp_glow)
+	_halo_material = StandardMaterial3D.new()
+	_halo_material.vertex_color_use_as_albedo = true
+	_halo_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_halo_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_halo_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_halo_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_halo_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_halo_material.disable_receive_shadows = true
+	var halo_mesh: ArrayMesh = _halo_mesh()
+	for point: Vector3 in halo_at:
+		var halo: MeshInstance3D = MeshInstance3D.new()
+		halo.name = "LampHalo%d" % _lamp_halos.size()
+		halo.mesh = halo_mesh
+		halo.material_override = _halo_material
+		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		halo.transform = _frame * Transform3D(Basis.IDENTITY, point)
+		_life_root.add_child(halo)
+		_lamp_halos.append(halo)
+
+
+## A little camera-facing bloom round the lit bulb: rings fading to nothing.
+func _halo_mesh() -> ArrayMesh:
+	var soup: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var radii: Array[float] = [0.0, 0.14, 0.3, 0.46]
+	var alphas: Array[float] = [0.85, 0.45, 0.15, 0.0]
+	var sides: int = 12
+	for ring: int in range(1, radii.size()):
+		for side: int in sides:
+			var a0: float = TAU * float(side) / float(sides)
+			var a1: float = TAU * float(side + 1) / float(sides)
+			var corners: Array[Array] = [[ring - 1, a0], [ring, a0], [ring, a1], [ring - 1, a1]]
+			for order: Array in [[0, 1, 2], [0, 2, 3]]:
+				if ring == 1 and order[1] == 2:
+					continue
+				for corner: int in order:
+					var radius: float = radii[corners[corner][0]]
+					var angle: float = corners[corner][1]
+					soup.positions.append(Vector3(cos(angle) * radius, sin(angle) * radius, 0.0))
+					soup.normals.append(Vector3.BACK)
+					soup.colors.append(Color(LAMP_NIGHT.r, LAMP_NIGHT.g, LAMP_NIGHT.b, alphas[corners[corner][0]]))
+	return soup.to_mesh()
+
+
+## A soft pool of lamplight: concentric rings fading to nothing, flat on the pavement.
+func _glow_disc(soup: NeighbourhoodGround.Soup, centre: Vector2, y: float) -> void:
+	var radii: Array[float] = [0.0, 0.4, 0.85, 1.25]
+	var alphas: Array[float] = [0.34, 0.2, 0.07, 0.0]
+	var sides: int = 16
+	for ring: int in range(1, radii.size()):
+		for side: int in sides:
+			var a0: float = TAU * float(side) / float(sides)
+			var a1: float = TAU * float(side + 1) / float(sides)
+			var corners: Array[Vector3] = []
+			var colours: Array[Color] = []
+			for point: Array in [[ring - 1, a0], [ring, a0], [ring, a1], [ring - 1, a1]]:
+				var radius: float = radii[point[0]]
+				corners.append(Vector3(centre.x + cos(point[1]) * radius, y, centre.y + sin(point[1]) * radius))
+				colours.append(Color(LAMP_NIGHT.r, LAMP_NIGHT.g, LAMP_NIGHT.b, alphas[point[0]]))
+			for order: Array in [[0, 2, 1], [0, 3, 2]]:
+				if ring == 1 and order[1] == 3:
+					continue
+				for corner: int in order:
+					soup.positions.append(corners[corner])
+					soup.normals.append(Vector3.UP)
+					soup.colors.append(colours[corner])
+
+
+## 0 by day, 1 at night: the street lamps' bulbs light and their pools of light fade in.
+## Main sets it from the day's light (DayNightView.street_night), never the other way round.
+func set_night(level: float) -> void:
+	var clamped: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
+	if is_equal_approx(clamped, _night):
+		return
+	_night = clamped
+	_apply_night()
+
+
+func _apply_night() -> void:
+	if _bulb_material != null:
+		_bulb_material.emission_energy_multiplier = _night * LAMP_BULB_ENERGY
+		_bulb_material.albedo_color = LAMP_DAY.lerp(LAMP_NIGHT, _night)
+	if _lamp_glow != null:
+		_lamp_glow.visible = _night > 0.01
+		_glow_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
+	if _halo_material != null:
+		_halo_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
+		for halo: MeshInstance3D in _lamp_halos:
+			halo.visible = _night > 0.01
+
+
+## What the lamps show now, for tests and captures.
+func lamp_state() -> Dictionary:
+	return {"night": _night, "lamps": _lamp_feet.size(),
+		"bulb_energy": _bulb_material.emission_energy_multiplier if _bulb_material != null else -1.0,
+		"glow_visible": _lamp_glow != null and _lamp_glow.visible,
+		"halos_visible": _lamp_halos.size() > 0 and _lamp_halos[0].visible,
+		"glow_alpha": _glow_material.albedo_color.a if _glow_material != null else -1.0}
+
+
+## Planter trees, benches, bins and the rest on the near pavement, planned inside the free
+## band and meshed once (#423).
+func _build_furniture() -> void:
+	var inverse: Transform3D = _frame.affine_inverse()
+	var planner: NeighbourhoodFurniture = NeighbourhoodFurniture.new()
+	planner.street = street_set
+	planner.lot_u = Vector2(_local_reserve.position.x, _local_reserve.end.x)
+	planner.u_range = Vector2(maxf(-_visual_half + 0.8, planner.lot_u.x - FURNITURE_REACH),
+		minf(_visual_half - 0.8, planner.lot_u.y + FURNITURE_REACH))
+	var margins: Array[Array] = [[_native_pavement, 0.2], [_door_approaches, 0.1], [_pedestrian_sweeps, 0.0]]
+	for entry: Array in margins:
+		for box: AABB in entry[0]:
+			var local: AABB = inverse * box
+			planner.exclusions.append(Rect2(local.position.x, local.position.z - _shift, local.size.x, local.size.z).grow(entry[1]))
+	for box: AABB in _building_boxes:
+		planner.exclusions.append(Rect2(box.position.x, box.position.z - _shift, box.size.x, box.size.z).grow(0.1))
+	planner.doors = _shop_doors
+	planner.building_spans = _shop_spans
+	planner.plan()
+	_furniture = planner.placed
+	_crowns = planner.tree_crowns()
+	for mesh: MeshInstance3D in planner.build_meshes(_paving_top, _shift, _compute_light_shift(), _lamp_feet):
+		mesh.transform = _frame
+		_groups["Furniture"].add_child(mesh)
+		_static_meshes.append(mesh)
+
+
+## The idle life: hanging signs, birds and leaves (#423).
+func _build_life() -> void:
+	_life = NeighbourhoodLife.new()
+	_life.street = street_set
+	_life.frame = _frame
+	_life.shift = _shift
+	_life.paving_top = _paving_top
+	_life.crowns = _crowns
+	_life.signs = _building_signs
+	_life.lot_u = Vector2(_local_reserve.position.x, _local_reserve.end.x)
+	_life.row_u = _life.lot_u
+	for span: Vector2 in _shop_spans:
+		_life.row_u = Vector2(minf(_life.row_u.x, span.x), maxf(_life.row_u.y, span.y))
+	_life.build(_life_root)
+
+
+## Local-frame footprints (u, v) and sizes of the street furniture, for tools and tests.
+func furniture_plan() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for item: NeighbourhoodFurniture.Placed in _furniture:
+		var rect: Rect2 = item.rect()
+		result.append({"kind": item.kind, "u": item.u, "v": item.v, "rect": rect, "height": item.size.y})
+	return result
+
+
+## The street-local frame and shift: tests convert plan coordinates with these.
+func local_frame() -> Transform3D:
+	return _frame
+
+
+func street_shift() -> float:
+	return _shift
+
+
+func life() -> NeighbourhoodLife:
+	return _life
+
+
+## Street-local x of each neighbouring shop's front door.
+func shop_door_positions() -> Array[float]:
+	return _shop_doors.duplicate()
 
 
 func _process(delta: float) -> void:
@@ -867,6 +1129,8 @@ func _effective_time() -> float:
 func _apply_time(seconds: float) -> void:
 	if not _configured:
 		return
+	if _life != null:
+		_life.apply(seconds)
 	if pedestrians.size() != 3 or _routes.size() != 3 or car == null:
 		return
 	for index: int in 3:

@@ -23,6 +23,12 @@ const SHOP_LIGHT_REACH: float = 1.6
 const SHOP_LIGHT_ATTENUATION: float = 0.5
 
 
+## How lit the street lamps are (#423), 0 by day and 1 once the shop's own lights are on:
+## the same dusk the interior follows, so the whole street comes on together.
+static func street_night(look: DayLight.Look) -> float:
+	return smoothstep(0.0, 0.5, look.interior_energy)
+
+
 static func apply_rig(rig: Node, look: DayLight.Look) -> void:
 	if rig == null:
 		return

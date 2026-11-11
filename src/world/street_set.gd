@@ -31,6 +31,19 @@ enum Fence { PICKET, HEDGE, WALL, RAIL }
 @export var shop_heights: Array[float] = []
 @export var fences: Array[int] = []
 @export var shops: Array[ShopStyle] = []
+## Street furniture on the near pavement (#423): what stands there and how many.
+@export var furniture: Array[StreetPropSpec] = []
+@export var metal: Color = Color.WHITE
+## Postbox and hydrant paint.
+@export var signal_red: Color = Color.WHITE
+@export var bin_colors: Array[Color] = []
+## Small life (#423): birds on the lawn, leaves off the planter trees, hanging signs.
+@export_range(0, 6) var birds: int = 3
+@export var bird_colors: Array[Color] = []
+@export_range(0, 24) var leaves: int = 8
+@export var leaf_colors: Array[Color] = []
+## How far (degrees) the shops' hanging signs swing.
+@export_range(0.0, 30.0) var sign_sway_degrees: float = 9.0
 
 
 static func _swatch(id: String) -> Color:
@@ -59,6 +72,8 @@ static func standard() -> StreetSet:
 	var coral: Color = _swatch("coral")
 	var navy: Color = _swatch("navy")
 	var milk: Color = _swatch("milk")
+	var tomato: Color = _swatch("tomato")
+	var tangerine: Color = _swatch("tangerine")
 	set.wall_colors = [cream, butter, peach, blush, mint, sky, sand, oat, rose.lightened(0.25)]
 	set.roof_colors = [terracotta, brick.lightened(0.1), slate.lightened(0.12), honey.darkened(0.08), rose.darkened(0.08),
 		teal.lightened(0.28), walnut.lightened(0.3)]
@@ -82,13 +97,30 @@ static func standard() -> StreetSet:
 		ShopStyle.make(&"sweet_shop", blush, rose, cream, butter, plum.lightened(0.2), ShopStyle.Accent.JARS),
 		ShopStyle.make(&"tea_room", cream, navy.lightened(0.25), milk, sand, coral, ShopStyle.Accent.TABLE),
 	]
+	set.furniture = [
+		StreetPropSpec.make(StreetPropSpec.Kind.BUS_STOP, 1, StreetPropSpec.Zone.KERB),
+		StreetPropSpec.make(StreetPropSpec.Kind.POSTBOX, 1, StreetPropSpec.Zone.KERB),
+		StreetPropSpec.make(StreetPropSpec.Kind.HYDRANT, 1, StreetPropSpec.Zone.KERB),
+		StreetPropSpec.make(StreetPropSpec.Kind.BIKE_RACK, 1, StreetPropSpec.Zone.WALL),
+		StreetPropSpec.make(StreetPropSpec.Kind.BENCH, 2, StreetPropSpec.Zone.WALL),
+		StreetPropSpec.make(StreetPropSpec.Kind.TREE_PLANTER, 4, StreetPropSpec.Zone.KERB),
+		StreetPropSpec.make(StreetPropSpec.Kind.BIN, 2, StreetPropSpec.Zone.WALL),
+	]
+	set.metal = _swatch("pewter")
+	set.signal_red = tomato
+	set.bin_colors = [teal.darkened(0.1), moss, slate]
+	set.bird_colors = [walnut.lightened(0.2), slate.lightened(0.3), tangerine.lerp(walnut, 0.35)]
+	set.leaf_colors = [honey, tangerine, _swatch("leaf"), coral.lightened(0.1)]
 	return set
 
 
 ## A string that changes whenever anything in the set does; used in cache keys.
 func signature() -> String:
 	var parts: Array = [seed_salt, shops_per_side, house_count, wall_colors, roof_colors, door_colors, hedge_colors,
-		bloom_colors, trim, glass, stone, path, wood, house_roofs, shop_roofs, house_heights, shop_heights, fences]
+		bloom_colors, trim, glass, stone, path, wood, house_roofs, shop_roofs, house_heights, shop_heights, fences,
+		metal, signal_red, bin_colors, birds, bird_colors, leaves, leaf_colors, sign_sway_degrees]
+	for spec: StreetPropSpec in furniture:
+		parts.append([int(spec.kind), spec.count, int(spec.zone)])
 	for style: ShopStyle in shops:
 		parts.append([style.id, style.wall, style.awning_a, style.awning_b, style.sign_board, style.door, int(style.accent)])
 	return var_to_str(parts)
