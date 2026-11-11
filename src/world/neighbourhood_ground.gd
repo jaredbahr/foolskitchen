@@ -177,6 +177,10 @@ func _node(label: String, soup: Soup) -> MeshInstance3D:
 		material.vertex_color_use_as_albedo = true
 		material.roughness = 1.0
 		material.metallic_specular = 0.0
+		# Flat-shaded triangles own their vertices, so per-vertex light looks the same
+		# and is far cheaper to fill across a full screen of ground.
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+		material.disable_receive_shadows = true
 		instance.mesh = soup.to_mesh()
 		instance.material_override = material
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -285,9 +289,9 @@ func _hedges() -> void:
 			var wobble: float = (hash01(step, row_index, 21) - 0.5) * 0.08
 			var point: Vector2 = Vector2(u, z + wobble)
 			if not _is_blocked_hedge(point, row_index):
-				var size: float = 0.30 + hash01(step, row_index, 22) * 0.10
-				_bush(point, size, step * 7 + row_index, 0.62)
-			u += 0.42
+				var size: float = 0.40 + hash01(step, row_index, 22) * 0.12
+				_bush(point, size, step * 7 + row_index, 0.62, false)
+			u += 0.62
 			step += 1
 
 
@@ -325,11 +329,12 @@ func _scatter() -> void:
 			# The wood thickens toward the edge, so the world ends in forest, not a line.
 			tree_chance = maxf(tree_chance, clampf((reach - (WORLD_HALF - 22.0)) / 14.0, 0.0, 1.0) * 0.8)
 			if roll < tree_chance and dist_lot > 5.0:
-				_tree(at, 0.85 + hash01(ix, iz, 34) * 0.5 + clampf((dist_lot - 14.0) / 60.0, 0.0, 0.3), ix * 131 + iz)
+				_tree(at, 0.85 + hash01(ix, iz, 34) * 0.5 + clampf((dist_lot - 14.0) / 60.0, 0.0, 0.3), ix * 131 + iz,
+						reach > WORLD_HALF - 18.0)
 			elif roll < tree_chance + 0.2 * skin.flower_density and dist_lot > 1.5:
 				_bush(at, 0.34 + hash01(ix, iz, 35) * 0.3, ix * 17 + iz, 0.7)
 			elif roll < tree_chance + 0.2 * skin.flower_density + 0.32 * skin.flower_density:
-				_flowers(at, 3 + int(hash01(ix, iz, 36) * 3.0), ix * 29 + iz)
+				_flowers(at, 2 + int(hash01(ix, iz, 36) * 3.0), ix * 29 + iz)
 
 
 func _distance_to_lot(point: Vector2) -> float:
@@ -344,7 +349,7 @@ func _distance_to_lot(point: Vector2) -> float:
 ## through gaps, so the world reads as a clearing in woodland, not a cut-off.
 func _forest_edge() -> void:
 	var centre: Vector2 = world_centre
-	var step: float = 1.9
+	var step: float = 2.5
 	var count: int = int(WORLD_HALF * 2.0 / step)
 	for row: int in 2:
 		var inset: float = 1.6 + float(row) * 2.2
@@ -365,7 +370,7 @@ func _forest_edge() -> void:
 				# Road and lane exits are left open on the two street-facing ends.
 				if side >= 2 and ((at.y > shift - 1.2 and at.y < shift + BLOCK_V + 1.2) or absf(at.y - _lane_v) < 1.7):
 					continue
-				var size: float = 1.35 + hash01(index, row * 4 + side, 43) * 0.55
+				var size: float = 1.7 + hash01(index, row * 4 + side, 43) * 0.6
 				_tree(at, size, index * 53 + row * 7 + side, true)
 
 
@@ -377,26 +382,33 @@ func _tree(at: Vector2, size: float, seed_value: int, ring: bool = false) -> voi
 	if ring:
 		leaf = leaf.darkened(0.14)
 	var position: Vector3 = Vector3(at.x, PLANT_Y, at.y)
-	_soup.add(_template("trunk"), Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size), position), skin.trunk)
+	# Far trees are one chunky shape each: nobody sees their trunks.
+	if not ring:
+		_soup.add(_template("trunk"), Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size), position), skin.trunk)
 	if pine:
-		for tier: int in 3:
-			var scale: float = size * (1.0 - float(tier) * 0.26)
-			var lift: Vector3 = position + Vector3(0.0, size * (0.45 + float(tier) * 0.5), 0.0)
+		for tier: int in 2 if ring else 3:
+			var scale: float = size * (1.0 - float(tier) * 0.28)
+			var lift: Vector3 = position + Vector3(0.0, size * ((0.2 if ring else 0.45) + float(tier) * 0.55), 0.0)
 			_soup.add(_template("cone"), Transform3D(Basis(Vector3.UP, yaw + float(tier)).scaled(Vector3.ONE * scale), lift), leaf.darkened(0.06 * float(tier)))
+	elif ring:
+		_soup.add(_template("farblob%d" % (seed_value % 3)), Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size * 0.95),
+			position + Vector3(0.0, size * 0.85, 0.0)), leaf)
 	else:
 		var lift: Vector3 = position + Vector3(0.0, size * 1.15, 0.0)
 		_soup.add(_template("blob%d" % (seed_value % 3)), Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size * 0.92), lift), leaf)
-		var crown: Vector3 = lift + Vector3(0.12 * size, size * 0.62, -0.1 * size)
-		_soup.add(_template("blob%d" % ((seed_value + 1) % 3)), Transform3D(Basis(Vector3.UP, yaw + 1.3).scaled(Vector3.ONE * size * 0.62), crown), leaf.lightened(0.07))
-	_blob_shadow(at, size * (0.95 if not pine else 0.8))
+		_soup.add(_template("dome"), Transform3D(Basis(Vector3.UP, yaw + 1.3).scaled(Vector3.ONE * size * 0.6),
+			lift + Vector3(0.12 * size, size * 0.5, -0.1 * size)), leaf.lightened(0.07))
+	if not ring:
+		_blob_shadow(at, size * (0.95 if not pine else 0.8))
 
 
-func _bush(at: Vector2, size: float, seed_value: int, squash: float) -> void:
+func _bush(at: Vector2, size: float, seed_value: int, squash: float, shadow: bool = true) -> void:
 	var tone: float = hash01(seed_value, 4, 52)
 	var leaf: Color = _leaf(tone * 0.6 + 0.2)
 	var basis: Basis = Basis(Vector3.UP, hash01(seed_value, 5, 52) * TAU).scaled(Vector3(size, size * squash, size))
-	_soup.add(_template("blob%d" % (seed_value % 3)), Transform3D(basis, Vector3(at.x, PLANT_Y + size * squash * 0.55, at.y)), leaf)
-	_blob_shadow(at, size * 1.05)
+	_soup.add(_template("dome"), Transform3D(basis, Vector3(at.x, PLANT_Y, at.y)), leaf)
+	if shadow and size > 0.45:
+		_blob_shadow(at, size * 1.05)
 
 
 func _flowers(at: Vector2, count: int, seed_value: int) -> void:
@@ -411,7 +423,7 @@ func _flowers(at: Vector2, count: int, seed_value: int) -> void:
 
 
 func _blob_shadow(at: Vector2, radius: float) -> void:
-	var points: Array[Vector2] = _blob(at + Vector2(radius * 0.18, radius * 0.22), radius, radius * 0.8, 0.0, 9)
+	var points: Array[Vector2] = _blob(at + Vector2(radius * 0.18, radius * 0.22), radius, radius * 0.8, 0.0, 6)
 	_shadows.star(at, points, SHADOW_Y, _shade)
 
 
@@ -454,13 +466,18 @@ static func _template(key: String) -> Array:
 	var white: Color = Color.WHITE
 	match key:
 		"trunk":
-			_prism(soup, 6, 0.09, 0.07, 0.62, white)
+			_prism(soup, 4, 0.1, 0.075, 0.62, white)
 		"cone":
-			_cone(soup, 8, 0.62, 0.95, white)
+			_cone(soup, 6, 0.62, 0.95, white)
 		"bloom":
 			_bloom(soup, white)
+		"dome":
+			_dome(soup, white)
 		_:
-			_lump(soup, int(key.trim_prefix("blob")), white)
+			if key.begins_with("far"):
+				_lump(soup, int(key.trim_prefix("farblob")), white, 2, 7)
+			else:
+				_lump(soup, int(key.trim_prefix("blob")), white, 3, 7)
 	var made: Array = [soup.positions, soup.normals]
 	_templates[key] = made
 	return made
@@ -475,7 +492,16 @@ static func _bloom(soup: Soup, colour: Color) -> void:
 	for index: int in 4:
 		var next: Vector3 = ring[(index + 1) % 4]
 		soup.tri(ring[index], Vector3(0.0, 0.8, 0.0), next, (ring[index] + next) * 0.5 + Vector3.UP, colour)
-		soup.tri(next, Vector3(0.0, -0.5, 0.0), ring[index], (ring[index] + next) * 0.5 + Vector3.DOWN, colour)
+
+
+## A squat six-sided dome: six triangles, for bushes, hedges and tree crowns.
+static func _dome(soup: Soup, colour: Color) -> void:
+	for index: int in 6:
+		var a0: float = float(index) / 6.0 * TAU
+		var a1: float = float(index + 1) / 6.0 * TAU
+		var b0: Vector3 = Vector3(cos(a0), 0.0, sin(a0))
+		var b1: Vector3 = Vector3(cos(a1), 0.0, sin(a1))
+		soup.tri(b0, Vector3(0.0, 1.0, 0.0), b1, Vector3((b0.x + b1.x) * 0.5, 0.7, (b0.z + b1.z) * 0.5), colour)
 
 
 static func _prism(soup: Soup, sides: int, bottom: float, top: float, height: float, colour: Color) -> void:
@@ -499,13 +525,10 @@ static func _cone(soup: Soup, sides: int, radius: float, height: float, colour: 
 		var b1: Vector3 = Vector3(cos(a1) * radius, 0.0, sin(a1) * radius)
 		var hint: Vector3 = Vector3(cos((a0 + a1) * 0.5), 0.5, sin((a0 + a1) * 0.5))
 		soup.tri(b0, Vector3(0.0, height, 0.0), b1, hint, colour)
-		soup.tri(Vector3.ZERO, b1, b0, Vector3.DOWN, colour)
 
 
 ## A lumpy low-poly ball, unit radius, flat shaded. Variants differ in their lumps.
-static func _lump(soup: Soup, variant: int, colour: Color) -> void:
-	var rings: int = 3
-	var segments: int = 7
+static func _lump(soup: Soup, variant: int, colour: Color, rings: int, segments: int) -> void:
 	var grid: Array[Array] = []
 	for ring: int in rings + 1:
 		var polar: float = float(ring) / float(rings) * PI

@@ -455,10 +455,21 @@ func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_
 			continue
 		var u: float = (float(index) - float(far_count - 1) * 0.5) * width
 		road_batch.add_prop(road, _far_placement(u, -road_box.end.y, (ROAD_START + ROAD_END) * 0.5))
-		kerb_batches[0].add_prop(kerb, _far_placement(u, 0.0, 3.355))
-		kerb_batches[1].add_prop(kerb, _far_placement(u, 0.0, 5.855))
-		kerb_batches[2].add_prop(kerb, _far_placement(u, -0.03, PAVING_START - 0.05))
-		kerb_batches[3].add_prop(kerb, _far_placement(u, -0.03, FAR_START + FAR_DEPTH + 0.05))
+	# Kerbs are long straight runs: each piece is stretched along the street to
+	# cover several tile widths, so far runs cost a fraction of the triangles.
+	var chunk: int = 6
+	for run: Vector2i in [Vector2i(0, middle - inner - 1), Vector2i(middle + inner + 1, far_count - 1)]:
+		var start: int = run.x
+		while start <= run.y:
+			var last: int = mini(start + chunk - 1, run.y)
+			var n: int = last - start + 1
+			var u: float = (float(start + last) * 0.5 - float(far_count - 1) * 0.5) * width
+			var stretch: Basis = Basis.from_scale(Vector3(float(n), 1.0, 1.0))
+			var specs: Array[Vector2] = [Vector2(0.0, 3.355), Vector2(0.0, 5.855), Vector2(-0.03, PAVING_START - 0.05),
+				Vector2(-0.03, FAR_START + FAR_DEPTH + 0.05)]
+			for side: int in 4:
+				kerb_batches[side].add_prop(kerb, Transform3D(stretch, Vector3(u, specs[side].x, _shift + specs[side].y)))
+			start = last + 1
 	kerb.free()
 	_add_far(road_batch, "FarRoad")
 	var kerb_names: Array[String] = ["FarNearKerb", "FarFarKerb", "FarNearEdgeKerb", "FarFarEdgeKerb"]
@@ -469,15 +480,19 @@ func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_
 	var rows_far: int = roundi(FAR_DEPTH / paving_box.size.z)
 	var outer: int = ceili((_visual_half - _street_half) / paving_box.size.x)
 	var pave: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
-	for column: int in range(-outer, columns + outer):
-		if column >= 0 and column < columns:
-			continue
-		var u: float = -_street_half + (float(column) + 0.5) * paving_box.size.x
-		for spec: Vector3i in [Vector3i(0, rows_near, 0), Vector3i(1, rows_far, 1)]:
-			var start: float = PAVING_START if spec.x == 0 else FAR_START
-			for row: int in spec.y:
-				var v: float = start + (float(row) + 0.5) * paving_box.size.z
-				pave.add_prop(paving, _far_placement(u, _paving_top - paving_box.end.y, v, PI))
+	var span: int = 5
+	for run: Vector2i in [Vector2i(-outer, -1), Vector2i(columns, columns + outer - 1)]:
+		var first: int = run.x
+		while first <= run.y:
+			var last: int = mini(first + span - 1, run.y)
+			var u: float = -_street_half + (float(first + last) * 0.5 + 0.5) * paving_box.size.x
+			var stretch: Basis = Basis(Vector3.UP, PI) * Basis.from_scale(Vector3(float(last - first + 1), 1.0, 1.0))
+			for spec: Vector3i in [Vector3i(0, rows_near, 0), Vector3i(1, rows_far, 1)]:
+				var start_v: float = PAVING_START if spec.x == 0 else FAR_START
+				for row: int in spec.y:
+					var v: float = start_v + (float(row) + 0.5) * paving_box.size.z
+					pave.add_prop(paving, Transform3D(stretch, Vector3(u, _paving_top - paving_box.end.y, _shift + v)))
+			first = last + 1
 	_add_far(pave, "FarPavement")
 	_store_cached(far_root, "far" + str(_far_key))
 

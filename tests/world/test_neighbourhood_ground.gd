@@ -165,7 +165,7 @@ func test_ground_is_view_only_cheap_and_rebuilds_identically() -> void:
 			surfaces += mesh.mesh.get_surface_count()
 			triangles += (mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
 	assert_true(surfaces <= 3, "the whole ground is at most three draw calls")
-	assert_true(triangles > 2000 and triangles < 90000, "a sensible triangle count: %d" % triangles)
+	assert_true(triangles > 2000 and triangles < 30000, "a sensible triangle count: %d" % triangles)
 	var before: PackedVector3Array = (dressing.ground_root.get_node("Planting") as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var builder: NeighbourhoodGround = NeighbourhoodGround.new()
 	builder.local_reserve = AABB(Vector3(-1.0, 0.0, -9.0), Vector3(12.0, 1.4, 9.0))
