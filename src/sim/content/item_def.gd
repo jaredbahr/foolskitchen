@@ -95,9 +95,17 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 ## Hangs from the ceiling (a pendant lamp): drawn at ceiling height over a
 ## floor-decor cell, its shade hidden whenever walls are cut away or down.
 @export var ceiling: bool = false
-## One body-colour slot; unpainted items keep their authored placeholder colour.
+## Unpainted items keep their authored placeholder colour.
 @export var paintable: bool = true
+## The main slot's id when `paint_slots` is empty (the legacy single body slot).
 @export var paint_slot: StringName = &"body"
+## Paint slots (#431): up to MAX_PAINT_SLOTS parts, the first the main body
+## colour. Empty keeps the single legacy body slot (see slots()).
+@export var paint_slots: Array[PaintSlotDef] = []
+
+const MAX_PAINT_SLOTS: int = 3
+
+var _default_slots: Array[PaintSlotDef] = []
 
 
 ## The Buy mode room this item is listed under.
@@ -181,3 +189,44 @@ func known_variant_id(value: StringName) -> StringName:
 		if look != null and look.id == value:
 			return value
 	return &""
+
+
+## The item's paint slots (#431): the authored list, or one main "Body" slot
+## painting the wrapper scene's body surfaces. Empty when not paintable.
+func slots() -> Array[PaintSlotDef]:
+	if not paintable:
+		return []
+	if not paint_slots.is_empty():
+		return paint_slots
+	if _default_slots.is_empty():
+		var body: PaintSlotDef = PaintSlotDef.new()
+		body.id = paint_slot if not paint_slot.is_empty() else &"body"
+		body.display_name = "Body"
+		_default_slots.append(body)
+	return _default_slots
+
+
+## The main slot (whose colour is `PlacedItem.swatch_id`), or null.
+func main_slot() -> PaintSlotDef:
+	var list: Array[PaintSlotDef] = slots()
+	return list[0] if not list.is_empty() else null
+
+
+func slot_index(slot_id: StringName) -> int:
+	var list: Array[PaintSlotDef] = slots()
+	for index: int in list.size():
+		if list[index] != null and list[index].id == slot_id:
+			return index
+	return -1
+
+
+func paint_slots_valid() -> bool:
+	if paint_slots.size() > MAX_PAINT_SLOTS:
+		return false
+	var seen: Dictionary[StringName, bool] = {}
+	for index: int in paint_slots.size():
+		var slot: PaintSlotDef = paint_slots[index]
+		if slot == null or not slot.valid() or seen.has(slot.id) or (index > 0 and slot.surfaces.is_empty()):
+			return false
+		seen[slot.id] = true
+	return true

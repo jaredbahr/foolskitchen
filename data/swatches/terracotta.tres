@@ -6,3 +6,5 @@ id = &"terracotta"
 display_name = "Terracotta"
 color = Color(0.7803922, 0.4823529, 0.3568627, 1)
 theme_tags = Array[StringName]([&"diner", &"rustic"])
+family = &"deep"
+family_order = 1

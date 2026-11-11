@@ -337,6 +337,24 @@ func swatches() -> Array[SwatchDef]:
 	return result
 
 
+## The Paint grid's order (#431): family by family (SwatchDef.FAMILIES), then
+## each swatch's family_order, then id. A new array of the shared resources.
+func palette() -> Array[SwatchDef]:
+	var result: Array[SwatchDef] = swatches()
+	result.sort_custom(_palette_before)
+	return result
+
+
+static func _palette_before(a: SwatchDef, b: SwatchDef) -> bool:
+	var family_a: int = SwatchDef.FAMILIES.find(a.family)
+	var family_b: int = SwatchDef.FAMILIES.find(b.family)
+	if family_a != family_b:
+		return family_a < family_b
+	if a.family_order != b.family_order:
+		return a.family_order < b.family_order
+	return String(a.id) < String(b.id)
+
+
 static func validate_swatches(definitions: Array[SwatchDef]) -> PackedStringArray:
 	var errors: PackedStringArray = []
 	var ids: Dictionary[StringName, bool] = {}
@@ -348,6 +366,8 @@ static func validate_swatches(definitions: Array[SwatchDef]) -> PackedStringArra
 		_check_id(definition.id, "swatch", ids, errors)
 		if definition.display_name.strip_edges().is_empty():
 			errors.append("swatch '%s': display_name is empty" % definition.id)
+		if not SwatchDef.FAMILIES.has(definition.family):
+			errors.append("swatch '%s': unknown family '%s'" % [definition.id, definition.family])
 	return errors
 
 
@@ -416,6 +436,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 		if not is_finite(definition.seated_lean_degrees) or definition.seated_lean_degrees < 0.0 \
 				or definition.seated_lean_degrees > ItemDef.MAX_SEATED_LEAN_DEGREES:
 			errors.append("item '%s': seated_lean_degrees must be finite and between 0 and 35 degrees" % definition.id)
+		if not definition.paint_slots_valid():
+			errors.append("item '%s': paint slots need unique ids, names, a known material and (after the first) surfaces, at most 3" % definition.id)
 		if not definition.placement_layer_valid():
 			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells, and wall decor also one face deep and at most 4 faces wide" % definition.id)
 		if definition.wall_mount == ItemDef.WallMount.EXTERIOR and not definition.hangs_on_wall():

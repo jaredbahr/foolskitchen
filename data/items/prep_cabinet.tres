@@ -1,7 +1,22 @@
-[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ItemDef" format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/props/prep_cabinet.tscn" id="2_view"]
+[ext_resource type="Script" path="res://src/sim/content/paint_slot_def.gd" id="paint_slot_script"]
+
+[sub_resource type="Resource" id="slot_cabinet"]
+script = ExtResource("paint_slot_script")
+id = &"cabinet"
+display_name = "Cabinet"
+surfaces = PackedStringArray()
+default_material = &"wood"
+
+[sub_resource type="Resource" id="slot_top"]
+script = ExtResource("paint_slot_script")
+id = &"top"
+display_name = "Top"
+surfaces = PackedStringArray("metal")
+default_material = &"metal"
 
 [resource]
 script = ExtResource("1_script")
@@ -20,3 +35,4 @@ price = 85
 unlock_level = 4
 charm = 0
 theme_tags = Array[StringName]([&"diner"])
+paint_slots = Array[ExtResource("paint_slot_script")]([SubResource("slot_cabinet"), SubResource("slot_top")])

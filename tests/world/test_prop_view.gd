@@ -99,8 +99,14 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			assert_almost_eq(body_bounds.get_center().z, view.body_center_offset.y, 0.001, String(definition.id))
 		if not view.body_material_names.is_empty():
 			assert_true(view.body_surface_count() > 0, "%s body material names must match imported surfaces" % definition.id)
-		else:
-			assert_false(definition.paintable, "%s needs a body surface before paint can be enabled" % definition.id)
+		# Paint slots (#431): a slot naming no surfaces paints the body, so it
+		# needs one; every named surface must exist on the model.
+		for slot: PaintSlotDef in definition.slots():
+			if slot.surfaces.is_empty():
+				assert_false(view.body_material_names.is_empty(), "%s needs a body surface before paint can be enabled" % definition.id)
+			for surface: String in slot.surfaces:
+				assert_true(view.surface_names().has(surface), "%s %s slot paints a real surface (%s)" % [definition.id, slot.id, surface])
+		if view.body_material_names.is_empty():
 			assert_eq(view.body_surface_count(), 0, "%s keeps all original kit materials" % definition.id)
 
 

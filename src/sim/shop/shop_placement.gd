@@ -11,3 +11,12 @@ extends Resource
 @export var swatch_id: StringName = &""
 ## Authored furniture look; empty preserves the first/default look.
 @export var variant_id: StringName = &""
+## Per-slot paint (#431); never authored in layout files, so not exported.
+var paint: PaintLook = PaintLook.new()
+
+
+## Resource.duplicate() skips the unexported paint; copy it explicitly.
+func copy() -> ShopPlacement:
+	var result: ShopPlacement = duplicate() as ShopPlacement
+	result.paint = paint.copy()
+	return result

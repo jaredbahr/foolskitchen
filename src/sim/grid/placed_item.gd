@@ -17,6 +17,8 @@ var placement_layer: ItemDef.PlacementLayer = ItemDef.PlacementLayer.NORMAL
 var swatch_id: StringName = &""
 ## Authored furniture look; empty preserves the first/default look.
 var variant_id: StringName = &""
+## Per-slot materials and the other slots' colours (#431). Cosmetic, like swatch_id.
+var paint: PaintLook = PaintLook.new()
 var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
 var solid: bool = true

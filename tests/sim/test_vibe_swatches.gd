@@ -12,7 +12,9 @@ func test_new_swatch_defaults_to_no_theme_tags() -> void:
 func test_existing_palette_loads_with_original_names_and_authored_known_tags() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray(), "all authored swatches still validate")
-	assert_eq(content.swatches().size(), 12)
+	# The curated palette grew to 40 (#431); the original twelve keep their ids,
+	# names, colours and tags, so saved shops look and vote exactly as before.
+	assert_eq(content.swatches().size(), 40)
 
 	var expected: Dictionary[StringName, Dictionary] = {
 		&"brick": {"name": "Brick", "tags": [&"diner"]},
@@ -30,11 +32,13 @@ func test_existing_palette_loads_with_original_names_and_authored_known_tags() -
 	}
 	var loaded_ids: Array[StringName] = []
 	for swatch: SwatchDef in content.swatches():
-		loaded_ids.append(swatch.id)
-		assert_true(expected.has(swatch.id), "only the existing palette IDs are loaded")
-		var row: Dictionary = expected[swatch.id]
-		assert_eq(swatch.display_name, row["name"])
-		assert_eq(swatch.theme_tags, row["tags"])
+		if not expected.has(swatch.id):
+			assert_false(swatch.theme_tags.is_empty(), "%s: new swatches lean towards a theme" % swatch.id)
+		else:
+			loaded_ids.append(swatch.id)
+			var row: Dictionary = expected[swatch.id]
+			assert_eq(swatch.display_name, row["name"])
+			assert_eq(swatch.theme_tags, row["tags"])
 		var seen: Dictionary[StringName, bool] = {}
 		for theme: StringName in swatch.theme_tags:
 			assert_true(KNOWN_THEMES.has(theme), "swatches only name established themes")

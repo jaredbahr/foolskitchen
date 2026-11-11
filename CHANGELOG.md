@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Seasons change every 28 days, bringing lower and higher ingredient purchase prices. The date names the season, Stock marks seasonal ingredients, and dish details point out ingredients in season. (#395)
+- Paint is much richer: 40 colours that go together (warm neutrals, pastels, brights, deep tones, woods and metals), and most furniture now has two or three parts you can paint separately, like a chair's frame and its cushion or a bar's counter, top and panels. Each part can be painted, wood grain, woven fabric or brushed metal. Pick the part and material in Paint, hover to preview, and Shift-click to repaint every piece of that kind in the room at once. Rugs and the modern chairs can be painted too. Recolouring is still free, and saved shops keep their colours. (#435)
 - Open Staff to see what each employee did today and in total. (#417)
 - Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
