@@ -36,6 +36,7 @@ const FAR_DEPTH: float = 2.20
 ## Far street and ground meshes by street signature, shared by every dressing
 ## (a new game or a loaded save re-uses them instead of re-batching ~100k triangles).
 static var _mesh_cache: Dictionary[String, Array] = {}
+static var _cache_exit_bound: bool = false
 var static_root: Node3D
 ## The grass, planting and tree line under and around everything (#421, #424).
 ## Kept apart from static_root: it deliberately lies under the whole lot.
@@ -121,7 +122,7 @@ func rebuild() -> void:
 			elif _grid.terrain(cell) != SimGrid.Terrain.OUTSIDE:
 				built.append(cell)
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
-		_frontages, _native_pavement, built]
+		_frontages, _native_pavement, built, ground_skin.signature() if ground_skin != null else "standard"]
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -556,7 +557,8 @@ func world_rect() -> Rect2:
 ## Grass, planting and the tree line, rebuilt only when the street frame or lot
 ## changes (they never depend on purchases, patios or the clock).
 func _build_ground() -> void:
-	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, ground_skin]
+	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes,
+			ground_skin.signature() if ground_skin != null else "standard"]
 	if key == _ground_key and ground_root.get_child_count() > 0:
 		ground_root.transform = _frame
 		return
@@ -581,6 +583,12 @@ func _build_ground() -> void:
 	_store_cached(ground_root, cache_key)
 
 
+## Drops the shared meshes (also done when the game's window closes, so they do
+## not show up as leaked resources at exit).
+static func clear_mesh_cache() -> void:
+	_mesh_cache.clear()
+
+
 func _restore_cached(parent: Node3D, key: String) -> bool:
 	if not _mesh_cache.has(key):
 		return false
@@ -603,6 +611,11 @@ func _store_cached(parent: Node3D, key: String) -> void:
 			entries.append([String(node.name), node.mesh, node.material_override])
 	if _mesh_cache.size() > 6:
 		_mesh_cache.clear()
+	if not _cache_exit_bound:
+		var tree: SceneTree = Engine.get_main_loop() as SceneTree
+		if tree != null:
+			tree.root.tree_exiting.connect(clear_mesh_cache)
+			_cache_exit_bound = true
 	_mesh_cache[key] = entries
 
 

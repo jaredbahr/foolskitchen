@@ -52,3 +52,9 @@ static func standard() -> GroundSkin:
 	skin.leaf_light = skin.grass.lightened(0.04)
 	skin.flowers = [butter, rose, cream, terracotta.lerp(rose, 0.3), honey]
 	return skin
+
+
+## A string that changes whenever any colour or knob does; used in cache keys.
+func signature() -> String:
+	return var_to_str([grass, patch_light, patch_dark, lawn, forest, lane, lane_edge, trunk, leaf_dark,
+		leaf_light, flowers, pine_share, ring_pine_share, tree_density, flower_density])

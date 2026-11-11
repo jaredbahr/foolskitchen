@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- The street outside now sits on real ground. The shop's block has a lawn, a kerb where the pavement meets the grass, a hedge-lined verge and a back lane, and the town carries on as a meadow with flowers, bushes and trees. The world ends in a tree line instead of empty space, and the camera now stops zooming out where the trees begin. (#434)
+- The street outside now sits on real ground: a lawn, a kerb, a verge and a back lane around the shop, with a meadow, flowers and trees beyond. The camera stops zooming out at the edge of the woods. (#434)
 - Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)

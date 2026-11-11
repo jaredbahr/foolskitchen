@@ -25,6 +25,7 @@ func after_each() -> void:
 	if is_instance_valid(_viewport):
 		_viewport.get_parent().remove_child(_viewport)
 		_viewport.free()
+	NeighbourhoodDressing.clear_mesh_cache()
 	SaveSystem._providers = _old_providers
 	Clock.set_speed(0)
 	Economy.reset(0)
@@ -72,34 +73,55 @@ func _visible_ground(rig: CameraRig, camera: Camera3D) -> Array[Vector2]:
 	return points
 
 
-func test_ground_covers_every_view_the_camera_clamp_allows_at_every_rotation_and_max_zoom() -> void:
+func _assert_covered(rig: CameraRig, camera: Camera3D, dressing: NeighbourhoodDressing, label: String) -> void:
+	var ground: Rect2 = _ground_box(dressing)
+	var world: Rect2 = dressing.world_rect()
+	var bounds: Rect2 = rig.call("_focus_bounds")
+	var corners: Array[Vector2] = [bounds.position, Vector2(bounds.end.x, bounds.position.y), bounds.end,
+		Vector2(bounds.position.x, bounds.end.y), bounds.get_center()]
+	for quarter: int in 4:
+		for corner: Vector2 in corners:
+			rig.zoom_steps(1000.0)
+			rig.position = Vector3(corner.x, 0.0, corner.y)
+			rig.step_view(10.0, Vector2.ZERO)
+			assert_almost_eq(camera.size, minf(rig.world_zoom_limit(), rig.maximum_zoom), 0.01, "%s: max zoom-out is the world limit" % label)
+			for point: Vector2 in _visible_ground(rig, camera):
+				assert_true(world.grow(0.01).has_point(point),
+					"%s quarter %d corner %s shows nothing past the world edge: %s" % [label, quarter, corner, point])
+				assert_true(ground.has_point(point), "%s: ground under every visible point" % label)
+		rig.rotate_quarter(1)
+		rig.step_view(10.0, Vector2.ZERO)
+
+
+func test_ground_covers_every_view_the_camera_clamp_allows_at_every_rotation_aspect_and_resize() -> void:
 	await _start()
-	var view: ShopView = _main.get_node("ShopView") as ShopView
-	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
+	var dressing: NeighbourhoodDressing = (_main.get_node("ShopView") as ShopView).neighbourhood_dressing
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig
 	var camera: Camera3D = rig.get_node("Camera3D") as Camera3D
 	assert_not_null(dressing)
 	if dressing == null:
 		return
 	assert_true(dressing.ground_root.visible)
-	var ground: Rect2 = _ground_box(dressing)
-	assert_true(ground.encloses(dressing.world_rect()), "the meadow reaches the world edge the camera is held to")
-	var bounds: Rect2 = rig.call("_focus_bounds")
-	var corners: Array[Vector2] = [bounds.position, Vector2(bounds.end.x, bounds.position.y), bounds.end,
-		Vector2(bounds.position.x, bounds.end.y), bounds.get_center()]
-	var world: Rect2 = dressing.world_rect()
-	for quarter: int in 4:
-		for corner: Vector2 in corners:
-			rig.zoom_steps(1000.0)
-			rig.position = Vector3(corner.x, 0.0, corner.y)
-			rig.step_view(10.0, Vector2.ZERO)
-			assert_almost_eq(camera.size, rig.world_zoom_limit(), 0.01, "max zoom-out is the world's limit")
-			for point: Vector2 in _visible_ground(rig, camera):
-				assert_true(world.grow(0.01).has_point(point),
-					"quarter %d corner %s shows nothing past the world edge: %s" % [quarter, corner, point])
-				assert_true(ground.has_point(point), "ground under every visible point")
-		rig.rotate_quarter(1)
-		rig.step_view(10.0, Vector2.ZERO)
+	assert_true(_ground_box(dressing).encloses(dressing.world_rect()), "the meadow reaches the world edge the camera is held to")
+	var wide_limit: float = 0.0
+	for size: Vector2i in [Vector2i(1600, 900), Vector2i(3200, 900), Vector2i(1200, 900), Vector2i(900, 1200)]:
+		_viewport.size = size
+		rig.call("_on_viewport_resized")
+		_assert_covered(rig, camera, dressing, "%dx%d" % [size.x, size.y])
+		if size.x == 3200:
+			wide_limit = rig.world_zoom_limit()
+	# Even at 32:9 there is room to zoom out past the opening framing (the cap sits well above it).
+	assert_true(wide_limit > rig.initial_zoom, "32:9 still zooms out past the default framing: %f" % wide_limit)
+	# Narrowing then widening the window gives the player's wanted zoom back.
+	_viewport.size = Vector2i(3200, 900)
+	rig.call("_on_viewport_resized")
+	rig.zoom_steps(1000.0)
+	rig.step_view(10.0, Vector2.ZERO)
+	var capped: float = camera.size
+	_viewport.size = Vector2i(1600, 900)
+	rig.call("_on_viewport_resized")
+	rig.step_view(10.0, Vector2.ZERO)
+	assert_true(camera.size > capped + 1.0, "widening the window restores the wanted zoom")
 
 
 func test_max_zoom_out_still_shows_the_tree_line_and_is_never_a_cut_off() -> void:
@@ -207,3 +229,40 @@ func test_a_street_can_be_reskinned_without_touching_the_geometry() -> void:
 	assert_eq(first[0].mesh.get_aabb(), second[0].mesh.get_aabb(), "the world edge is the same for every skin")
 	for node: MeshInstance3D in first + second:
 		node.free()
+
+
+func test_ground_cache_hits_for_a_second_dressing_and_misses_when_the_lot_or_skin_changes() -> void:
+	await _start()
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
+	assert_not_null(dressing)
+	if dressing == null:
+		return
+	var lot: Rect2i = view.neighbourhood_reserved_lot()
+	var runs: Array[Dictionary] = view.room_dressing.frontage_runs()
+	var no_pads: Array[AABB] = []
+	var second: NeighbourhoodDressing = NeighbourhoodDressing.new()
+	_main.add_child(second)
+	second.configure(view.world.grid, lot, runs, no_pads)
+	var meadow: MeshInstance3D = dressing.ground_root.get_node("Meadow") as MeshInstance3D
+	var restored: MeshInstance3D = second.ground_root.get_node("Meadow") as MeshInstance3D
+	assert_true(restored.mesh == meadow.mesh, "a second dressing restores the shared ground mesh from the cache")
+	assert_true((second.far_root.get_child(0) as MeshInstance3D).mesh == (dressing.far_root.get_child(0) as MeshInstance3D).mesh,
+		"and the far street")
+	# A different lot is a miss: new geometry, centred on the new lot.
+	second.configure(view.world.grid, Rect2i(lot.position + Vector2i(4, 0), lot.size), runs, no_pads)
+	var grown: MeshInstance3D = second.ground_root.get_node("Meadow") as MeshInstance3D
+	assert_true(grown.mesh != meadow.mesh, "a lot change rebuilds the ground")
+	assert_ne(second.world_rect(), dressing.world_rect())
+	# An edited skin is a miss too, even on the same lot.
+	var skin: GroundSkin = GroundSkin.standard()
+	skin.grass = Color(0.9, 0.4, 0.2)
+	second.ground_skin = skin
+	second.configure(view.world.grid, lot, runs, no_pads)
+	var skinned: MeshInstance3D = second.ground_root.get_node("Meadow") as MeshInstance3D
+	assert_true(skinned.mesh != meadow.mesh, "a re-skin rebuilds the ground")
+	skin.grass = Color(0.2, 0.4, 0.9)
+	second.configure(view.world.grid, lot.grow(0), runs, no_pads)
+	assert_true(second.ground_root.get_node("Meadow") != null)
+	second.get_parent().remove_child(second)
+	second.free()

@@ -573,6 +573,8 @@ func _frame_shop(reset: bool) -> void:
 	var street: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
 	if street != null:
 		camera.set_world_bounds(street.world_rect())
+	else:
+		camera.set_world_bounds(Rect2())
 
 
 func _on_header_layout_changed() -> void:

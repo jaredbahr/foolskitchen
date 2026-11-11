@@ -62,6 +62,9 @@ var _yaw: float = 0.0
 var _target_yaw: float = 0.0
 var _zoom: float = 26.0
 var _target_zoom: float = 26.0
+## What the player asked for; the world edge only caps the effective target, so
+## widening the window gives the wanted zoom back.
+var _wanted_zoom: float = 26.0
 var _dragging: bool = false
 var _pointer_inside: bool = false
 var _pointer_position_valid: bool = false
@@ -143,7 +146,8 @@ func reset_view() -> void:
 	_camera = get_node_or_null("Camera3D") as Camera3D
 	_yaw = deg_to_rad(initial_yaw_degrees)
 	_target_yaw = _yaw
-	_zoom = _clamp_zoom(initial_zoom)
+	_wanted_zoom = _clamp_wanted(initial_zoom)
+	_zoom = _clamp_zoom(_wanted_zoom)
 	_target_zoom = _zoom
 	_has_panned = false
 	_pointer_position_valid = false
@@ -211,7 +215,8 @@ func frame_area(center: Vector2, limits: Vector2, zoom: float, reset: bool) -> v
 		_focus_glide = null
 		reset_view()
 		return
-	_target_zoom = _clamp_zoom(zoom)
+	_wanted_zoom = _clamp_wanted(zoom)
+	_target_zoom = _clamp_zoom(_wanted_zoom)
 	_focus_glide = Vector3(center.x, 0.0, center.y)
 
 
@@ -234,11 +239,11 @@ func set_street_pan_extension(normal: Vector2i, metres: float) -> bool:
 ## empty rect clears the limit.
 func set_world_bounds(bounds: Rect2) -> void:
 	_world_bounds = bounds
-	_target_zoom = _clamp_zoom(_target_zoom)
-	_zoom = minf(_zoom, _clamp_zoom(_zoom))
+	_target_zoom = _clamp_zoom(_wanted_zoom)
 	_apply_camera()
 
 
+## Orthographic only (the game's projection): a perspective view would see farther.
 ## Metres from the focus to the farthest ground point on screen at `zoom`, at
 ## any rotation: the half-diagonal of the visible ground rectangle.
 func view_reach(zoom: float) -> float:
@@ -275,7 +280,8 @@ func camera_quarter() -> int:
 
 ## Positive steps zoom out. Only the target changes; step_view smooths the view.
 func zoom_steps(steps: float) -> void:
-	_target_zoom = _clamp_zoom(_target_zoom + steps * zoom_step)
+	_wanted_zoom = _clamp_wanted(_wanted_zoom + steps * zoom_step)
+	_target_zoom = _clamp_zoom(_wanted_zoom)
 
 
 ## A middle-mouse grab translates screen pixels to ground-plane metres.
@@ -307,8 +313,7 @@ func _edge_pan_input(mouse: Vector2, viewport_rect: Rect2) -> Vector2:
 func _on_viewport_resized() -> void:
 	_pointer_position_valid = false
 	if _world_bounds.has_area():
-		_target_zoom = _clamp_zoom(_target_zoom)
-		_zoom = minf(_zoom, _clamp_zoom(_zoom))
+		_target_zoom = _clamp_zoom(_wanted_zoom)
 	if _view_viewport == null or not _view_viewport.get_visible_rect().has_area():
 		return
 	if not _has_panned:
@@ -397,6 +402,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_pointer_position_valid = true
 		if _dragging:
 			pan_by_drag(motion.relative, get_viewport().get_visible_rect().size.y)
+
+
+func _clamp_wanted(value: float) -> float:
+	var floor_zoom: float = maxf(0.1, minimum_zoom)
+	return clampf(value, floor_zoom, maxf(maximum_zoom, floor_zoom))
 
 
 func _clamp_zoom(value: float) -> float:
