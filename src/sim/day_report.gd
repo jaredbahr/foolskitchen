@@ -82,6 +82,9 @@ var critic_lines: Array[String] = []
 var rush_hour_lines: Array[String] = []
 ## Detached record notices for this close; old reports omit them.
 var record_lines: Array[String] = []
+## The owner's other sites at this close (FK-087), already player-facing:
+## "Pier Shack (managed): +$84". Empty (and not saved) with a single site.
+var away_site_lines: Array[String] = []
 ## Optional purchase-basis accounting. Historical reports retain their cash
 ## basis; missing historical ingredient prices are never fabricated.
 var stock_values_recorded: bool = false
@@ -289,6 +292,8 @@ func to_dict() -> Dictionary:
 		result["rush_hour_lines"] = rush_hour_lines.duplicate()
 	if not record_lines.is_empty():
 		result["record_lines"] = record_lines.duplicate()
+	if not away_site_lines.is_empty():
+		result["away_site_lines"] = away_site_lines.duplicate()
 	return result
 
 
@@ -389,6 +394,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_record_lines:
 			if line is String:
 				report.record_lines.append(line)
+	var saved_away_lines: Variant = data.get("away_site_lines", [])
+	if saved_away_lines is Array:
+		for line: Variant in saved_away_lines:
+			if line is String:
+				report.away_site_lines.append(line)
 	report.stock_values_recorded = recorded is bool and recorded
 	for field: String in ["food_cost", "stock_bought", "spoiled_stock", "stock_on_hand"]:
 		var value: int = PurchaseBasis.decode(data.get(field, null))

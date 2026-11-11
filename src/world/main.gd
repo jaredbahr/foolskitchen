@@ -40,6 +40,7 @@ const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
+const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_managers.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
@@ -232,6 +233,10 @@ var _owner_award_day: int = 0
 ## The close that raised the career tier, and the tier it reached (report line).
 var _career_tier_day: int = 0
 var _career_tier_reached: int = 0
+## The close that settled the owner's inactive sites, and its report lines
+## (FK-087): one per away site, empty with a single site.
+var _away_site_day: int = 0
+var _away_site_lines: Array[String] = []
 var _closed_report_day: int = 0
 var _loan_notice_day: int = 0
 var _milestones_reached_today: Array[Milestone] = []
@@ -2562,6 +2567,8 @@ func build_report(day: int) -> DayReport:
 		report.weekly_challenge_line = _weekly_challenge_report_line
 	if _career_tier_day == day:
 		report.career_tier_line = CareerTierTuning.reached_text(_career_tier_reached)
+	if _away_site_day == day:
+		report.away_site_lines = _away_site_lines.duplicate()
 	report.demand_forecast = forecast_next_demand()
 	if _record_notice_day == day:
 		report.record_lines = _record_notices.duplicate()
@@ -2642,6 +2649,8 @@ func _new_game() -> void:
 	_owner_award_day = 0
 	_career_tier_day = 0
 	_career_tier_reached = 0
+	_away_site_day = 0
+	_away_site_lines.clear()
 	_closed_report_day = 0
 	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
@@ -3922,14 +3931,29 @@ func _change_staff(id: StringName, hiring: bool) -> bool:
 	var choices: StaffRoster = StaffRoster.new(TUNING)
 	if not choices.from_dict(staff_roster.to_dict()):
 		return false
+	if hiring and not _may_hire_role(_candidate_role(choices, id)):
+		return false
 	if not (choices.hire(id) if hiring else choices.let_go(id)):
 		return false
 	if not sim.set_staff_roster(choices.members()):
 		return false
 	staff_roster = choices
+	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
 	refresh_presentation()
 	return true
+
+
+## Managers are hired only from the manager tier (FK-087); floor roles always.
+func _may_hire_role(role: StringName) -> bool:
+	return role != StaffMember.MANAGER or owner_progress.career_tier >= SITE_MANAGERS.hire_tier
+
+
+static func _candidate_role(roster: StaffRoster, id: StringName) -> StringName:
+	for member: StaffMember in roster.candidates():
+		if member.id == id:
+			return member.role
+	return &""
 
 
 func toggle_staff() -> void:
@@ -4864,6 +4888,7 @@ func _begin_morning() -> void:
 		push_error("Cannot install the morning staff roster")
 		return
 	staff_roster = choices
+	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
 	# Retain yesterday's detached report while today's live counters reset.
 	_staff_panel.set_team_activity(_last_team_activity)
@@ -4904,13 +4929,16 @@ func _begin_morning() -> void:
 	_owner_award_day = 0
 	_career_tier_day = 0
 	_career_tier_reached = 0
+	_away_site_day = 0
+	_away_site_lines.clear()
 	_closed_report_day = 0
 	_loan_notice_day = 0
 	_weekly_challenge_reward_day = 0
 	_weekly_challenge_report_line = ""
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
-		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"))
+		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
+			owner_progress.career_tier >= SITE_MANAGERS.hire_tier)
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
@@ -5717,11 +5745,84 @@ func _charge_closing_costs() -> void:
 		if agent is StaffAgent and not agent is OwnerAgent:
 			# Paid by the hour: the default day keeps the exact daily wage.
 			Economy.add_cash(-OpeningHours.wage_for_day((agent as StaffAgent).wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
-	var rent: int = LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
+	# Managers have no worker in the world (no floor work) but are paid the
+	# same way (FK-087). A roster without one charges exactly as before.
+	for member: StaffMember in staff_roster.members():
+		if member.role == StaffMember.MANAGER:
+			Economy.add_cash(-OpeningHours.wage_for_day(member.wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
+	var rent: int = _home_rent()
 	if rent > 0:
 		Economy.add_cash(-rent, Ledger.RENT)
 	if sim.cat.adopted and CAT.daily_food_cost > 0:
 		Economy.add_cash(-CAT.daily_food_cost, Ledger.CAT_FOOD)
+
+
+## Today's rent rule for the home lease: expanded or not (D30). The home
+## lot's rent whether it is active or another site is (FK-087).
+func _home_rent() -> int:
+	return LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
+
+
+## Settles every inactive site at the active site's close (FK-087,
+## AwaySites): a managed site's away earnings, a closed site's rent, and a
+## booking there whose day has come, refunded. Each movement is booked to the
+## site that made it, so the active site's report, history, records and XP
+## leave it out. A single site does nothing here.
+func _close_away_sites(day: int) -> void:
+	_away_site_day = day
+	_away_site_lines.clear()
+	if site_book.site_count() < 2:
+		return
+	for plan: Dictionary in AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
+			BOOKING_TUNING):
+		var site: StringName = plan["site"]
+		var label: String = AwaySites.display_name(site_book, site)
+		if not bool(plan["rent_known"]):
+			push_warning("No rent is known for the lot of an inactive site; none was charged")
+		if plan.has("bookings"):
+			if not site_book.set_frozen_section(site, "bookings", plan["bookings"]):
+				push_warning("An inactive site's lapsed booking could not be recorded; not refunded")
+				plan["refund"] = 0
+				var kept: Array[Dictionary] = []
+				for movement: Dictionary in plan["movements"]:
+					if movement["category"] != Ledger.BOOKING_REFUND:
+						kept.append(movement)
+				plan["movements"] = kept
+		for movement: Dictionary in plan["movements"]:
+			Economy.add_cash_for_site(int(movement["amount"]), movement["category"],
+				String(movement["note"]), site)
+		_away_site_lines.append(AwaySites.report_line(label, plan))
+
+
+## The member running the active site while the owner is at another, or
+## &"" (FK-087).
+func site_manager() -> StringName:
+	return site_book.manager(site_book.active_id)
+
+
+## Makes `member_id` (a Manager on the active site's roster) the manager of
+## this site, so it earns while the owner is at another; &"" clears it. Saved
+## on the site's row at the next morning autosave. Tests only so far.
+func assign_site_manager(member_id: StringName) -> bool:
+	if not can_view_staff():
+		return false
+	if not member_id.is_empty() and not _is_roster_manager(member_id):
+		return false
+	return site_book.set_manager(site_book.active_id, member_id)
+
+
+func _is_roster_manager(member_id: StringName) -> bool:
+	for member: StaffMember in staff_roster.members():
+		if member.id == member_id:
+			return member.role == StaffMember.MANAGER
+	return false
+
+
+## Clears the active site's manager once that person has left the roster.
+func _prune_site_manager() -> void:
+	var current: StringName = site_manager()
+	if not current.is_empty() and not _is_roster_manager(current):
+		site_book.set_manager(site_book.active_id, &"")
 
 
 func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> void:
@@ -5833,6 +5934,7 @@ func _on_service_closed(day: int) -> void:
 	_remember_menu_quality()
 	_charge_closing_costs()
 	_settle_due_booking_at_close(day)
+	_close_away_sites(day)
 	# Capture business profit before milestone cash, the weekly reward or
 	# financing enters the books, excluding booking advances/refunds so those
 	# customer liabilities cannot earn profit awards. Only the active site's

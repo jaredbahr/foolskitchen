@@ -122,6 +122,7 @@ func show_report(report: DayReport) -> void:
 	_add_row(_stock, "Spoiled stock", _recorded_money(report.spoiled_stock, report.spoiled_stock_recorded))
 	_add_row(_stock, "Stock on hand worth", _recorded_money(report.stock_on_hand, report.stock_on_hand_recorded))
 	_cash_change.text = "Cash change today: %s" % _money(report.profit())
+	_show_away_sites(report)
 	_loan_notice.text = LOAN_INTRODUCTION if report.loan_first_advance else ""
 	_loan_notice.visible = report.loan_first_advance
 	var record_notices: Label = %RecordNotices as Label
@@ -549,6 +550,22 @@ func _add_label(parent: Node, text: String) -> Label:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(label)
 	return label
+
+
+## The owner's other sites at this close (FK-087), under the cash change:
+## built only once a report has some, so one-site reports keep their layout.
+func _show_away_sites(report: DayReport) -> void:
+	var away: Label = _cash_change.get_parent().get_node_or_null("AwaySites") as Label
+	if away == null and report.away_site_lines.is_empty():
+		return
+	if away == null:
+		away = Label.new()
+		away.name = "AwaySites"
+		away.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cash_change.get_parent().add_child(away)
+		_cash_change.get_parent().move_child(away, _cash_change.get_index() + 1)
+	away.text = "Your other restaurants:\n" + "\n".join(PackedStringArray(report.away_site_lines))
+	away.visible = not report.away_site_lines.is_empty()
 
 
 func _money(amount: int) -> String:
