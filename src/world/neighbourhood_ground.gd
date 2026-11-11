@@ -24,6 +24,7 @@ const LAWN_Y: float = -0.038
 const LANE_Y: float = -0.030
 const SHADOW_Y: float = -0.022
 const PLANT_Y: float = -0.032
+const SHADOW_LAWN_Y: float = -0.029
 const BLOCK_V: float = 8.105
 
 ## One accumulating vertex-coloured triangle soup, turned into a single mesh.
@@ -93,6 +94,11 @@ var local_reserve: AABB = AABB()
 var shift: float = 0.0
 var world_centre: Vector2 = Vector2.ZERO
 var buildings: Array[AABB] = []
+## Local boxes that cast a baked shadow on the shop's lawn (the shop's built
+## floor at wall height, and the near neighbours); `light_shift` is how far a
+## shadow runs along the ground per metre of height, in local (u, z).
+var shadow_casters: Array[AABB] = []
+var light_shift: Vector2 = Vector2.ZERO
 ## The street's look; null means the standard meadow.
 var skin: GroundSkin
 
@@ -232,6 +238,34 @@ func _patches(base: Soup) -> void:
 		base.star(at, _blob(at, size, size * (0.65 + hash01(index, 5, 11) * 0.3), hash01(index, 6, 11) * PI, 9), PATCH_Y, colour)
 
 
+## Soft-edged shadows are not needed: a flat darker lawn shape per caster, the
+## hull of its footprint and the same footprint pushed along the light, laid on
+## the lawn only. Deterministic and unlit, like the trees' blob shadows.
+func _baked_shadows(base: Soup, lawn: Rect2) -> void:
+	var clip: PackedVector2Array = PackedVector2Array(_rect_points(lawn.grow(-0.2), 1.0))
+	var tone: Color = _lawn.darkened(0.3)
+	for box: AABB in shadow_casters:
+		var corners: PackedVector2Array = PackedVector2Array()
+		var push: Vector2 = light_shift * box.size.y
+		for corner: Vector2 in [Vector2(box.position.x, box.position.z), Vector2(box.end.x, box.position.z),
+				Vector2(box.end.x, box.end.z), Vector2(box.position.x, box.end.z)]:
+			corners.append(corner)
+			corners.append(corner + push)
+		var hull: PackedVector2Array = Geometry2D.convex_hull(corners)
+		for piece: PackedVector2Array in Geometry2D.intersect_polygons(hull, clip):
+			var points: Array[Vector2] = []
+			points.assign(piece)
+			if points.size() >= 3:
+				base.star(_centroid(points), points, SHADOW_LAWN_Y, tone)
+
+
+func _centroid(points: Array[Vector2]) -> Vector2:
+	var sum: Vector2 = Vector2.ZERO
+	for point: Vector2 in points:
+		sum += point
+	return sum / float(points.size())
+
+
 func _lawn_and_lane(base: Soup) -> void:
 	var left: float = local_reserve.position.x
 	var right: float = local_reserve.end.x
@@ -242,6 +276,7 @@ func _lawn_and_lane(base: Soup) -> void:
 	# The shop's own block: mown lawn from the back lane to the pavement.
 	var near: Rect2 = Rect2(left - 2.6, _lane_v + 1.15, right - left + 5.2, shift - 0.16 - (_lane_v + 1.15))
 	base.flat(_rect_points(near, 1.1), LAWN_Y, _lawn)
+	_baked_shadows(base, near)
 	# Across the street: gardens behind the three shopfronts.
 	var far_front: float = shift + 8.2
 	var far: Rect2 = Rect2(-7.4, far_front, 14.8, 5.8)

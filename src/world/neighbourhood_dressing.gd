@@ -89,6 +89,8 @@ var ground_skin: GroundSkin
 var _ground_key: Array = []
 var _far_key: Array = []
 var _building_boxes: Array[AABB] = []
+var _shadow_casters: Array[AABB] = []
+var _light_shift: Vector2 = Vector2.ZERO
 var _visual_half: float = 0.0
 var _configured: bool = false
 
@@ -572,7 +574,9 @@ func world_rect() -> Rect2:
 ## Grass, planting and the tree line, rebuilt only when the street frame or lot
 ## changes (they never depend on purchases, patios or the clock).
 func _build_ground() -> void:
-	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes,
+	_shadow_casters = _compute_shadow_casters()
+	_light_shift = _compute_light_shift()
+	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _shadow_casters, _light_shift,
 			ground_skin.signature() if ground_skin != null else "standard"]
 	if key == _ground_key and ground_root.get_child_count() > 0:
 		ground_root.transform = _frame
@@ -590,6 +594,8 @@ func _build_ground() -> void:
 	builder.shift = _shift
 	builder.buildings = _building_boxes
 	builder.skin = ground_skin
+	builder.shadow_casters = _shadow_casters
+	builder.light_shift = _light_shift
 	var rect: Rect2 = world_rect()
 	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
 	builder.world_centre = Vector2(centre.x, centre.z)
@@ -602,6 +608,37 @@ func _build_ground() -> void:
 ## not show up as leaked resources at exit).
 static func clear_mesh_cache() -> void:
 	_mesh_cache.clear()
+
+
+## The key light's ground run per metre of height, in the street's local (u, z).
+## Baked at the rig's authored light (lighting_rig.tscn KeyLight, -55 / -35 degrees).
+func _compute_light_shift() -> Vector2:
+	var aim: Vector3 = Basis.from_euler(Vector3(deg_to_rad(-55.0), deg_to_rad(-35.0), 0.0)) * Vector3.FORWARD
+	var local: Vector3 = _frame.basis.inverse() * Vector3(aim.x, 0.0, aim.z)
+	return Vector2(local.x, local.z) / maxf(-aim.y, 0.2)
+
+
+## Boxes whose baked shadows plant them on the lawn: the shop's built floor at
+## wall height and the near-side neighbours.
+func _compute_shadow_casters() -> Array[AABB]:
+	var casters: Array[AABB] = []
+	var inverse: Transform3D = _frame.affine_inverse()
+	if _grid != null:
+		var low: Vector3 = Vector3(INF, 0.0, INF)
+		var high: Vector3 = Vector3(-INF, 0.0, -INF)
+		var half: float = GridMath.CELL_SIZE * 0.5
+		for cell: Vector2i in _grid.cells():
+			if _grid.terrain(cell) == SimGrid.Terrain.OUTSIDE:
+				continue
+			var centre: Vector3 = GridMath.cell_to_world(cell)
+			low = Vector3(minf(low.x, centre.x - half), 0.0, minf(low.z, centre.z - half))
+			high = Vector3(maxf(high.x, centre.x + half), 0.0, maxf(high.z, centre.z + half))
+		if low.x <= high.x:
+			casters.append(inverse * AABB(low, Vector3(high.x - low.x, ArtScale.WALL_HEIGHT, high.z - low.z)))
+	for box: AABB in _building_boxes:
+		if box.position.z + box.size.z * 0.5 < _shift:
+			casters.append(box)
+	return casters
 
 
 func _restore_cached(parent: Node3D, key: String) -> bool:
