@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Builds now show their version in the corner of the title screen, and a What's new panel lists what changed, with a "What to test" section first when there is one. It opens by itself the first time you start each new version, and you can reopen it with the What's new button on the title screen or in Settings. "All release notes" opens the releases page in your browser. (#445)
 - The title screen has a new theme song, "Stir It Slow". (#443)
 - The houses across the road now have pretty back gardens to look at: each one grows its own mix of a vegetable patch, a shed, a washing line, a swing or slide, a table with a parasol, a bench, a little fruit tree, a birdbath, stepping stones and a flower border, all standing on soft shadows. Roofs are softer warm and pastel colours so your shop stands out, the laundromat is now a toy shop (blocks, a teddy and bunting in the window, a rocking horse out front) and a pet shop joins the row (a fish tank and a sleepy cat in the window, a dog bed out front), and at night the windows of the shops and houses glow warmly, with a few going dark late in the evening. (#442)
 - The street outside is cosier and livelier: planter trees, benches, bins, a bike rack, a hydrant, a postbox and a little bus stop line the pavement (never in front of your door), the shops have flower boxes and swinging signs, the street lamps glow at night, and birds hop on the lawn while leaves drift off the trees. (#439)

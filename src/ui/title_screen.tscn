@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/ui/title_screen.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="3_settings"]
+[ext_resource type="PackedScene" path="res://src/ui/whats_new_panel.tscn" id="4_whats_new"]
 
 [node name="TitleScreen" type="Control"]
 layout_mode = 3
@@ -43,6 +44,10 @@ text = "New game"
 layout_mode = 2
 text = "Settings"
 
+[node name="WhatsNew" type="Button" parent="Menu/Column"]
+layout_mode = 2
+text = "What's new"
+
 [node name="Quit" type="Button" parent="Menu/Column"]
 layout_mode = 2
 text = "Quit"
@@ -57,4 +62,27 @@ title = "New game"
 theme = ExtResource("2_theme")
 dialog_text = "Start over? Your current shop will be replaced."
 
+[node name="VersionLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -240.0
+offset_top = -32.0
+offset_right = -12.0
+offset_bottom = -8.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.9529412, 0.9019608, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0.2313726, 0.1647059, 0.1254902, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 14
+text = "dev"
+horizontal_alignment = 2
+
 [node name="SettingsPanel" parent="." instance=ExtResource("3_settings")]
+
+[node name="WhatsNewPanel" parent="." instance=ExtResource("4_whats_new")]

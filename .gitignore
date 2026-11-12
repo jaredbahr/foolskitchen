@@ -2,6 +2,8 @@
 .godot/
 *.translation
 export/
+# Stamped by tools/export.sh (version and release notes), never committed
+build_info/
 # Downloaded tools (tools/get_godot.sh)
 .tools/
 # OS

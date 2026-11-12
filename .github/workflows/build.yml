@@ -54,6 +54,9 @@ jobs:
         run: bash tools/check.sh
 
       - name: Export
+        # export.sh reads the runner's GITHUB_REF_TYPE / GITHUB_REF_NAME /
+        # GITHUB_SHA: it stamps the tag (or dev-<short sha> for a manual run)
+        # and bundles the matching release notes into the game.
         run: bash tools/export.sh all
 
       - name: Upload builds
