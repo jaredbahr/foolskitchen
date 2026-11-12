@@ -3615,6 +3615,9 @@ Paid deliveries and FIFO stock lots retain their recorded purchase cost.
 
 The HUD date includes the season. Stock rows show an optional `In season` or
 `Pricey this season` tag; a dish's ingredient details identify in-season items.
+Tags appear only when the rounded price really differs from the base price
+(`SeasonText.ingredient_tag` takes the base cost): at today's $1-$3 prices only
+$3 items (the seafood) move, so a listed $1 or $2 item stays untagged.
 The existing visual-review job adds one paused real morning Stock capture,
 showing those tags and the HUD date together.
 

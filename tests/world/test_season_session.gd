@@ -47,17 +47,20 @@ func test_current_day_stock_tags_menu_hint_and_reads_keep_prices_quality_and_rng
 	var rng: Dictionary = GameState._capture_save()
 	var details: Dictionary = main.call("menu_recipe_details")
 	var hints: Array[Dictionary] = details[&"grilled_cheese"]["ingredients"]
-	assert_true(hints.any(func(row: Dictionary) -> bool:
-		return str(row["text"]).contains("Bread") and str(row["text"]).contains("In season")))
+	assert_false(hints.any(func(row: Dictionary) -> bool:
+		return str(row["text"]).contains("In season")), "bread is listed for spring but still costs $1, so no hint")
+	var fish_hints: Array[Dictionary] = (details[&"fish_and_chips"] as Dictionary)["ingredients"]
+	assert_true(fish_hints.any(func(row: Dictionary) -> bool:
+		return str(row["text"]).contains("Fish fillet") and str(row["text"]).contains("In season")))
 	var rows: Array[Dictionary] = main.call("stock_rows")
-	assert_eq(_row(rows, &"bread")["season_tag"], "In season")
-	assert_eq(_row(rows, &"tomato")["season_tag"], "Pricey this season")
+	assert_eq(_row(rows, &"bread")["season_tag"], "", "an unchanged price gets no tag")
+	assert_eq(_row(rows, &"tomato")["season_tag"], "", "an unchanged price gets no tag")
 	assert_eq(_row(rows, &"mussels")["unit_cost"], 4)
 	assert_true(main.call("set_stock_visible", true))
 	var panel: StockPanel = main.get_node("Overlay/StockPanel") as StockPanel
 	assert_eq((panel.row_for(&"mussels")["price"] as Label).text, "$4 each")
 	assert_eq((panel.row_for(&"mussels")["season"] as Label).text, "Pricey this season")
-	assert_eq((panel.row_for(&"bread")["season"] as Label).text, "In season")
+	assert_false((panel.row_for(&"bread")["season"] as Label).visible, "bread's price did not move")
 	assert_eq(menu.price_of(recipe), sale_price, "supplier prices never change a meal's sale price")
 	assert_eq((main.call("menu_recipe_details") as Dictionary)[&"grilled_cheese"]["quality"],
 		details[&"grilled_cheese"]["quality"], "price reads never change dish quality")
@@ -71,7 +74,7 @@ func test_career_locked_dish_keeps_its_season_hint_in_real_menu_details() -> voi
 	Clock.sim.day = 28
 	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	assert_eq(owner.career_tier, 1)
-	_tier_recipe = (main.get("content") as ContentDB).recipe(&"tomato_melt")
+	_tier_recipe = (main.get("content") as ContentDB).recipe(&"fish_and_chips")
 	assert_not_null(_tier_recipe)
 	_old_unlock_tier = _tier_recipe.unlock_tier
 	_tier_recipe.unlock_tier = 2 # Temporary test mutation; after_each restores the loaded resource.
@@ -86,8 +89,12 @@ func test_career_locked_dish_keeps_its_season_hint_in_real_menu_details() -> voi
 	assert_true(panel.select_recipe(_tier_recipe.id), "locked dishes stay inspectable")
 	var slots: VBoxContainer = panel.get("_requirements_box") as VBoxContainer
 	assert_true(slots.is_visible_in_tree(), "the selected dish shows its real detail panel")
-	assert_true((slots.get_node("ingredients0") as Label).text.contains("Bread: "))
-	assert_true((slots.get_node("ingredients0") as Label).text.contains("In season"))
+	var fish_line: String = ""
+	for child: Node in slots.get_children():
+		if child is Label and String(child.name).begins_with("ingredients") \
+				and (child as Label).text.contains("Fish fillet: "):
+			fish_line = (child as Label).text
+	assert_true(fish_line.contains("In season"), "the in-season fish hint shows on a locked dish")
 	assert_eq((slots.get_node("other0") as Label).text, "Requires Tier 2")
 	assert_eq((slots.get_node("other0") as Label).get_theme_color("font_color"), MenuPanel.HIGHER_COLOR)
 	var row: Control = panel.row_for(_tier_recipe.id)

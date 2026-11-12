@@ -15,8 +15,13 @@ static func name_for_day(day: int) -> String:
 	return "Spring"
 
 
-static func ingredient_tag(ingredient_id: StringName, day: int, tuning: SeasonTuning) -> String:
+## Tags an ingredient only when the season really moves its whole-dollar price
+## today: a $1 or $2 item that rounds back to its usual price gets no tag.
+static func ingredient_tag(ingredient_id: StringName, day: int, tuning: SeasonTuning,
+		base_cost: int) -> String:
 	if ingredient_id.is_empty() or tuning == null:
+		return ""
+	if Season.purchase_unit_cost(ingredient_id, base_cost, day, tuning) == base_cost:
 		return ""
 	var kind: Season.Kind = Season.kind_for_day(day)
 	if tuning.is_in_season(ingredient_id, kind):

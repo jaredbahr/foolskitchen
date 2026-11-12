@@ -5759,7 +5759,7 @@ func stock_rows() -> Array[Dictionary]:
 					continue
 				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
 					"expiring": int(expiring.get(id, 0)), "unit_cost": int(costs[id]),
-					"season_tag": SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning),
+					"season_tag": SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning, ingredient.unit_cost),
 					"enabled": reorder_settings.is_enabled(id), "target": planned.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
 					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
@@ -6440,7 +6440,9 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 			var count: int = Economy.stock.count(id)
 			var text: String = "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]]
 			if season_tuning.is_in_season(id, Season.kind_for_day(Clock.sim.day)):
-				text += " · " + SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning)
+				var tag: String = SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning, ingredient.unit_cost)
+				if not tag.is_empty():
+					text += " · " + tag
 			ingredients.append({"text": text, "met": count >= amounts[id]})
 		var other: Array[Dictionary] = []
 		# A Creative game (FK-141) has no levels or tiers to list.
