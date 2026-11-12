@@ -101,9 +101,10 @@ func _exit_tree() -> void:
 ## Sets the ambience loops from the current view; main calls it every frame
 ## with the shop's light (`DayLight.Look.interior_energy`). Everything is silent
 ## outside service hours and while the game is paused. The music instead picks
-## its daytime or evening track during service and keeps playing while paused.
+## its daytime or evening track during service, the evening report's track while
+## the report is open, and keeps playing while paused.
 ## Chatter fades rather than cuts, so closing lets the room die away.
-func refresh(light: float = 0.0) -> void:
+func refresh(light: float = 0.0, report_open: bool = false) -> void:
 	var now_usec: int = Time.get_ticks_usec()
 	var delta: float = 0.0
 	if _last_refresh_usec >= 0:
@@ -111,7 +112,7 @@ func refresh(light: float = 0.0) -> void:
 	_last_refresh_usec = now_usec
 	var serving: bool = _sim != null and OPEN_PHASES.has(Clock.sim.phase)
 	if not display_only:
-		Sounds.set_music_context(MusicTracks.service_context(serving, light))
+		Sounds.set_music_context(MusicTracks.service_context(serving, light, report_open))
 	var running: bool = _sim != null and Clock.speed > 0 and OPEN_PHASES.has(Clock.sim.phase)
 	var guests: int = 0
 	var staying: int = 0
