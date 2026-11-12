@@ -9,12 +9,14 @@ signal show_guide_requested
 
 const PLAY_GRID_LABEL: String = "Show floor grid while playing"
 const BUILD_GRID_LABEL: String = "Show floor grid in Build"
+const WHATS_NEW_SCENE: PackedScene = preload("res://src/ui/whats_new_panel.tscn")
 const SAVE_DELAY: float = 0.5
 const VIEW_MARGIN: float = 12.0
 
 var _preferences: SettingsPreferences
 var _save_delay: Timer
 var _panel_top: float = VIEW_MARGIN
+var _whats_new: WhatsNewPanel
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _column: VBoxContainer = $Panel/Column
@@ -34,6 +36,8 @@ var _panel_top: float = VIEW_MARGIN
 @onready var _edge_pan: CheckButton = %EdgePanToggle
 @onready var _play_grid: CheckButton = %PlayGridToggle
 @onready var _build_grid: CheckButton = %BuildGridToggle
+@onready var _whats_new_button: Button = %WhatsNewButton
+@onready var _version_label: Label = %VersionLabel
 @onready var _status: Label = %Status
 @onready var _close: Button = %CloseButton
 @onready var _quit_to_title: Button = %QuitToTitleButton
@@ -65,6 +69,12 @@ func _ready() -> void:
 	_play_grid.toggled.connect(_on_play_grid_toggled)
 	_build_grid.toggled.connect(_on_build_grid_toggled)
 	_close.pressed.connect(_on_close_pressed)
+	_whats_new = WHATS_NEW_SCENE.instantiate() as WhatsNewPanel
+	add_child(_whats_new)
+	_whats_new_button.text = TitleText.WHATS_NEW
+	_whats_new_button.pressed.connect(_on_whats_new_pressed)
+	_whats_new.close_requested.connect(_whats_new_button.grab_focus)
+	_version_label.text = "Version %s" % BuildInfo.label(BuildInfo.version())
 	_quit_to_title.text = TitleText.QUIT_TO_TITLE
 	_quit_to_title.pressed.connect(_on_quit_to_title_pressed)
 	var guide_button: Button = %ShowGuideButton
@@ -266,6 +276,10 @@ func _record(saved: bool) -> void:
 func set_show_guide_available(value: bool) -> void:
 	(get_node("Panel/Column/Scroll/Content/ShowGuideButton") as Button).visible = value
 	_layout_card()
+
+
+func _on_whats_new_pressed() -> void:
+	_whats_new.present(BuildInfo.version(), BuildInfo.notes())
 
 
 func _on_show_guide_pressed() -> void:

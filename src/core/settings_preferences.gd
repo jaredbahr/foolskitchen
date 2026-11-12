@@ -19,6 +19,8 @@ const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 ## Later additions: a file without them still loads, with their defaults.
 const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid"]
+## Optional text key: the build version whose What's new panel was last shown.
+const LAST_SEEN_KEY: String = "last_seen_version"
 
 var master_volume_percent: int = 100
 var music_volume_percent: int = 100
@@ -31,6 +33,9 @@ var edge_pan_enabled: bool = true
 var build_grid_enabled: bool = true
 ## Whether normal play shows the floor grid.
 var play_grid_enabled: bool = true
+## The release whose What's new panel opened last ("" = none yet). It lives
+## here, in user settings, so loading or replacing a game save never changes it.
+var last_seen_version: String = ""
 
 var _file_path: String = DEFAULT_PATH
 var _disk_enabled: bool = true
@@ -69,7 +74,8 @@ func load_from_disk() -> bool:
 	var edge_pan: Variant = config.get_value(SECTION, "edge_pan", MISSING)
 	var build_grid: Variant = config.get_value(SECTION, "build_grid", true)
 	var play_grid: Variant = config.get_value(SECTION, "play_grid", true)
-	if not version is int or version != VERSION \
+	var last_seen: Variant = config.get_value(SECTION, LAST_SEEN_KEY, "")
+	if not version is int or version != VERSION or not last_seen is String \
 			or not _valid_volume(master) or not _valid_volume(music) \
 			or not _valid_volume(effects) or not scale is int \
 			or not UI_SCALES.has(scale) or not speed is int \
@@ -85,6 +91,7 @@ func load_from_disk() -> bool:
 	edge_pan_enabled = edge_pan
 	build_grid_enabled = build_grid
 	play_grid_enabled = play_grid
+	last_seen_version = last_seen
 	return true
 
 
@@ -121,6 +128,9 @@ func _has_safe_config_syntax() -> bool:
 		elif BOOL_KEYS.has(key) or OPTIONAL_BOOL_KEYS.has(key):
 			if value != "true" and value != "false":
 				return false
+		elif key == LAST_SEEN_KEY:
+			if not _valid_quoted_version(value):
+				return false
 		else:
 			return false
 		keys_seen[key] = true
@@ -144,6 +154,7 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "edge_pan", edge_pan_enabled)
 	config.set_value(SECTION, "build_grid", build_grid_enabled)
 	config.set_value(SECTION, "play_grid", play_grid_enabled)
+	config.set_value(SECTION, LAST_SEEN_KEY, last_seen_version)
 	var saved: bool = config.save(_file_path) == OK
 	if saved:
 		_pending_volume_save = false
@@ -290,6 +301,19 @@ func set_play_grid_enabled(value: bool) -> bool:
 	return saved
 
 
+## Remembers which release's What's new panel was shown. Like the grid
+## choices, it holds for the session even if the file cannot be written.
+func set_last_seen_version(value: String) -> bool:
+	if not _valid_version_text(value):
+		return false
+	if last_seen_version == value:
+		return true
+	last_seen_version = value
+	var saved: bool = save_to_disk()
+	changed.emit(&"last_seen_version")
+	return saved
+
+
 ## Audio buses are authored in default_bus_layout.tres. A missing bus on an
 ## older project is ignored rather than causing an engine error.
 func apply_audio() -> void:
@@ -320,6 +344,23 @@ func _set_volume(bus: StringName, percent: int) -> void:
 		&"Effects": effects_volume_percent = percent
 
 
+## Version text is a short plain token (v0.2.0, dev-1a2b3c4); anything with
+## quotes, backslashes or control characters would break the config line.
+static func _valid_version_text(value: String) -> bool:
+	if value.length() > 40:
+		return false
+	for index: int in value.length():
+		var code: int = value.unicode_at(index)
+		if code < 33 or code > 126 or code == 34 or code == 92:
+			return false
+	return true
+
+
+static func _valid_quoted_version(value: String) -> bool:
+	return value.length() >= 2 and value.begins_with("\"") and value.ends_with("\"") \
+		and _valid_version_text(value.substr(1, value.length() - 2))
+
+
 static func _valid_volume(value: Variant) -> bool:
 	return value is int and value >= 0 and value <= 100
 
@@ -335,3 +376,4 @@ func _reset_defaults() -> void:
 	edge_pan_enabled = true
 	build_grid_enabled = true
 	play_grid_enabled = true
+	last_seen_version = ""
