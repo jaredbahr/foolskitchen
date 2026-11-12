@@ -19,12 +19,16 @@ const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 ## Later additions: a file without them still loads, with their defaults.
 const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid"]
+## The Ambience slider (#366) came later too: a file without it loads at 100%.
+const OPTIONAL_INTEGER_KEYS: Array[String] = ["ambience_volume"]
 ## Optional text key: the build version whose What's new panel was last shown.
 const LAST_SEEN_KEY: String = "last_seen_version"
 
 var master_volume_percent: int = 100
 var music_volume_percent: int = 100
 var effects_volume_percent: int = 100
+## The dining room's room tone, chatter and table clinks (#366).
+var ambience_volume_percent: int = 100
 var ui_scale_percent: int = 100
 var default_open_speed: int = 1
 var fullscreen_enabled: bool = false
@@ -68,6 +72,7 @@ func load_from_disk() -> bool:
 	var master: Variant = config.get_value(SECTION, "master_volume", MISSING)
 	var music: Variant = config.get_value(SECTION, "music_volume", MISSING)
 	var effects: Variant = config.get_value(SECTION, "effects_volume", MISSING)
+	var ambience: Variant = config.get_value(SECTION, "ambience_volume", 100)
 	var scale: Variant = config.get_value(SECTION, "ui_scale", MISSING)
 	var speed: Variant = config.get_value(SECTION, "default_open_speed", MISSING)
 	var fullscreen: Variant = config.get_value(SECTION, "fullscreen", MISSING)
@@ -77,7 +82,7 @@ func load_from_disk() -> bool:
 	var last_seen: Variant = config.get_value(SECTION, LAST_SEEN_KEY, "")
 	if not version is int or version != VERSION or not last_seen is String \
 			or not _valid_volume(master) or not _valid_volume(music) \
-			or not _valid_volume(effects) or not scale is int \
+			or not _valid_volume(effects) or not _valid_volume(ambience) or not scale is int \
 			or not UI_SCALES.has(scale) or not speed is int \
 			or not OPEN_SPEEDS.has(speed) or not fullscreen is bool \
 			or not edge_pan is bool or not build_grid is bool or not play_grid is bool:
@@ -85,6 +90,7 @@ func load_from_disk() -> bool:
 	master_volume_percent = master
 	music_volume_percent = music
 	effects_volume_percent = effects
+	ambience_volume_percent = ambience
 	ui_scale_percent = scale
 	default_open_speed = speed
 	fullscreen_enabled = fullscreen
@@ -122,7 +128,7 @@ func _has_safe_config_syntax() -> bool:
 		var value: String = line.substr(equals + 1).strip_edges()
 		if keys_seen.has(key):
 			return false
-		if INTEGER_KEYS.has(key):
+		if INTEGER_KEYS.has(key) or OPTIONAL_INTEGER_KEYS.has(key):
 			if not value.is_valid_int():
 				return false
 		elif BOOL_KEYS.has(key) or OPTIONAL_BOOL_KEYS.has(key):
@@ -148,6 +154,7 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "master_volume", master_volume_percent)
 	config.set_value(SECTION, "music_volume", music_volume_percent)
 	config.set_value(SECTION, "effects_volume", effects_volume_percent)
+	config.set_value(SECTION, "ambience_volume", ambience_volume_percent)
 	config.set_value(SECTION, "ui_scale", ui_scale_percent)
 	config.set_value(SECTION, "default_open_speed", default_open_speed)
 	config.set_value(SECTION, "fullscreen", fullscreen_enabled)
@@ -188,6 +195,7 @@ func volume_percent(bus: StringName) -> int:
 		&"Master": return master_volume_percent
 		&"Music": return music_volume_percent
 		&"Effects": return effects_volume_percent
+		&"Ambience": return ambience_volume_percent
 	return -1
 
 
@@ -317,7 +325,7 @@ func set_last_seen_version(value: String) -> bool:
 ## Audio buses are authored in default_bus_layout.tres. A missing bus on an
 ## older project is ignored rather than causing an engine error.
 func apply_audio() -> void:
-	for bus: StringName in [&"Master", &"Music", &"Effects"]:
+	for bus: StringName in [&"Master", &"Music", &"Effects", &"Ambience"]:
 		var index: int = AudioServer.get_bus_index(bus)
 		if index < 0:
 			continue
@@ -342,6 +350,7 @@ func _set_volume(bus: StringName, percent: int) -> void:
 		&"Master": master_volume_percent = percent
 		&"Music": music_volume_percent = percent
 		&"Effects": effects_volume_percent = percent
+		&"Ambience": ambience_volume_percent = percent
 
 
 ## Version text is a short plain token (v0.2.0, dev-1a2b3c4); anything with
@@ -370,6 +379,7 @@ func _reset_defaults() -> void:
 	master_volume_percent = 100
 	music_volume_percent = 100
 	effects_volume_percent = 100
+	ambience_volume_percent = 100
 	ui_scale_percent = 100
 	default_open_speed = 1
 	fullscreen_enabled = false

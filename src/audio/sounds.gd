@@ -6,11 +6,18 @@ extends RefCounted
 ## (a bare tool run) every call is a quiet no-op.
 
 const TUNING: SoundTuning = preload("res://data/audio/sound_tuning.tres")
+const AMBIENCE: AmbienceTuning = preload("res://data/audio/ambience.tres")
 
 
 static func play(cue: StringName) -> bool:
 	var sfx: Node = _sfx()
 	return sfx != null and bool(sfx.call(&"play", cue))
+
+
+## A table clink (#366); with `positioned`, it pans from `world_position`.
+static func play_clink(kind: StringName, world_position: Vector3 = Vector3.ZERO, positioned: bool = false) -> bool:
+	var sfx: Node = _sfx()
+	return sfx != null and bool(sfx.call(&"play_clink", kind, world_position, positioned))
 
 
 static func set_loop_level(loop: StringName, level: float) -> void:

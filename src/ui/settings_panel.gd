@@ -26,9 +26,11 @@ var _whats_new: WhatsNewPanel
 @onready var _master: HSlider = %MasterSlider
 @onready var _music: HSlider = %MusicSlider
 @onready var _effects: HSlider = %EffectsSlider
+@onready var _ambience: HSlider = %AmbienceSlider
 @onready var _master_value: Label = %MasterValue
 @onready var _music_value: Label = %MusicValue
 @onready var _effects_value: Label = %EffectsValue
+@onready var _ambience_value: Label = %AmbienceValue
 @onready var _scale: OptionButton = %ScaleChoice
 @onready var _speed: OptionButton = %SpeedChoice
 @onready var _fullscreen_row: HBoxContainer = %FullscreenRow
@@ -53,7 +55,8 @@ func _ready() -> void:
 	_master.value_changed.connect(_on_master_changed)
 	_music.value_changed.connect(_on_music_changed)
 	_effects.value_changed.connect(_on_effects_changed)
-	for slider: HSlider in [_master, _music, _effects]:
+	_ambience.value_changed.connect(_on_ambience_changed)
+	for slider: HSlider in [_master, _music, _effects, _ambience]:
 		slider.drag_ended.connect(_on_volume_drag_ended)
 	_save_delay = Timer.new()
 	_save_delay.one_shot = true
@@ -126,9 +129,11 @@ func refresh() -> void:
 	_master.set_value_no_signal(_preferences.master_volume_percent)
 	_music.set_value_no_signal(_preferences.music_volume_percent)
 	_effects.set_value_no_signal(_preferences.effects_volume_percent)
+	_ambience.set_value_no_signal(_preferences.ambience_volume_percent)
 	_master_value.text = "%d%%" % _preferences.master_volume_percent
 	_music_value.text = "%d%%" % _preferences.music_volume_percent
 	_effects_value.text = "%d%%" % _preferences.effects_volume_percent
+	_ambience_value.text = "%d%%" % _preferences.ambience_volume_percent
 	_scale.select(_scale.get_item_index(_preferences.ui_scale_percent))
 	_speed.select(_speed.get_item_index(_preferences.default_open_speed))
 	_fullscreen.set_pressed_no_signal(_preferences.fullscreen_enabled)
@@ -202,6 +207,10 @@ func _on_music_changed(value: float) -> void:
 
 func _on_effects_changed(value: float) -> void:
 	_preview_volume(&"Effects", value)
+
+
+func _on_ambience_changed(value: float) -> void:
+	_preview_volume(&"Ambience", value)
 
 
 func _preview_volume(bus: StringName, value: float) -> void:
