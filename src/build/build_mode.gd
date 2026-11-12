@@ -488,6 +488,19 @@ func eyedrop(item_id: int, cell: Vector2i) -> bool:
 	return true
 
 
+## "  $40  (refund $10)" after a drag's summary; "  Free" in a Creative game
+## (FK-141), where nothing costs or refunds money.
+static func _cost_suffix(cost: int, refund: int) -> String:
+	if GameMode.is_creative():
+		return "  " + Fmt.FREE if cost > 0 else ""
+	var text: String = ""
+	if cost > 0:
+		text += "  $%d" % cost
+	if refund > 0:
+		text += "  (refund $%d)" % refund
+	return text
+
+
 ## One player sentence for the hovered item under the sell or eyedropper tool.
 func hover_summary() -> String:
 	if state == State.IDLE and hover_anchor != WallFaces.NO_FACE and _editor != null:
@@ -495,7 +508,7 @@ func hover_summary() -> String:
 		if hung != null:
 			match tool:
 				Tool.SELL:
-					return "Sell %s for %s" % [hung.display_name, Fmt.money(ShopEditor.sale_refund(hung))] \
+					return CatalogueText.sell_text(hung.display_name, ShopEditor.sale_refund(hung)) \
 						if current_check.ok else current_check.why
 				Tool.EYEDROPPER:
 					return "Hang another %s" % hung.display_name
@@ -511,7 +524,7 @@ func hover_summary() -> String:
 		return ""
 	match tool:
 		Tool.SELL:
-			return "Sell %s for %s" % [definition.display_name, Fmt.money(ShopEditor.sale_refund(definition, placed.variant_id))] \
+			return CatalogueText.sell_text(definition.display_name, ShopEditor.sale_refund(definition, placed.variant_id)) \
 				if current_check.ok else current_check.why
 		Tool.EYEDROPPER:
 			return "Place another %s" % definition.display_name if definition.catalogue_visible \
@@ -874,10 +887,7 @@ func wall_summary() -> String:
 		text = definition.display_name
 	elif definition != null:
 		text = "%d %ss" % [added, definition.display_name.to_lower()]
-	if current_check.cost > 0:
-		text += "  $%d" % current_check.cost
-	if current_check.refund > 0:
-		text += "  (refund $%d)" % current_check.refund
+	text += _cost_suffix(current_check.cost, current_check.refund)
 	return text.strip_edges()
 
 
@@ -1066,10 +1076,7 @@ func patio_summary() -> String:
 	var count: int = current_check.floor_cells.size()
 	var text: String = "%s %d patio tile%s" % ["Remove" if patio_removing else "Add",
 		count, "" if count == 1 else "s"]
-	if current_check.cost > 0:
-		text += "  $%d" % current_check.cost
-	if current_check.refund > 0:
-		text += "  (refund $%d)" % current_check.refund
+	text += _cost_suffix(current_check.cost, current_check.refund)
 	return text
 
 
@@ -1204,8 +1211,7 @@ func floor_summary() -> String:
 	var count: int = current_check.floor_cells.size()
 	var text: String = "%s %d floor tile%s" % ["Remove" if not current_check.floor_adding else "Add",
 		count, "" if count == 1 else "s"]
-	if current_check.cost > 0:
-		text += "  $%d" % current_check.cost
+	text += _cost_suffix(current_check.cost, 0)
 	var losses: PackedStringArray = []
 	for kind: SimGrid.Segment in [SimGrid.Segment.WALL, SimGrid.Segment.WINDOW, SimGrid.Segment.DOORWAY]:
 		var removed: int = 0
@@ -1219,7 +1225,10 @@ func floor_summary() -> String:
 	if not current_check.lost_decor.is_empty():
 		var count_lost: int = current_check.lost_decor.size()
 		losses.append("%d wall decoration%s" % [count_lost, "" if count_lost == 1 else "s"])
-	if current_check.refund > 0:
+	if current_check.refund > 0 and GameMode.is_creative():
+		if not losses.is_empty():
+			text += "  (removes %s)" % ", ".join(losses)
+	elif current_check.refund > 0:
 		var removes: String = "removes %s, " % ", ".join(losses) if not losses.is_empty() else ""
 		if current_check.floor_finish_refund > 0:
 			text += "  (%srefund $%d, $%d of it for the flooring)" % [removes, current_check.refund,
@@ -1504,8 +1513,8 @@ func floors_summary() -> String:
 	if not relaid:
 		return "Recolour %s (free)" % tiles
 	var text: String = "Lay %s of %s: %s" % [tiles, name,
-		Fmt.money(current_check.cost) if current_check.cost > 0 else "free"]
-	if current_check.refund > 0:
+		Fmt.money(current_check.cost) if current_check.cost > 0 and not GameMode.is_creative() else "free"]
+	if current_check.refund > 0 and not GameMode.is_creative():
 		text += " (refund %s)" % Fmt.money(current_check.refund)
 	return text
 
@@ -1669,8 +1678,8 @@ func wall_finish_summary() -> String:
 	if not relaid:
 		return "Recolour %s (free)" % faces
 	var text: String = "Put up %s on %s: %s" % [name, faces,
-		Fmt.money(current_check.cost) if current_check.cost > 0 else "free"]
-	if current_check.refund > 0:
+		Fmt.money(current_check.cost) if current_check.cost > 0 and not GameMode.is_creative() else "free"]
+	if current_check.refund > 0 and not GameMode.is_creative():
 		text += " (refund %s)" % Fmt.money(current_check.refund)
 	return text
 
@@ -1837,7 +1846,7 @@ func hang_summary() -> String:
 		return current_check.why
 	var hint: String = WallDecor.room_hint(_grid, hang_definition, hang_anchor)
 	var action: String = "Move %s here (Del sells it)" % hang_definition.display_name if hang_moving != WallFaces.NO_FACE \
-		else "Hang %s for %s" % [hang_definition.display_name, Fmt.money(hang_definition.price)]
+		else "Hang %s %s" % [hang_definition.display_name, Fmt.for_price(hang_definition.price)]
 	return action if hint.is_empty() else "%s. %s" % [action, hint]
 
 

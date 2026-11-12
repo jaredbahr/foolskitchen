@@ -12,6 +12,8 @@ const GLOBAL: PackedStringArray = [
 	"clock",
 	"economy", "blueprints", "milestones", "weekly_challenge", "hints", "weather",
 	"collection_toasts", "sites",
+	# Career or Creative (FK-141) belongs to the whole game, not one site.
+	"game_mode",
 ]
 
 const PER_SITE: PackedStringArray = [
