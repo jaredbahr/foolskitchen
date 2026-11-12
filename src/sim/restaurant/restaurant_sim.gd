@@ -929,20 +929,21 @@ func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 	world.log_event("%s ran out: %s sold out" % [ingredient_id, recipe_id])
 
 
-## Missing overrides use the unchanged content price.
-func price_of(recipe: RecipeDef) -> int:
+## A menu preview may supply its shown base price, including a stashed price.
+func price_of(recipe: RecipeDef, preview_price: int = -1) -> int:
 	if recipe == null:
 		return 0
-	var price: int = maxi(0, prices.get(recipe.id, recipe.standard_price))
+	var price: int = preview_price if preview_price >= 0 else maxi(0, prices.get(recipe.id, recipe.standard_price))
 	return daily_special.price_for(recipe, price) if daily_special != null else price
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.
-func price_walkout_chance(recipe: RecipeDef, budget_multiplier: float = 1.0) -> float:
+func price_walkout_chance(recipe: RecipeDef, budget_multiplier: float = 1.0,
+		preview_price: int = -1) -> float:
 	if recipe == null or recipe.standard_price <= 0 or pricing_tuning == null \
 			or not is_finite(budget_multiplier) or budget_multiplier <= 0.0:
 		return 0.0
-	var ratio: float = float(price_of(recipe)) / float(recipe.standard_price)
+	var ratio: float = float(price_of(recipe, preview_price)) / float(recipe.standard_price)
 	if ratio <= 1.0:
 		return 0.0
 	var sensitivity: float = pricing_tuning.price_sensitivity

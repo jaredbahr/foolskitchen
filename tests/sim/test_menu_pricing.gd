@@ -110,6 +110,21 @@ func test_price_chance_clamps_bad_balance_values_and_handles_free_standard() -> 
 	assert_eq(_sim.price_of(free), 0)
 
 
+func test_price_preview_uses_a_shown_price_and_the_existing_special_discount() -> void:
+	var recipe: RecipeDef = _content.recipe(&"burger")
+	_sim.prices[recipe.id] = recipe.standard_price
+	var prices: Dictionary = _sim.prices.duplicate()
+	# A menu can still display a stashed price after the dish's station is removed.
+	assert_eq(_sim.price_walkout_chance(recipe), 0.0)
+	assert_almost_eq(_sim.price_walkout_chance(recipe, 1.0, 16), 0.5)
+	_sim.daily_special = DailySpecial.new()
+	assert_true(_sim.daily_special.select(recipe.id, [recipe]))
+	assert_eq(_sim.price_of(recipe, 16), 14, "the preview uses the same rounded discount")
+	assert_almost_eq(_sim.price_walkout_chance(recipe, 1.0, 16), 0.25)
+	assert_eq(_sim.price_walkout_chance(recipe), 0.0)
+	assert_eq(_sim.prices, prices, "previewing never installs an override")
+
+
 func _ordering_guest(seed: int) -> CustomerAgent:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed
