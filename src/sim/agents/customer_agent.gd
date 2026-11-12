@@ -872,6 +872,10 @@ func _queue_inside(world: SimWorld) -> void:
 	if world.grid.terrain(cell) == SimGrid.Terrain.FLOOR:
 		_stand_clear_of_door(world)
 		return
+	# Let them out first (#322): on the street, wait there while someone on
+	# the way out is stuck at the door, rather than stepping into its lane.
+	if world.movement.door_outflow_stalled(world):
+		return
 	for neighbour: Vector2i in world.grid.guest_neighbours(cell):
 		if world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
 			_move(world, neighbour)
@@ -912,6 +916,10 @@ func _wait_cell_free(world: SimWorld, spot: Vector2i) -> bool:
 	if world.grid.terrain(spot) != SimGrid.Terrain.FLOOR or world.grid.room(spot) != SimGrid.Room.DINING \
 			or not world.grid.is_guest_walkable(spot) or not world.movement.standing_cell(world, spot) \
 			or world.movement.in_door_lane(world, spot):
+		return false
+	# Never on the way out of someone stuck leaving (#322): a guest cleared off
+	# it does not walk back, and one standing there moves off it.
+	if world.movement.on_stalled_exit_way(world, spot):
 		return false
 	for item: PlacedItem in world.grid.items():
 		if item.work_cells.has(spot):
