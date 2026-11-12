@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SeasonTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/season_tuning.gd" id="1_seasons"]
+
+[resource]
+script = ExtResource("1_seasons")
+in_season_multiplier = 0.8
+out_of_season_multiplier = 1.2
+spring_in = Array[StringName]([&"fish_fillet", &"shrimp", &"bread", &"cheese"])
+spring_out = Array[StringName]([&"mussels", &"tomato", &"beef_patty"])
+summer_in = Array[StringName]([&"shrimp", &"mussels", &"tomato"])
+summer_out = Array[StringName]([&"fish_fillet", &"wine"])
+autumn_in = Array[StringName]([&"mussels", &"potato", &"bread"])
+autumn_out = Array[StringName]([&"shrimp", &"fish_fillet"])
+winter_in = Array[StringName]([&"mussels", &"potato", &"beef_patty"])
+winter_out = Array[StringName]([&"fish_fillet", &"shrimp", &"tomato"])

@@ -42,6 +42,7 @@ func after_each() -> void:
 
 func test_initial_labels_and_shared_theme_before_ready() -> void:
 	assert_eq((_control("Day") as Label).text, "Day 1")
+	assert_eq((_hud.get_node("Top/Row/Day/Season") as Label).text, "Spring")
 	assert_eq((_control("Time") as Label).text, "11:00")
 	assert_eq((_control("Phase") as Label).text, "Morning")
 	assert_eq((_control("Cash") as Label).text, "$1,234")
@@ -60,6 +61,21 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 	_hud.call("set_plate_counts", 9, 12, 2, 1)
 	assert_eq((_control("Plates") as Label).text, "Plates 9/12", "the same native label returns to active counts")
 	assert_eq((_hud.get_node("Top") as Control).theme, load("res://src/ui/theme/main_theme.tres"))
+
+
+func test_day_label_tracks_season_boundaries() -> void:
+	var day_label: Label = _control("Day") as Label
+	var season_label: Label = day_label.get_node("Season") as Label
+	for row: Array in [[28, "Spring"], [29, "Summer"], [56, "Summer"], [57, "Autumn"],
+			[84, "Autumn"], [85, "Winter"], [112, "Winter"], [113, "Spring"]]:
+		Clock.sim.day = int(row[0])
+		_hud.call("refresh")
+		assert_eq(day_label.text, "Day %d" % int(row[0]))
+		assert_eq(season_label.text, String(row[1]))
+		assert_true(season_label.get_combined_minimum_size().x <= day_label.get_combined_minimum_size().x + 0.5,
+			"every full season name fits the Day control width")
+		assert_true(season_label.position.y + season_label.size.y <= day_label.get_combined_minimum_size().y + 0.5,
+			"every full season name fits the Day control height")
 
 
 func test_daily_special_uses_phase_label_only_during_service() -> void:
@@ -442,6 +458,7 @@ func test_context_cycles_day_and_tick_events_update_clock() -> void:
 	assert_eq(context.text, "Next day")
 	context.pressed.emit()
 	assert_eq((_control("Day") as Label).text, "Day 2")
+	assert_eq((_hud.get_node("Top/Row/Day/Season") as Label).text, "Spring")
 	assert_eq(context.text, "Open shop")
 
 
@@ -748,8 +765,15 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 			assert_false(rect.intersects(previous), name + " does not cover another HUD control")
 		occupied.append(rect)
 	for path: String in ["OwnerProgress/OwnerLevel", "OwnerProgress/OwnerXPBar",
-			"Reputation/ThemeIcon"]:
+			"Reputation/ThemeIcon", "Day/Season"]:
 		_assert_readable_control(row.get_node(path) as Control, window)
+	var day_label: Label = _control("Day") as Label
+	var season_label: Label = day_label.get_node("Season") as Label
+	var weather: Label = _control("Weather") as Label
+	assert_true(day_label.get_global_rect().grow(0.5).encloses(season_label.get_global_rect()),
+		"the full season name fits inside the native Day control")
+	assert_true(day_label.get_combined_minimum_size().y <= weather.get_combined_minimum_size().y + 0.5,
+		"the season line fits inside the existing weather badge height")
 	_assert_three_groups()
 
 

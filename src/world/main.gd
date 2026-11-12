@@ -29,6 +29,7 @@ const HAGGLE_TUNING: HaggleTuning = preload("res://data/balance/haggle.tres")
 const MESS_TUNING: MessTuning = preload("res://data/balance/messes.tres")
 const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
+const SEASON_TUNING: SeasonTuning = preload("res://data/balance/seasons.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
 const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
@@ -168,6 +169,8 @@ var _loaded_deliveries: DeliveryBook = null
 var _loaded_weather: WeatherState = null
 ## Tests may provide explicit weights without changing the shared authored resource.
 var weather_tuning: WeatherTuning = WEATHER_TUNING
+## Seasonal prices derive from the saved clock day; no extra state is saved.
+var season_tuning: SeasonTuning = SEASON_TUNING
 ## Each run owns its tuning instance; fixtures never mutate the authored resource.
 var demand_tuning: DemandTuning = DEMAND_TUNING.duplicate(true) as DemandTuning
 var demand_state: DemandState = DemandState.new()
@@ -325,6 +328,10 @@ func initialize() -> void:
 		return
 	content = ContentDB.new()
 	var load_errors: PackedStringArray = content.load_all()
+	if season_tuning == null:
+		load_errors.append("Missing season prices")
+	else:
+		load_errors.append_array(season_tuning.validate(content.ingredients()))
 	if not load_errors.is_empty():
 		push_error("Cannot load shop content: %s" % [load_errors])
 		return
@@ -2267,11 +2274,11 @@ func build_restock_estimate() -> int:
 	var pending: Dictionary[StringName, int] = _on_the_way()
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return int(StockAlerts.forecast(Economy.stock, _reorder(true), _shelf_lives(),
-			world.clock.day + 1, _unit_costs(), 2147483647, auto_reorder_premium,
+			world.clock.day + 1, _unit_costs(world.clock.day + 1), 2147483647, auto_reorder_premium,
 			_storage_capacity(), kinds, pending)["order_cost"])
 	var empty: Stock = Stock.new()
 	var space: StorageSpace = StorageSpace.new(_storage_capacity(), empty, pending, kinds)
-	return int(_reorder(true).plan(empty, _unit_costs(), 2147483647,
+	return int(_reorder(true).plan(empty, _unit_costs(world.clock.day + 1), 2147483647,
 		auto_reorder_premium, false, space)["cost"])
 
 
@@ -2743,7 +2750,7 @@ func build_report(day: int) -> DayReport:
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
-		_reorder(true), _shelf_lives(), day + 1, _unit_costs(), Economy.spendable(), auto_reorder_premium,
+		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), auto_reorder_premium,
 		_storage_capacity(), StorageSpace.kinds_of(content), incoming), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
@@ -5291,10 +5298,15 @@ func _shelf_lives() -> Dictionary:
 	return lives
 
 
-func _unit_costs() -> Dictionary:
+## One price map feeds every live purchase and quote. Future restock forecasts
+## pass their purchase day explicitly; paid deliveries retain their stored lines.
+func _unit_costs(for_day: int = 0) -> Dictionary:
+	var day: int = Clock.sim.day if for_day < 1 else for_day
 	var costs: Dictionary = {}
+	if content == null:
+		return costs
 	for ingredient: IngredientDef in content.ingredients():
-		costs[ingredient.id] = ingredient.unit_cost
+		costs[ingredient.id] = Season.purchase_unit_cost(ingredient.id, ingredient.unit_cost, day, season_tuning)
 	return costs
 
 
@@ -5470,11 +5482,12 @@ func stock_cart_total() -> int:
 
 
 func stock_cart_list_total() -> int:
+	var costs: Dictionary = _unit_costs()
 	var total: int = 0
 	for id: StringName in stock_cart:
 		var ingredient: IngredientDef = content.ingredient(id)
 		if ingredient != null:
-			total += ingredient.unit_cost * int(stock_cart[id])
+			total += int(costs[id]) * int(stock_cart[id])
 	return total
 
 
@@ -5578,9 +5591,9 @@ func stock_place_order() -> bool:
 	if not can_edit_stock() or not stock_cart_refusal().is_empty():
 		return false
 	var lines: Array[Dictionary] = []
+	var costs: Dictionary = _unit_costs()
 	for id: StringName in _cart_order():
-		var ingredient: IngredientDef = content.ingredient(id)
-		lines.append({"id": id, "qty": int(stock_cart[id]), "unit_cost": ingredient.unit_cost})
+		lines.append({"id": id, "qty": int(stock_cart[id]), "unit_cost": int(costs[id])})
 	var cost: int = stock_cart_total()
 	var percent: int = stock_haggle_percent()
 	if percent > 0:
@@ -5730,6 +5743,7 @@ func stock_rows() -> Array[Dictionary]:
 	if content == null or reorder_settings == null:
 		return rows
 	var planned: ReorderSettings = _reorder()
+	var costs: Dictionary = _unit_costs()
 	var expiring: Dictionary = Economy.stock.expiring_on(Clock.sim.day + 1, _shelf_lives())
 	var used: Dictionary[StringName, bool] = _menu_ingredients()
 	var in_dishes: Dictionary[StringName, bool] = _dish_ingredients()
@@ -5745,7 +5759,8 @@ func stock_rows() -> Array[Dictionary]:
 				if ingredient == null or int(ingredient.storage) != kind or used.has(id) != in_use:
 					continue
 				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
-					"expiring": int(expiring.get(id, 0)), "unit_cost": ingredient.unit_cost,
+					"expiring": int(expiring.get(id, 0)), "unit_cost": int(costs[id]),
+					"season_tag": SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning, ingredient.unit_cost),
 					"enabled": reorder_settings.is_enabled(id), "target": planned.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
 					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
@@ -6429,8 +6444,12 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 		for id: StringName in amounts:
 			var ingredient: IngredientDef = content.ingredient(id)
 			var count: int = Economy.stock.count(id)
-			ingredients.append({"text": "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]],
-				"met": count >= amounts[id]})
+			var text: String = "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]]
+			if season_tuning.is_in_season(id, Season.kind_for_day(Clock.sim.day)):
+				var tag: String = SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning, ingredient.unit_cost)
+				if not tag.is_empty():
+					text += " · " + tag
+			ingredients.append({"text": text, "met": count >= amounts[id]})
 		var other: Array[Dictionary] = []
 		# A Creative game (FK-141) has no levels or tiers to list.
 		var career: bool = not GameMode.is_creative()

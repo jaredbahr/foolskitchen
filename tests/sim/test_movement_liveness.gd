@@ -576,6 +576,51 @@ func test_the_held_way_stays_with_whoever_has_waited_longest() -> void:
 	assert_eq(world.movement._way_holder, short_wait.id, "once that lapses the next in line takes it")
 
 
+## #453: the first step is free, but a worker waiting for a busy station
+## stands further along the way. Rerouting alone only sends the stalled
+## person back to be turned round again, so the waiter is asked to clear,
+## and keeps its new spot instead of walking back into the way.
+func test_someone_standing_further_along_the_way_is_asked_to_clear() -> void:
+	var world: SimWorld = _service_world(["......", "......"])
+	var walker: Walker = _walker(world, Vector2i(0, 0), Vector2i(5, 0))
+	var waiter: StaffWalker = _station_waiter(world, Vector2i(3, 0))
+	var outcome: int = world.movement._escape(world, walker, world.movement_tuning.escape_after_ticks)
+	assert_eq(outcome, MovementCoordinator.ESCAPE_ACTED, "the escape acts on the person ahead")
+	assert_eq(int(world.movement.escape_counts.get(&"ahead", 0)), 1)
+	assert_true(world.movement.is_yielding(waiter.id), "the waiter steps aside")
+	var pocket: Vector2i = waiter.path.back()
+	assert_eq(pocket.y, 1, "to a cell off the stalled person's way")
+	assert_eq(world.movement._resume.get(waiter.id, SimGrid.NO_CELL), pocket,
+		"an unleased waiter keeps its new spot rather than returning to block the way")
+
+
+## #453 end to end: a worker already held up a while (its stall due now)
+## heads for its station past a station waiter standing in the short way.
+## Each ordinary repath took the long way round the block and each backstop
+## retry, landing while it was on that detour, sent it back, so it looped for
+## good (seen in the coffee shop at last orders). Now the waiter clears and
+## the worker gets there long before the staff limit.
+func test_a_worker_is_not_turned_back_for_good_by_someone_standing_in_the_way() -> void:
+	var world: SimWorld = _service_world([
+		"............",
+		".##########.",
+		".##########.",
+		".##########.",
+		"............",
+	])
+	var mover: StaffWalker = _worker(world, Vector2i(3, 0))
+	_station_waiter(world, Vector2i(5, 0))
+	assert_true(mover.set_destination(world.grid, Vector2i(7, 0)))
+	world.movement._stall[mover.id] = {"goal": Vector2i(7, 0), "best": 1.0, "since": -200, "next": 0}
+	for tick: int in 600:
+		if not _advance(world):
+			return
+		if mover.cell == Vector2i(7, 0):
+			break
+	assert_eq(mover.cell, Vector2i(7, 0), "the worker reaches its station")
+	assert_true(world.now < 450, "well before the staff limit (tick %d)" % world.now)
+
+
 func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(rows)))
 	if open:
@@ -624,3 +669,18 @@ func _advance(world: SimWorld) -> bool:
 	var problem: String = MovementInvariants.problem(world, before)
 	assert_eq(problem, "", "tick %d keeps movement safety" % world.now)
 	return problem.is_empty()
+
+
+## A worker whose next station is busy: claimed job, GO_TO_ITEM not started,
+## waiting with no lease (#453).
+func _station_waiter(world: SimWorld, at: Vector2i) -> StaffWalker:
+	var staff: StaffWalker = StaffWalker.new(&"server", 3)
+	staff.cell = at
+	world.add_agent(staff)
+	var job: SimTask = SimTask.new(&"pour", &"server")
+	job.steps.append(TaskStep.go_to_item(1, "walking to the coffee machine"))
+	world.board.post(job, world.now)
+	assert_true(world.board.claim(job, staff.id, world.now))
+	staff.task = job
+	staff._waiting_for = "walking to the coffee machine"
+	return staff
