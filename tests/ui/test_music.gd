@@ -41,18 +41,22 @@ func test_apply_audio_puts_music_six_db_under_the_slider() -> void:
 
 
 func test_every_track_loads_and_is_mapped() -> void:
-	for context: StringName in [MusicTracks.TITLE, MusicTracks.SERVICE_DAY, MusicTracks.SERVICE_EVENING]:
+	for context: StringName in [MusicTracks.TITLE, MusicTracks.SERVICE_DAY, MusicTracks.SERVICE_EVENING, MusicTracks.EVENING_REPORT]:
 		var track: AudioStream = MusicTracks.track_for(context)
 		assert_true(track is AudioStreamOggVorbis, "%s loads" % context)
 		assert_true(track.get_length() > 60.0, "%s is a whole track" % context)
 	assert_true(MusicTracks.track_for(&"nothing") == null, "unmapped contexts have none")
-	assert_eq(MusicTracks.all_tracks().size(), 3)
+	assert_eq(MusicTracks.all_tracks().size(), 4)
 
 
 func test_service_context_follows_phase_and_dusk() -> void:
 	assert_eq(MusicTracks.service_context(false, 1.0), &"", "closed is silent")
 	assert_eq(MusicTracks.service_context(true, 0.0), MusicTracks.SERVICE_DAY)
 	assert_eq(MusicTracks.service_context(true, MusicTracks.EVENING_LIGHT), MusicTracks.SERVICE_EVENING)
+	assert_eq(MusicTracks.service_context(false, 1.0, true), MusicTracks.EVENING_REPORT, "the evening report has its own song")
+	assert_eq(MusicTracks.service_context(true, 0.0, true), MusicTracks.EVENING_REPORT, "a report shown during service still plays its song")
+	assert_true(MusicTracks.track_for(MusicTracks.TITLE).resource_path.ends_with("kitchen_jamboree.ogg"), "Kitchen Jamboree is the title song")
+	assert_true(MusicTracks.track_for(MusicTracks.EVENING_REPORT).resource_path.ends_with("stir_it_slow.ogg"), "Stir It Slow plays over the evening report")
 
 
 func test_music_is_silent_in_headless_runs() -> void:

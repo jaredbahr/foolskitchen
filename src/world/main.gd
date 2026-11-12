@@ -2541,7 +2541,7 @@ func refresh_presentation() -> void:
 	_refresh_weather()
 	_refresh_day_light()
 	if sound != null:
-		sound.refresh(_music_light)
+		sound.refresh(_music_light, _report != null and _report.visible)
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
 	_inspect_panel.refresh()
