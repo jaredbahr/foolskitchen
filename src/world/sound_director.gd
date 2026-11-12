@@ -62,6 +62,9 @@ func bind(sim: RestaurantSim, view: ShopView, content: ContentDB = null) -> void
 		_sim.world.board.task_completed.connect(_on_task_completed)
 	if _sim.kitchen != null:
 		_sim.kitchen.plates_changed.connect(_on_plates_changed)
+		# Start from the current counts so the first wash after a load clinks.
+		_last_clean = _sim.kitchen.clean_plates
+		_last_dirty = _sim.kitchen.dirty_plates
 
 
 func unbind() -> void:

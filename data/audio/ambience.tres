@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="AmbienceTuning" load_steps=35 format=3]
+[gd_resource type="Resource" script_class="AmbienceTuning" load_steps=38 format=3]
 
 [ext_resource type="Script" path="res://src/audio/ambience_tuning.gd" id="1_tuning"]
 [ext_resource type="Script" path="res://src/audio/clink_set.gd" id="2_a"]
@@ -29,6 +29,9 @@
 [ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_002.ogg" id="27_a"]
 [ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_003.ogg" id="28_a"]
 [ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_004.ogg" id="29_a"]
+[ext_resource type="AudioStream" path="res://assets/commons/audio/chatter_light.ogg" id="30_a"]
+[ext_resource type="AudioStream" path="res://assets/commons/audio/chatter_busy.ogg" id="31_a"]
+[ext_resource type="AudioStream" path="res://assets/commons/audio/chatter_packed.ogg" id="32_a"]
 
 [sub_resource type="Resource" id="clink_plate"]
 script = ExtResource("2_a")
@@ -63,15 +66,15 @@ min_interval = 0.15
 [resource]
 script = ExtResource("1_tuning")
 loops = Dictionary[StringName, AudioStream]({
-&"chatter_busy": null,
-&"chatter_light": null,
-&"chatter_packed": null,
+&"chatter_busy": ExtResource("31_a"),
+&"chatter_light": ExtResource("30_a"),
+&"chatter_packed": ExtResource("32_a"),
 &"room_tone": ExtResource("3_a")
 })
 loop_volume_db = Dictionary[StringName, float]({
-&"chatter_busy": -8.0,
-&"chatter_light": -8.0,
-&"chatter_packed": -8.0,
+&"chatter_busy": -24.0,
+&"chatter_light": -24.0,
+&"chatter_packed": -24.0,
 &"room_tone": -4.0
 })
 room_tone_full_guests = 14

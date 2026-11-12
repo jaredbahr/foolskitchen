@@ -1,0 +1,10 @@
+Chatter loops (chatter_light.ogg, chatter_busy.ogg, chatter_packed.ogg)
+
+Made for Fool's Kitchen from "Restaurant ambience" by stephan (pdsounds.org),
+https://commons.wikimedia.org/wiki/File:Restaurant_ambience.ogg
+Licence: public domain (released by the author).
+
+Processing: seconds 13-45 of the recording, high-pass 120 Hz, low-pass 5 kHz,
+a 30 s loop with a 2 s equal-power crossfade at the seam. Busy and packed layer
+2 and 4 time-offset copies of the same loop (some with the stereo channels
+swapped). Ogg Vorbis q5, 44.1 kHz stereo.
