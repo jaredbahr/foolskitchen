@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- A cook no longer walks round and round the counter when a server waiting for the same coffee machine stands in the way: the server now steps aside. A guest stepping in at a jammed narrow door also finishes the step instead of freezing in the doorway. (#PRNUM)
 - Guests waiting for a table at a narrow door now wait outside while a leaving guest is stuck in the doorway, and step off the way out instead of walking back into it, so the leaving guest gets out. (#452)
 - A faint murmur of diners now fills the room while you're open, growing from a few voices to a full room as the shop gets busy. It is very quiet and follows the Ambience slider. (#450)
 - The dining room now sounds busy while you're open: a plate clinks down as each meal reaches its table, glasses clink when drinks are served, cutlery taps now and then from tables where guests are eating (more often in a full room, never a din), dishes stack as a table is cleared and the sink clatters as plates are washed. Clinks come from the side of the screen their table is on. A new Ambience slider in Settings sets the room's sound (the room tone and these clinks) separately from Music and Effects. (#449)

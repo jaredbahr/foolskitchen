@@ -874,7 +874,9 @@ func _queue_inside(world: SimWorld) -> void:
 		return
 	# Let them out first (#322): on the street, wait there while someone on
 	# the way out is stuck at the door, rather than stepping into its lane.
-	if world.movement.door_outflow_stalled(world):
+	# A step already begun finishes first: frozen mid-edge, the guest would
+	# hold the door cell it was entering for as long as the jam lasts (#453).
+	if move_progress == 0.0 and world.movement.door_outflow_stalled(world):
 		return
 	for neighbour: Vector2i in world.grid.guest_neighbours(cell):
 		if world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
