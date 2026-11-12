@@ -3,19 +3,22 @@ extends RefCounted
 ## Which music belongs to which part of the game, as one small table. A new
 ## track is a line in `BY_CONTEXT` and a `Sfx.set_music_context` call.
 ##
-## - title: Stir It Slow (the title screen)
+## - title: Kitchen Jamboree (the title screen)
 ## - service_day: Buoyant Swing Groove (from opening until dusk)
 ## - service_evening: Smoky Vamp (from dusk, when the shop lights come on)
-## - anything else (morning, closed, the evening report): silence
+## - evening_report: Stir It Slow (while the evening report is open)
+## - anything else (morning, closed with no report open): silence
 
 const TITLE: StringName = &"title"
 const SERVICE_DAY: StringName = &"service_day"
 const SERVICE_EVENING: StringName = &"service_evening"
+const EVENING_REPORT: StringName = &"evening_report"
 
 const BY_CONTEXT: Dictionary[StringName, AudioStream] = {
-	TITLE: preload("res://assets/music/stir_it_slow.ogg"),
+	TITLE: preload("res://assets/music/kitchen_jamboree.ogg"),
 	SERVICE_DAY: preload("res://assets/music/buoyant_swing_groove.ogg"),
 	SERVICE_EVENING: preload("res://assets/music/smoky_vamp.ogg"),
+	EVENING_REPORT: preload("res://assets/music/stir_it_slow.ogg"),
 }
 
 ## The shop's own lights count as dusk once they reach this share of full
@@ -39,9 +42,12 @@ static func all_tracks() -> Array[AudioStream]:
 	return _all_tracks
 
 
-## The context during service: daytime or evening by the shop light. Outside
-## service there is none, so the music fades to silence.
-static func service_context(open_for_service: bool, light: float) -> StringName:
+## The context for the shop: the evening report's track while the report is
+## open, otherwise daytime or evening by the shop light during service. Outside
+## service with no report open there is none, so the music fades to silence.
+static func service_context(open_for_service: bool, light: float, report_open: bool = false) -> StringName:
+	if report_open:
+		return EVENING_REPORT
 	if not open_for_service:
 		return &""
 	return SERVICE_EVENING if light >= EVENING_LIGHT else SERVICE_DAY
