@@ -3,7 +3,7 @@ extends RefCounted
 ## Which music belongs to which part of the game, as one small table. A new
 ## track is a line in `BY_CONTEXT` and a `Sfx.set_music_context` call.
 ##
-## - title: Kitchen Jamboree (the title screen)
+## - title: Stir It Slow (the title screen)
 ## - service_day: Buoyant Swing Groove (from opening until dusk)
 ## - service_evening: Smoky Vamp (from dusk, when the shop lights come on)
 ## - anything else (morning, closed, the evening report): silence
@@ -13,7 +13,7 @@ const SERVICE_DAY: StringName = &"service_day"
 const SERVICE_EVENING: StringName = &"service_evening"
 
 const BY_CONTEXT: Dictionary[StringName, AudioStream] = {
-	TITLE: preload("res://assets/music/kitchen_jamboree.ogg"),
+	TITLE: preload("res://assets/music/stir_it_slow.ogg"),
 	SERVICE_DAY: preload("res://assets/music/buoyant_swing_groove.ogg"),
 	SERVICE_EVENING: preload("res://assets/music/smoky_vamp.ogg"),
 }

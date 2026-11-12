@@ -19,6 +19,9 @@ var loan: LoanAccount = LoanAccount.new()
 ## _wire_session(), which runs after a new game, a load and (later) a site
 ## switch, before that site's morning. Change it only via set_active_site().
 var active_site: StringName = Ledger.HOME_SITE
+## What purchases can spend: the cash in career; in a Creative game (FK-141)
+## a budget no price reaches, because building, stock and upgrades are free.
+const CREATIVE_BUDGET: int = 1000000000
 ## Legacy balance access. Assignments record their difference under OTHER.
 var cash: int:
 	get:
@@ -139,6 +142,8 @@ func _parse_stock(data: Dictionary) -> Stock:
 ## Adds (or, with a negative amount, removes) cash and announces it. The
 ## optional note marks special lines, such as shop-edit undo and redo (FK-085).
 func add_cash(amount: int, reason: StringName, note: String = "") -> void:
+	if GameMode.is_creative():
+		return
 	ledger.record(Clock.day, amount, reason, note, active_site)
 	EventBus.cash_changed.emit(cash, amount, reason)
 
@@ -150,28 +155,42 @@ func add_cash(amount: int, reason: StringName, note: String = "") -> void:
 func add_cash_for_site(amount: int, reason: StringName, note: String, site: StringName) -> bool:
 	if not Ledger.is_valid_site(site):
 		return false
+	if GameMode.is_creative():
+		return true
 	ledger.record(Clock.day, amount, reason, note, site)
 	EventBus.cash_changed.emit(cash, amount, reason)
 	return true
 
 
+## Money is off in a Creative game (FK-141): nothing costs anything, no
+## money moves and no loan opens. Every money path below reads this.
+func is_free() -> bool:
+	return GameMode.is_creative()
+
+
+## The cash a purchase may spend (see CREATIVE_BUDGET). Planning and refusal
+## text read this instead of cash, so a Creative game never says "can't afford".
+func spendable() -> int:
+	return CREATIVE_BUDGET if is_free() else cash
+
+
 ## Ingredients and wages remain available while a bank loan is open.
 func can_spend_without_loan(amount: int) -> bool:
-	return amount >= 0 and cash >= amount
+	return amount >= 0 and (is_free() or cash >= amount)
 
 
 ## Furniture over the authored limit waits for the loan to close.
 ## Main will wire this to build commands during UI integration.
 func can_buy_discretionary(amount: int) -> bool:
 	return can_spend_without_loan(amount) \
-		and (loan.principal == 0 or amount <= LOAN_TERMS.large_purchase_limit)
+		and (is_free() or loan.principal == 0 or amount <= LOAN_TERMS.large_purchase_limit)
 
 
 ## Every upgrade waits for the loan to close, including cheap ones. This is
 ## separate from the furniture price limit so tray-like upgrades cannot slip
 ## through a $50 threshold check.
 func can_buy_upgrade(amount: int) -> bool:
-	return loan.principal == 0 and can_spend_without_loan(amount)
+	return (is_free() or loan.principal == 0) and can_spend_without_loan(amount)
 
 
 ## Main calls this once after wages and rent, before constructing the report.
@@ -180,6 +199,8 @@ func can_buy_upgrade(amount: int) -> bool:
 ## callbacks that read Economy.cash see the already-settled final balance.
 ## Optional pre-bonus profit changes only the repayment base, never actual cash.
 func settle_loan_day(day: int, repayment_profit: Variant = null) -> Dictionary:
+	if is_free():
+		return {}
 	var running_cash: int = cash
 	var result: Dictionary = loan.settle_day(ledger, day, LOAN_TERMS, repayment_profit, active_site)
 	for movement: Dictionary in result.get("movements", []):
@@ -203,6 +224,8 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 	if not can_spend_without_loan(price):
 		return false
 	stock.add(id, qty, Clock.day, price)
+	if is_free():
+		return true
 	ledger.record(Clock.day, -price, Ledger.INGREDIENTS, String(id), active_site)
 	EventBus.cash_changed.emit(cash, -price, Ledger.INGREDIENTS)
 	return true
@@ -238,6 +261,9 @@ func buy_haggled_order(lines: Array[Dictionary], percent: int) -> bool:
 		if qty > Stock.MAX_QUANTITY - stock.count(id) - added.get(id, 0):
 			return false
 		added[id] = added.get(id, 0) + qty
+	if is_free():
+		receive(lots)
+		return true
 	for lot: Dictionary in lots:
 		ledger.record(Clock.day, -int(lot["total_cost"]), Ledger.INGREDIENTS, String(lot["id"]), active_site)
 	receive(lots)
@@ -269,6 +295,8 @@ func pay_order(lines: Array[Dictionary], cost: int, standing: bool) -> bool:
 	if lines.is_empty() or cost < list_total or (not standing and cost != list_total) \
 			or not can_spend_without_loan(cost):
 		return false
+	if is_free():
+		return true
 	for line: Dictionary in lines:
 		var id: StringName = line["id"]
 		var price: int = int(line["qty"]) * int(line["unit_cost"])
@@ -291,7 +319,7 @@ func receive(lines: Array[Dictionary], charged_total: int = -1) -> void:
 
 ## A cancelled order's full refund, as one ingredients entry.
 func refund_order(amount: int) -> void:
-	if amount <= 0:
+	if amount <= 0 or is_free():
 		return
 	ledger.record(Clock.day, amount, Ledger.INGREDIENTS, ORDER_REFUND_NOTE, active_site)
 	EventBus.cash_changed.emit(cash, amount, Ledger.INGREDIENTS)

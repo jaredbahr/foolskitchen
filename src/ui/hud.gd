@@ -35,6 +35,8 @@ var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
 var _loan_label: Label
+## The Creative game's tag (FK-141), in place of the cash and owner level.
+var _creative_tag: Label
 var _loan_principal: int = 0
 var _loan_repay_share: float = 0.0
 var _loan_daily_interest: float = 0.0
@@ -193,6 +195,7 @@ func refresh() -> void:
 		_phase_label = get_node("Top/Row/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
 		_loan_label = get_node("Top/Row/Loan") as Label
+		_creative_tag = get_node("Top/Row/Creative") as Label
 		_reputation_label = get_node("Top/Row/Reputation") as Label
 		_owner_level_label = get_node("Top/Row/OwnerProgress/OwnerLevel") as Label
 		_owner_xp_bar = get_node("Top/Row/OwnerProgress/OwnerXPBar") as ProgressBar
@@ -247,6 +250,7 @@ func refresh() -> void:
 	_render_loan()
 	_render_reputation()
 	_render_owner_progress()
+	_render_mode()
 	if _sold_out_label.visible != (not _sold_out_names.is_empty() and (Clock.sim.phase == SimClock.Phase.OPEN
 			or Clock.sim.phase == SimClock.Phase.LAST_ORDERS)):
 		_render_sold_out()
@@ -377,7 +381,7 @@ func _render_loan() -> void:
 	_loan_label.text = "Loan %s" % Fmt.money(_loan_principal)
 	_loan_label.tooltip_text = "The bank takes up to %s of positive daily profit to repay this loan. Interest is %s a day. Big furniture purchases and upgrades wait until it's paid back." % [
 		_percentage_text(_loan_repay_share), _percentage_text(_loan_daily_interest)]
-	_loan_label.visible = _loan_principal > 0
+	_loan_label.visible = _loan_principal > 0 and not GameMode.is_creative()
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
@@ -386,6 +390,18 @@ func _render_loan() -> void:
 func _percentage_text(rate: float) -> String:
 	var percent: float = rate * 100.0
 	return "%d%%" % roundi(percent) if is_equal_approx(percent, roundf(percent)) else "%.1f%%" % percent
+
+
+## A Creative game (FK-141) shows its tag instead of the cash and the owner
+## level: money is off and everything is unlocked.
+func _render_mode() -> void:
+	var creative: bool = GameMode.is_creative()
+	if _creative_tag.visible == creative and _cash_label.visible != creative:
+		return
+	_creative_tag.visible = creative
+	_cash_label.visible = not creative
+	(get_node("Top/Row/OwnerProgress") as Control).visible = not creative
+	_render_loan()
 
 
 ## Main supplies XP within the current level and the next-level requirement.
@@ -627,6 +643,8 @@ func _style_header() -> void:
 	chip.set_content_margin(SIDE_BOTTOM, 4.0)
 	_loan_label.add_theme_stylebox_override("normal", chip)
 	_sold_out_label.add_theme_stylebox_override("normal", chip)
+	_creative_tag.add_theme_stylebox_override("normal", chip)
+	_creative_tag.tooltip_text = "Creative game: everything is free and unlocked"
 	# Keep the tag's advice readable over the world without changing other tooltips.
 	var tooltip_theme: Theme = header_theme.duplicate() as Theme
 	tooltip_theme.set_stylebox("panel", "TooltipPanel", header_theme.get_stylebox("panel", "PanelContainer"))
