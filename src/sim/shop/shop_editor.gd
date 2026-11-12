@@ -29,6 +29,7 @@ const DECOR_GONE: String = "That wall decor is no longer there"
 const PERSON_IN_WAY: String = "Someone is in the way."
 ## Nobody walks through a seat (#315), so a seat in the doorway shuts it.
 const SEAT_IN_DOORWAY: String = "Seats can't go in the doorway"
+const USE_SPOT_AT_DOOR: String = "Seats and serving spots can't go in the doorway"
 
 var last_check: EditCheck = EditCheck.new()
 ## The last committed placement's seat cut-off warning (#315): {version, id,
@@ -2570,28 +2571,48 @@ static func _any_reachable(reach: Dictionary[Vector2i, bool], cells: Array[Vecto
 ## seat on a street door threshold, a door, an entry or just inside a back
 ## door, or would leave no clear cell straight in from the street door (the
 ## door lane, #308), else "". Nobody walks through a seat, so it would shut the
-## way. One seat beside the way in of a wide door is fine. A table's built-in
-## seats are left to the path warning, as tables have always been free to
-## stand near the door.
+## way. One seat beside the way in of a wide door is fine. Any other item
+## (table, station) is refused with USE_SPOT_AT_DOOR when a seat or work cell
+## lies on a front door threshold or entry (#454); staff-only back doors stay usable.
+static func _front_door_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+	var blocked: Dictionary[Vector2i, bool] = WallRules.door_cells(grid)
+	for entry: Vector2i in grid.entries():
+		blocked[entry] = true
+	return blocked
+
+
+## The chair rule's cells: the front door cells plus back doorways.
+static func _doorway_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
+	var blocked: Dictionary[Vector2i, bool] = _front_door_cells(grid)
+	for edge: Vector3i in grid.segment_edges():
+		if grid.segment(edge) == SimGrid.Segment.DOORWAY and WallRules.back_door_side(grid, edge) != Vector2i.ZERO:
+			for cell: Vector2i in SimGrid.edge_cells(edge):
+				blocked[cell] = true
+	return blocked
+
+
 static func seat_doorway_problem(grid: SimGrid, placed: PlacedItem) -> String:
 	var definition: ItemDef = placed.def as ItemDef if placed != null else null
-	if definition == null or placed.seat_cells.is_empty() \
-			or definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
+	if definition != null and definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
+		# A table's built-in seats and a station's use cells (#454): a guest
+		# ordering or eating on a threshold or entry narrows the door. The
+		# wider lane stays allowed; chairs and benches keep the rule below.
+		var blocked_cells: Dictionary[Vector2i, bool] = _front_door_cells(grid)
+		for cell: Vector2i in placed.seat_cells + placed.work_cells:
+			if blocked_cells.has(cell):
+				return USE_SPOT_AT_DOOR
 		return ""
-	var blocked: Dictionary[Vector2i, bool] = WallRules.door_cells(grid)
+	if definition == null or placed.seat_cells.is_empty():
+		return ""
+	var blocked: Dictionary[Vector2i, bool] = _doorway_cells(grid)
 	var inside: Array[Vector2i] = []
 	var lane: Dictionary[Vector2i, bool] = MovementCoordinator.lane_cells(grid)
 	for entry: Vector2i in grid.entries():
-		blocked[entry] = true
 		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 			var threshold: Vector2i = entry + step
 			if grid.terrain(threshold) == SimGrid.Terrain.FLOOR and grid.is_walkable(threshold + step) \
 					and lane.has(threshold + step):
 				inside.append(threshold + step)
-	for edge: Vector3i in grid.segment_edges():
-		if grid.segment(edge) == SimGrid.Segment.DOORWAY and WallRules.back_door_side(grid, edge) != Vector2i.ZERO:
-			for cell: Vector2i in SimGrid.edge_cells(edge):
-				blocked[cell] = true
 	var in_lane: bool = false
 	for seat: Vector2i in placed.seat_cells:
 		if blocked.has(seat):
