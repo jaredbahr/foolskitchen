@@ -6462,7 +6462,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 			"is_morning": Clock.sim != null and Clock.sim.phase == SimClock.Phase.MORNING}
 		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
 			"signature": signature_details,
-			"price_walkout_chance": sim.price_walkout_chance(recipe, budget, menu_settings.shown_price(recipe))
+			"price_walkout_chance": sim.preview_price_walkout_chance(recipe, menu_settings.shown_price(recipe), budget)
 				if sim != null else -1.0,
 			"quality_breakdown": expected.explanation() if expected != null else "No available worker or reachable station",
 			"quality": quality.get("quality", recipe.base_quality),

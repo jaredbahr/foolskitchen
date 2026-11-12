@@ -103,7 +103,7 @@ func test_walkout_hint_formats_each_band_at_chosen_prices() -> void:
 	for price: int in cases:
 		assert_true(choices.set_price(recipe.id, price))
 		var details: Dictionary[StringName, Dictionary] = {recipe.id: {
-			"price_walkout_chance": sim.price_walkout_chance(recipe, 1.0, price),
+			"price_walkout_chance": sim.preview_price_walkout_chance(recipe, price),
 		}}
 		_panel.set_recipe_details([recipe], details)
 		assert_eq(_label(recipe.id, "Price/Amount").text, "$%d" % price)
