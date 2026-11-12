@@ -75,6 +75,9 @@ var _lane_version: int = -1
 var _work: Dictionary[Vector2i, bool] = {}
 var _work_grid: SimGrid = null
 var _work_version: int = -1
+## Way-out cache (#322): the static exit routes of stalled leavers, per tick.
+var _exit_ways: Dictionary[Vector2i, bool] = {}
+var _exit_ways_tick: int = -1
 
 
 func snapshot() -> Dictionary:
@@ -997,6 +1000,7 @@ func _watch_liveness(world: SimWorld) -> void:
 		if world.now - _pair_swapped[pair] >= SQUEEZE_PAIR_COOLDOWN_TICKS:
 			_pair_swapped.erase(pair)
 	var tuning: MovementTuning = world.movement_tuning
+	_exit_ways_tick = -1
 	var due: Array[Array] = []
 	for agent: SimAgent in world.agents:
 		if (agent.has_arrived() and not _resume.has(agent.id) and not _leaving(agent)) \
@@ -1244,6 +1248,40 @@ func _someone_leaving_by_the_door(world: SimWorld) -> bool:
 		if stalled >= world.movement_tuning.escape_after_ticks and stalled < world.movement_tuning.give_up_after_ticks:
 			return true
 	return false
+
+
+## Let them out first, inside the door (#322): someone on the way out has
+## been stuck for the escape limit in the door lane or right beside it.
+## Waiting guests then stay off the lane (see CustomerAgent._queue_inside).
+func door_outflow_stalled(world: SimWorld) -> bool:
+	var lane: Dictionary[Vector2i, bool] = door_lane(world)
+	for other: SimAgent in world.agents:
+		if not _leaving(other) or not _stall.has(other.id):
+			continue
+		if world.now - int(_stall[other.id]["since"]) < world.movement_tuning.escape_after_ticks:
+			continue
+		if lane.has(other.cell):
+			return true
+		for neighbour: Vector2i in world.grid.walkable_neighbours(other.cell):
+			if lane.has(neighbour) and world.grid.terrain(neighbour) == SimGrid.Terrain.FLOOR:
+				return true
+	return false
+
+
+## On the way out of someone leaving who has been stuck for the escape limit
+## (#322): a cell of their static route to the street. Waiting guests do not
+## pick such a cell to stand on, so one cleared out of the way stays clear.
+func on_stalled_exit_way(world: SimWorld, cell: Vector2i) -> bool:
+	if _exit_ways_tick != world.now:
+		_exit_ways_tick = world.now
+		_exit_ways.clear()
+		for other: SimAgent in world.agents:
+			if not _leaving(other) or not _stall.has(other.id) \
+					or world.now - int(_stall[other.id]["since"]) < world.movement_tuning.escape_after_ticks:
+				continue
+			for way: Vector2i in _escape_route(world, other):
+				_exit_ways[way] = true
+	return _exit_ways.has(cell)
 
 
 ## A guest or the health inspector on the way out: either street cell will do.
