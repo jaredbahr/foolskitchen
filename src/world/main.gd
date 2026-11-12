@@ -48,6 +48,8 @@ const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekl
 const HOURS_TUNING: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
+## A Creative game's Goals panel (FK-141): collections and records only.
+const CREATIVE_GOALS_TITLE: String = "Collections"
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -339,7 +341,7 @@ func initialize() -> void:
 		return
 	sim.configure_booking(group_booking)
 	world = sim.world
-	menu_settings = MenuSettings.new(_cookable_recipes(_starter_layout()), owner_progress.level)
+	menu_settings = MenuSettings.new(_cookable_recipes(_starter_layout()), owner_progress.effective_level())
 	_apply_menu(sim, menu_settings)
 	_bind_world_presentation()
 
@@ -401,8 +403,8 @@ func _bind_world_presentation() -> void:
 	_debug_geometry = $DebugGeometry
 	_build_catalogue = $Overlay/BuildCatalogue
 	_build_catalogue.bind_content(content)
-	_build_catalogue.set_owner_level(owner_progress.level)
-	_build_catalogue.set_career_tier(owner_progress.career_tier)
+	_build_catalogue.set_owner_level(owner_progress.effective_level())
+	_build_catalogue.set_career_tier(owner_progress.effective_tier())
 	_build_catalogue.set_build_visible(false)
 	_build_catalogue.set_paint_visible(false)
 	_paint_swatch_id = _build_catalogue.selected_swatch_id
@@ -523,7 +525,7 @@ func _bind_world_presentation() -> void:
 	_staff_panel.set_team_activity(_last_team_activity)
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
-	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.spendable(), _loan_upgrade_refusal())
 	if not _staff_panel.hire_requested.is_connected(_on_staff_hire_requested):
 		_staff_panel.hire_requested.connect(_on_staff_hire_requested)
 		_staff_panel.let_go_requested.connect(_on_staff_let_go_requested)
@@ -664,6 +666,8 @@ func start() -> void:
 	Clock.attach_world(null)
 	for autoload: Node in [Clock, GameState, Economy]:
 		autoload.call(&"register_save_provider")
+	# Before "owner" and "menu": their restores read the mode's unlock level.
+	SaveSystem.register("game_mode", GameMode.capture, GameMode.restore)
 	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
@@ -763,7 +767,7 @@ func _wire_session() -> bool:
 		sim.regular_recipe_labels[recipe.id] = recipe.display_name
 	# Configure only after the complete restore/new-game decision, using its
 	# real reputation and owner level. This consumes no customer RNG draw.
-	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.level):
+	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.effective_level()):
 		push_error("Cannot initialize customer preferences")
 		return false
 	sim.spawner.min_gap = TUNING.arrival_gap_min
@@ -771,9 +775,24 @@ func _wire_session() -> bool:
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
 		Economy.add_cash, _furniture_purchase_refusal),
 		_loaded_layout if _loaded_layout != null else _starter_layout())
-	shop_editor.set_owner_level(owner_progress.level)
-	shop_editor.set_career_tier(owner_progress.career_tier)
+	shop_editor.set_owner_level(owner_progress.effective_level())
+	shop_editor.set_career_tier(owner_progress.effective_tier())
 	shop_editor.storage_need = _storage_need
+	# The mode is known only now (FK-141): a Creative game opens everything.
+	# (Career already matches: initialize() used the same earned values.)
+	if GameMode.is_creative():
+		_build_catalogue.set_owner_level(owner_progress.effective_level())
+		_build_catalogue.set_career_tier(owner_progress.effective_tier())
+		if menu_settings != null:
+			menu_settings.set_owner_level(owner_progress.effective_level())
+		# Goals holds only collections and records here; staff cost nothing.
+		var goals_button: Button = _menu_panel.get_node("%GoalsButton") as Button
+		goals_button.text = CREATIVE_GOALS_TITLE
+		goals_button.tooltip_text = "View collections and records"
+		(_goals_panel.get_node("Panel/Content/Header/Title") as Label).text = CREATIVE_GOALS_TITLE
+		var hours_note: Label = _menu_panel.find_child("HoursNote", true, false) as Label
+		if hours_note != null:
+			hours_note.text = "Coffee drinkers come early; evening drinkers come late."
 	_connect_session()
 	Clock.attach_world(world, sim.advance)
 	return true
@@ -2263,7 +2282,7 @@ func build_restock_warning() -> String:
 		cost = maxi(0, build_mode.current_check.cost - build_mode.current_check.refund)
 	if cost <= 0:
 		return ""
-	return RestockBudgetWarning.text(Economy.cash, cost, build_restock_estimate())
+	return RestockBudgetWarning.text(Economy.spendable(), cost, build_restock_estimate())
 
 
 func build_warning() -> String:
@@ -2341,7 +2360,7 @@ func _on_build_cash_changed(_cash: int, _delta: int, _reason: StringName) -> voi
 		build_mode.refresh()
 		_update_build_controls()
 	if _staff_panel != null:
-		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+		_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.spendable(), _loan_upgrade_refusal())
 	if is_stock_visible():
 		_refresh_stock_panel()
 	_refresh_goals()
@@ -2569,13 +2588,16 @@ func _on_inspection_tick(_tick: int) -> void:
 	_refresh_goals()
 
 
-## Deletes the autosave and restarts the scene from day 1.
+## Deletes the autosave and restarts the scene from day 1, in the same mode.
 func start_over() -> void:
-	start_fresh_run(get_tree(), save_slot, use_saves)
+	start_fresh_run(get_tree(), save_slot, use_saves, GameMode.is_creative())
 
 
 ## The title's New game and the existing F10 route share replacement semantics.
-static func start_fresh_run(tree: SceneTree, slot: String = AUTOSAVE_SLOT, with_saves: bool = true) -> Error:
+## `creative` picks the new game's mode (FK-141); _new_game() applies it.
+static func start_fresh_run(tree: SceneTree, slot: String = AUTOSAVE_SLOT, with_saves: bool = true,
+		creative: bool = false) -> Error:
+	GameMode.request_new_game(creative)
 	if with_saves:
 		var error: Error = SaveSystem.delete_slot(slot)
 		if error != OK and error != ERR_FILE_NOT_FOUND:
@@ -2713,7 +2735,7 @@ func build_report(day: int) -> DayReport:
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
-		_reorder(true), _shelf_lives(), day + 1, _unit_costs(), Economy.cash, auto_reorder_premium,
+		_reorder(true), _shelf_lives(), day + 1, _unit_costs(), Economy.spendable(), auto_reorder_premium,
 		_storage_capacity(), StorageSpace.kinds_of(content), incoming), content))
 	if _milestone_award_day == day:
 		for goal: Milestone in _milestones_reached_today:
@@ -2732,6 +2754,10 @@ func build_report(day: int) -> DayReport:
 
 
 func _new_game() -> void:
+	# Career or Creative, as the title asked (FK-141). Creative later also
+	# needs: choosing any lot and neighbourhood (TODO #405), and saving a
+	# design as a blueprint to place in career (TODO #432).
+	GameMode.begin_new_game()
 	_shown_collection_toast_ids.clear()
 	_pending_collection_toast_ids.clear()
 	_loaded_collection_toast_ids.clear()
@@ -2840,7 +2866,8 @@ func _new_game() -> void:
 	if sim.kitchen != null:
 		sim.kitchen.configure_plates(TUNING.starting_plates)
 	sim.stock = Economy.stock
-	world.log_event("New game: $%d to start" % TUNING.starting_cash)
+	world.log_event("New creative game" if GameMode.is_creative()
+		else "New game: $%d to start" % TUNING.starting_cash)
 
 
 func _load_autosave() -> bool:
@@ -2898,6 +2925,8 @@ func _load_autosave_sections() -> bool:
 		return false
 	# Missing sections are skipped by SaveSystem: old runs stay out of the guide.
 	hints.skip()
+	# A save from before Creative has no game_mode section: a career game.
+	GameMode.reset_for_load()
 	if SaveSystem.load_game(save_slot) != OK:
 		world.log_event("Autosave could not be loaded; starting a new game")
 		return false
@@ -3003,7 +3032,7 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 		# this save's day it stood in a row of seats that shut the kitchen off.
 		layout.aisle_moved = 1
 	staged.layout = layout
-	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
+	var choices: MenuSettings = _loaded_menu if _loaded_menu != null else MenuSettings.new(_cookable_recipes(layout), owner_progress.effective_level())
 	if not choices.is_valid():
 		return _refuse_staged(false, "its menu is not valid")
 	staged.choices = choices
@@ -3555,7 +3584,7 @@ func _lease_layout() -> ShopLayout:
 
 
 func lease_refusal() -> String:
-	return LEASE.refusal(owner_progress, Clock.sim.phase, Economy.cash, Economy.loan.principal)
+	return LEASE.refusal(owner_progress, Clock.sim.phase, Economy.spendable(), Economy.loan.principal)
 
 
 func _refresh_lease_offer() -> void:
@@ -3566,9 +3595,10 @@ func _refresh_lease_offer() -> void:
 		_menu_panel.set_lease_offer(false, "", "", "")
 		return
 	_menu_panel.set_lease_offer(true,
-		"Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
+		"More land to expand, free." if GameMode.is_creative()
+		else "Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
 			Fmt.money(LEASE.deposit), Fmt.money(LEASE.daily_rent)],
-		RestockBudgetWarning.text(Economy.cash, LEASE.deposit, build_restock_estimate()), lease_refusal())
+		RestockBudgetWarning.text(Economy.spendable(), LEASE.deposit, build_restock_estimate()), lease_refusal())
 
 
 ## A single morning transaction, included only in the next normal autosave.
@@ -3599,17 +3629,18 @@ func _on_lease_requested() -> void:
 
 
 func cat_refusal() -> String:
-	return sim.cat.refusal(owner_progress.level, Clock.sim.phase, Economy.cash)
+	return sim.cat.refusal(owner_progress.effective_level(), Clock.sim.phase, Economy.spendable())
 
 
 ## The one-time morning offer to adopt the shop cat (#119), from owner level 4.
 func _refresh_cat_offer() -> void:
 	if _menu_panel == null or sim == null or sim.cat == null:
 		return
-	if not sim.cat.offered(owner_progress.level, Clock.sim.phase):
+	if not sim.cat.offered(owner_progress.effective_level(), Clock.sim.phase):
 		_menu_panel.set_cat_offer(false, "", "")
 		return
-	_menu_panel.set_cat_offer(true, "%s joins your shop for %s. Cat food is %s a day." % [
+	_menu_panel.set_cat_offer(true, "%s would love to join your shop." % sim.cat.cat_name if GameMode.is_creative()
+		else "%s joins your shop for %s. Cat food is %s a day." % [
 		sim.cat.cat_name, Fmt.money(CAT.adoption_price), Fmt.money(CAT.daily_food_cost)], cat_refusal())
 
 
@@ -3690,7 +3721,7 @@ func _capture_critic() -> Dictionary:
 
 
 func _capture_bookings() -> Dictionary:
-	if group_booking == null or owner_progress.level < BOOKING_TUNING.unlock_level \
+	if group_booking == null or owner_progress.effective_level() < BOOKING_TUNING.unlock_level \
 			and not group_booking.has_active_booking():
 		return {}
 	return group_booking.to_dict()
@@ -3717,10 +3748,11 @@ func _refresh_booking_offer() -> void:
 		var day_word: String = "today" if today_booking else "tomorrow"
 		var slot_minute: int = int(accepted.get("slot_minute", 0))
 		var slot_end: int = slot_minute + BOOKING_TUNING.slot_minutes
-		reservation = "Reserved: %s for %d %s, arriving %s–%s. Customer deposit received: %s." % [
+		reservation = "Reserved: %s for %d %s, arriving %s–%s." % [
 			String(accepted.get("occasion", "Group")), int(accepted.get("party_size", 0)),
-			day_word, Fmt.clock(slot_minute), Fmt.clock(slot_end),
-			Fmt.money(int(accepted.get("deposit_amount", 0)))]
+			day_word, Fmt.clock(slot_minute), Fmt.clock(slot_end)]
+		if not GameMode.is_creative():
+			reservation += " Customer deposit received: %s." % Fmt.money(int(accepted.get("deposit_amount", 0)))
 		if today_booking and int(accepted.get("held_group_id", 0)) > 0:
 			service_card = "Reserved for today's %s: %d guests arriving %s–%s. New walk-ins will use other groups while this group clears." % [
 				String(accepted.get("occasion", "booking")), int(accepted.get("party_size", 0)),
@@ -3750,9 +3782,11 @@ func _refresh_booking_offer() -> void:
 		if menu_settings != null else null
 	var dish_name: String = dish.display_name if dish != null else "a dish from your menu"
 	var deposit: int = party_size * BOOKING_TUNING.deposit_per_guest
-	_menu_panel.set_booking_offer(true, "%s for %d arriving between %s and %s tomorrow. Mostly %s. Accept to receive a %s customer deposit; it counts against their final bill." % [
+	var terms: String = "" if GameMode.is_creative() \
+		else " Accept to receive a %s customer deposit; it counts against their final bill." % Fmt.money(deposit)
+	_menu_panel.set_booking_offer(true, "%s for %d arriving between %s and %s tomorrow. Mostly %s.%s" % [
 		occasion, party_size, Fmt.clock(slot), Fmt.clock(slot + BOOKING_TUNING.slot_minutes),
-		dish_name, Fmt.money(deposit)], reservation)
+		dish_name, terms], reservation)
 
 
 func _plan_morning_booking() -> void:
@@ -3762,7 +3796,7 @@ func _plan_morning_booking() -> void:
 	for recipe: RecipeDef in menu_settings.enabled_recipes():
 		if sim.menu.has(recipe):
 			menu_ids.append(recipe.id)
-	group_booking.plan_offer(Clock.sim.day, owner_progress.level, menu_ids,
+	group_booking.plan_offer(Clock.sim.day, owner_progress.effective_level(), menu_ids,
 		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
 		GameState.rng.bind(&"bookings"))
 	_refresh_booking_offer()
@@ -3977,7 +4011,7 @@ func tray_buy(level: int) -> bool:
 	tray_level = level
 	sim.carry_capacity = 1 << level
 	Economy.add_cash(-price, Ledger.UPGRADES)
-	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.spendable(), _loan_upgrade_refusal())
 	return true
 
 
@@ -4001,7 +4035,7 @@ func _restore_daily_special(data: Dictionary) -> bool:
 
 func _restore_menu(data: Dictionary) -> bool:
 	var layout: ShopLayout = _loaded_layout if _loaded_layout != null else ORIGINAL_LAYOUT
-	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.level)
+	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.effective_level())
 	if not choices.from_dict(data):
 		return false
 	_loaded_menu = choices
@@ -4112,7 +4146,7 @@ func _may_hire_role(role: StringName) -> bool:
 
 
 func _managers_on_offer() -> bool:
-	return owner_progress.career_tier >= SITE_MANAGERS.hire_tier and site_book.site_count() > 1
+	return owner_progress.effective_tier() >= SITE_MANAGERS.hire_tier and site_book.site_count() > 1
 
 
 static func _candidate_role(roster: StaffRoster, id: StringName) -> StringName:
@@ -4144,7 +4178,7 @@ func set_staff_visible(value: bool) -> bool:
 		_report.hide()
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
-	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.cash, _loan_upgrade_refusal())
+	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.spendable(), _loan_upgrade_refusal())
 	_staff_panel.visible = value
 	if not value and Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
 		_show_evening_report(build_report(Clock.sim.day))
@@ -4199,7 +4233,7 @@ func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 ## A station staff cannot reach (a bar or a fryer walled in on every side)
 ## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
-	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.career_tier)
+	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.effective_tier())
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -4225,7 +4259,7 @@ func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 	if not fridge or not pass_counter:
 		return recipes
 	for definition: RecipeDef in content.recipes():
-		if definition.unlock_tier > owner_progress.career_tier:
+		if definition.unlock_tier > owner_progress.effective_tier():
 			continue
 		var cookable: bool = true
 		for step: RecipeStep in definition.steps:
@@ -4244,7 +4278,7 @@ func _refresh_menu_catalogue() -> void:
 		return
 	var cookable: Array[RecipeDef] = _cookable_live()
 	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level(),
-			owner_progress.career_tier).is_empty():
+			owner_progress.effective_tier()).is_empty():
 		# An older or externally edited layout can already be broken. Explain
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
@@ -4320,7 +4354,7 @@ func restock_forecast_targets(tomorrow: bool = false) -> Dictionary[StringName, 
 	var pastry_chance: float = 0.0
 	if sim.customer_types != null:
 		for kind: CustomerType in sim.customer_types.types:
-			if kind.unlock_level > owner_progress.level:
+			if kind.unlock_level > owner_progress.effective_level():
 				continue
 			var weight: float = kind.weight_for_stars(reputation.average())
 			weight *= kind.theme_multiplier(sim.vibe_result.active_theme, sim.vibe_result.arrival_theme_strength)
@@ -4356,8 +4390,8 @@ func drink_station_hints() -> Array[String]:
 	for drinks_pass: bool in [true, false]:
 		for kind: StringName in RecipeDef.ORDER_TYPES:
 			for recipe: RecipeDef in content.recipes():
-				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.career_tier \
-						and recipe.unlock_level <= owner_progress.level:
+				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.effective_tier() \
+						and recipe.unlock_level <= owner_progress.effective_level():
 					waiting.append(recipe)
 	for recipe: RecipeDef in waiting:
 		for step: RecipeStep in recipe.steps:
@@ -4677,12 +4711,23 @@ func _refresh_goals(force: bool = false) -> void:
 		"day": Clock.sim.day, "career_tier": owner_progress.career_tier,
 		"collections": _collection_progress_snapshot(vibe_result.collection_result)}
 	if force or snapshot != _goals_snapshot:
-		_goals_panel.set_goals(milestone_catalogue, completed, progress, owner_progress.level,
-			weekly_challenge, Clock.sim.day, observation)
-		_goals_panel.set_career_tier_line(CAREER_TIERS.goal_text(owner_progress.career_tier))
-		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content))
+		# A Creative game (FK-141) hides career goals, the weekly goal, the
+		# tier ladder and money records; collections and guest records stay.
+		var creative: bool = GameMode.is_creative()
+		_goals_panel.set_goals(null if creative else milestone_catalogue, completed, progress,
+			owner_progress.level, null if creative else weekly_challenge, Clock.sim.day, observation)
+		_goals_panel.set_career_tier_line("" if creative else CAREER_TIERS.goal_text(owner_progress.career_tier))
+		var records: Array[String] = []
+		for line: String in ShopRecordsText.rows(snapshot["records"], content):
+			if not creative or _is_moneyless_line(line):
+				records.append(line)
+		_goals_panel.set_records(records)
 		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_snapshot = snapshot.duplicate(true)
+
+
+static func _is_moneyless_line(line: String) -> bool:
+	return not ("$" in line or "revenue" in line.to_lower() or "profit" in line.to_lower())
 
 
 func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[String]:
@@ -5052,7 +5097,7 @@ func _begin_morning() -> void:
 	_menu_access_error = ""
 	$HUD.set_menu_notice("")
 	# The preceding close may unlock a new type; current guests are unaffected.
-	sim.set_customer_level(owner_progress.level)
+	sim.set_customer_level(owner_progress.effective_level())
 	_dismiss_goals()
 	_milestones_reached_today.clear()
 	_milestone_award_day = 0
@@ -5102,9 +5147,9 @@ func _begin_morning() -> void:
 	sim.start_day()
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.
-	sim.inspection.plan_day(Clock.sim.day, owner_progress.level, Clock.sim.open_ticks,
+	sim.inspection.plan_day(Clock.sim.day, owner_progress.effective_level(), Clock.sim.open_ticks,
 		GameState.rng.bind(&"inspector"))
-	sim.rush_hour.plan_day(Clock.sim.day, owner_progress.level,
+	sim.rush_hour.plan_day(Clock.sim.day, owner_progress.effective_level(),
 		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
 		GameState.rng.bind(&"rush"))
 	_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
@@ -5290,7 +5335,7 @@ func _storage_need() -> Dictionary:
 func _restock() -> void:
 	_last_delivery.clear()
 	_deliver_due(true)
-	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
+	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.spendable(),
 		auto_reorder_premium, false, storage_space())
 	_morning_order = {"short": order["short"], "unfit": order["unfit"]}
 	_buy_standing(order, "The morning auto-order could not be paid")
@@ -5748,8 +5793,8 @@ func stock_pending_text() -> String:
 	var pending: Dictionary[StringName, int] = deliveries.pending_by_id()
 	for id: StringName in pending:
 		parts.append("%d %s" % [pending[id], _ingredient_name(id)])
-	return "On order (paid %s): %s. %s." % [Fmt.money(deliveries.paid_total()), StockAlerts.join_names(parts),
-		_due_text(deliveries.earliest_due())]
+	var paid: String = "" if GameMode.is_creative() else " (paid %s)" % Fmt.money(deliveries.paid_total())
+	return "On order%s: %s. %s." % [paid, StockAlerts.join_names(parts), _due_text(deliveries.earliest_due())]
 
 
 func _due_text(due: Vector2i) -> String:
@@ -5839,7 +5884,7 @@ func _ingredient_name(id: StringName) -> String:
 func _refresh_stock_panel() -> void:
 	if _stock_panel == null or Clock.sim == null or content == null or world == null:
 		return
-	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.cash,
+	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.spendable(),
 		"editable": can_edit_stock(), "notes": stock_notes(), "premium": auto_reorder_premium,
 		"cart_total": stock_cart_total(), "cart_refusal": stock_cart_refusal(),
 		"haggle_available": can_start_haggle(), "haggle_percent": stock_haggle_percent(),
@@ -5921,7 +5966,7 @@ func _on_stock_close_requested() -> void:
 ## Nothing station-only is in use on a default menu, so default play buys
 ## nothing here. Like #183's top-up it arrives at once.
 func _restock_station_supplies() -> void:
-	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.cash,
+	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.spendable(),
 		auto_reorder_premium, true, storage_space())
 	_buy_standing(order, "The opening top-up could not be paid")
 	var short: Dictionary = order["short"]
@@ -6149,20 +6194,26 @@ func _on_service_closed(day: int) -> void:
 			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
 		operating_profit -= int(day_movements.get(category, 0))
 	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
-	_award_weekly_challenge(closing_observation)
+	# A Creative game (FK-141) has no owner XP, career goals, weekly goal or
+	# tier climb: everything is already unlocked.
+	var career: bool = not GameMode.is_creative()
+	if career:
+		_award_weekly_challenge(closing_observation)
 	staff_roster.close_growth_day()
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
 		if int(row.get("stars", 0)) == 5:
 			five_star_reviews += 1
 	var level_before: int = owner_progress.level
-	_owner_award_today = owner_progress.award_day(day,
-		int(sim.leave_reasons_today.get(&"happy", 0)), operating_profit, five_star_reviews)
+	if career:
+		_owner_award_today = owner_progress.award_day(day,
+			int(sim.leave_reasons_today.get(&"happy", 0)), operating_profit, five_star_reviews)
 	if not _owner_award_today.is_empty():
 		_owner_award_day = day
 	# The goal snapshot sees ordinary day XP, but not its own rewards. Stage
 	# every goal/bonus before installing any milestone completion or paying cash.
-	_award_milestones(day, operating_profit)
+	if career:
+		_award_milestones(day, operating_profit)
 	# Earned bonus cash is available to avoid needless borrowing, while the
 	# repayment share still uses the captured pre-bonus business profit.
 	var settlement: Dictionary = Economy.settle_loan_day(day, operating_profit)
@@ -6171,12 +6222,12 @@ func _on_service_closed(day: int) -> void:
 	# The career tier reads tonight's final level and the active site's
 	# closing reputation (D30); it never drops.
 	var tier_before: int = owner_progress.career_tier
-	var tier_reached: int = owner_progress.raise_career_tier(CAREER_TIERS, reputation.average())
+	var tier_reached: int = owner_progress.raise_career_tier(CAREER_TIERS, reputation.average()) if career else 0
 	if tier_reached > 0:
 		_career_tier_day = day
 		_career_tier_reached = tier_reached
-		shop_editor.set_career_tier(owner_progress.career_tier)
-		_build_catalogue.set_career_tier(owner_progress.career_tier)
+		shop_editor.set_career_tier(owner_progress.effective_tier())
+		_build_catalogue.set_career_tier(owner_progress.effective_tier())
 		# Newly opened dishes join the menu catalogue at the morning refresh.
 		if _owner_award_day != day:
 			# A tier can rise on a day with no XP: still list what it opens.
@@ -6187,10 +6238,10 @@ func _on_service_closed(day: int) -> void:
 			tier_before, owner_progress.career_tier)
 		_owner_tips_today = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
 			if customer_type_catalogue != null else [] as Array[String]
-		menu_settings.set_owner_level(owner_progress.level)
-		sim.set_customer_level(owner_progress.level)
-		shop_editor.set_owner_level(owner_progress.level)
-		_build_catalogue.set_owner_level(owner_progress.level)
+		menu_settings.set_owner_level(owner_progress.effective_level())
+		sim.set_customer_level(owner_progress.effective_level())
+		shop_editor.set_owner_level(owner_progress.effective_level())
+		_build_catalogue.set_owner_level(owner_progress.effective_level())
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
 	var beaten: Array[StringName] = shop_records.record(shown_report)
@@ -6374,11 +6425,14 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 			ingredients.append({"text": "%s: %d in stock / %d needed" % [ingredient.display_name, count, amounts[id]],
 				"met": count >= amounts[id]})
 		var other: Array[Dictionary] = []
-		if recipe.unlock_tier > 1:
-			other.append({"text": "Requires Tier %d" % recipe.unlock_tier, "met": owner_progress.career_tier >= recipe.unlock_tier})
-		other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
-			"met": menu_settings.owner_level() >= recipe.unlock_level})
-		if not recipe.unlock_from.is_empty():
+		# A Creative game (FK-141) has no levels or tiers to list.
+		var career: bool = not GameMode.is_creative()
+		if career and recipe.unlock_tier > 1:
+			other.append({"text": "Requires Tier %d" % recipe.unlock_tier, "met": owner_progress.effective_tier() >= recipe.unlock_tier})
+		if career:
+			other.append({"text": "Owner level %d (you are level %d)" % [recipe.unlock_level, menu_settings.owner_level()],
+				"met": menu_settings.owner_level() >= recipe.unlock_level})
+		if career and not recipe.unlock_from.is_empty():
 			var parent: RecipeDef = content.recipe(recipe.unlock_from)
 			if parent != null:
 				other.append({"text": "Learn %s at owner level %d" % [parent.display_name, parent.unlock_level],

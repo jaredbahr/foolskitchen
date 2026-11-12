@@ -548,8 +548,8 @@ func _refresh_wall_cards() -> void:
 			wall_buttons[definition.id] = button
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
-		button.text = "%s\n%s" % [definition.display_name, Fmt.money(definition.price)]
-		button.tooltip_text = "Build %s for %s each" % [definition.display_name.to_lower(), Fmt.money(definition.price)]
+		button.text = "%s\n%s" % [definition.display_name, Fmt.price(definition.price)]
+		button.tooltip_text = "Build %s %s" % [definition.display_name.to_lower(), Fmt.for_price_each(definition.price, "")]
 		if definition.segment == SimGrid.Segment.DOORWAY:
 			button.tooltip_text += ". On a back or side outside wall, this makes a back door"
 		button.icon = _thumbnails.request(definition.thumbnail_scene)
@@ -583,8 +583,8 @@ func _refresh_floor_card() -> void:
 		floor_button.pressed.connect(_on_floor_pressed)
 		row.add_child(floor_button)
 	row.move_child(floor_button, row.get_child_count() - 1)
-	floor_button.text = "Expand\n%s a tile" % Fmt.money(_floor_price)
-	floor_button.tooltip_text = "Expand: drag onto your lot to add floor for %s a tile; Shift-drag removes added floor" % Fmt.money(_floor_price)
+	floor_button.text = "Expand\n%s" % Fmt.price_each(_floor_price, "tile")
+	floor_button.tooltip_text = "Expand: drag onto your lot to add floor %s; Shift-drag removes added floor" % Fmt.for_price_each(_floor_price, "tile")
 	floor_button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
 
 
@@ -610,8 +610,8 @@ func _refresh_patio_card() -> void:
 		patio_button.pressed.connect(_on_patio_pressed)
 		row.add_child(patio_button)
 	row.move_child(patio_button, row.get_child_count() - 1)
-	patio_button.text = "Build patio\n%s a tile" % Fmt.money(_patio_price)
-	patio_button.tooltip_text = "Drag beside the street door to buy patio for %s a tile; Shift-drag removes empty patio. Closed in rain" % Fmt.money(_patio_price)
+	patio_button.text = "Build patio\n%s" % Fmt.price_each(_patio_price, "tile")
+	patio_button.tooltip_text = "Drag beside the street door to buy patio %s; Shift-drag removes empty patio. Closed in rain" % Fmt.for_price_each(_patio_price, "tile")
 	patio_button.icon = _thumbnails.request(FLOOR_THUMBNAIL)
 
 
@@ -683,7 +683,7 @@ func _refresh_floor_styles() -> void:
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
 		var locked: String = definition.locked_reason(_owner_level, _career_tier)
-		var price: String = "Free" if definition.price == 0 else "%s a tile" % Fmt.money(definition.price)
+		var price: String = Fmt.FREE if definition.price == 0 else Fmt.price_each(definition.price, "tile")
 		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
@@ -847,7 +847,7 @@ func _refresh_wall_styles() -> void:
 			row.add_child(button)
 		row.move_child(button, row.get_child_count() - 1)
 		var locked: String = definition.locked_reason(_owner_level, _career_tier)
-		var price: String = "Free" if definition.price == 0 else "%s a wall" % Fmt.money(definition.price)
+		var price: String = Fmt.FREE if definition.price == 0 else Fmt.price_each(definition.price, "wall")
 		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \

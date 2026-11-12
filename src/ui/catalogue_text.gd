@@ -55,7 +55,14 @@ static func dining_capacity(capacity: int, joined: bool = false) -> String:
 
 
 static func wall_removal_refund(refund: int) -> String:
+	if GameMode.is_creative():
+		return "%s wall" % WALL_REMOVE_LABEL
 	return "%s wall (refund %s)" % [WALL_REMOVE_LABEL, Fmt.money(refund)]
+
+
+## The sell tool's sentence; a Creative game (FK-141) has no money to refund.
+static func sell_text(name: String, refund: int) -> String:
+	return "Remove %s" % name if GameMode.is_creative() else "Sell %s for %s" % [name, Fmt.money(refund)]
 
 
 ## A station type's player name; an unlisted type falls back to the item's own name.
@@ -168,7 +175,7 @@ static func theme_label(tag: StringName) -> String:
 static func tile_text(definition: ItemDef, owner_level: int, variant_id: StringName = &"") -> String:
 	if definition.unlock_level > owner_level:
 		return "Level %d" % definition.unlock_level
-	return Fmt.money(definition.variant_price(variant_id))
+	return Fmt.price(definition.variant_price(variant_id))
 
 
 ## The hover card's lines, top to bottom, after the picture.
@@ -177,7 +184,7 @@ static func card_lines(definition: ItemDef, owner_level: int, variant_id: String
 	var look: ItemVariant = definition.variant(variant_id)
 	if look != null:
 		lines.append(look.display_name)
-	lines.append(Fmt.money(definition.variant_price(variant_id)) if definition.unlock_level <= owner_level
+	lines.append(Fmt.price(definition.variant_price(variant_id)) if definition.unlock_level <= owner_level
 		else "%s  (unlocks at level %d)" % [Fmt.money(definition.variant_price(variant_id)), definition.unlock_level])
 	lines.append(does(definition))
 	var charm: String = charm_text(definition)
@@ -245,7 +252,7 @@ static func blueprint_selection(count: int) -> String:
 
 
 static func blueprint_stamp(name: String, cost: int) -> String:
-	return "%s — %s  ·  R / , / . rotate" % [name, Fmt.money(cost)]
+	return "%s — %s  ·  R / , / . rotate" % [name, Fmt.price(cost)]
 
 
 static func blueprint_stamp_label(name: String) -> String:
@@ -253,7 +260,7 @@ static func blueprint_stamp_label(name: String) -> String:
 
 
 static func blueprint_card(name: String, cost: int) -> String:
-	return "%s — %s" % [name, Fmt.money(cost)]
+	return "%s — %s" % [name, Fmt.price(cost)]
 
 const BLUEPRINT_KEYS: String = "Click Place blueprint  |  , . or R Rotate  |  Esc or Right-click Cancel"
 const BLUEPRINT_SELECTION_KEYS: String = "Drag a box around furniture  |  Save as blueprint in Buy → Blueprints  |  Esc Cancel"

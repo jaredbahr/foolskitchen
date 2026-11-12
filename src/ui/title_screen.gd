@@ -14,6 +14,9 @@ var _camera: CameraRig
 var _clock_processed: bool = true
 var _clock_input: bool = true
 var _started: bool = false
+## The new game's Career or Creative card (FK-141), built in code.
+var mode_choice: PanelContainer
+var _new_creative: bool = false
 
 @onready var menu: PanelContainer = $Menu
 @onready var continue_button: Button = $Menu/Column/Continue
@@ -58,12 +61,13 @@ func start() -> void:
 	confirmation.ok_button_text = TitleText.NEW_GAME
 	confirmation.cancel_button_text = TitleText.CANCEL
 	continue_button.pressed.connect(continue_game)
-	new_button.pressed.connect(request_new_game)
+	new_button.pressed.connect(show_mode_choice)
 	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	confirmation.confirmed.connect(_start_new_game)
 	settings.close_requested.connect(_on_settings_closed)
 	settings.bind_preferences(Preferences)
+	_build_mode_choice()
 	refresh_save_availability()
 	_prepare_backdrop()
 	_layout_menu()
@@ -79,9 +83,40 @@ func _exit_tree() -> void:
 
 func refresh_save_availability() -> void:
 	continue_button.visible = SaveSystem.list_slots().has(MAIN.AUTOSAVE_SLOT)
+	continue_button.text = TitleText.CONTINUE + (TitleText.CREATIVE_SUFFIX
+		if continue_button.visible and _autosave_is_creative() else "")
 
 
-func request_new_game() -> void:
+## Reads only the autosave's mode, for the Continue label; Main still owns
+## loading, validation and backup recovery.
+func _autosave_is_creative() -> bool:
+	var file: FileAccess = FileAccess.open(
+		SaveSystem.save_dir.path_join(MAIN.AUTOSAVE_SLOT + ".json"), FileAccess.READ)
+	if file == null:
+		return false
+	var parser: JSON = JSON.new()
+	var parsed: Error = parser.parse(file.get_as_text())
+	file.close()
+	var document: Variant = parser.data
+	return parsed == OK and document is Dictionary and (document as Dictionary).get("data", null) is Dictionary \
+		and GameMode.is_creative_save((document as Dictionary)["data"])
+
+
+## New game first asks Career or Creative.
+func show_mode_choice() -> void:
+	menu.hide()
+	mode_choice.show()
+	_layout_menu()
+
+
+func _hide_mode_choice() -> void:
+	mode_choice.hide()
+	menu.show()
+
+
+func request_new_game(creative: bool = false) -> void:
+	_new_creative = creative
+	_hide_mode_choice()
 	refresh_save_availability()
 	if continue_button.visible:
 		confirmation.popup_centered(Vector2i(480, 160))
@@ -90,8 +125,38 @@ func request_new_game() -> void:
 
 
 func _start_new_game() -> void:
-	if MAIN.start_fresh_run(get_tree(), MAIN.AUTOSAVE_SLOT, true) != OK:
+	if MAIN.start_fresh_run(get_tree(), MAIN.AUTOSAVE_SLOT, true, _new_creative) != OK:
 		_show_start_error()
+
+
+func _build_mode_choice() -> void:
+	mode_choice = PanelContainer.new()
+	mode_choice.name = "ModeChoice"
+	mode_choice.hide()
+	add_child(mode_choice)
+	var column: VBoxContainer = VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	mode_choice.add_child(column)
+	var heading: Label = Label.new()
+	heading.text = TitleText.CHOOSE_MODE
+	heading.add_theme_font_size_override("font_size", 28)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(heading)
+	for creative: bool in [false, true]:
+		var button: Button = Button.new()
+		button.name = "Creative" if creative else "Career"
+		button.text = TitleText.CREATIVE if creative else TitleText.CAREER
+		button.pressed.connect(request_new_game.bind(creative))
+		column.add_child(button)
+		var line: Label = Label.new()
+		line.text = TitleText.CREATIVE_LINE if creative else TitleText.CAREER_LINE
+		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		column.add_child(line)
+	var back: Button = Button.new()
+	back.name = "Back"
+	back.text = TitleText.BACK
+	back.pressed.connect(_hide_mode_choice)
+	column.add_child(back)
 
 
 func continue_game() -> void:
@@ -132,6 +197,9 @@ func _layout_menu() -> void:
 	menu.custom_minimum_size.x = minf(CARD_WIDTH, maxf(0.0, size.x - CARD_MARGIN * 2.0))
 	menu.size = menu.get_combined_minimum_size()
 	menu.position = Vector2(CARD_MARGIN, maxf(CARD_MARGIN, (size.y - menu.size.y) * 0.5))
+	mode_choice.custom_minimum_size.x = menu.custom_minimum_size.x
+	mode_choice.size = mode_choice.get_combined_minimum_size()
+	mode_choice.position = Vector2(CARD_MARGIN, maxf(CARD_MARGIN, (size.y - mode_choice.size.y) * 0.5))
 
 
 func _on_settings_pressed() -> void:
@@ -157,5 +225,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE and settings.visible:
 			_on_settings_closed()
+		elif code == KEY_ESCAPE and mode_choice.visible:
+			_hide_mode_choice()
 	get_viewport().set_input_as_handled()
 

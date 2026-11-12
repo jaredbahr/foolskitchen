@@ -3049,6 +3049,46 @@ out starter stock, stages real Space-stop timing and shows the active game at
 frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
 existing-job captures are UI evidence, not natural human timing or balance play.
 
+### Creative mode (FK-141, D34, #333)
+
+New game asks Career or Creative (`TitleScreen.show_mode_choice()`; the card is
+built in code). `Main.start_fresh_run(..., creative)` records the request in
+`GameMode`, and `_new_game()` applies it once with `GameMode.begin_new_game()`.
+The in-game Start over keeps the current mode. TODOs there name the later work:
+any lot and neighbourhood (#405) and saving a design as a blueprint for career
+(#432).
+
+- **One flag.** `GameMode` (`src/sim/progression/game_mode.gd`) is a static
+  run-wide `creative` bool, so the sim can read it without a Node. It is the
+  `game_mode` save section (`{"creative": bool}`), registered after the
+  autoloads and before `owner`, because the owner and menu restores read the
+  unlock level. A load first resets it to career, so a save without the section
+  is a career game. No `save_system.gd` change.
+- **Unlocks.** Every unlock check reads `OwnerProgress.effective_level()` and
+  `effective_tier()`: the earned values in career, `GameMode.CREATIVE_LEVEL`
+  (99, above every authored `unlock_level`) and the top tier in Creative.
+  Items, recipes, floors, walls, menu size, the lease upgrade, the cat,
+  bookings, customer types, the inspector, critic and rush hour all use them.
+  The earned `level`, XP and `career_tier` are not touched and still save.
+- **Money.** `Economy.is_free()` gates every money path in one place:
+  `add_cash`/`add_cash_for_site` and the ingredient purchases record nothing,
+  every affordability check passes, `settle_loan_day` returns `{}` (no loan,
+  interest or repayment), and `spendable()` (a huge budget) replaces `cash`
+  where planning or refusal text reads it. Stock still arrives and is counted.
+  Cash therefore never changes from the starting value.
+- **Hidden.** At close a Creative game skips owner XP, milestones, the weekly
+  goal and the tier climb. The HUD shows a "Creative" chip in place of cash, the
+  loan chip and the owner level; the evening report hides profit, finances,
+  cash change, loan, milestones, weekly goal, owner progress and the business
+  trend (guests, dishes, reviews, events, team and stock stay). Goals shows
+  collections and money-free records only. Prices read "Free" through
+  `Fmt.price()`, `Fmt.price_each()` and `Fmt.for_price_each()`, which equal
+  the old career text exactly. The title's Continue reads the autosave's
+  `game_mode` section and adds "(Creative)".
+- Career is unchanged: the default five-day probe (seeds 1, 7, 42) is identical
+  to `main`. Coverage: `tests/sim/test_game_mode.gd`,
+  `tests/world/test_creative_session.gd`, `tests/ui/test_creative_title.gd`.
+
 ### 2.4 Save system
 Lifetime records (FK-145): `ShopRecords` is a pure consumer of the one finalized
 `DayReport` in Main's guarded `service_closed` handler. Report previews, returning
