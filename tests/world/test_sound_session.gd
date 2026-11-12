@@ -140,12 +140,16 @@ func test_plate_counts_only_clink_at_the_sink_on_a_real_wash() -> void:
 	var clean: int = kitchen.clean_plates
 	var dirty: int = kitchen.dirty_plates
 	var total: int = kitchen.plates.total
+	# Binding starts from the live counts (not "unknown"), so the first wash
+	# after a load is heard.
+	assert_eq(sound._last_clean, clean, "bind seeds the clean count")
+	assert_eq(sound._last_dirty, dirty, "bind seeds the dirty count")
 	# A plate recovered from a table goes dirty: no wash.
 	sound._on_plates_changed(clean, total, dirty + 1, 0)
 	# A bought plate adds a clean one without fewer dirty: no wash.
 	sound._on_plates_changed(clean + 1, total + 1, dirty + 1, 0)
 	assert_false(_clinks.has(&"sink"), "no sink without a wash: %s" % [_clinks])
-	# The first wash after binding counts too (the baseline is the live counts).
+	# A real wash: fewer dirty, more clean.
 	sound._on_plates_changed(clean + 2, total + 1, dirty, 0)
 	assert_true(_clinks.has(&"sink"), "a wash clatters at the sink: %s" % [_clinks])
 
