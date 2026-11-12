@@ -841,7 +841,7 @@ func _connect_session() -> void:
 		sound.name = "SoundDirector"
 		sound.display_only = display_only
 		add_child(sound)
-	sound.bind(sim, $ShopView as ShopView)
+	sound.bind(sim, $ShopView as ShopView, content)
 
 
 func _exit_tree() -> void:

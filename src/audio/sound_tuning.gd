@@ -10,12 +10,11 @@ extends Resource
 ## Shortest gap between two plays of a cue, in real seconds. Fast-forward can
 ## raise many events in one frame; this keeps them from piling up.
 @export var min_interval: Dictionary[StringName, float] = {}
-## Looped ambience on the Effects bus (loop -> stream).
+## Looped station and jukebox sounds on the Effects bus (loop -> stream). The
+## room tone and chatter live in `AmbienceTuning` on the Ambience bus.
 @export var loops: Dictionary[StringName, AudioStream] = {}
 ## Gain in dB of a loop at full level.
 @export var loop_volume_db: Dictionary[StringName, float] = {}
-## Guests in the shop at which the room tone reaches full level.
-@export var room_tone_full_guests: int = 14
 ## Small pitch steps cycled per repeated cue, so repeats don't sound identical.
 ## A fixed cycle, not a random draw.
 @export var pitch_cycle: PackedFloat32Array = PackedFloat32Array([1.0])
@@ -35,7 +34,7 @@ func loop_gain_db(loop: StringName) -> float:
 
 ## Every stream present and every number usable.
 func is_valid() -> bool:
-	if room_tone_full_guests < 1 or pitch_cycle.is_empty():
+	if pitch_cycle.is_empty():
 		return false
 	for pitch: float in pitch_cycle:
 		if pitch <= 0.0:

@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The dining room now sounds busy while you're open: a plate clinks down as each meal reaches its table, glasses clink when drinks are served, cutlery taps now and then from tables where guests are eating (more often in a full room, never a din), dishes stack as a table is cleared and the sink clatters as plates are washed. Clinks come from the side of the screen their table is on. A new Ambience slider in Settings sets the room's sound (the room tone and these clinks) separately from Music and Effects. (#449)
 - The evening report has its own song, "Stir It Slow", and the title screen plays "Kitchen Jamboree". (#446)
 - Older saves whose tables block the way to the kitchen in a way the automatic fix cannot clear now get a one-time morning note: "Some tables block your staff from the kitchen. Open Build to clear an aisle." (#448)
 - Staff work counts now include drinks poured under "served", and a new "cleaned" count for mopping spills and degreasing stations. (#447)
