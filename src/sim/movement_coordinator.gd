@@ -781,16 +781,8 @@ func _idle_station_holder(world: SimWorld, agent: SimAgent, holder: SimAgent, ne
 	if idle.carries_food() or not idle.has_arrived() or _resume.has(idle.id) \
 			or _stopping.has(idle.id) or _edges.has(idle.id):
 		return false
-	if idle.task != null:
-		if idle.task.state != SimTask.State.CLAIMED or idle.task.claimed_by != idle.id \
-				or world.board.get_task(idle.task.id) != idle.task or idle.step_index < 0 \
-				or idle.step_index >= idle.task.steps.size():
-			return false
-		var pending: TaskStep = idle.task.steps[idle.step_index]
-		if pending.kind != TaskStep.Kind.GO_TO_ITEM or idle._step_started \
-				or idle._waiting_for.is_empty() or idle._held_item_id != 0 \
-				or idle._held_cell != SimGrid.NO_CELL:
-			return false
+	if idle.task != null and not _waiting_unleased(world, idle):
+		return false
 	if worker.task == null or worker.task.state != SimTask.State.CLAIMED \
 			or worker.task.claimed_by != worker.id or worker.step_index < 0 \
 			or world.board.get_task(worker.task.id) != worker.task \
@@ -802,6 +794,19 @@ func _idle_station_holder(world: SimWorld, agent: SimAgent, holder: SimAgent, ne
 		return false
 	var item: PlacedItem = world.grid.item(step.item_id)
 	return item != null and item.work_cells.has(next) and item.reserved_by(next) == worker.id
+
+
+## Claimed work whose next station is busy: waiting to start the walk there,
+## holding no lease. Nothing keeps it on its current cell.
+func _waiting_unleased(world: SimWorld, staff: StaffAgent) -> bool:
+	if staff.task == null or staff.task.state != SimTask.State.CLAIMED or staff.task.claimed_by != staff.id \
+			or world.board.get_task(staff.task.id) != staff.task or staff.step_index < 0 \
+			or staff.step_index >= staff.task.steps.size():
+		return false
+	var pending: TaskStep = staff.task.steps[staff.step_index]
+	return pending.kind == TaskStep.Kind.GO_TO_ITEM and not staff._step_started \
+		and not staff._waiting_for.is_empty() and staff._held_item_id == 0 \
+		and staff._held_cell == SimGrid.NO_CELL
 
 
 func _idle_without_route(_world: SimWorld, agent: SimAgent) -> bool:
@@ -1127,6 +1132,21 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 	# leaving lines in edited shops stuck past 600 ticks (#318 review).
 	_right_of_way[stuck.id] = world.now + tuning.escape_retry_ticks
 	if blockers.is_empty():
+		# The first step is free, but someone standing still further along the
+		# shortest way (a worker waiting for the very station this one holds,
+		# #453) would only turn them back again: ask that one to clear now,
+		# while the stuck person walks back, instead of on a retry that the
+		# walk-and-detour loop never lines up with.
+		var ahead: SimAgent = _standing_on_route(world, stuck, route_cells)
+		if ahead != null and not (stalled < tuning.squeeze_after_ticks and _busy_worker(ahead)):
+			var keep: Dictionary[Vector2i, bool] = {stuck.cell: true}
+			for cell: Vector2i in route_cells:
+				keep[cell] = true
+			if _clear_to_pocket(world, ahead, keep) or _push_through(world, ahead, stuck, keep):
+				if detour:
+					stuck.install_movement_route(route_cells)
+				escape_counts[&"ahead"] = int(escape_counts.get(&"ahead", 0)) + 1
+				return ESCAPE_ACTED
 		# Nobody stands in the shortest way: no held way and nobody is moved.
 		# Only a stale detour is replaced; the turn passes on.
 		if not detour:
@@ -1193,6 +1213,21 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 	if _way_holder == stuck.id:
 		_way_holder = -1
 	return ESCAPE_FUTILE
+
+
+## The first person on the static route past its first step, if they stand
+## there with nowhere to go (settled, arrived, not sidestepping or leaving).
+## Anyone on the move along the route is traffic that clears by itself: null.
+func _standing_on_route(world: SimWorld, stuck: SimAgent, route_cells: Array[Vector2i]) -> SimAgent:
+	for index: int in range(2, route_cells.size()):
+		var holder: SimAgent = _holder(world, route_cells[index])
+		if holder == null or holder == stuck:
+			continue
+		if _clearable(world, holder, stuck) and holder.has_arrived() and not _resume.has(holder.id) \
+				and not _leaving(holder):
+			return holder
+		return null
+	return null
 
 
 ## The stuck person's own static route to where it is really going (people
@@ -1461,7 +1496,8 @@ func _send_aside(world: SimWorld, agent: SimAgent, path: Array[Vector2i]) -> voi
 	if original == SimGrid.NO_CELL:
 		original = agent.cell
 	var standing: bool = not _resume.has(agent.id) and agent.has_arrived() \
-		and (agent is CustomerAgent or not agent is StaffAgent or (agent as StaffAgent).task == null)
+		and (agent is CustomerAgent or not agent is StaffAgent or (agent as StaffAgent).task == null \
+			or _waiting_unleased(world, agent as StaffAgent))
 	_resume[agent.id] = path.back() if standing or _idle_without_route(world, agent) else original
 	_returning.erase(agent.id)
 	_cooperative.erase(agent.id)
