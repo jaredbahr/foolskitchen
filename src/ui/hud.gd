@@ -502,8 +502,11 @@ func set_aisle_note(text: String) -> void:
 	if label == null:
 		return
 	label.text = text
-	label.tooltip_text = "Nobody walks through seats, so the tables were moved to leave a way through." \
-		if not text.is_empty() else ""
+	label.tooltip_text = ""
+	if text == AisleRepair.NOTE:
+		label.tooltip_text = "Nobody walks through seats, so the tables were moved to leave a way through."
+	elif text == AisleRepair.NOTE_UNFIXED:
+		label.tooltip_text = "Nobody walks through seats. Move tables or chairs in Build to leave a way through."
 	label.visible = not text.is_empty() and Clock.sim.phase == SimClock.Phase.MORNING
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
