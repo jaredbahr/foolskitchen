@@ -123,6 +123,9 @@ func test_a_fruitless_search_stays_inside_its_budget() -> void:
 	assert_true(AisleRepair.last_checks <= AisleRepair.MAX_CHECKS, "checks %d" % AisleRepair.last_checks)
 	assert_eq(layout.placements, before, "nothing moves")
 	assert_eq(layout.aisle_moved, 0)
+	assert_true(layout.aisle_unfixed, "the repair gave up")
+	assert_eq(AisleRepair.note_for(layout), AisleRepair.NOTE_UNFIXED)
+	assert_eq(AisleRepair.NOTE_UNFIXED, "Some tables block your staff from the kitchen. Open Build to clear an aisle.")
 
 
 func test_the_original_row_needs_few_tries() -> void:
@@ -136,6 +139,8 @@ func test_a_shop_people_can_walk_is_left_alone() -> void:
 	assert_eq(AisleRepair.repair(layout, _content), 0)
 	assert_eq(layout.aisle_moved, 0)
 	assert_eq(layout.placements, DEEPER.placements)
+	assert_false(layout.aisle_unfixed)
+	assert_eq(AisleRepair.note_for(layout), "", "a walkable shop gets no note")
 
 
 func test_version_nine_original_snapshot_repairs_once_and_round_trips() -> void:
@@ -151,6 +156,8 @@ func test_version_nine_original_snapshot_repairs_once_and_round_trips() -> void:
 	if restored == null:
 		return
 	assert_eq(restored.aisle_moved, 1)
+	assert_false(restored.aisle_unfixed, "a fixed shop gets no can't-fix note")
+	assert_eq(AisleRepair.note_for(restored), AisleRepair.NOTE)
 	_assert_tables(restored, REPAIRED)
 	var saved: Dictionary = _editor(restored).to_dict()
 	assert_eq(int(saved["version"]), ShopEditor.SNAPSHOT_VERSION)
