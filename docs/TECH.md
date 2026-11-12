@@ -3062,8 +3062,12 @@ any lot and neighbourhood (#405) and saving a design as a blueprint for career
   run-wide `creative` bool, so the sim can read it without a Node. It is the
   `game_mode` save section (`{"creative": bool}`), registered after the
   autoloads and before `owner`, because the owner and menu restores read the
-  unlock level. A load first resets it to career, so a save without the section
-  is a career game. No `save_system.gd` change.
+  unlock level. `Main.start()` resets it to career before `initialize()` (it
+  is static, so a Creative run must not leak into the next run in the same
+  process), and `_wire_session()` pushes the effective level and tier in both
+  modes. A save without the section is a career game; a Creative save that
+  fails to load starts a new Creative game (with a warning). No
+  `save_system.gd` change.
 - **Unlocks.** Every unlock check reads `OwnerProgress.effective_level()` and
   `effective_tier()`: the earned values in career, `GameMode.CREATIVE_LEVEL`
   (99, above every authored `unlock_level`) and the top tier in Creative.
@@ -3080,8 +3084,9 @@ any lot and neighbourhood (#405) and saving a design as a blueprint for career
   goal and the tier climb. The HUD shows a "Creative" chip in place of cash, the
   loan chip and the owner level; the evening report hides profit, finances,
   cash change, loan, milestones, weekly goal, owner progress and the business
-  trend (guests, dishes, reviews, events, team and stock stay). Goals shows
-  collections and money-free records only. Prices read "Free" through
+  trend (guests, dishes, reviews, events, team and stock stay). Goals is titled
+  "Collections" and shows collections and records without the money ones
+  (`ShopRecordsText` `with_money = false`, by record id). Prices read "Free" through
   `Fmt.price()`, `Fmt.price_each()` and `Fmt.for_price_each()`, which equal
   the old career text exactly. The title's Continue reads the autosave's
   `game_mode` section and adds "(Creative)".

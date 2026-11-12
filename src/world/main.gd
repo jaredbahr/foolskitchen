@@ -652,6 +652,10 @@ func _process(_delta: float) -> void:
 func start() -> void:
 	if _started:
 		return
+	# GameMode is static: a previous run in this process (Creative, then Quit
+	# to title) must not leak into initialize(). The load or _new_game() sets it.
+	if not display_only:
+		GameMode.reset_for_load()
 	initialize()
 	if display_only:
 		return
@@ -702,6 +706,10 @@ func start() -> void:
 	_show_aisle_note(loaded and _loaded_layout != null and _loaded_layout.aisle_moved > 0)
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
+		if GameMode.is_creative():
+			# A Creative save that could not be loaded starts a new Creative game.
+			push_warning("Creative autosave could not be loaded; starting a new Creative game")
+			GameMode.request_new_game(true)
 		_new_game()
 	if not _wire_session():
 		return
@@ -778,13 +786,13 @@ func _wire_session() -> bool:
 	shop_editor.set_owner_level(owner_progress.effective_level())
 	shop_editor.set_career_tier(owner_progress.effective_tier())
 	shop_editor.storage_need = _storage_need
-	# The mode is known only now (FK-141): a Creative game opens everything.
-	# (Career already matches: initialize() used the same earned values.)
+	# The mode is known only now (FK-141): push the unlock level and tier in
+	# either mode, so nothing set up before the mode was known is stale.
+	_build_catalogue.set_owner_level(owner_progress.effective_level())
+	_build_catalogue.set_career_tier(owner_progress.effective_tier())
+	if menu_settings != null:
+		menu_settings.set_owner_level(owner_progress.effective_level())
 	if GameMode.is_creative():
-		_build_catalogue.set_owner_level(owner_progress.effective_level())
-		_build_catalogue.set_career_tier(owner_progress.effective_tier())
-		if menu_settings != null:
-			menu_settings.set_owner_level(owner_progress.effective_level())
 		# Goals holds only collections and records here; staff cost nothing.
 		var goals_button: Button = _menu_panel.get_node("%GoalsButton") as Button
 		goals_button.text = CREATIVE_GOALS_TITLE
@@ -4717,17 +4725,9 @@ func _refresh_goals(force: bool = false) -> void:
 		_goals_panel.set_goals(null if creative else milestone_catalogue, completed, progress,
 			owner_progress.level, null if creative else weekly_challenge, Clock.sim.day, observation)
 		_goals_panel.set_career_tier_line("" if creative else CAREER_TIERS.goal_text(owner_progress.career_tier))
-		var records: Array[String] = []
-		for line: String in ShopRecordsText.rows(snapshot["records"], content):
-			if not creative or _is_moneyless_line(line):
-				records.append(line)
-		_goals_panel.set_records(records)
+		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content, not creative))
 		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_snapshot = snapshot.duplicate(true)
-
-
-static func _is_moneyless_line(line: String) -> bool:
-	return not ("$" in line or "revenue" in line.to_lower() or "profit" in line.to_lower())
 
 
 func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[String]:
@@ -6246,7 +6246,8 @@ func _on_service_closed(day: int) -> void:
 	shown_report = build_report(day)
 	var beaten: Array[StringName] = shop_records.record(shown_report)
 	_record_notice_day = day
-	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten)
+	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten,
+		not GameMode.is_creative())
 	shown_report.record_lines = _record_notices.duplicate()
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)

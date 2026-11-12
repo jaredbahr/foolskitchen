@@ -177,3 +177,41 @@ func test_a_career_game_is_unchanged() -> void:
 	assert_false((row.get_node("Creative") as Label).visible)
 	assert_true((row.get_node("Cash") as Label).visible)
 	assert_false(Economy.ledger.entries_for_day(1).is_empty(), "career pays for the morning stock")
+
+
+## Review fix: GameMode is static, so a Creative run must not leak into the
+## next Career run in the same process (no reset between the two starts).
+func test_creative_then_career_in_one_process_is_plain_career() -> void:
+	var creative: Node = _start(true)
+	assert_true(GameMode.is_creative())
+	_close(creative)
+	var career: Node = _start(false)
+	assert_false(GameMode.is_creative())
+	var progress: OwnerProgress = career.get("owner_progress")
+	assert_eq(progress.effective_level(), 1)
+	assert_eq((career.get_node("Overlay/BuildCatalogue") as BuildCatalogue)._owner_level, 1)
+	assert_eq((career.get_node("Overlay/BuildCatalogue") as BuildCatalogue)._career_tier, 1)
+	assert_eq((career.get("menu_settings") as MenuSettings).owner_level(), 1)
+	assert_eq((career.get("shop_editor") as ShopEditor)._owner_level, 1)
+	assert_false((career.get_node("HUD/Top/Row/Creative") as Label).visible)
+	assert_false(Economy.ledger.entries_for_day(1).is_empty(), "career pays for its morning stock")
+
+
+## Review fix: a Creative save that cannot load starts a new Creative game.
+func test_a_broken_creative_save_falls_back_to_creative() -> void:
+	var first: Node = _start(true, true)
+	_run_day(first)
+	(first.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
+	assert_eq(Clock.sim.day, 2, "the save is from day 2")
+	_close(first)
+	var path: String = SaveSystem.save_dir.path_join(SLOT + ".json")
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	(document["data"] as Dictionary)["shop"] = {"broken": true}
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(document))
+	file.close()
+	DirAccess.remove_absolute(path + ".bak")
+	var second: Node = _start(false, true)
+	assert_true(GameMode.is_creative(), "the fallback new game keeps the save's mode")
+	assert_eq(Clock.sim.day, 1, "the broken save was refused and a new game started")
+	assert_eq((second.get("shop_editor") as ShopEditor)._owner_level, GameMode.CREATIVE_LEVEL)

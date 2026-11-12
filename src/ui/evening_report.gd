@@ -485,13 +485,6 @@ func _apply_creative() -> void:
 		var node: CanvasItem = content.get_node_or_null(path) as CanvasItem
 		if node != null:
 			node.hide()
-	var record_notices: Label = %RecordNotices as Label
-	var kept: PackedStringArray = []
-	for line: String in record_notices.text.split("\n", false):
-		if not ("$" in line or "revenue" in line.to_lower() or "profit" in line.to_lower()):
-			kept.append(line)
-	record_notices.text = "\n".join(kept)
-	record_notices.visible = not kept.is_empty()
 
 
 func _fill_milestones(milestones: Array[Dictionary]) -> void:
