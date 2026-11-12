@@ -149,6 +149,16 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 
+[node name="WhatsNewButton" type="Button" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "What's new"
+
+[node name="VersionLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
+
 [node name="Status" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2

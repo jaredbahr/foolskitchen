@@ -3131,6 +3131,7 @@ static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dicti
 	var targets: Array[Control] = [play, build]
 	if replay.is_visible_in_tree():
 		targets.append(replay)
+	targets.append(panel.get_node("%WhatsNewButton") as Button)
 	targets.append(close)
 	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
 	scroll.ensure_control_visible(edge)
