@@ -10,7 +10,7 @@ var _audio_before: Dictionary[StringName, Dictionary] = {}
 
 func before_each() -> void:
 	_audio_before.clear()
-	for bus: StringName in [&"Master", &"Music", &"Effects"]:
+	for bus: StringName in [&"Master", &"Music", &"Effects", &"Ambience"]:
 		var index: int = AudioServer.get_bus_index(bus)
 		if index >= 0:
 			_audio_before[bus] = {
@@ -37,6 +37,7 @@ func test_missing_file_uses_safe_defaults_without_creating_a_save() -> void:
 	assert_eq(_model.master_volume_percent, 100)
 	assert_eq(_model.music_volume_percent, 100)
 	assert_eq(_model.effects_volume_percent, 100)
+	assert_eq(_model.ambience_volume_percent, 100)
 	assert_eq(_model.ui_scale_percent, 100)
 	assert_eq(_model.default_open_speed, 1)
 	assert_false(_model.fullscreen_enabled)
@@ -72,6 +73,7 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	assert_true(FileAccess.file_exists(_path))
 	assert_true(_model.set_volume_percent(&"Music", 57))
 	assert_true(_model.set_volume_percent(&"Effects", 0))
+	assert_true(_model.set_volume_percent(&"Ambience", 35))
 	assert_true(_model.set_ui_scale_percent(125))
 	assert_true(_model.set_default_open_speed(2))
 	assert_true(_model.set_fullscreen_enabled(true))
@@ -83,6 +85,7 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	assert_eq(restored.master_volume_percent, 42)
 	assert_eq(restored.music_volume_percent, 57)
 	assert_eq(restored.effects_volume_percent, 0)
+	assert_eq(restored.ambience_volume_percent, 35)
 	assert_eq(restored.ui_scale_percent, 125)
 	assert_eq(restored.default_open_speed, 2)
 	assert_true(restored.fullscreen_enabled)
@@ -134,10 +137,27 @@ func test_a_file_from_before_the_build_grid_choice_still_loads() -> void:
 	assert_eq(_model.master_volume_percent, 40)
 	assert_false(_model.edge_pan_enabled)
 	assert_true(_model.build_grid_enabled, "Build shows the grid by default")
+	assert_eq(_model.ambience_volume_percent, 100, "a file from before the Ambience slider plays it at full")
 	older.set_value("preferences", "build_grid", 3)
 	assert_eq(older.save(_path), OK)
 	assert_false(_model.load_from_disk(), "a build_grid that is not true/false discards the file")
 	assert_eq(_model.master_volume_percent, 100)
+
+
+func test_ambience_slider_sets_its_own_bus_and_rejects_bad_values() -> void:
+	var index: int = AudioServer.get_bus_index(&"Ambience")
+	assert_true(index >= 0, "the bus layout has an Ambience bus")
+	assert_true(_model.set_volume_percent(&"Ambience", 0))
+	assert_true(AudioServer.is_bus_mute(index), "zero mutes the ambience")
+	assert_true(_model.set_volume_percent(&"Ambience", 50))
+	assert_false(AudioServer.is_bus_mute(index))
+	assert_almost_eq(AudioServer.get_bus_volume_db(index), linear_to_db(0.5), 0.01)
+	var older: ConfigFile = ConfigFile.new()
+	older.load(_path)
+	older.set_value("preferences", "ambience_volume", 140)
+	assert_eq(older.save(_path), OK)
+	assert_false(_model.load_from_disk(), "an out-of-range ambience volume discards the file")
+	assert_eq(_model.ambience_volume_percent, 100)
 
 
 func test_build_grid_choice_holds_for_the_session_when_it_cannot_be_written() -> void:
@@ -181,14 +201,17 @@ func test_panel_exposes_all_choices_and_writes_through_the_model() -> void:
 	var scale: OptionButton = panel.get_node("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton
 	var speed: OptionButton = panel.get_node("Panel/Column/Scroll/Content/SpeedChoice") as OptionButton
 	var music: HSlider = panel.get_node("Panel/Column/Scroll/Content/MusicRow/MusicSlider") as HSlider
+	var ambience: HSlider = panel.get_node("Panel/Column/Scroll/Content/AmbienceRow/AmbienceSlider") as HSlider
 	var fullscreen_row: HBoxContainer = panel.get_node("Panel/Column/Scroll/Content/FullscreenRow") as HBoxContainer
 	assert_eq(scale.item_count, 3)
 	assert_eq(speed.item_count, 2)
 	assert_eq(fullscreen_row.visible, not OS.has_feature("web"))
 	music.value = 35
+	ambience.value = 60
 	scale.item_selected.emit(2)
 	speed.item_selected.emit(1)
 	assert_eq(_model.music_volume_percent, 35)
+	assert_eq(_model.ambience_volume_percent, 60, "the Ambience slider sets its own volume")
 	assert_eq(_model.ui_scale_percent, 150)
 	assert_eq(_model.default_open_speed, 2)
 	assert_true(FileAccess.file_exists(_path))

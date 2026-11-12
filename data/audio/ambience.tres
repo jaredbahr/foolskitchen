@@ -1,0 +1,94 @@
+[gd_resource type="Resource" script_class="AmbienceTuning" load_steps=38 format=3]
+
+[ext_resource type="Script" path="res://src/audio/ambience_tuning.gd" id="1_tuning"]
+[ext_resource type="Script" path="res://src/audio/clink_set.gd" id="2_a"]
+[ext_resource type="AudioStream" path="res://assets/made/audio/room_tone.ogg" id="3_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_light_000.ogg" id="4_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_light_001.ogg" id="5_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_light_002.ogg" id="6_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_light_003.ogg" id="7_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_light_004.ogg" id="8_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactMetal_light_000.ogg" id="9_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactMetal_light_001.ogg" id="10_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactMetal_light_002.ogg" id="11_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactMetal_light_003.ogg" id="12_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactMetal_light_004.ogg" id="13_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/metalClick.ogg" id="14_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_medium_000.ogg" id="15_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_medium_001.ogg" id="16_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_medium_002.ogg" id="17_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_medium_003.ogg" id="18_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_medium_004.ogg" id="19_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/metalPot1.ogg" id="20_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/metalPot2.ogg" id="21_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/rpg/metalPot3.ogg" id="22_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_heavy_000.ogg" id="23_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactPlate_heavy_001.ogg" id="24_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_000.ogg" id="25_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_001.ogg" id="26_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_002.ogg" id="27_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_003.ogg" id="28_a"]
+[ext_resource type="AudioStream" path="res://assets/kenney/audio/impact/impactGlass_light_004.ogg" id="29_a"]
+[ext_resource type="AudioStream" path="res://assets/commons/audio/chatter_light.ogg" id="30_a"]
+[ext_resource type="AudioStream" path="res://assets/commons/audio/chatter_busy.ogg" id="31_a"]
+[ext_resource type="AudioStream" path="res://assets/commons/audio/chatter_packed.ogg" id="32_a"]
+
+[sub_resource type="Resource" id="clink_plate"]
+script = ExtResource("2_a")
+streams = Array[AudioStream]([ExtResource("4_a"), ExtResource("5_a"), ExtResource("6_a"), ExtResource("7_a"), ExtResource("8_a")])
+volume_db = -10.0
+min_interval = 0.15
+
+[sub_resource type="Resource" id="clink_cutlery"]
+script = ExtResource("2_a")
+streams = Array[AudioStream]([ExtResource("9_a"), ExtResource("10_a"), ExtResource("11_a"), ExtResource("12_a"), ExtResource("13_a"), ExtResource("14_a")])
+volume_db = -18.0
+min_interval = 0.25
+
+[sub_resource type="Resource" id="clink_dish_stack"]
+script = ExtResource("2_a")
+streams = Array[AudioStream]([ExtResource("15_a"), ExtResource("16_a"), ExtResource("17_a"), ExtResource("18_a"), ExtResource("19_a")])
+volume_db = -10.0
+min_interval = 0.4
+
+[sub_resource type="Resource" id="clink_sink"]
+script = ExtResource("2_a")
+streams = Array[AudioStream]([ExtResource("20_a"), ExtResource("21_a"), ExtResource("22_a"), ExtResource("23_a"), ExtResource("24_a")])
+volume_db = -16.0
+min_interval = 0.6
+
+[sub_resource type="Resource" id="clink_glass"]
+script = ExtResource("2_a")
+streams = Array[AudioStream]([ExtResource("25_a"), ExtResource("26_a"), ExtResource("27_a"), ExtResource("28_a"), ExtResource("29_a")])
+volume_db = -12.0
+min_interval = 0.15
+
+[resource]
+script = ExtResource("1_tuning")
+loops = Dictionary[StringName, AudioStream]({
+&"chatter_busy": ExtResource("31_a"),
+&"chatter_light": ExtResource("30_a"),
+&"chatter_packed": ExtResource("32_a"),
+&"room_tone": ExtResource("3_a")
+})
+loop_volume_db = Dictionary[StringName, float]({
+&"chatter_busy": -24.0,
+&"chatter_light": -24.0,
+&"chatter_packed": -24.0,
+&"room_tone": -4.0
+})
+room_tone_full_guests = 14
+chatter_guests = PackedInt32Array(2, 8, 16)
+chatter_fade_seconds = 3.0
+chatter_jukebox_duck_db = -8.0
+clinks = Dictionary[StringName, ClinkSet]({
+&"cutlery": SubResource("clink_cutlery"),
+&"dish_stack": SubResource("clink_dish_stack"),
+&"glass": SubResource("clink_glass"),
+&"plate": SubResource("clink_plate"),
+&"sink": SubResource("clink_sink")
+})
+pitch_spread = 0.05
+panning_strength = 1.0
+cutlery_per_eater = 0.08
+cutlery_max_rate = 1.2

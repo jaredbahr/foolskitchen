@@ -54,6 +54,26 @@ The HUD gear opens Settings during any day phase and pauses the clock. Closing
 restores the previous speed, including pause. Escape closes Settings, dismisses
 an active edit/panel/selection first, or opens Settings when none is active.
 
+**Build version and What's new (#433):** `tools/export.sh` stamps every export
+before it runs Godot: `build_info/version.txt` (the tag from
+`GITHUB_REF_NAME` on a `vX.Y.Z` build, or `FK_VERSION`; any other build such as
+a `workflow_dispatch` run is `dev-<short sha>`) and `build_info/release_notes.txt`
+(the output of `tools/release_notes.sh <version>`, so a tag build fails if its
+CHANGELOG section is missing, and a non-tag build bundles `Unreleased`). Both
+are git-ignored, picked up by the presets' `include_filter="build_info/*"` and
+removed when the script ends. `BuildInfo` (`src/core/build_info.gd`) reads them
+from `res://`: no file means a run from the editor, which reports `dev` and
+falls back to the `Unreleased` section of `CHANGELOG.md` for the notes.
+`ReleaseNotes` parses the section into groups and puts `### What to test`
+first. `WhatsNewPanel` renders it; the title screen opens it once when
+`BuildInfo.should_show_whats_new` says the version is a release (`vX.Y.Z`)
+that differs from `Preferences.last_seen_version`, then records it. That value
+is the optional `last_seen_version` key in `user://settings.cfg`, never the
+game save. Dev builds never open the panel by themselves. The title screen and
+Settings both have a What's new button, and "All release notes" calls
+`OS.shell_open` on the GitHub releases page. Nothing is fetched at runtime.
+`bash tools/screenshot.sh --whats-new` captures the panel with a sample release.
+
 1. **The sim is separate from the visuals.** `src/sim/` holds plain data and logic with no nodes. Visual nodes in `world/` read sim state and animate it. This makes the sim unit-testable and lets background properties run without visuals.
 2. **Fixed simulation tick** (for example 10 ticks per game second), independent of frame rate. Speed controls change the number of ticks per frame.
 3. **Data-driven content.** Recipes, items, themes and properties are custom `Resource` types in `data/`. Adding content means adding a `.tres` file, not code.
@@ -2236,14 +2256,41 @@ shadowless mesh (`PropBody`) and every prop, plus each street lamp's foot, has a
 shadow in one flat mesh (`PropShadows`) laid just above the paving, so everything stands on its own shadow;
 shadow polygons are the convex hull of the footprint and the footprint pushed along the key light's ground run.
 The planner runs on every dressing rebuild (a few milliseconds, no cache); `furniture_plan()` exposes it.
-`NeighbourhoodBuildings` adds a flower box under each neighbouring shop window (not the laundromat's
-portholes) and a hanging sign bracket on each shop.
+`NeighbourhoodBuildings` adds a flower box under each neighbouring shop window (the toy and pet shops
+set a display shelf there instead) and a hanging sign bracket on each shop.
 
 Night lamps: `Main._refresh_day_light` calls `NeighbourhoodDressing.set_night(DayNightView.street_night(look))`,
 a smoothstep of the day's interior light (0 by day, 1 from dusk), so the street comes on with the shop. The
 two street lamps get an emissive bulb mesh (emission energy and tint follow the night level), a soft additive
 glow disc on the pavement and a camera-facing additive halo, all unlit meshes under `Life` that are hidden by
 day: no `Light3D` is added.
+
+Back gardens, softer roofs and shops (#440). The standard business set is a bakery, florist, sweet shop, tea
+room, toy shop and pet shop (the laundromat is gone; `Accent.TOYS` and `Accent.PETS` add a rocking horse
+and a dog bed out front, and a window display: blocks, a teddy and bunting, or a fish tank and a sleeping cat).
+The roof palette is eight gentle warm and pastel swatch tones, and roof colours (like heights and roof shapes)
+never repeat between neighbours in a row. Each house lot is `BACK_YARD` (2.6 m) deeper behind the back wall;
+`NeighbourhoodBuildings._plan_garden` plans its back garden from integer hashes (no RNG): the garden ground is
+the lot minus the side and back hedges (`GARDEN_SIDE`, `GARDEN_HEDGE`) and the eave, a doorstep patch in front
+of the back door stays clear, then a flower border (55%), stepping stones (60%) and three or four of a small set
+(vegetable bed, shed, washing line, swing, slide, table with parasol or jug, bench, fruit tree, birdbath; no
+ponds or pools) each go at the best free spot by a per-kind preference plus hash noise, never overlapping, never
+repeating the previous house's choices if another exists. `Plan.garden`, `garden_zone` and `doorstep` expose the
+plan to tests (`tests/world/test_neighbourhood_gardens.gd` checks every item stays in its lot, off the hedges, the
+doorstep and the lanes across twelve salts and two shifts). Gardens are drawn into the house's own mesh (no new
+draw calls, about 4k more triangles in all) with opaque baked contact shadows in the lawn's shadow tone
+(`lawn_shadow`, from the ground skin) swept along the key light's run (`light_shift`); both are part of the
+buildings cache key, as are the new `StreetSet` fields (`soil`, `laundry_colors`, `play_colors`, `window_glows`).
+
+Night windows (#440): every `_window` (and the shop display glass) can emit a warm quad just proud of its glass,
+by integer hash: 12% stay dark (curtains), 63% stay lit all night, 12% go dark at an early bedtime and 13% later
+(`GLOW_TIERS`). The quads of each tier are one unlit vertex-coloured mesh (`WindowGlow0..2`, three draw calls under
+`Life`) with its own emissive material per dressing, driven by `NeighbourhoodDressing.set_night(level, late)`:
+`level` is the same `DayNightView.street_night` as the lamps (tiers are hidden at 0) and `late` is
+`DayNightView.street_late(minute, close_minute)`, 0 until closing time and 1 150 minutes later, which fades tier 1 out between 0.3 and 0.5
+and tier 2 between 0.8 and 0.95. Main passes both from the day's minute (`day_light_minute()`); no `Light3D`
+is added. The meshes are cached next to the buildings (`_window_cache`, same key); `window_state()` exposes the
+tiers for tests and captures.
 
 `NeighbourhoodLife` is the small life, a pure function of the dressing's display clock (the review time pins it),
 applied from `_apply_time` so it stops with the dressing's processing. Hanging signs swing about their bracket
@@ -2972,7 +3019,8 @@ There is no new save point or SaveSystem migration.
 - **`SoundDirector`** (`src/world/sound_director.gd`, owned by Main): listens to `RestaurantSim.customer_arrived` (door bell), `customer_paid` (coins) and `review_recorded` (five stars: chime). Each frame, `refresh()` sets the room tone from the number of guests and plays the stove, fryer and coffee loops while `FoodPresentation.busy_loops` reports a worked station. It is silent outside service and while paused.
 - **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
-- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning, closed and the evening report have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light)` sets the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
+- **Dining-room ambience** (#366): the room tone, the chatter layers and the table clinks play on the **Ambience** bus (`default_bus_layout.tres`; Settings' Ambience slider, saved as the optional `ambience_volume` key, so older settings files load at 100%). Every level is in `data/audio/ambience.tres` (`AmbienceTuning`): loops and their gains (`room_tone`, `chatter_light/busy/packed`), `room_tone_full_guests`, the crowd size each chatter layer peaks at, the chatter fade and jukebox duck, and one `ClinkSet` per clink kind (at least 4 variants, gain, minimum interval). `SoundDirector` plays `plate` or `glass` on `OrderBook.order_delivered` (the recipe's `is_drink()`), `dish_stack` on a completed `bus_table` task, `sink` when `Kitchen.plates_changed` shows a plate washed (dirty down, clean up) and `cutlery` from a random eating guest at `AmbienceMix.cutlery_rate` (per eater, capped), with exponential gaps. Clinks fire only while open, running (speed above 0) and not `display_only`. `Sfx.play_clink` picks the variant and a pitch within `pitch_spread` (5%) from its own seeded generator (`CLINK_SEED`), never the sim's, throttles each kind, reports `clink_played` headless and plays through `AudioStreamPlayer3D`s at the table with attenuation off, so the camera's listener pans them. Chatter: `AmbienceMix.chatter_levels(crowd, anchors)` crossfades the layers that have a file at equal power by the guests not leaving, fades at `chatter_fade_seconds`, and ducks under a playing jukebox. The chatter loops (`assets/commons/audio/chatter_*.ogg`, 30 s, made from a public-domain recording; see `SOURCE.txt`) sit at -24 dB so the murmur is barely audible (Jared: a few percent of full volume). A null loop keeps its level and plays nothing, and a layer with no file drops out of the crossfade (its neighbours cover it). Adding the files is a `.tres` edit.
+- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp, `evening_report` Stir It Slow (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning and closed with no report open have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light, report_open)` sets the evening report context while the report is open (Main passes `_report.visible` every frame), otherwise the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
 
 ### Supplier haggle (FK-136, #327)
 
@@ -3021,6 +3069,51 @@ The unchanged default five-day probe (seeds1,7,42) remains the balance gate.
 out starter stock, stages real Space-stop timing and shows the active game at
 frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
 existing-job captures are UI evidence, not natural human timing or balance play.
+
+### Creative mode (FK-141, D34, #333)
+
+New game asks Career or Creative (`TitleScreen.show_mode_choice()`; the card is
+built in code). `Main.start_fresh_run(..., creative)` records the request in
+`GameMode`, and `_new_game()` applies it once with `GameMode.begin_new_game()`.
+The in-game Start over keeps the current mode. TODOs there name the later work:
+any lot and neighbourhood (#405) and saving a design as a blueprint for career
+(#432).
+
+- **One flag.** `GameMode` (`src/sim/progression/game_mode.gd`) is a static
+  run-wide `creative` bool, so the sim can read it without a Node. It is the
+  `game_mode` save section (`{"creative": bool}`), registered after the
+  autoloads and before `owner`, because the owner and menu restores read the
+  unlock level. `Main.start()` resets it to career before `initialize()` (it
+  is static, so a Creative run must not leak into the next run in the same
+  process), and `_wire_session()` pushes the effective level and tier in both
+  modes. A save without the section is a career game; a Creative save that
+  fails to load starts a new Creative game (with a warning). No
+  `save_system.gd` change.
+- **Unlocks.** Every unlock check reads `OwnerProgress.effective_level()` and
+  `effective_tier()`: the earned values in career, `GameMode.CREATIVE_LEVEL`
+  (99, above every authored `unlock_level`) and the top tier in Creative.
+  Items, recipes, floors, walls, menu size, the lease upgrade, the cat,
+  bookings, customer types, the inspector, critic and rush hour all use them.
+  The earned `level`, XP and `career_tier` are not touched and still save.
+- **Money.** `Economy.is_free()` gates every money path in one place:
+  `add_cash`/`add_cash_for_site` and the ingredient purchases record nothing,
+  every affordability check passes, `settle_loan_day` returns `{}` (no loan,
+  interest or repayment), and `spendable()` (a huge budget) replaces `cash`
+  where planning or refusal text reads it. Stock still arrives and is counted.
+  Cash therefore never changes from the starting value.
+- **Hidden.** At close a Creative game skips owner XP, milestones, the weekly
+  goal and the tier climb. The HUD shows a "Creative" chip in place of cash, the
+  loan chip and the owner level; the evening report hides profit, finances,
+  cash change, loan, milestones, weekly goal, owner progress and the business
+  trend (guests, dishes, reviews, events, team and stock stay). Goals is titled
+  "Collections" and shows collections and records without the money ones
+  (`ShopRecordsText` `with_money = false`, by record id). Prices read "Free" through
+  `Fmt.price()`, `Fmt.price_each()` and `Fmt.for_price_each()`, which equal
+  the old career text exactly. The title's Continue reads the autosave's
+  `game_mode` section and adds "(Creative)".
+- Career is unchanged: the default five-day probe (seeds 1, 7, 42) is identical
+  to `main`. Coverage: `tests/sim/test_game_mode.gd`,
+  `tests/world/test_creative_session.gd`, `tests/ui/test_creative_title.gd`.
 
 ### 2.4 Save system
 Lifetime records (FK-145): `ShopRecords` is a pure consumer of the one finalized

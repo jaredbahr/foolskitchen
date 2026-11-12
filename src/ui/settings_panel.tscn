@@ -103,6 +103,26 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "100%"
 
+[node name="AmbienceLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+layout_mode = 2
+text = "Ambience volume"
+
+[node name="AmbienceRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
+layout_mode = 2
+
+[node name="AmbienceSlider" type="HSlider" parent="Panel/Column/Scroll/Content/AmbienceRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+step = 1.0
+value = 100.0
+
+[node name="AmbienceValue" type="Label" parent="Panel/Column/Scroll/Content/AmbienceRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "100%"
+
 [node name="ScaleLabel" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 text = "UI size"
@@ -148,6 +168,16 @@ button_pressed = true
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
+
+[node name="WhatsNewButton" type="Button" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "What's new"
+
+[node name="VersionLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
 
 [node name="Status" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true

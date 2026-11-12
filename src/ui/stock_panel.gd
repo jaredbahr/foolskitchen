@@ -90,7 +90,9 @@ func refresh() -> void:
 	var editable: bool = bool(_view.get("editable", false))
 	var premium: float = float(_view.get("premium", 0.0))
 	var premium_text: String = "a %d%% premium" % roundi(premium * 100.0) if premium > 0.0 else "list price"
-	_status.text = ("Order any time and pay now: morning orders arrive at once, later ones with the next delivery. "
+	_status.text = ("Order any time, free: morning orders arrive at once, later ones with the next delivery. "
+		+ "Auto-reorder tops each ingredient up to its target every morning.") if GameMode.is_creative() \
+		else ("Order any time and pay now: morning orders arrive at once, later ones with the next delivery. "
 		+ "Auto-reorder tops each ingredient up to its target every morning, at %s." % premium_text)
 	var delivery: Dictionary = _view.get("delivery", {})
 	_delivery_label.text = str(delivery.get("text", "Next delivery: tomorrow morning"))
@@ -128,22 +130,25 @@ func refresh() -> void:
 	var total: int = int(_view.get("cart_total", 0))
 	var refusal: String = str(_view.get("cart_refusal", ""))
 	var cash: int = int(_view.get("cash", 0))
-	_cart_total.text = "Order total: %s (cash %s)" % [Fmt.money(total), Fmt.money(cash)]
-	_haggle.visible = bool(_view.get("haggle_morning", false))
+	_cart_total.text = "Order total: Free" if GameMode.is_creative() \
+		else "Order total: %s (cash %s)" % [Fmt.money(total), Fmt.money(cash)]
+	_haggle.visible = bool(_view.get("haggle_morning", false)) and not GameMode.is_creative()
 	_haggle.disabled = not bool(_view.get("haggle_available", false))
 	var percent: int = int(_view.get("haggle_percent", 0))
 	_haggle_result.text = "Haggled: %d%% off" % percent if percent > 0 else ""
 	_haggle_result.visible = percent > 0
 	_haggle.tooltip_text = "One try this morning; skipping pays list price. Prices round up to whole dollars."
 	_order.disabled = not editable or not refusal.is_empty()
-	_order.tooltip_text = refusal if not refusal.is_empty() else "Pay %s now" % Fmt.money(total)
+	_order.tooltip_text = refusal if not refusal.is_empty() else (
+		"Order now" if GameMode.is_creative() else "Pay %s now" % Fmt.money(total))
 	_clear.disabled = not editable or _cart_units() <= 0
 	_clear.tooltip_text = "Empty the cart"
 	var pending: String = str(_view.get("pending", ""))
 	_pending.text = pending if not pending.is_empty() else "Nothing on order."
 	_pending.add_theme_color_override("font_color", SHARED_THEME.get_color("font_color", "Label") if not pending.is_empty() else MUTED_COLOR)
 	_cancel.disabled = not editable or pending.is_empty()
-	_cancel.tooltip_text = "Cancel everything on order for a full refund of %s" % Fmt.money(int(_view.get("refund", 0))) \
+	_cancel.tooltip_text = ("Cancel everything on order" if GameMode.is_creative()
+		else "Cancel everything on order for a full refund of %s" % Fmt.money(int(_view.get("refund", 0)))) \
 		if not pending.is_empty() else "Nothing on order"
 
 
@@ -180,7 +185,7 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 		count_label.add_theme_color_override("font_color", WARNING_COLOR)
 	else:
 		count_label.remove_theme_color_override("font_color")
-	(row["price"] as Label).text = "$%d each" % unit_cost
+	(row["price"] as Label).text = Fmt.FREE if GameMode.is_creative() else "$%d each" % unit_cost
 	(row["cart"] as Label).text = str(cart)
 	for step: int in CART_STEPS:
 		var button: Button = row["cart%+d" % step]

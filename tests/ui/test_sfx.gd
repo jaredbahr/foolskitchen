@@ -5,6 +5,7 @@ const TUNING: SoundTuning = preload("res://data/audio/sound_tuning.tres")
 const ISSUE_CUES: Array[StringName] = [&"click", &"hover", &"door_bell", &"cash", &"star_chime",
 	&"level_up", &"milestone", &"back_door", &"delivery_drop"]
 const ISSUE_LOOPS: Array[StringName] = [&"room_tone", &"stove_sizzle", &"fryer_bubble", &"coffee_steam"]
+const AMBIENCE: AmbienceTuning = preload("res://data/audio/ambience.tres")
 
 var _heard: Array[StringName] = []
 
@@ -33,8 +34,10 @@ func test_tuning_names_every_cue_and_loop_with_a_loaded_stream() -> void:
 		assert_true(TUNING.cues[cue] is AudioStream, "cue %s has a stream" % cue)
 		assert_true(TUNING.interval(cue) > 0.0, "cue %s is throttled" % cue)
 	for loop: StringName in ISSUE_LOOPS:
-		assert_true(TUNING.loops.has(loop), "loop %s" % loop)
-		assert_true(TUNING.loops[loop].get_length() >= 3.0, "loop %s is long enough to not drone" % loop)
+		# The room tone moved to the Ambience bus's tuning (#366).
+		var stream: AudioStream = AMBIENCE.loops.get(loop) if loop == &"room_tone" else TUNING.loops.get(loop)
+		assert_not_null(stream, "loop %s" % loop)
+		assert_true(stream.get_length() >= 3.0, "loop %s is long enough to not drone" % loop)
 	assert_almost_eq(TUNING.interval(&"cash"), 0.3, 0.0001, "the issue's cash throttle")
 
 

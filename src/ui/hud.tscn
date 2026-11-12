@@ -146,6 +146,12 @@ toggle_mode = true
 text = "Paint"
 tooltip_text = "Paint walls, floor and furniture (P)"
 
+[node name="Creative" type="Label" parent="Top/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 1
+text = "Creative"
+
 [node name="Cash" type="Label" parent="Top/Row"]
 layout_mode = 2
 text = "$0"

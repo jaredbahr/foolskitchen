@@ -19,10 +19,16 @@ const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 ## Later additions: a file without them still loads, with their defaults.
 const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid"]
+## The Ambience slider (#366) came later too: a file without it loads at 100%.
+const OPTIONAL_INTEGER_KEYS: Array[String] = ["ambience_volume"]
+## Optional text key: the build version whose What's new panel was last shown.
+const LAST_SEEN_KEY: String = "last_seen_version"
 
 var master_volume_percent: int = 100
 var music_volume_percent: int = 100
 var effects_volume_percent: int = 100
+## The dining room's room tone, chatter and table clinks (#366).
+var ambience_volume_percent: int = 100
 var ui_scale_percent: int = 100
 var default_open_speed: int = 1
 var fullscreen_enabled: bool = false
@@ -31,6 +37,9 @@ var edge_pan_enabled: bool = true
 var build_grid_enabled: bool = true
 ## Whether normal play shows the floor grid.
 var play_grid_enabled: bool = true
+## The release whose What's new panel opened last ("" = none yet). It lives
+## here, in user settings, so loading or replacing a game save never changes it.
+var last_seen_version: String = ""
 
 var _file_path: String = DEFAULT_PATH
 var _disk_enabled: bool = true
@@ -63,15 +72,17 @@ func load_from_disk() -> bool:
 	var master: Variant = config.get_value(SECTION, "master_volume", MISSING)
 	var music: Variant = config.get_value(SECTION, "music_volume", MISSING)
 	var effects: Variant = config.get_value(SECTION, "effects_volume", MISSING)
+	var ambience: Variant = config.get_value(SECTION, "ambience_volume", 100)
 	var scale: Variant = config.get_value(SECTION, "ui_scale", MISSING)
 	var speed: Variant = config.get_value(SECTION, "default_open_speed", MISSING)
 	var fullscreen: Variant = config.get_value(SECTION, "fullscreen", MISSING)
 	var edge_pan: Variant = config.get_value(SECTION, "edge_pan", MISSING)
 	var build_grid: Variant = config.get_value(SECTION, "build_grid", true)
 	var play_grid: Variant = config.get_value(SECTION, "play_grid", true)
-	if not version is int or version != VERSION \
+	var last_seen: Variant = config.get_value(SECTION, LAST_SEEN_KEY, "")
+	if not version is int or version != VERSION or not last_seen is String \
 			or not _valid_volume(master) or not _valid_volume(music) \
-			or not _valid_volume(effects) or not scale is int \
+			or not _valid_volume(effects) or not _valid_volume(ambience) or not scale is int \
 			or not UI_SCALES.has(scale) or not speed is int \
 			or not OPEN_SPEEDS.has(speed) or not fullscreen is bool \
 			or not edge_pan is bool or not build_grid is bool or not play_grid is bool:
@@ -79,12 +90,14 @@ func load_from_disk() -> bool:
 	master_volume_percent = master
 	music_volume_percent = music
 	effects_volume_percent = effects
+	ambience_volume_percent = ambience
 	ui_scale_percent = scale
 	default_open_speed = speed
 	fullscreen_enabled = fullscreen
 	edge_pan_enabled = edge_pan
 	build_grid_enabled = build_grid
 	play_grid_enabled = play_grid
+	last_seen_version = last_seen
 	return true
 
 
@@ -115,11 +128,14 @@ func _has_safe_config_syntax() -> bool:
 		var value: String = line.substr(equals + 1).strip_edges()
 		if keys_seen.has(key):
 			return false
-		if INTEGER_KEYS.has(key):
+		if INTEGER_KEYS.has(key) or OPTIONAL_INTEGER_KEYS.has(key):
 			if not value.is_valid_int():
 				return false
 		elif BOOL_KEYS.has(key) or OPTIONAL_BOOL_KEYS.has(key):
 			if value != "true" and value != "false":
+				return false
+		elif key == LAST_SEEN_KEY:
+			if not _valid_quoted_version(value):
 				return false
 		else:
 			return false
@@ -138,12 +154,14 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "master_volume", master_volume_percent)
 	config.set_value(SECTION, "music_volume", music_volume_percent)
 	config.set_value(SECTION, "effects_volume", effects_volume_percent)
+	config.set_value(SECTION, "ambience_volume", ambience_volume_percent)
 	config.set_value(SECTION, "ui_scale", ui_scale_percent)
 	config.set_value(SECTION, "default_open_speed", default_open_speed)
 	config.set_value(SECTION, "fullscreen", fullscreen_enabled)
 	config.set_value(SECTION, "edge_pan", edge_pan_enabled)
 	config.set_value(SECTION, "build_grid", build_grid_enabled)
 	config.set_value(SECTION, "play_grid", play_grid_enabled)
+	config.set_value(SECTION, LAST_SEEN_KEY, last_seen_version)
 	var saved: bool = config.save(_file_path) == OK
 	if saved:
 		_pending_volume_save = false
@@ -177,6 +195,7 @@ func volume_percent(bus: StringName) -> int:
 		&"Master": return master_volume_percent
 		&"Music": return music_volume_percent
 		&"Effects": return effects_volume_percent
+		&"Ambience": return ambience_volume_percent
 	return -1
 
 
@@ -290,10 +309,23 @@ func set_play_grid_enabled(value: bool) -> bool:
 	return saved
 
 
+## Remembers which release's What's new panel was shown. Like the grid
+## choices, it holds for the session even if the file cannot be written.
+func set_last_seen_version(value: String) -> bool:
+	if not _valid_version_text(value):
+		return false
+	if last_seen_version == value:
+		return true
+	last_seen_version = value
+	var saved: bool = save_to_disk()
+	changed.emit(&"last_seen_version")
+	return saved
+
+
 ## Audio buses are authored in default_bus_layout.tres. A missing bus on an
 ## older project is ignored rather than causing an engine error.
 func apply_audio() -> void:
-	for bus: StringName in [&"Master", &"Music", &"Effects"]:
+	for bus: StringName in [&"Master", &"Music", &"Effects", &"Ambience"]:
 		var index: int = AudioServer.get_bus_index(bus)
 		if index < 0:
 			continue
@@ -318,6 +350,24 @@ func _set_volume(bus: StringName, percent: int) -> void:
 		&"Master": master_volume_percent = percent
 		&"Music": music_volume_percent = percent
 		&"Effects": effects_volume_percent = percent
+		&"Ambience": ambience_volume_percent = percent
+
+
+## Version text is a short plain token (v0.2.0, dev-1a2b3c4); anything with
+## quotes, backslashes or control characters would break the config line.
+static func _valid_version_text(value: String) -> bool:
+	if value.length() > 40:
+		return false
+	for index: int in value.length():
+		var code: int = value.unicode_at(index)
+		if code < 33 or code > 126 or code == 34 or code == 92:
+			return false
+	return true
+
+
+static func _valid_quoted_version(value: String) -> bool:
+	return value.length() >= 2 and value.begins_with("\"") and value.ends_with("\"") \
+		and _valid_version_text(value.substr(1, value.length() - 2))
 
 
 static func _valid_volume(value: Variant) -> bool:
@@ -329,9 +379,11 @@ func _reset_defaults() -> void:
 	master_volume_percent = 100
 	music_volume_percent = 100
 	effects_volume_percent = 100
+	ambience_volume_percent = 100
 	ui_scale_percent = 100
 	default_open_speed = 1
 	fullscreen_enabled = false
 	edge_pan_enabled = true
 	build_grid_enabled = true
 	play_grid_enabled = true
+	last_seen_version = ""

@@ -159,9 +159,11 @@ func refresh() -> void:
 		_rebuild_morning_items(offers)
 		_morning_snapshot = morning_snapshot.duplicate(true)
 	var editable: bool = _phase == SimClock.Phase.MORNING
-	(%Status as Label).text = "No hiring fee. Wages are paid at closing. Keep a cook and a server." if editable \
+	(%Status as Label).text = ("Hiring is free. Keep a cook and a server." if GameMode.is_creative()
+		else "No hiring fee. Wages are paid at closing. Keep a cook and a server.") if editable \
 		else "Hiring, letting staff go, raises and upgrades are available in the morning. Job priorities can change now."
-	(%RosterTitle as Label).text = "Your team (%d/%d) - $%d a day" % [_roster.members().size(), StaffRoster.CAPACITY, _team_day_wages()]
+	(%RosterTitle as Label).text = "Your team (%d/%d)" % [_roster.members().size(), StaffRoster.CAPACITY] \
+		+ ("" if GameMode.is_creative() else " - $%d a day" % _team_day_wages())
 	(%Empty as Label).visible = _roster.candidates().is_empty()
 	(%Carry as Label).text = "Servers carry %d plate%s" % [1 << _tray_level, "" if _tray_level == 0 else "s"]
 	for level: int in [1, 2]:
@@ -169,7 +171,8 @@ func refresh() -> void:
 		var title: String = "Trays" if level == 1 else "Big trays"
 		var label: Label = %TraysLabel if level == 1 else %BigTraysLabel
 		var purchase: Button = %TraysBuy if level == 1 else %BigTraysBuy
-		label.text = "%s — $%d" % [title, price] if price >= 0 else "%s — price unavailable" % title
+		label.text = "%s — %s" % [title, Fmt.price(price) if GameMode.is_creative() else "$%d" % price] \
+			if price >= 0 else "%s — price unavailable" % title
 		purchase.text = "Owned" if _tray_level >= level else "Buy"
 		purchase.disabled = not editable or price < 0 or _tray_level != level - 1 or _cash < price \
 			or not _tray_lock_reason.is_empty()
@@ -431,8 +434,8 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	row.add_child(top)
 	var title: Label = Label.new()
 	title.name = "Name"
-	title.text = "%s - %s, skill %d - $%d/day" % [
-		member.display_name, _role_name(member.role), member.skill, _day_wage(member.wage)]
+	title.text = "%s - %s, skill %d" % [member.display_name, _role_name(member.role), member.skill] \
+		+ ("" if GameMode.is_creative() else " - $%d/day" % _day_wage(member.wage))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE

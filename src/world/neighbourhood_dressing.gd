@@ -27,6 +27,11 @@ const LAMP_BULB_Y: float = 1.565
 const LAMP_DAY: Color = Color(0.93, 0.83, 0.5)
 const LAMP_NIGHT: Color = Color(1.0, 0.8, 0.42)
 const LAMP_BULB_ENERGY: float = 2.4
+## Lit windows (#440): the dim multiplier a window quad has by day (it is hidden then), and
+## the faint emission a lit one adds on top of its warm tint.
+const WINDOW_DAY: Color = Color(0.45, 0.52, 0.6)
+const WINDOW_NIGHT: Color = Color(1.0, 0.78, 0.4)
+const WINDOW_ENERGY: float = 0.3
 const SIDE_MARGIN: float = 6.0
 const CAR_SPEED: float = 2.8
 const CAR_REST: float = 14.0
@@ -41,6 +46,9 @@ const FAR_DEPTH: float = 2.20
 ## Far street and ground meshes by street signature, shared by every dressing
 ## (a new game or a loaded save re-uses them instead of re-batching ~100k triangles).
 static var _mesh_cache: Dictionary[String, Array] = {}
+## The lit-window meshes of a street by the same kind of key (#440), kept apart from `_mesh_cache`
+## so they do not count against its size limit.
+static var _window_cache: Dictionary[String, Array] = {}
 static var _cache_exit_bound: bool = false
 var static_root: Node3D
 ## The grass, planting and tree line under and around everything (#421, #424).
@@ -118,6 +126,10 @@ var _glow_material: StandardMaterial3D
 var _lamp_halos: Array[MeshInstance3D] = []
 var _halo_material: StandardMaterial3D
 var _night: float = 0.0
+## 0 until the late hours, 1 when the last windows have gone dark (#440).
+var _late: float = 0.0
+var _window_nodes: Array[MeshInstance3D] = []
+var _window_materials: Array[StandardMaterial3D] = []
 
 
 func _init() -> void:
@@ -272,6 +284,8 @@ func _clear_static() -> void:
 	_glow_material = null
 	_lamp_halos.clear()
 	_halo_material = null
+	_window_nodes.clear()
+	_window_materials.clear()
 	_furniture.clear()
 	_crowns.clear()
 	_building_signs.clear()
@@ -596,6 +610,8 @@ func _build_buildings() -> void:
 	builder.local_reserve = _local_reserve
 	builder.shift = _shift
 	builder.paving_top = _paving_top
+	builder.light_shift = _compute_light_shift()
+	builder.lawn_shadow = (ground_skin.lawn if ground_skin != null else GroundSkin.standard().lawn).darkened(0.3)
 	builder.plan()
 	_building_boxes = builder.footprints()
 	_lot_boxes = builder.lots()
@@ -610,11 +626,18 @@ func _build_buildings() -> void:
 			build_error = "A neighbouring building has no clear outside position"
 			return
 	var group: Node3D = _groups["Buildings"]
-	var key: String = "buildings" + str([_frame, _local_reserve, _shift, _paving_top, street_set.signature()])
+	var key: String = "buildings" + str([_frame, _local_reserve, _shift, _paving_top, street_set.signature(),
+		builder.light_shift, builder.lawn_shadow])
 	if _restore_cached(group, key):
 		for child: Node in group.get_children():
 			(child as MeshInstance3D).transform = _frame
 			_static_meshes.append(child as MeshInstance3D)
+		if not _window_cache.has(key):
+			# The window meshes were dropped on their own: regenerate them without the buildings.
+			for plan: NeighbourhoodBuildings.Plan in builder.plans:
+				builder.build_mesh(plan).free()
+			_store_windows(builder, key)
+		_add_windows(_window_cache[key])
 		return
 	for plan: NeighbourhoodBuildings.Plan in builder.plans:
 		var mesh: MeshInstance3D = builder.build_mesh(plan)
@@ -622,6 +645,48 @@ func _build_buildings() -> void:
 		group.add_child(mesh)
 		_static_meshes.append(mesh)
 	_store_cached(group, key)
+	_store_windows(builder, key)
+	_add_windows(_window_cache[key])
+
+
+func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
+	if _window_cache.size() > 6:
+		_window_cache.clear()
+	var glows: Array = []
+	var tier: int = 0
+	for mesh: ArrayMesh in builder.glow_meshes():
+		glows.append(["WindowGlow%d" % tier, mesh, null])
+		tier += 1
+	_window_cache[key] = glows
+
+
+## The warm window quads, one emissive unlit mesh per light tier (#440). Their materials belong
+## to this dressing so the night level never leaks into another street; the meshes are shared.
+func _add_windows(entries: Array) -> void:
+	_window_nodes.clear()
+	_window_materials.clear()
+	for entry: Array in entries:
+		var mesh: ArrayMesh = entry[1] as ArrayMesh
+		if mesh == null:
+			continue
+		var material: StandardMaterial3D = StandardMaterial3D.new()
+		material.vertex_color_use_as_albedo = true
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.albedo_color = WINDOW_DAY
+		material.emission_enabled = true
+		material.emission = WINDOW_NIGHT
+		material.emission_energy_multiplier = 0.0
+		material.disable_receive_shadows = true
+		var node: MeshInstance3D = MeshInstance3D.new()
+		node.name = String(entry[0])
+		node.mesh = mesh
+		node.material_override = material
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		node.transform = _frame
+		node.visible = false
+		_life_root.add_child(node)
+		_window_nodes.append(node)
+		_window_materials.append(material)
 
 
 ## Local-frame footprints (height in y) of every building and, flat, the house lots.
@@ -686,6 +751,7 @@ func _build_ground() -> void:
 ## not show up as leaked resources at exit).
 static func clear_mesh_cache() -> void:
 	_mesh_cache.clear()
+	_window_cache.clear()
 
 
 ## The key light's ground run per metre of height, in the street's local (u, z).
@@ -997,15 +1063,34 @@ func _glow_disc(soup: NeighbourhoodGround.Soup, centre: Vector2, y: float) -> vo
 
 ## 0 by day, 1 at night: the street lamps' bulbs light and their pools of light fade in.
 ## Main sets it from the day's light (DayNightView.street_night), never the other way round.
-func set_night(level: float) -> void:
+func set_night(level: float, late: float = 0.0) -> void:
 	var clamped: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
-	if is_equal_approx(clamped, _night):
+	var late_clamped: float = clampf(late, 0.0, 1.0) if is_finite(late) else 0.0
+	if is_equal_approx(clamped, _night) and is_equal_approx(late_clamped, _late):
 		return
 	_night = clamped
+	_late = late_clamped
 	_apply_night()
 
 
+## How lit a window tier is: tier 0 follows the night, tiers 1 and 2 go dark at their bedtimes
+## in the late hours.
+func _window_level(tier: int) -> float:
+	match tier:
+		1:
+			return _night * (1.0 - smoothstep(0.3, 0.5, _late))
+		2:
+			return _night * (1.0 - smoothstep(0.8, 0.95, _late))
+		_:
+			return _night
+
+
 func _apply_night() -> void:
+	for index: int in _window_nodes.size():
+		var level: float = _window_level(_window_tier(index))
+		_window_nodes[index].visible = level > 0.01
+		_window_materials[index].albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
+		_window_materials[index].emission_energy_multiplier = level * WINDOW_ENERGY
 	if _bulb_material != null:
 		_bulb_material.emission_energy_multiplier = _night * LAMP_BULB_ENERGY
 		_bulb_material.albedo_color = LAMP_DAY.lerp(LAMP_NIGHT, _night)
@@ -1016,6 +1101,25 @@ func _apply_night() -> void:
 		_halo_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
 		for halo: MeshInstance3D in _lamp_halos:
 			halo.visible = _night > 0.01
+
+
+## The light tier of the index-th window mesh (empty tiers are skipped, so read it from the name).
+func _window_tier(index: int) -> int:
+	return String(_window_nodes[index].name).trim_prefix("WindowGlow").to_int()
+
+
+## What the windows show now, for tests and captures: per tier the number of lit-window quads,
+## whether it is drawn and its light level.
+func window_state() -> Dictionary:
+	var tiers: Array[Dictionary] = []
+	var quads: int = 0
+	for index: int in _window_nodes.size():
+		var tier: int = _window_tier(index)
+		var count: int = (_window_nodes[index].mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size() / 12
+		quads += count
+		tiers.append({"tier": tier, "quads": count, "visible": _window_nodes[index].visible,
+			"level": _window_level(tier), "energy": _window_materials[index].emission_energy_multiplier})
+	return {"night": _night, "late": _late, "tiers": tiers, "quads": quads}
 
 
 ## What the lamps show now, for tests and captures.

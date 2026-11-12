@@ -1,8 +1,10 @@
 extends Node
 ## Plays the game's sounds (#117), as the `Sfx` autoload so the title screen's
-## buttons click too. One-shot cues and looped ambience go to the Effects bus;
-## Settings already sets its volume. Presentation only: it never touches the
-## simulation, draws no random numbers and saves nothing.
+## buttons click too. One-shot cues and station loops go to the Effects bus;
+## the room tone, chatter and table clinks (#366) go to the Ambience bus.
+## Settings sets both volumes. Presentation only: it never touches the
+## simulation or its random streams, and saves nothing. Clinks pick a variant
+## and a pitch from this node's own seeded generator.
 ##
 ## Headless runs and tool scripts (tests, probes, screenshot captures) create
 ## no players: `play` still reports the cue through `cue_played`, so tests can
@@ -11,18 +13,28 @@ extends Node
 ## key, so nothing plays (or queues) before then.
 
 signal cue_played(cue: StringName)
+## A table clink (#366) let through, reported headless too, like `cue_played`.
+signal clink_played(kind: StringName)
 
 const TUNING: SoundTuning = preload("res://data/audio/sound_tuning.tres")
+const AMBIENCE: AmbienceTuning = preload("res://data/audio/ambience.tres")
 const BUS: StringName = &"Effects"
+const AMBIENCE_BUS: StringName = &"Ambience"
 const MUSIC_BUS: StringName = &"Music"
 ## Seconds for a track to fade fully in or out; a crossfade runs both at once.
 const MUSIC_FADE_SECONDS: float = 2.0
 const ONE_SHOT_PLAYERS: int = 8
+## Clinks placed at their table (panned by the camera) and a few unplaced ones.
+const CLINK_PLAYERS: int = 6
+const PLAIN_CLINK_PLAYERS: int = 2
+## Clinks' own generator seed: a presentation stream, never the sim's.
+const CLINK_SEED: int = 366
 const BUTTON_META: StringName = &"sfx_bound"
 ## Below this a loop is stopped rather than played very quietly.
 const SILENT_LEVEL: float = 0.01
 
 var tuning: SoundTuning = TUNING
+var ambience: AmbienceTuning = AMBIENCE
 var _throttle: SoundThrottle = SoundThrottle.new()
 var _headless: bool = false
 var _unlocked: bool = true
@@ -31,6 +43,11 @@ var _next_player: int = 0
 var _pitch_step: Dictionary[StringName, int] = {}
 var _loop_players: Dictionary[StringName, AudioStreamPlayer] = {}
 var _loop_levels: Dictionary[StringName, float] = {}
+var _clink_players: Array[AudioStreamPlayer3D] = []
+var _plain_clink_players: Array[AudioStreamPlayer] = []
+var _plain_clink_next: int = 0
+var _next_clink: int = 0
+var _clink_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## One player and one fade level per track, so a change of context crossfades.
 var _music_players: Dictionary[AudioStream, AudioStreamPlayer] = {}
 var _music_levels: Dictionary[AudioStream, float] = {}
@@ -49,6 +66,23 @@ func _ready() -> void:
 			player.bus = BUS
 			add_child(player)
 			_one_shots.append(player)
+		for index: int in CLINK_PLAYERS:
+			var placed: AudioStreamPlayer3D = AudioStreamPlayer3D.new()
+			placed.name = "Clink%d" % index
+			placed.bus = AMBIENCE_BUS
+			# Pan only: a clink across the room is as loud as one nearby.
+			placed.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
+			placed.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
+			placed.panning_strength = ambience.panning_strength
+			add_child(placed)
+			_clink_players.append(placed)
+		for index: int in PLAIN_CLINK_PLAYERS:
+			var plain: AudioStreamPlayer = AudioStreamPlayer.new()
+			plain.name = "PlainClink%d" % index
+			plain.bus = AMBIENCE_BUS
+			add_child(plain)
+			_plain_clink_players.append(plain)
+	_clink_rng.seed = CLINK_SEED
 	get_tree().node_added.connect(_on_node_added)
 	_bind_buttons(get_tree().root)
 
@@ -65,9 +99,12 @@ static func is_silent_run(display: String, arguments: PackedStringArray) -> bool
 
 ## Stop and release every player so nothing is still playing at exit.
 func _exit_tree() -> void:
-	for player: AudioStreamPlayer in _one_shots:
+	for player: AudioStreamPlayer in _one_shots + _plain_clink_players:
 		player.stop()
 		player.stream = null
+	for placed: AudioStreamPlayer3D in _clink_players:
+		placed.stop()
+		placed.stream = null
 	for loop: StringName in _loop_players:
 		_loop_players[loop].stop()
 		_loop_players[loop].stream = null
@@ -109,13 +146,50 @@ func play(cue: StringName) -> bool:
 	return true
 
 
-## Sets a looped ambience from 0 (off) to 1 (its full tuned level).
+## Plays one table clink of `kind` (#366) unless that kind played within its
+## minimum interval: a random variant at a random pitch within the tuned
+## spread, from Sfx's own generator. With `positioned`, it sounds from
+## `world_position` and pans with the camera. Returns whether it was let through.
+func play_clink(kind: StringName, world_position: Vector3 = Vector3.ZERO, positioned: bool = false) -> bool:
+	var clink_set: ClinkSet = ambience.clink(kind)
+	if not _unlocked or clink_set == null or clink_set.streams.is_empty():
+		return false
+	if not _throttle.allow(StringName("clink_" + String(kind)), Time.get_ticks_msec() / 1000.0, clink_set.min_interval):
+		return false
+	var stream: AudioStream = clink_set.streams[_clink_rng.randi_range(0, clink_set.streams.size() - 1)]
+	var pitch: float = AmbienceMix.pitch(_clink_rng, ambience.pitch_spread)
+	clink_played.emit(kind)
+	if _headless or stream == null:
+		return true
+	if positioned and not _clink_players.is_empty():
+		var placed: AudioStreamPlayer3D = _free_clink_player()
+		placed.global_position = world_position
+		placed.stream = stream
+		placed.volume_db = clink_set.volume_db
+		placed.pitch_scale = pitch
+		placed.play()
+	elif not _plain_clink_players.is_empty():
+		# Round-robin, so when every player is busy the oldest sound is cut.
+		var plain: AudioStreamPlayer = _plain_clink_players[_plain_clink_next]
+		_plain_clink_next = (_plain_clink_next + 1) % _plain_clink_players.size()
+		plain.stream = stream
+		plain.volume_db = clink_set.volume_db
+		plain.pitch_scale = pitch
+		plain.play()
+	return true
+
+
+## Sets a looped ambience from 0 (off) to 1 (its full tuned level). Station
+## and jukebox loops play on the Effects bus, the room tone and chatter on the
+## Ambience bus. A known loop with no file yet keeps its level and plays nothing.
 func set_loop_level(loop: StringName, level: float) -> void:
-	if not tuning.loops.has(loop):
+	var ambient: bool = ambience.loops.has(loop)
+	if not ambient and not tuning.loops.has(loop):
 		return
 	level = clampf(level, 0.0, 1.0) if _unlocked else 0.0
 	_loop_levels[loop] = level
-	if _headless:
+	var stream: AudioStream = ambience.loops[loop] if ambient else tuning.loops[loop]
+	if _headless or stream == null:
 		return
 	var player: AudioStreamPlayer = _loop_players.get(loop)
 	if level < SILENT_LEVEL:
@@ -125,11 +199,12 @@ func set_loop_level(loop: StringName, level: float) -> void:
 	if player == null:
 		player = AudioStreamPlayer.new()
 		player.name = "Loop_" + String(loop)
-		player.bus = BUS
-		player.stream = _looping(tuning.loops[loop])
+		player.bus = AMBIENCE_BUS if ambient else BUS
+		player.stream = _looping(stream)
 		add_child(player)
 		_loop_players[loop] = player
-	player.volume_db = tuning.loop_gain_db(loop) + linear_to_db(level)
+	var gain: float = ambience.loop_gain_db(loop) if ambient else tuning.loop_gain_db(loop)
+	player.volume_db = gain + linear_to_db(level)
 	if not player.playing:
 		player.play()
 
@@ -211,6 +286,7 @@ func stop_loops() -> void:
 func reset_throttle() -> void:
 	_throttle.reset()
 	_pitch_step.clear()
+	_clink_rng.seed = CLINK_SEED
 
 
 func _free_player() -> AudioStreamPlayer:
@@ -219,6 +295,15 @@ func _free_player() -> AudioStreamPlayer:
 			return player
 	var oldest: AudioStreamPlayer = _one_shots[_next_player % _one_shots.size()]
 	_next_player += 1
+	return oldest
+
+
+func _free_clink_player() -> AudioStreamPlayer3D:
+	for placed: AudioStreamPlayer3D in _clink_players:
+		if not placed.playing:
+			return placed
+	var oldest: AudioStreamPlayer3D = _clink_players[_next_clink % _clink_players.size()]
+	_next_clink += 1
 	return oldest
 
 

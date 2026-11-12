@@ -15,6 +15,8 @@ extends RefCounted
 ## (MAX_TRIES, MAX_CHECKS) the shop is left exactly as it was.
 
 const NOTE: String = "We moved a few tables so your staff can reach the kitchen."
+## The morning note when the repair found no legal fix and left the shop alone.
+const NOTE_UNFIXED: String = "Some tables block your staff from the kitchen. Open Build to clear an aisle."
 ## How far (cells, each axis) a table or chair may move from where it stood.
 const RADIUS: int = 4
 ## The most items one repair moves before it gives up.
@@ -55,6 +57,7 @@ static func repair(layout: ShopLayout, content: ContentDB) -> int:
 		return 0
 	var start: SimGrid = _copy(grid)
 	if start == null:
+		layout.aisle_unfixed = true
 		return 0
 	var spawns: Dictionary[Vector2i, bool] = {}
 	for role: StringName in layout.staff_spawns:
@@ -70,6 +73,7 @@ static func repair(layout: ShopLayout, content: ContentDB) -> int:
 	last_tries = search.tries
 	last_checks = search.checks
 	if not fixed:
+		layout.aisle_unfixed = true
 		return 0
 	var count: int = 0
 	# A shallow duplicate (LeaseUpgrade.layout_for) shares its template's array.
@@ -87,6 +91,16 @@ static func repair(layout: ShopLayout, content: ContentDB) -> int:
 	if count > 0:
 		layout.aisle_moved = count
 	return count
+
+
+## The one-time morning note a freshly loaded layout earns: the moved-tables
+## note, the can't-fix note, or "" when the shop needed nothing.
+static func note_for(layout: ShopLayout) -> String:
+	if layout == null:
+		return ""
+	if layout.aisle_moved > 0:
+		return NOTE
+	return NOTE_UNFIXED if layout.aisle_unfixed else ""
 
 
 ## Things nobody can reach from the street: items (as ShopEditor._unreachable

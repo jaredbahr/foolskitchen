@@ -4,7 +4,7 @@ extends Resource
 ## board and the small thing it sets out in front. No text anywhere: the sign
 ## stays blank for now. A StreetSet lists the styles a street can use.
 
-enum Accent { CRATE, BUCKETS, PORTHOLE, JARS, TABLE }
+enum Accent { CRATE, BUCKETS, PORTHOLE, JARS, TABLE, TOYS, PETS }
 
 @export var id: StringName = &""
 @export var wall: Color = Color.WHITE
