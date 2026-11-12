@@ -9,7 +9,7 @@ func test_each_completed_kind_uses_one_group_without_changing_xp_or_wages() -> v
 	assert_false(roster.record_completed_task(&"starter_cook", &"not_a_task"))
 	assert_false(roster.record_completed_task(&"not_an_employee", &"cook"))
 	var member: StaffMember = roster.members()[0]
-	assert_eq(member.work_today(), {"cooked": 1, "orders": 1, "served": 1, "cleared": 1, "washed": 1, "other": 4})
+	assert_eq(member.work_today(), {"cooked": 1, "orders": 1, "served": 2, "cleared": 1, "washed": 1, "cleaned": 2, "other": 1})
 	assert_eq(member.work_total(), member.work_today())
 	assert_eq(member.growth_state().earned_today(&"cooking"), 3)
 	assert_eq(member.growth_state().earned_today(&"service"), 5)
@@ -109,6 +109,26 @@ func test_a_missing_work_group_loads_as_zero() -> void:
 	assert_true(roster.from_dict(saved))
 	assert_eq(roster.members()[0].work_total()["cooked"], 4)
 	assert_eq(roster.members()[0].work_total()["washed"], 0)
+
+
+func test_pour_counts_as_served_and_mop_as_cleaned() -> void:
+	var member: StaffMember = StaffRoster.new().members()[0]
+	member.record_completed_work(&"pour")
+	member.record_completed_work(&"clean_spot")
+	assert_eq(member.work_total()["served"], 1)
+	assert_eq(member.work_total()["cleaned"], 1)
+	assert_eq(member.work_total()["other"], 0)
+	assert_eq(member.work_summary(), "Today: 1 served · 1 cleaned   Total: 1 served · 1 cleaned")
+
+
+func test_an_old_save_without_cleaned_loads_as_zero() -> void:
+	var roster: StaffRoster = StaffRoster.new()
+	var saved: Dictionary = roster.to_dict()
+	saved["members"][0]["work"]["washed"] = 2
+	saved["members"][0]["work"].erase("cleaned")
+	assert_true(roster.from_dict(saved))
+	assert_eq(roster.members()[0].work_total()["washed"], 2)
+	assert_eq(roster.members()[0].work_total()["cleaned"], 0)
 
 
 func test_batched_trips_count_every_plate() -> void:

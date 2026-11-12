@@ -7,14 +7,16 @@ extends Resource
 const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
 const MAX_WORK_COUNT: int = 9007199254740991
 ## One mapping owns both task grouping and player-facing words; everything else
-## is Other. Served and washed count plates, so one batched trip can add several.
+## is Other. Drinks poured count as served; mopping and degreasing as cleaned.
+## Served and washed count plates, so one batched trip can add several.
 const WORK_GROUPS: Array[Dictionary] = [
-	{"kind": &"cook", "key": "cooked", "label": "cooked"},
-	{"kind": &"take_order", "key": "orders", "singular": "order taken", "label": "orders taken"},
-	{"kind": &"deliver", "key": "served", "label": "served"},
-	{"kind": &"bus_table", "key": "cleared", "label": "cleared"},
-	{"kind": &"wash", "key": "washed", "label": "washed"},
-	{"kind": &"", "key": "other", "label": "other"},
+	{"kinds": [&"cook"], "key": "cooked", "label": "cooked"},
+	{"kinds": [&"take_order"], "key": "orders", "singular": "order taken", "label": "orders taken"},
+	{"kinds": [&"deliver", &"pour"], "key": "served", "label": "served"},
+	{"kinds": [&"bus_table"], "key": "cleared", "label": "cleared"},
+	{"kinds": [&"wash"], "key": "washed", "label": "washed"},
+	{"kinds": [&"clean_spot", &"degrease"], "key": "cleaned", "label": "cleaned"},
+	{"kinds": [], "key": "other", "label": "other"},
 ]
 ## A Manager (FK-087, D24) runs a site while the owner is at another. They do
 ## no floor work (no worker in the world; their wage is still paid at close)
@@ -74,7 +76,7 @@ func record_completed_work(kind: StringName, quantity: int = 1) -> void:
 		return
 	var key: String = "other"
 	for group: Dictionary in WORK_GROUPS:
-		if kind == group["kind"]:
+		if (group["kinds"] as Array).has(kind):
 			key = String(group["key"])
 			break
 	_work_today[key] = _capped_add(int(_work_today.get(key, 0)), quantity)
