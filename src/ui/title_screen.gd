@@ -14,12 +14,18 @@ var _camera: CameraRig
 var _clock_processed: bool = true
 var _clock_input: bool = true
 var _started: bool = false
+## Test seam: the build's version and notes, normally read from BuildInfo.
+var build_version: String = ""
+var build_notes: String = ""
 
 @onready var menu: PanelContainer = $Menu
 @onready var continue_button: Button = $Menu/Column/Continue
 @onready var new_button: Button = $Menu/Column/NewGame
 @onready var settings_button: Button = $Menu/Column/Settings
+@onready var whats_new_button: Button = $Menu/Column/WhatsNew
 @onready var quit_button: Button = $Menu/Column/Quit
+@onready var whats_new: WhatsNewPanel = $WhatsNewPanel
+@onready var version_label: Label = $VersionLabel
 @onready var confirmation: ConfirmationDialog = $StartOver
 @onready var settings: SettingsPanel = $SettingsPanel
 @onready var status: Label = $Menu/Column/Status
@@ -44,6 +50,7 @@ func start() -> void:
 	continue_button.text = TitleText.CONTINUE
 	new_button.text = TitleText.NEW_GAME
 	settings_button.text = TitleText.SETTINGS
+	whats_new_button.text = TitleText.WHATS_NEW
 	quit_button.text = TitleText.QUIT
 	quit_button.visible = not OS.has_feature("web")
 	# Keep native dialog padding, but use the shared palette in this dialog only.
@@ -60,6 +67,8 @@ func start() -> void:
 	continue_button.pressed.connect(continue_game)
 	new_button.pressed.connect(request_new_game)
 	settings_button.pressed.connect(_on_settings_pressed)
+	whats_new_button.pressed.connect(show_whats_new)
+	whats_new.close_requested.connect(_on_whats_new_closed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	confirmation.confirmed.connect(_start_new_game)
 	settings.close_requested.connect(_on_settings_closed)
@@ -68,6 +77,29 @@ func start() -> void:
 	_prepare_backdrop()
 	_layout_menu()
 	resized.connect(_layout_menu)
+	if build_version.is_empty():
+		build_version = BuildInfo.version()
+		build_notes = BuildInfo.notes()
+	version_label.text = BuildInfo.label(build_version)
+	_open_whats_new_once()
+
+
+## The panel opens by itself on the first launch of each new release; the
+## version is recorded as seen as soon as it shows (user settings, not the save).
+func _open_whats_new_once() -> void:
+	if BuildInfo.should_show_whats_new(build_version, Preferences.last_seen_version, build_notes):
+		Preferences.set_last_seen_version(build_version)
+		show_whats_new()
+
+
+func show_whats_new() -> void:
+	menu.hide()
+	whats_new.present(build_version, build_notes)
+
+
+func _on_whats_new_closed() -> void:
+	menu.show()
+	_layout_menu()
 
 
 func _exit_tree() -> void:
@@ -155,7 +187,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key: InputEventKey = event as InputEventKey
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		if code == KEY_ESCAPE and settings.visible:
+		if code == KEY_ESCAPE and whats_new.visible:
+			whats_new.close()
+		elif code == KEY_ESCAPE and settings.visible:
 			_on_settings_closed()
 	get_viewport().set_input_as_handled()
 

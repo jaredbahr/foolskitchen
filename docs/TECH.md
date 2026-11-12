@@ -54,6 +54,26 @@ The HUD gear opens Settings during any day phase and pauses the clock. Closing
 restores the previous speed, including pause. Escape closes Settings, dismisses
 an active edit/panel/selection first, or opens Settings when none is active.
 
+**Build version and What's new (#433):** `tools/export.sh` stamps every export
+before it runs Godot: `build_info/version.txt` (the tag from
+`GITHUB_REF_NAME` on a `vX.Y.Z` build, or `FK_VERSION`; any other build such as
+a `workflow_dispatch` run is `dev-<short sha>`) and `build_info/release_notes.txt`
+(the output of `tools/release_notes.sh <version>`, so a tag build fails if its
+CHANGELOG section is missing, and a non-tag build bundles `Unreleased`). Both
+are git-ignored, picked up by the presets' `include_filter="build_info/*"` and
+removed when the script ends. `BuildInfo` (`src/core/build_info.gd`) reads them
+from `res://`: no file means a run from the editor, which reports `dev` and
+falls back to the `Unreleased` section of `CHANGELOG.md` for the notes.
+`ReleaseNotes` parses the section into groups and puts `### What to test`
+first. `WhatsNewPanel` renders it; the title screen opens it once when
+`BuildInfo.should_show_whats_new` says the version is a release (`vX.Y.Z`)
+that differs from `Preferences.last_seen_version`, then records it. That value
+is the optional `last_seen_version` key in `user://settings.cfg`, never the
+game save. Dev builds never open the panel by themselves. The title screen and
+Settings both have a What's new button, and "All release notes" calls
+`OS.shell_open` on the GitHub releases page. Nothing is fetched at runtime.
+`bash tools/screenshot.sh --whats-new` captures the panel with a sample release.
+
 1. **The sim is separate from the visuals.** `src/sim/` holds plain data and logic with no nodes. Visual nodes in `world/` read sim state and animate it. This makes the sim unit-testable and lets background properties run without visuals.
 2. **Fixed simulation tick** (for example 10 ticks per game second), independent of frame rate. Speed controls change the number of ticks per frame.
 3. **Data-driven content.** Recipes, items, themes and properties are custom `Resource` types in `data/`. Adding content means adding a `.tres` file, not code.
