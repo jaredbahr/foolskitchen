@@ -79,14 +79,15 @@ func test_a_packed_room_stays_packed_and_missing_layers_drop_out() -> void:
 	assert_almost_eq(levels[&"chatter_busy"], 1.0, 0.0001, "the loudest file covers a packed room")
 
 
-func test_the_shipped_file_has_no_chatter_yet_so_none_plays() -> void:
-	# The chatter loops arrive later; until then their slots are empty and the
-	# helper is handed no layers at all.
+func test_the_shipped_chatter_is_three_quiet_loops() -> void:
+	# Jared: the chatter is a barely audible bed, a few percent of full volume.
 	for layer: StringName in AmbienceTuning.CHATTER_LAYERS:
-		if AMBIENCE.loops.get(layer) == null:
-			assert_false(AMBIENCE.chatter_anchors().has(layer), "%s has no file, so no anchor" % layer)
-	Sfx.set_loop_level(&"chatter_busy", 0.5)
-	assert_almost_eq(Sfx.loop_level(&"chatter_busy"), 0.5, 0.0001, "a layer with no file still takes a level without error")
+		var stream: AudioStreamOggVorbis = AMBIENCE.loops.get(layer) as AudioStreamOggVorbis
+		assert_not_null(stream, "%s has a file" % layer)
+		assert_true(stream.loop, "%s loops" % layer)
+		assert_true(stream.get_length() >= 20.0, "%s is a long loop" % layer)
+		assert_true(float(AMBIENCE.loop_volume_db.get(layer, 0.0)) <= -20.0, "%s stays very quiet" % layer)
+		assert_true(AMBIENCE.chatter_anchors().has(layer), "%s takes part in the crossfade" % layer)
 
 
 func test_jukebox_ducks_chatter_and_fades_are_gradual() -> void:

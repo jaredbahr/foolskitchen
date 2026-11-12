@@ -123,3 +123,47 @@ func test_a_paused_shop_and_the_title_backdrop_stay_quiet() -> void:
 	assert_almost_eq(Sfx.loop_level(&"room_tone"), 0.0, 0.0001, "nor plays the room tone")
 	for layer: StringName in AmbienceTuning.CHATTER_LAYERS:
 		assert_almost_eq(Sfx.loop_level(layer), 0.0, 0.0001, "nor chatter")
+
+
+func _open_service(main: Node) -> SoundDirector:
+	Clock.set_speed(1)
+	assert_true(Clock.sim.start_service())
+	_clinks.clear()
+	Sfx.reset_throttle()
+	return main.get("sound")
+
+
+func test_plate_counts_only_clink_at_the_sink_on_a_real_wash() -> void:
+	var main: Node = _start()
+	var sound: SoundDirector = _open_service(main)
+	var kitchen: Kitchen = (main.get("sim") as RestaurantSim).kitchen
+	var clean: int = kitchen.clean_plates
+	var dirty: int = kitchen.dirty_plates
+	var total: int = kitchen.plates.total
+	# A plate recovered from a table goes dirty: no wash.
+	sound._on_plates_changed(clean, total, dirty + 1, 0)
+	# A bought plate adds a clean one without fewer dirty: no wash.
+	sound._on_plates_changed(clean + 1, total + 1, dirty + 1, 0)
+	assert_false(_clinks.has(&"sink"), "no sink without a wash: %s" % [_clinks])
+	# The first wash after binding counts too (the baseline is the live counts).
+	sound._on_plates_changed(clean + 2, total + 1, dirty, 0)
+	assert_true(_clinks.has(&"sink"), "a wash clatters at the sink: %s" % [_clinks])
+
+
+func test_a_drink_clinks_a_glass_and_a_bussed_table_stacks_dishes() -> void:
+	var main: Node = _start()
+	var sound: SoundDirector = _open_service(main)
+	var content: ContentDB = main.get("content")
+	var drink_id: StringName = &""
+	for recipe: RecipeDef in content.recipes():
+		if recipe.is_drink():
+			drink_id = recipe.id
+			break
+	assert_ne(drink_id, &"", "the content has a drink")
+	var order: Order = Order.new()
+	order.recipe_id = drink_id
+	sound._on_order_delivered(order)
+	assert_true(_clinks.has(&"glass"), "a drink is a glass clink: %s" % [_clinks])
+	assert_false(_clinks.has(&"plate"), "not a plate")
+	sound._on_task_completed(SimTask.new(&"bus_table"))
+	assert_true(_clinks.has(&"dish_stack"), "bussing stacks dishes: %s" % [_clinks])

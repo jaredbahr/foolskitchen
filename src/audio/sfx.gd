@@ -45,6 +45,7 @@ var _loop_players: Dictionary[StringName, AudioStreamPlayer] = {}
 var _loop_levels: Dictionary[StringName, float] = {}
 var _clink_players: Array[AudioStreamPlayer3D] = []
 var _plain_clink_players: Array[AudioStreamPlayer] = []
+var _plain_clink_next: int = 0
 var _next_clink: int = 0
 var _clink_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## One player and one fade level per track, so a change of context crossfades.
@@ -168,11 +169,9 @@ func play_clink(kind: StringName, world_position: Vector3 = Vector3.ZERO, positi
 		placed.pitch_scale = pitch
 		placed.play()
 	elif not _plain_clink_players.is_empty():
-		var plain: AudioStreamPlayer = _plain_clink_players[0]
-		for candidate: AudioStreamPlayer in _plain_clink_players:
-			if not candidate.playing:
-				plain = candidate
-				break
+		# Round-robin, so when every player is busy the oldest sound is cut.
+		var plain: AudioStreamPlayer = _plain_clink_players[_plain_clink_next]
+		_plain_clink_next = (_plain_clink_next + 1) % _plain_clink_players.size()
 		plain.stream = stream
 		plain.volume_db = clink_set.volume_db
 		plain.pitch_scale = pitch
