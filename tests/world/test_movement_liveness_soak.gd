@@ -11,6 +11,9 @@ extends TestCase
 ## the busy room and leaves on its own feet, never taken out as blocked.
 ## bar seed 2: leaving guests in the busy bar corridor waited over 700 ticks
 ## (day 11) while newer escapes took the held way from them (#317).
+## bar seed 8 with the soak's seeded morning edits: a one-cell way in behind
+## the door, queued guests packing the door and the cells beside it, held a
+## leaving guest for 884 ticks on day 12 (#322).
 
 const LIMIT: int = 600
 ## Staff tasks time out at 600 ticks, which would hide a longer staff stall.
@@ -21,6 +24,7 @@ const CASES: Array[Dictionary] = [
 	{"setup": "default", "seed": 20, "days": 10},
 	{"setup": "coffee_shop", "seed": 2, "days": 2, "inspector": true},
 	{"setup": "bar", "seed": 2, "days": 11},
+	{"setup": "bar", "seed": 8, "days": 12, "edits": true},
 ]
 
 
@@ -34,8 +38,8 @@ func test_busy_days_that_used_to_deadlock_keep_everyone_moving() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	for case: Dictionary in CASES:
 		var row: Dictionary = LivenessSoak.run_case(tree, int(case["seed"]), String(case["setup"]),
-			int(case["days"]), LIMIT, false, 1, bool(case.get("inspector", false)), STAFF_LIMIT)
-		var label: String = "%s seed %d" % [case["setup"], case["seed"]]
+			int(case["days"]), LIMIT, bool(case.get("edits", false)), 1, bool(case.get("inspector", false)), STAFF_LIMIT)
+		var label: String = "%s seed %d%s" % [case["setup"], case["seed"], " (edits)" if case.get("edits", false) else ""]
 		assert_false(row.has("error"), "%s: %s" % [label, row.get("error", "")])
 		assert_eq(int(row.get("stuck_episodes", -1)), 0,
 			"%s: nobody stuck over %d ticks (%s)" % [label, LIMIT, row.get("worst", "")])
