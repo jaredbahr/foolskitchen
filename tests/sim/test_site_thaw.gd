@@ -208,28 +208,59 @@ func test_deliveries_arrive_the_gap_later() -> void:
 	assert_eq(orders[0]["standing"], true)
 
 
-func test_stock_does_not_age_while_frozen() -> void:
+func test_frozen_stock_ages_one_day_over_a_three_day_gap() -> void:
 	var sections: Dictionary = SiteThawFixture.sections()
-	var out: Dictionary = _thaw(sections, F + 4)["sections"]
+	var out: Dictionary = _thaw(sections, F + 3)["sections"]
 	var before: Dictionary = sections["pantry"]["stock"]["batches"]
 	var after: Dictionary = out["pantry"]["stock"]["batches"]
+	assert_eq(_tunings().thaw.away_stock_ageing, 0.34)
+	assert_false(before.is_empty(), "the fixture has stock")
 	assert_eq(after.keys(), before.keys())
 	for id: String in before:
 		assert_eq((after[id] as Array).size(), (before[id] as Array).size())
 		for index: int in (before[id] as Array).size():
-			assert_eq(int(after[id][index]["bought_day"]), int(before[id][index]["bought_day"]) + 4, id)
+			var old_age: int = F - int(before[id][index]["bought_day"])
+			var new_age: int = F + 3 - int(after[id][index]["bought_day"])
+			assert_eq(new_age, old_age + 1, id)
 			assert_eq(after[id][index]["qty"], before[id][index]["qty"])
 			assert_eq(after[id][index]["total_cost"], before[id][index]["total_cost"])
-	# A lot one day from spoiling on the frozen morning is still one day away.
+
+
+func test_frozen_stock_expires_in_the_normal_morning_pass() -> void:
 	var stock: Stock = Stock.new()
 	stock.add(&"lettuce", 2, F - 2, 4)
-	assert_true(stock.expire(F, {&"lettuce": 3}).is_empty())
-	var thawed: Dictionary = _thaw({"pantry": _json({"stock": stock.to_dict()})}, F + 10)["sections"]
-	var aged: Stock = Stock.from_dict(thawed["pantry"]["stock"])
-	assert_true(aged.expire(F + 10, {&"lettuce": 3}).is_empty(), "nothing spoiled while frozen")
-	assert_eq(aged.expire(F + 11, {&"lettuce": 3}), {&"lettuce": 2}, "it spoils a day after reopening")
-	assert_eq(thawed["pantry"]["stock"]["spoilage"], _json(stock.to_dict())["spoilage"],
+	stock.add(&"bun", 1, F - 3, 2)
+	assert_eq(stock.expire(F, {&"lettuce": 3, &"bun": 3}), {&"bun": 1})
+	var original: Dictionary = _json(stock.to_dict())
+	var out: Dictionary = _thaw({"pantry": {"stock": original}}, F + 10)["sections"]
+	var aged: Stock = Stock.from_dict(out["pantry"]["stock"])
+	assert_eq(aged.count(&"lettuce"), 2, "the thaw leaves spoilage to the morning pass")
+	assert_eq(out["pantry"]["stock"]["spoilage"], original["spoilage"],
 		"the frozen morning's spoilage receipt keeps its day")
+	assert_eq(aged.expire(F + 10, {&"lettuce": 3}), {&"lettuce": 2})
+	assert_eq(aged.spoilage_value(F + 10), {"cost": 4, "recorded": true})
+
+
+func test_zero_away_stock_ageing_keeps_the_pantry_frozen() -> void:
+	var stock: Stock = Stock.new()
+	stock.add(&"lettuce", 2, F - 2, 4)
+	var tunings: SiteThawTunings = _tunings()
+	tunings.thaw = SiteThawTuning.new()
+	tunings.thaw.away_stock_ageing = 0.0
+	var sections: Dictionary = {"pantry": _json({"stock": stock.to_dict()})}
+	var out: Dictionary = SiteThaw.thaw(sections, F, F + 10, tunings)["sections"]
+	var aged: Stock = Stock.from_dict(out["pantry"]["stock"])
+	assert_true(aged.expire(F + 10, {&"lettuce": 3}).is_empty())
+	assert_eq(aged.expire(F + 11, {&"lettuce": 3}), {&"lettuce": 2})
+
+
+func test_invalid_away_stock_ageing_is_refused() -> void:
+	var sections: Dictionary = SiteThawFixture.sections()
+	var tunings: SiteThawTunings = _tunings()
+	tunings.thaw = SiteThawTuning.new()
+	for invalid: float in [-0.01, 1.01, NAN, INF]:
+		tunings.thaw.away_stock_ageing = invalid
+		assert_true(SiteThaw.thaw(sections, F, F + 3, tunings).is_empty(), str(invalid))
 
 
 func test_tanks_do_not_cloud_while_frozen() -> void:

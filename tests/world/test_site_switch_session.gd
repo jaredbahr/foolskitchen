@@ -164,6 +164,28 @@ func test_a_switch_and_back_is_lossless() -> void:
 	assert_eq(_saves, 3, "the next morning saves as usual")
 
 
+func test_the_return_morning_records_away_stock_spoilage() -> void:
+	_start()
+	var frozen_day: int = Clock.sim.day
+	var frozen: Dictionary = _captures()
+	var stock: Stock = Stock.new()
+	stock.add(&"mussels", 2, frozen_day, 6)
+	frozen["pantry"] = {"stock": stock.to_dict()}
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", frozen_day, frozen))
+	# Nine days away age these lots by three days, their authored shelf life.
+	for _step: int in 9:
+		reset_weekly_for_synthetic_day_jump(_main)
+		Clock.sim.day += 1
+		_main.call("_begin_morning")
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(Economy.stock.count(&"mussels"), 0)
+	var notes: Array[String] = _main.call("stock_notes")
+	assert_true(notes.has("Thrown out this morning (too old): 2 Mussels."), str(notes))
+	var report: DayReport = _main.call("build_report", Clock.sim.day)
+	assert_eq(report.spoiled_stock, 6)
+	assert_true(report.spoiled_stock_recorded)
+
+
 func test_a_refused_restore_leaves_the_session_whole() -> void:
 	_start()
 	var frozen: Dictionary = _captures()
