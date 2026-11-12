@@ -9,13 +9,19 @@ const TITLES: Dictionary = {
 }
 
 
-static func rows(records: Dictionary, content: ContentDB = null) -> Array[String]:
+## Money records (revenue, profit) are only for games with money: a Creative
+## game (FK-141) passes with_money = false.
+const MONEY_IDS: Array[StringName] = [&"profit"]
+
+
+static func rows(records: Dictionary, content: ContentDB = null, with_money: bool = true) -> Array[String]:
 	var lines: Array[String] = []
 	if int(records["last_day"]) == 0:
 		lines.append("Finish a service day to start your records.")
 		return lines
 	lines.append("Total guests served: %d" % records["guests"])
-	lines.append("Total revenue (meals and tips): %s" % Fmt.money(int(records["revenue"])))
+	if with_money:
+		lines.append("Total revenue (meals and tips): %s" % Fmt.money(int(records["revenue"])))
 	var dishes: Dictionary = records["dishes"]
 	var ids: Array[String] = []
 	for id: StringName in dishes:
@@ -33,6 +39,8 @@ static func rows(records: Dictionary, content: ContentDB = null) -> Array[String
 		if most != &"" else "Most-sold dish ever: no dishes sold")
 	var bests: Dictionary = records["bests"]
 	for id: StringName in ShopRecords.BEST_IDS:
+		if not with_money and MONEY_IDS.has(id):
+			continue
 		if bests.has(id):
 			var best: Dictionary = bests[id]
 			lines.append("%s: %s (day %d)" % [TITLES[id], _value(id, best["value"]), best["day"]])
@@ -45,10 +53,11 @@ static func rows(records: Dictionary, content: ContentDB = null) -> Array[String
 	return lines
 
 
-static func new_record_lines(records: Dictionary, beaten: Array[StringName]) -> Array[String]:
+static func new_record_lines(records: Dictionary, beaten: Array[StringName],
+		with_money: bool = true) -> Array[String]:
 	var lines: Array[String] = []
 	for id: StringName in ShopRecords.BEST_IDS:
-		if beaten.has(id):
+		if beaten.has(id) and (with_money or not MONEY_IDS.has(id)):
 			var best: Dictionary = records["bests"][id]
 			if float(best["value"]) <= 0.0:
 				continue

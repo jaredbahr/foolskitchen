@@ -9,6 +9,9 @@ Intro text.
 
 ## v0.2.0 (2026-11-01)
 
+### What to test
+- Open the new menu and try a special. (#7)
+
 ### Players
 - A newer change. (#5)
 

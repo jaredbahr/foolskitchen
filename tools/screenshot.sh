@@ -31,6 +31,7 @@
 # --blueprints=selection|ghost|stamped --speed=0 --frames=30 [--quarter=N] shows a table/rug box selection, rotated group ghost, or stamped pair.
 # --menu-boards-review --speed=0 --frames=12,30 shows a placed board and its inspector section choice, then the Menu theme readout.
 # --signature-review=menu|demand --speed=0 --frames=60 shows the actual selected signature UI and board, or one real service-day demand report.
+# --whats-new shows the What's new panel over the title screen with a sample release (a shortcut for --scene=res://tools/whats_new_review.tscn --speed=0 --frames=30).
 # Build previews use the production morning input API without buying or saving.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,6 +41,17 @@ GODOT="${GODOT:-.tools/godot-$ver/Godot_v${ver}-stable_linux.x86_64}"
 [[ -x "$GODOT" ]] || GODOT="$(bash tools/get_godot.sh)"
 command -v xvfb-run >/dev/null || { echo "BLOCKED: xvfb-run is not preinstalled; a supported Xvfb/Mesa environment is required."; exit 2; }
 out="screens"
+whats_new_capture=false
+args=()
+for a in "$@"; do
+  if [[ "$a" == --whats-new ]]; then
+    whats_new_capture=true
+    args+=("--scene=res://tools/whats_new_review.tscn" "--speed=0" "--frames=30")
+  else
+    args+=("$a")
+  fi
+done
+set -- ${args[@]+"${args[@]}"}
 settings_capture=false
 lease_capture=false
 hud_layout=false
@@ -72,6 +84,7 @@ if "$window_size_requested" && ! "$hud_layout"; then
   exit 1
 fi
 # Keep explicit UI/window captures and preference changes isolated from other runs.
+if "$whats_new_capture"; then settings_capture=true; fi
 if "$settings_capture"; then
   settings_data="$(mktemp -d)"
   export XDG_DATA_HOME="$settings_data"

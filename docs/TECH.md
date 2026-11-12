@@ -54,6 +54,26 @@ The HUD gear opens Settings during any day phase and pauses the clock. Closing
 restores the previous speed, including pause. Escape closes Settings, dismisses
 an active edit/panel/selection first, or opens Settings when none is active.
 
+**Build version and What's new (#433):** `tools/export.sh` stamps every export
+before it runs Godot: `build_info/version.txt` (the tag from
+`GITHUB_REF_NAME` on a `vX.Y.Z` build, or `FK_VERSION`; any other build such as
+a `workflow_dispatch` run is `dev-<short sha>`) and `build_info/release_notes.txt`
+(the output of `tools/release_notes.sh <version>`, so a tag build fails if its
+CHANGELOG section is missing, and a non-tag build bundles `Unreleased`). Both
+are git-ignored, picked up by the presets' `include_filter="build_info/*"` and
+removed when the script ends. `BuildInfo` (`src/core/build_info.gd`) reads them
+from `res://`: no file means a run from the editor, which reports `dev` and
+falls back to the `Unreleased` section of `CHANGELOG.md` for the notes.
+`ReleaseNotes` parses the section into groups and puts `### What to test`
+first. `WhatsNewPanel` renders it; the title screen opens it once when
+`BuildInfo.should_show_whats_new` says the version is a release (`vX.Y.Z`)
+that differs from `Preferences.last_seen_version`, then records it. That value
+is the optional `last_seen_version` key in `user://settings.cfg`, never the
+game save. Dev builds never open the panel by themselves. The title screen and
+Settings both have a What's new button, and "All release notes" calls
+`OS.shell_open` on the GitHub releases page. Nothing is fetched at runtime.
+`bash tools/screenshot.sh --whats-new` captures the panel with a sample release.
+
 1. **The sim is separate from the visuals.** `src/sim/` holds plain data and logic with no nodes. Visual nodes in `world/` read sim state and animate it. This makes the sim unit-testable and lets background properties run without visuals.
 2. **Fixed simulation tick** (for example 10 ticks per game second), independent of frame rate. Speed controls change the number of ticks per frame.
 3. **Data-driven content.** Recipes, items, themes and properties are custom `Resource` types in `data/`. Adding content means adding a `.tres` file, not code.
@@ -2999,7 +3019,7 @@ There is no new save point or SaveSystem migration.
 - **`SoundDirector`** (`src/world/sound_director.gd`, owned by Main): listens to `RestaurantSim.customer_arrived` (door bell), `customer_paid` (coins) and `review_recorded` (five stars: chime). Each frame, `refresh()` sets the room tone from the number of guests and plays the stove, fryer and coffee loops while `FoodPresentation.busy_loops` reports a worked station. It is silent outside service and while paused.
 - **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
-- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning, closed and the evening report have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light)` sets the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
+- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Stir It Slow, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning, closed and the evening report have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light)` sets the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
 
 ### Supplier haggle (FK-136, #327)
 
@@ -3048,6 +3068,51 @@ The unchanged default five-day probe (seeds1,7,42) remains the balance gate.
 out starter stock, stages real Space-stop timing and shows the active game at
 frame30 and actual 6%-off ($20 list, $19 charged) panel at frame90. These two
 existing-job captures are UI evidence, not natural human timing or balance play.
+
+### Creative mode (FK-141, D34, #333)
+
+New game asks Career or Creative (`TitleScreen.show_mode_choice()`; the card is
+built in code). `Main.start_fresh_run(..., creative)` records the request in
+`GameMode`, and `_new_game()` applies it once with `GameMode.begin_new_game()`.
+The in-game Start over keeps the current mode. TODOs there name the later work:
+any lot and neighbourhood (#405) and saving a design as a blueprint for career
+(#432).
+
+- **One flag.** `GameMode` (`src/sim/progression/game_mode.gd`) is a static
+  run-wide `creative` bool, so the sim can read it without a Node. It is the
+  `game_mode` save section (`{"creative": bool}`), registered after the
+  autoloads and before `owner`, because the owner and menu restores read the
+  unlock level. `Main.start()` resets it to career before `initialize()` (it
+  is static, so a Creative run must not leak into the next run in the same
+  process), and `_wire_session()` pushes the effective level and tier in both
+  modes. A save without the section is a career game; a Creative save that
+  fails to load starts a new Creative game (with a warning). No
+  `save_system.gd` change.
+- **Unlocks.** Every unlock check reads `OwnerProgress.effective_level()` and
+  `effective_tier()`: the earned values in career, `GameMode.CREATIVE_LEVEL`
+  (99, above every authored `unlock_level`) and the top tier in Creative.
+  Items, recipes, floors, walls, menu size, the lease upgrade, the cat,
+  bookings, customer types, the inspector, critic and rush hour all use them.
+  The earned `level`, XP and `career_tier` are not touched and still save.
+- **Money.** `Economy.is_free()` gates every money path in one place:
+  `add_cash`/`add_cash_for_site` and the ingredient purchases record nothing,
+  every affordability check passes, `settle_loan_day` returns `{}` (no loan,
+  interest or repayment), and `spendable()` (a huge budget) replaces `cash`
+  where planning or refusal text reads it. Stock still arrives and is counted.
+  Cash therefore never changes from the starting value.
+- **Hidden.** At close a Creative game skips owner XP, milestones, the weekly
+  goal and the tier climb. The HUD shows a "Creative" chip in place of cash, the
+  loan chip and the owner level; the evening report hides profit, finances,
+  cash change, loan, milestones, weekly goal, owner progress and the business
+  trend (guests, dishes, reviews, events, team and stock stay). Goals is titled
+  "Collections" and shows collections and records without the money ones
+  (`ShopRecordsText` `with_money = false`, by record id). Prices read "Free" through
+  `Fmt.price()`, `Fmt.price_each()` and `Fmt.for_price_each()`, which equal
+  the old career text exactly. The title's Continue reads the autosave's
+  `game_mode` section and adds "(Creative)".
+- Career is unchanged: the default five-day probe (seeds 1, 7, 42) is identical
+  to `main`. Coverage: `tests/sim/test_game_mode.gd`,
+  `tests/world/test_creative_session.gd`, `tests/ui/test_creative_title.gd`.
 
 ### 2.4 Save system
 Lifetime records (FK-145): `ShopRecords` is a pure consumer of the one finalized

@@ -32,7 +32,7 @@ func layout_for(base: ShopLayout, tier: int) -> ShopLayout:
 
 func offered(progress: OwnerProgress, phase: int) -> bool:
 	return is_valid() and progress != null and progress.property_tier == 1 \
-		and progress.career_tier >= 2 and phase == SimClock.Phase.MORNING
+		and progress.effective_tier() >= 2 and phase == SimClock.Phase.MORNING
 
 
 ## One source of plain player-facing refusal text for the panel and command.
@@ -43,7 +43,7 @@ func refusal(progress: OwnerProgress, phase: int, cash: int, loan: int) -> Strin
 		return "Your lease is already upgraded"
 	if phase != SimClock.Phase.MORNING:
 		return "Upgrade your lease in the morning"
-	if progress.career_tier < 2:
+	if progress.effective_tier() < 2:
 		return "Unlocks when your restaurant reaches Tier 2"
 	if loan > 0:
 		return "Pay off your loan before upgrading your lease"

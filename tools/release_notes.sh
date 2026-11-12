@@ -2,6 +2,9 @@
 # Prints the whole CHANGELOG section for one version (the release's
 # "What's new"), word for word. Fails if the section is missing or empty, so a
 # release can never ship with partial or missing notes.
+# Everything under the heading is kept, including a "### What to test"
+# subsection if the director wrote one; the game's What's new panel shows that
+# group first. "Unreleased" works as the version for non-tag builds.
 # Usage: bash tools/release_notes.sh v0.1.0 [CHANGELOG.md]
 set -euo pipefail
 version="${1:?version, for example v0.1.0}"

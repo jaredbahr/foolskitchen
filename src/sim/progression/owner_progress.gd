@@ -27,6 +27,17 @@ func _init(config: ProgressionTuning) -> void:
 	tuning = config
 
 
+## The level every unlock check reads (FK-141): the earned level in career,
+## GameMode.CREATIVE_LEVEL (above every unlock) in a Creative game.
+func effective_level() -> int:
+	return maxi(level, GameMode.CREATIVE_LEVEL) if GameMode.is_creative() else level
+
+
+## The career tier every content gate reads: the top tier in a Creative game.
+func effective_tier() -> int:
+	return CareerTierTuning.TOP_TIER if GameMode.is_creative() else career_tier
+
+
 ## Level one starts at zero; later levels use the authored power curve.
 func threshold_for(target_level: int) -> int:
 	if target_level <= 1:
