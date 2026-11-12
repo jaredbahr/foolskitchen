@@ -27,7 +27,7 @@ extends RefCounted
 ##   passed (the site was closed then) lapses, and its customer deposit is
 ##   returned as a refund movement for the caller to pay. One for today stays.
 ## - deliveries: due days move forward by the gap (paid orders wait, once).
-## - pantry: stock lots do not age while frozen (bought days move forward).
+## - pantry: stock ages at a fraction of the gap; morning handles spoilage.
 ## - aquarium: tanks do not cloud while frozen (cleaning days move forward).
 ## - critic: the plan rolled for the frozen morning lapses; cooldown stays.
 ## - everything else is unchanged (see DECISIONS for the reasons).
@@ -60,7 +60,7 @@ const DECISIONS: Dictionary[String, String] = {
 	"bookings": "lapse: offers clear; past accepted bookings refund their deposit",
 	"rush_hour": "lapse: the frozen morning's rush is dropped; cooldown on the calendar",
 	"aquarium": "shift: tanks do not cloud while the site is frozen",
-	"pantry": "shift: stock does not spoil while the site is frozen",
+	"pantry": "age slowly: stock past its shelf life spoils on the return morning",
 }
 
 
@@ -128,7 +128,7 @@ static func _thaw_section(key: String, data: Dictionary, frozen_day: int, today:
 		"aquarium":
 			return _thaw_aquarium(data, gap)
 		"pantry":
-			return _thaw_pantry(data, gap)
+			return _thaw_pantry(data, gap, tunings.thaw.away_stock_ageing)
 	# Sections without day stamps (DECISIONS) are copied as they are.
 	return data.duplicate(true)
 
@@ -258,7 +258,7 @@ static func _thaw_critic(data: Dictionary, frozen_day: int, today: int) -> Varia
 	return _json(critic.to_dict())
 
 
-## Tanks do not cloud while the site is frozen, like the pantry. The section
+## Tanks do not cloud while the site is frozen. The section
 ## is keyed by tank position (to_dict needs the live grid), so only the days
 ## move; the shape is checked before and after.
 static func _thaw_aquarium(data: Dictionary, gap: int) -> Variant:
@@ -270,24 +270,23 @@ static func _thaw_aquarium(data: Dictionary, gap: int) -> Variant:
 	return _json(out) if AquariumCare.valid_dict(out) else null
 
 
-## Frozen stock does not age: every lot's bought day moves forward by the gap.
-## A switch must not cost the player a pantry they could not use while away,
-## and paid deliveries wait the same way. The spoilage receipt keeps its day:
-## it belongs to the frozen morning's report, never today's.
-static func _thaw_pantry(data: Dictionary, gap: int) -> Variant:
+## Shift each bought day by the part of the gap that did not age the lot.
+## Keep existing spoilage receipts dated and let the return morning expire lots.
+static func _thaw_pantry(data: Dictionary, gap: int, ageing: float) -> Variant:
 	if not data.get("stock") is Dictionary:
 		return null
 	var stock: Stock = Stock.from_dict(data["stock"])
 	if stock == null:
 		return null
 	var encoded: Dictionary = stock.to_dict()
+	var shift: int = gap - floori(float(gap) * ageing)
 	var batches: Dictionary = encoded["batches"]
 	for id: String in batches:
 		for row: Dictionary in batches[id]:
 			var bought: int = String(row["bought_day"]).to_int()
-			if bought > MAX_DAY - gap:
+			if bought > MAX_DAY - shift:
 				return null
-			row["bought_day"] = str(bought + gap)
+			row["bought_day"] = str(bought + shift)
 	if Stock.from_dict(encoded) == null:
 		return null
 	var out: Dictionary = data.duplicate(true)
