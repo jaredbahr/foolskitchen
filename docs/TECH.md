@@ -3594,6 +3594,33 @@ chance1. Real Main close and next-morning handlers render the report and
 reminder; observers25/75 check visible bounds and unchanged state before
 photos30/90. Statistical odds and default balance are validated separately.
 
+### Seasons and market prices (#340)
+
+`Season.kind_for_day()` derives Spring, Summer, Autumn and Winter from the saved
+clock day in 28-day blocks, repeating after day 112. It reads no random stream
+and needs no save section. `data/balance/seasons.tres` authors three to five
+in-season ingredient IDs and two to three out-of-season IDs per season, with
+0.8 and 1.2 purchase multipliers. Startup validates the lists against the loaded
+ingredient catalogue, including duplicates and overlap.
+
+`Season.purchase_unit_cost()` is the one seasonal price calculation. It rounds
+the adjusted unit to the nearest whole currency unit before the existing order
+premium or haggle. This preserves integer purchase lines: a $3 ingredient is
+$2 in season and $4 out of season; many $1 or $2 ingredients round to their
+ordinary price. The authored ingredient, recipe sale price and quality are never
+changed. `Main._unit_costs(day)` supplies the same prices to the cart, paid order
+lines, automatic purchases and Stock display. Current purchases use today's day;
+next-morning forecasts pass tomorrow explicitly, including a season boundary.
+Paid deliveries and FIFO stock lots retain their recorded purchase cost.
+
+The HUD date includes the season. Stock rows show an optional `In season` or
+`Pricey this season` tag; a dish's ingredient details identify in-season items.
+Tags appear only when the rounded price really differs from the base price
+(`SeasonText.ingredient_tag` takes the base cost): at today's $1-$3 prices only
+$3 items (the seafood) move, so a listed $1 or $2 item stays untagged.
+The existing visual-review job adds one paused real morning Stock capture,
+showing those tags and the HUD date together.
+
 ### Sites and the property market (FK-087, D28, D30) — design
 Status: design for #164, revised after review. Parts 2, 4 and 6 can be built
 before part 1; buying a lot and switching wait for part 1 (#408).

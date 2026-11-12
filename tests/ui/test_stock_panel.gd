@@ -118,6 +118,27 @@ func test_rows_show_groups_cart_and_send_requests() -> void:
 	assert_eq(_requests.size(), 6)
 
 
+func test_season_tags_are_optional_and_keep_the_ingredient_name() -> void:
+	var view: Dictionary = _view(300, true)
+	for row: Dictionary in view["rows"]:
+		if row["id"] == &"beef_patty":
+			row["season_tag"] = "In season"
+		elif row["id"] == &"bread":
+			row["season_tag"] = "Pricey this season"
+	_panel.set_view(view)
+	var in_season: Dictionary = _panel.row_for(&"beef_patty")
+	assert_eq((in_season["name"] as Label).text, "Beef patty")
+	assert_eq((in_season["season"] as Label).text, "In season")
+	assert_true((in_season["season"] as Label).visible)
+	var pricey: Dictionary = _panel.row_for(&"bread")
+	assert_eq((pricey["season"] as Label).text, "Pricey this season")
+	assert_true((pricey["season"] as Label).visible)
+	var neutral: Dictionary = _panel.row_for(&"tomato")
+	assert_eq((neutral["season"] as Label).text, "")
+	assert_false((neutral["season"] as Label).visible)
+	assert_eq((in_season["price"] as Label).text, "$2 each", "cost display comes from the session view")
+
+
 func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
@@ -135,6 +156,11 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 	window.add_child(_panel)
 	var view: Dictionary = _view(300, true, ["This morning's auto-order cost $93 ($88 at list price + $5 premium).",
 		"Not enough cash to auto-order 5 Beef patty, 20 Bread and 10 Burger bun."] as Array[String])
+	for row: Dictionary in view["rows"]:
+		if row["id"] == &"beef_patty":
+			row["season_tag"] = "In season"
+		elif row["id"] == &"bread":
+			row["season_tag"] = "Pricey this season"
 	view["haggle_morning"] = true
 	view["haggle_percent"] = 6
 	_panel.set_view(view)
@@ -158,7 +184,7 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 		assert_true(scroll.size.y > 100.0, "rows keep a scrolling area at %d%%" % roundi(scale * 100))
 		for data: Dictionary in _rows():
 			var row: Dictionary = _panel.row_for(data["id"])
-			for key: String in ["name", "count", "price", "cart-1", "cart", "cart+1", "cart+5", "throw", "auto", "minus", "target", "plus"]:
+			for key: String in ["identity", "name", "season", "count", "price", "cart-1", "cart", "cart+1", "cart+5", "throw", "auto", "minus", "target", "plus"]:
 				var control: Control = row[key]
 				assert_true(control.size.x >= control.get_combined_minimum_size().x - 0.5,
 					"%s %s keeps its full content" % [data["id"], key])
