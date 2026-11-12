@@ -65,21 +65,29 @@ func test_door_lane_keeps_one_clear_way_in() -> void:
 	assert_eq(last.why, ShopEditor.SEAT_IN_DOORWAY)
 
 
-func test_table_seat_on_the_door_is_refused_but_its_lane_is_allowed() -> void:
-	# #454: a moved table whose built-in seat lands on an entry would narrow the door for whoever sits there.
-	var seated: ItemDef = _add(&"seated_table", ItemDef.Category.TABLE, Vector2i.ONE, [Vector2i(0, 1)])
-	var lane: Dictionary[Vector2i, bool] = MovementCoordinator.lane_cells(_sim.world.grid)
+func test_table_seat_or_station_work_cell_in_the_doorway_is_refused() -> void:
+	# #454: a table seat or station work cell on a threshold or entry would
+	# narrow the door for whoever uses it.
+	_add(&"seated_table", ItemDef.Category.TABLE, Vector2i.ONE, [Vector2i(0, 1)])
+	var station: ItemDef = _add(&"station", ItemDef.Category.TABLE, Vector2i.ONE)
+	station.work_cells = [Vector2i(0, 1)]
+	var door_cells: Dictionary[Vector2i, bool] = WallRules.door_cells(_sim.world.grid)
 	var table: PlacedItem = _place(&"seated_table", Vector2i(6, 4))
+	var tool: PlacedItem = _place(&"station", Vector2i(8, 4))
 	assert_true(_editor.check_move(table.id, Vector2i(6, 5), 0).ok, "far from the door a table is fine")
-	var check: EditCheck = _editor.check_move(table.id, ENTRY + Vector2i.UP, 0)
-	assert_false(check.ok, "a seat on the entry")
-	assert_eq(check.why, ShopEditor.USE_SPOT_AT_DOOR)
-	assert_false(_editor.check_buy(&"seated_table", ENTRY + Vector2i.UP).ok)
-	# Cells beside and just inside the entry (the door lane) stay allowed: tables
-	# there only warn about the path.
-	for seat_cell: Vector2i in [Vector2i(1, 11), Vector2i(0, 9)]:
-		assert_true(lane.has(seat_cell))
-		assert_true(_editor.check_move(table.id, seat_cell + Vector2i.UP, 0).ok, "seat at %s" % seat_cell)
+	assert_true(_editor.check_move(tool.id, Vector2i(8, 5), 0).ok)
+	for cell: Vector2i in [ENTRY, Vector2i(1, 11), Vector2i(0, 10)]:
+		assert_true(cell == ENTRY or door_cells.has(cell))
+		var origin: Vector2i = cell + Vector2i.UP
+		var check: EditCheck = _editor.check_move(table.id, origin, 0)
+		assert_false(check.ok, "table seat at %s" % cell)
+		assert_eq(check.why, ShopEditor.USE_SPOT_AT_DOOR)
+		assert_false(_editor.check_buy(&"seated_table", origin).ok)
+		check = _editor.check_move(tool.id, origin, 0)
+		assert_false(check.ok, "work cell at %s" % cell)
+		assert_eq(check.why, ShopEditor.USE_SPOT_AT_DOOR)
+	# Beside the door, past the thresholds, a table seat is still fine.
+	assert_true(_editor.check_move(table.id, Vector2i(2, 10), 0).ok)
 	assert_true(_editor.check_buy(&"seated_table", Vector2i(8, 7)).ok)
 
 

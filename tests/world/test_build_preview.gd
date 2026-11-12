@@ -376,7 +376,7 @@ func test_partial_four_seat_capacity_warns_in_preview_and_after_commit_until_fix
 	_mode.cancel()
 	assert_eq(_preview.invalid_reason(), PARTIAL)
 	assert_true(_mode.pick_up(table.id))
-	_mode.update_origin(Vector2i(5, 7))
+	_mode.update_origin(Vector2i(5, 6))
 	assert_true(_mode.current_check.ok)
 	# Here all four seats are usable. Only what a move newly cuts off is a
 	# seat warning (#315), and the lane it leaves past the west table is one
