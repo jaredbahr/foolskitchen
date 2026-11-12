@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - The evening report has its own song, "Stir It Slow", and the title screen plays "Kitchen Jamboree". (#446)
+- Older saves whose tables block the way to the kitchen in a way the automatic fix cannot clear now get a one-time morning note: "Some tables block your staff from the kitchen. Open Build to clear an aisle." (#448)
 - Staff work counts now include drinks poured under "served", and a new "cleaned" count for mopping spills and degreasing stations. (#447)
 - New game now asks Career or Creative. Creative is for building: everything is free and unlocked from day 1 (every item, dish, floor, the bigger lease and the cat), there are no wages, rent or loans, and money is hidden so you can just build, open and watch guests enjoy it. Career goals, the weekly goal and career tiers are hidden, and Goals becomes Collections (your decor collections and records, without money); the critic and inspector still visit. The top bar shows a Creative tag, and Continue says "(Creative)" for a Creative save. (#444)
 - Builds now show their version in the corner of the title screen, and a What's new panel lists what changed, with a "What to test" section first when there is one. It opens by itself the first time you start each new version, and you can reopen it with the What's new button on the title screen or in Settings. "All release notes" opens the releases page in your browser. (#445)

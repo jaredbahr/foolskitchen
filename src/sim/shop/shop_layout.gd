@@ -68,6 +68,9 @@ var rooms_unmarked: bool = false
 ## Set on an older save whose staff could not reach the kitchen (#320): how
 ## many tables and chairs AisleRepair moved. The morning says so once.
 var aisle_moved: int = 0
+## Set when the same repair gave up on such a save (#437): the morning tells
+## the player once to clear an aisle in Build.
+var aisle_unfixed: bool = false
 ## Plain notes from forgiving normalization of older saves, logged on load.
 var load_notes: Array[String] = []
 ## Pure load migration stages refunds; Main applies them after complete success.

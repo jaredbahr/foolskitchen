@@ -703,7 +703,7 @@ func start() -> void:
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
-	_show_aisle_note(loaded and _loaded_layout != null and _loaded_layout.aisle_moved > 0)
+	_show_aisle_note(AisleRepair.note_for(_loaded_layout) if loaded else "")
 	if not loaded:
 		_skip_next_autosave = use_saves and SaveSystem.list_slots().has(save_slot)
 		if GameMode.is_creative():
@@ -3270,7 +3270,7 @@ func switch_site(target: StringName) -> bool:
 	_loaded_layout = staged.layout
 	_rooms_note = _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
-	_show_aisle_note(_loaded_layout.aisle_moved > 0)
+	_show_aisle_note(AisleRepair.note_for(_loaded_layout))
 	if not _wire_session():
 		push_error("Cannot wire the switched site; the session is inconsistent")
 		return false
@@ -4914,9 +4914,9 @@ func _clear_rooms_note() -> void:
 ## The aisle repair note (#320) shows for the morning the shop loaded in. It
 ## is never saved: the next morning autosave writes the repaired shop, which
 ## no longer needs a repair, so the note never comes back.
-func _show_aisle_note(shown: bool) -> void:
-	_aisle_note = shown
-	$HUD.set_aisle_note(AisleRepair.NOTE if shown else "")
+func _show_aisle_note(text: String) -> void:
+	_aisle_note = not text.is_empty()
+	$HUD.set_aisle_note(text)
 
 
 ## Floor types (D25): lay or recolour floor looks (cell -> Finish), checked
@@ -6344,7 +6344,7 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 	_dismiss_goals()
 	_clear_rooms_note()
 	if _aisle_note:
-		_show_aisle_note(false)
+		_show_aisle_note("")
 	# Undo never reaches back across opening (or into a new morning).
 	edit_history.clear()
 	if menu_settings != null:
