@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- A cook no longer walks round and round the counter when a server waiting for the same coffee machine stands in the way: the server now steps aside. A guest stepping in at a jammed narrow door also finishes the step instead of freezing in the doorway. (#PRNUM)
+- A cook no longer walks round and round the counter when a server waiting for the same coffee machine stands in the way: the server now steps aside. A guest stepping in at a jammed narrow door also finishes the step instead of freezing in the doorway. (#457)
 - A table's seat or a serving spot can no longer be placed in the doorway; the editor now says so. (#456)
 - Guests waiting for a table at a narrow door now wait outside while a leaving guest is stuck in the doorway, and step off the way out instead of walking back into it, so the leaving guest gets out. (#452)
 - A faint murmur of diners now fills the room while you're open, growing from a few voices to a full room as the shop gets busy. It is very quiet and follows the Ambience slider. (#450)
