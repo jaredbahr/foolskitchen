@@ -29,6 +29,7 @@ const DECOR_GONE: String = "That wall decor is no longer there"
 const PERSON_IN_WAY: String = "Someone is in the way."
 ## Nobody walks through a seat (#315), so a seat in the doorway shuts it.
 const SEAT_IN_DOORWAY: String = "Seats can't go in the doorway"
+const USE_SPOT_AT_DOOR: String = "Keep the way in clear: no seat or serving spot on the door"
 
 var last_check: EditCheck = EditCheck.new()
 ## The last committed placement's seat cut-off warning (#315): {version, id,
@@ -2570,13 +2571,22 @@ static func _any_reachable(reach: Dictionary[Vector2i, bool], cells: Array[Vecto
 ## seat on a street door threshold, a door, an entry or just inside a back
 ## door, or would leave no clear cell straight in from the street door (the
 ## door lane, #308), else "". Nobody walks through a seat, so it would shut the
-## way. One seat beside the way in of a wide door is fine. A table's built-in
-## seats are left to the path warning, as tables have always been free to
-## stand near the door.
+## way. One seat beside the way in of a wide door is fine. Any other item
+## (table, station) is refused with USE_SPOT_AT_DOOR when a seat or work cell
+## lies on an entry cell (#454).
 static func seat_doorway_problem(grid: SimGrid, placed: PlacedItem) -> String:
 	var definition: ItemDef = placed.def as ItemDef if placed != null else null
-	if definition == null or placed.seat_cells.is_empty() \
-			or definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
+	if definition != null and definition.category not in [ItemDef.Category.CHAIR, ItemDef.Category.WAITING]:
+		# A table's built-in seats and a station's use cells (#454): a guest
+		# ordering or eating on an entry cell narrows the door. Cells just inside
+		# stay allowed (tables beside the door have always been free); chairs
+		# and benches keep the stricter rule below.
+		var entries: Array[Vector2i] = grid.entries()
+		for cell: Vector2i in placed.seat_cells + placed.work_cells:
+			if entries.has(cell):
+				return USE_SPOT_AT_DOOR
+		return ""
+	if definition == null or placed.seat_cells.is_empty():
 		return ""
 	var blocked: Dictionary[Vector2i, bool] = WallRules.door_cells(grid)
 	var inside: Array[Vector2i] = []
