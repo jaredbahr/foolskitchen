@@ -228,6 +228,7 @@ func show_report(report: DayReport) -> void:
 	_fill_owner_progress(report)
 	_render_demand(report.demand_forecast)
 	_render_vibe()
+	_apply_creative()
 	show()
 
 
@@ -246,7 +247,7 @@ func _refresh_history() -> void:
 	chart.visible = not _trend_rows.is_empty()
 	for button: Button in _trend_buttons:
 		button.set_pressed_no_signal(int(button.get_meta("days")) == _trend_days)
-	(%BusinessTrendSection as VBoxContainer).show()
+	(%BusinessTrendSection as VBoxContainer).visible = not GameMode.is_creative()
 
 
 func _on_trend_range_pressed(days: int) -> void:
@@ -469,6 +470,21 @@ func _fill_owner_progress(report: DayReport) -> void:
 	_career_tier_up.text = report.career_tier_line
 	_career_tier_up.visible = not report.career_tier_line.is_empty()
 	_owner_callout.visible = _owner_level_up.visible or _owner_unlocks.visible
+
+
+## A Creative game (FK-141) has no money, owner level, career goals or
+## tiers: their sections stay hidden. Guests, dishes, reviews, events,
+## the team and the stock outlook stay.
+func _apply_creative() -> void:
+	if not GameMode.is_creative():
+		return
+	var content: Node = get_node("Panel/Scroll/Content")
+	for path: String in ["Profit", "Finances", "LoanNotice", "CashChange", "MilestoneHeading",
+			"MilestoneRows", "WeeklyChallengeLine", "BusinessTrendSection", "LevelUpCallout",
+			"CareerTierUp", "OwnerHeading", "OwnerLevel", "OwnerXPRows", "AwaySites"]:
+		var node: CanvasItem = content.get_node_or_null(path) as CanvasItem
+		if node != null:
+			node.hide()
 
 
 func _fill_milestones(milestones: Array[Dictionary]) -> void:
