@@ -14,6 +14,10 @@ extends TestCase
 ## bar seed 8 with the soak's seeded morning edits: a one-cell way in behind
 ## the door, queued guests packing the door and the cells beside it, held a
 ## leaving guest for 884 ticks on day 12 (#322).
+## coffee_shop seed 6 with edits: a server waiting for the coffee machine the
+## cook had booked stood in the cook's short way to it; the cook went round
+## the counter and the backstop sent it back, round and round for 530 ticks
+## on day 12 (#453).
 
 const LIMIT: int = 600
 ## Staff tasks time out at 600 ticks, which would hide a longer staff stall.
@@ -25,6 +29,7 @@ const CASES: Array[Dictionary] = [
 	{"setup": "coffee_shop", "seed": 2, "days": 2, "inspector": true},
 	{"setup": "bar", "seed": 2, "days": 11},
 	{"setup": "bar", "seed": 8, "days": 12, "edits": true},
+	{"setup": "coffee_shop", "seed": 6, "days": 12, "edits": true},
 ]
 
 

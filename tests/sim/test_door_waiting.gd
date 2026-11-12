@@ -156,6 +156,29 @@ func test_a_waiting_guest_never_heads_for_a_stuck_leavers_way_out() -> void:
 	assert_eq(standing.destination(), standing._wait_spot, "and walks to a spot off it")
 
 
+## #453: the hold only keeps a guest on the street. One already part way
+## through its step into the door finishes it, rather than freezing mid-step
+## on the door cell a stuck leaver needs for as long as the jam lasts.
+func test_a_step_into_the_door_already_begun_finishes_during_a_jam() -> void:
+	var sim: RestaurantSim = _narrow_door_shop()
+	var world: SimWorld = sim.world
+	var leaving: CustomerAgent = _guest(sim, Vector2i(6, 11))
+	leaving.state = CustomerAgent.State.LEAVING
+	var entry: Vector2i = world.grid.entries()[0]
+	var arriving: CustomerAgent = _guest(sim, entry)
+	arriving.state = CustomerAgent.State.QUEUED
+	arriving._queue_inside(world)
+	assert_true(arriving.move_progress > 0.0, "the step in has begun")
+	_stall(world, leaving)
+	assert_true(world.movement.door_outflow_stalled(world))
+	for tick: int in 8:
+		if arriving.cell != entry:
+			break
+		arriving._queue_inside(world)
+	assert_ne(arriving.cell, entry, "the step is finished, not held part way")
+	assert_eq(arriving.move_progress, 0.0)
+
+
 ## The starter shop with every dining seat held, so arrivals must queue.
 func _full_shop() -> RestaurantSim:
 	var errors: Array[String] = []
