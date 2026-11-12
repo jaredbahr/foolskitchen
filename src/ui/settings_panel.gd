@@ -73,6 +73,7 @@ func _ready() -> void:
 	add_child(_whats_new)
 	_whats_new_button.text = TitleText.WHATS_NEW
 	_whats_new_button.pressed.connect(_on_whats_new_pressed)
+	_whats_new.close_requested.connect(_whats_new_button.grab_focus)
 	_version_label.text = "Version %s" % BuildInfo.label(BuildInfo.version())
 	_quit_to_title.text = TitleText.QUIT_TO_TITLE
 	_quit_to_title.pressed.connect(_on_quit_to_title_pressed)

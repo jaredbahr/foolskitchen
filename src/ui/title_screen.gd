@@ -100,6 +100,7 @@ func show_whats_new() -> void:
 func _on_whats_new_closed() -> void:
 	menu.show()
 	_layout_menu()
+	whats_new_button.grab_focus()
 
 
 func _exit_tree() -> void:

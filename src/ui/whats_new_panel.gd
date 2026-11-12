@@ -53,6 +53,7 @@ func present(version: String, notes_text: String) -> void:
 		for item: String in group["items"]:
 			_add_line(item, true)
 	show()
+	_close.grab_focus()
 	_scroll.scroll_vertical = 0
 	_layout_card()
 
