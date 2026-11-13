@@ -51,6 +51,7 @@ var _creative_tag: Label
 var _loan_principal: int = 0
 var _loan_repay_share: float = 0.0
 var _loan_daily_interest: float = 0.0
+var _site_card_blocks_repayment: bool = false
 var _reputation_label: Label
 var _owner_level_label: Label
 var _owner_xp_bar: ProgressBar
@@ -427,6 +428,16 @@ func set_loan_state(principal: int, repay_share: float, daily_interest: float) -
 		_render_loan()
 
 
+## Site selection and post-purchase prompts take priority over the loan HUD.
+## Main owns the modal state and reports it whenever the card is shown/hidden.
+func set_site_card_blocks_repayment(blocked: bool) -> void:
+	if _site_card_blocks_repayment == blocked:
+		return
+	_site_card_blocks_repayment = blocked
+	if _loan_label != null:
+		_render_loan()
+
+
 func _render_loan() -> void:
 	var balance: String = Fmt.money(_loan_principal)
 	_loan_label.text = "Loan %s" % balance
@@ -448,7 +459,7 @@ func _render_loan() -> void:
 
 func _can_repay_loan() -> bool:
 	var phase: SimClock.Phase = Clock.sim.phase
-	return _loan_label.visible and not _haggle_active \
+	return _loan_label.visible and not _site_card_blocks_repayment and not _haggle_active \
 		and (phase == SimClock.Phase.MORNING or phase == SimClock.Phase.CLOSED)
 
 

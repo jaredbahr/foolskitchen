@@ -517,6 +517,45 @@ func test_repayment_and_property_escape_preserve_each_panel_close_path() -> void
 	assert_eq(_saved_text(), original)
 
 
+func test_site_card_blocks_loan_repayment_on_morning_and_new_site_prompt() -> void:
+	var main: Node = await _start()
+	_fresh_books(200, 150)
+	main.call("_refresh_loan_hud")
+	var book: SiteBook = main.get("site_book") as SiteBook
+	assert_true(book.add_site(&"second", &"town_fixer_upper", "Second", Clock.sim.day, {}))
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	var trigger: Button = hud.get_node("Top/Row/Loan/OpenRepayment") as Button
+	var repayment: PanelContainer = hud.get_node("LoanPopover/Panel") as PanelContainer
+	var starting_cash: int = Economy.cash
+	var starting_principal: int = Economy.loan.principal
+	var starting_entries: Array[Dictionary] = Economy.ledger.entries_for_day(Clock.day)
+
+	trigger.pressed.emit()
+	assert_true(repayment.visible)
+	assert_true(main.call("set_site_card_visible", true), "the morning selector is available")
+	assert_false(repayment.visible, "the site card dismisses the higher HUD layer")
+	assert_false(trigger.visible, "the obscured repayment trigger is hidden")
+	hud.loan_repayment_requested.emit(25, false)
+	assert_eq(Economy.cash, starting_cash)
+	assert_eq(Economy.loan.principal, starting_principal)
+	assert_eq(Economy.ledger.entries_for_day(Clock.day), starting_entries)
+	main.call("set_site_card_visible", false)
+	assert_true(trigger.visible, "the trigger returns when the morning selector closes")
+
+	trigger.pressed.emit()
+	assert_true(repayment.visible)
+	assert_true(main.call("offer_new_site", &"second"), "the post-purchase prompt can be shown")
+	assert_true(main.call("is_site_card_visible"))
+	assert_false(repayment.visible, "the post-purchase prompt dismisses repayment")
+	assert_false(trigger.visible, "the direct prompt show path also blocks repayment")
+	hud.loan_repayment_requested.emit(25, false)
+	assert_eq(Economy.cash, starting_cash)
+	assert_eq(Economy.loan.principal, starting_principal)
+	assert_eq(Economy.ledger.entries_for_day(Clock.day), starting_entries)
+	main.call("set_site_card_visible", false)
+	assert_true(trigger.visible)
+
+
 func test_hud_full_repayment_unlocks_trays_and_rejects_stale_full_payment() -> void:
 	var main: Node = await _start()
 	_fresh_books(1000, 150)
