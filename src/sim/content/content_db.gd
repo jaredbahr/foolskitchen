@@ -11,6 +11,7 @@ var _walls: Dictionary[StringName, WallKindDef] = {}
 var _floors: Dictionary[StringName, FloorStyleDef] = {}
 var _wall_styles: Dictionary[StringName, WallStyleDef] = {}
 var _collections: Dictionary[StringName, CollectionDef] = {}
+var _lots: Dictionary[StringName, LotDef] = {}
 
 
 ## On failure the database is empty, so an earlier load cannot hide bad data.
@@ -23,6 +24,7 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 	_floors.clear()
 	_wall_styles.clear()
 	_collections.clear()
+	_lots.clear()
 	var errors: PackedStringArray = []
 	var ingredient_defs: Array[IngredientDef] = []
 	var recipe_defs: Array[RecipeDef] = []
@@ -80,7 +82,15 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			collection_defs.append(resource as CollectionDef)
 		else:
 			errors.append("%s: expected CollectionDef" % path)
+	var lot_defs: Array[LotDef] = []
+	for path: String in _resource_paths(root.path_join("lots"), errors):
+		var resource: Resource = ResourceLoader.load(path)
+		if resource is LotDef:
+			lot_defs.append(resource as LotDef)
+		else:
+			errors.append("%s: expected LotDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
+	errors.append_array(validate_lots(lot_defs, item_defs, _customer_type_ids(root)))
 	errors.append_array(validate_swatches(swatch_defs))
 	errors.append_array(validate_wall_kinds(wall_defs))
 	errors.append_array(validate_floor_styles(floor_defs, swatch_defs))
@@ -104,6 +114,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		_wall_styles[definition.id] = definition
 	for definition: CollectionDef in collection_defs:
 		_collections[definition.id] = definition
+	for definition: LotDef in lot_defs:
+		_lots[definition.id] = definition
 	return errors
 
 
@@ -286,6 +298,129 @@ static func validate_collections(definitions: Array[CollectionDef], item_defs: A
 		if not definition.floor_id.is_empty() and not floor_ids.has(definition.floor_id):
 			errors.append("collection '%s': unknown floor '%s'" % [definition.id, definition.floor_id])
 	return errors
+
+
+func lot(id: StringName) -> LotDef:
+	return _lots.get(id) as LotDef
+
+
+## Every lot, sorted by id; a new array each call (PropertyMarket orders the listing).
+func lots() -> Array[LotDef]:
+	var result: Array[LotDef] = []
+	var ids: Array[StringName] = []
+	ids.assign(_lots.keys())
+	ids.sort_custom(_id_before)
+	for id: StringName in ids:
+		result.append(_lots[id])
+	return result
+
+
+## Lots on the property market (FK-087, D28): unique ids other than the home
+## lot, names and blurbs, a layout whose shell has a street entry and whose
+## starting items exist, exactly one way to pay (a price, or a fixer price
+## with a renovation bill and 2 to 5 days), rent, an expansion that costs
+## something and does not lower the rent, a tier and reputation in range, a
+## guest mix over known customer types, and known tags.
+static func validate_lots(definitions: Array[LotDef], item_defs: Array[ItemDef],
+		customer_type_ids: Array[StringName]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var ids: Dictionary[StringName, bool] = {}
+	var item_ids: Dictionary[StringName, bool] = {}
+	for item: ItemDef in item_defs:
+		if item != null:
+			item_ids[item.id] = true
+	for index: int in range(definitions.size()):
+		var definition: LotDef = definitions[index]
+		if definition == null:
+			errors.append("lot[%d] is null" % index)
+			continue
+		_check_id(definition.id, "lot", ids, errors)
+		var who: String = "lot '%s'" % definition.id
+		if definition.id == SiteBook.HOME_LOT:
+			errors.append("%s: the home lot is never listed" % who)
+		if definition.display_name.strip_edges().is_empty():
+			errors.append("%s: display_name is empty" % who)
+		if definition.blurb.strip_edges().is_empty():
+			errors.append("%s: blurb is empty" % who)
+		errors.append_array(_lot_layout_errors(definition, who, item_ids))
+		if definition.price < 0 or definition.fixer_price < 0 or definition.renovation_bill < 0:
+			errors.append("%s: prices must be >= 0" % who)
+		elif (definition.price > 0) == (definition.fixer_price > 0):
+			errors.append("%s: needs exactly one of price (move-in ready) or fixer_price" % who)
+		elif definition.is_fixer_upper():
+			if definition.renovation_bill <= 0 or definition.renovation_days < LotDef.MIN_RENOVATION_DAYS \
+					or definition.renovation_days > LotDef.MAX_RENOVATION_DAYS:
+				errors.append("%s: a fixer-upper needs a renovation bill and %d to %d days of work" \
+					% [who, LotDef.MIN_RENOVATION_DAYS, LotDef.MAX_RENOVATION_DAYS])
+		elif definition.renovation_bill != 0 or definition.renovation_days != 0:
+			errors.append("%s: a move-in ready lot has no renovation" % who)
+		if definition.daily_rent <= 0:
+			errors.append("%s: daily_rent must be > 0" % who)
+		if definition.expansion_price <= 0 or definition.expanded_daily_rent < definition.daily_rent:
+			errors.append("%s: every lot can expand: expansion_price > 0 and expanded_daily_rent >= daily_rent" % who)
+		if definition.min_tier < 1 or definition.min_tier > CareerTierTuning.TOP_TIER:
+			errors.append("%s: min_tier must be 1 to %d" % [who, CareerTierTuning.TOP_TIER])
+		if not is_finite(definition.min_reputation) or definition.min_reputation < 0.0 \
+				or definition.min_reputation > 5.0:
+			errors.append("%s: min_reputation must be 0 to 5 stars" % who)
+		if definition.guest_mix.is_empty():
+			errors.append("%s: guest_mix is empty" % who)
+		for kind: StringName in definition.guest_mix:
+			var share: float = definition.guest_mix[kind]
+			if not customer_type_ids.has(kind):
+				errors.append("%s: unknown customer type '%s'" % [who, kind])
+			if not is_finite(share) or share <= 0.0:
+				errors.append("%s: guest share for '%s' must be > 0" % [who, kind])
+		var seen_tags: Dictionary[StringName, bool] = {}
+		for tag: StringName in definition.tags:
+			if not LotDef.KNOWN_TAGS.has(tag):
+				errors.append("%s: unknown tag '%s'" % [who, tag])
+			elif seen_tags.has(tag):
+				errors.append("%s: tag '%s' is duplicated" % [who, tag])
+			seen_tags[tag] = true
+	return errors
+
+
+static func _lot_layout_errors(definition: LotDef, who: String, item_ids: Dictionary[StringName, bool]) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var layout: ShopLayout = definition.base_layout
+	if layout == null:
+		errors.append("%s: base_layout is missing" % who)
+		return errors
+	if layout.rows.is_empty() or definition.size_cells() <= 0:
+		errors.append("%s: base_layout has no floor" % who)
+		return errors
+	var width: int = layout.rows[0].length()
+	var has_entry: bool = false
+	for row: String in layout.rows:
+		if row.length() != width:
+			errors.append("%s: base_layout rows differ in width" % who)
+			break
+		has_entry = has_entry or row.contains("E")
+	if not has_entry:
+		errors.append("%s: base_layout has no street entry" % who)
+	for placement: ShopPlacement in layout.placements:
+		if placement == null or not item_ids.has(placement.item_id):
+			errors.append("%s: base_layout places an unknown item" % who)
+			break
+	if layout.lot_west < 0 or layout.lot_east < 0 or layout.lot_north < 0:
+		errors.append("%s: base_layout lot margins must be >= 0" % who)
+	return errors
+
+
+## Customer type ids from <root>/customers/types.tres, for the lots' guest mix.
+static func _customer_type_ids(root: String) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	var path: String = root.path_join("customers/types.tres")
+	if not ResourceLoader.exists(path):
+		return ids
+	var catalogue: CustomerTypeCatalogue = ResourceLoader.load(path) as CustomerTypeCatalogue
+	if catalogue == null:
+		return ids
+	for kind: CustomerType in catalogue.types:
+		if kind != null:
+			ids.append(kind.id)
+	return ids
 
 
 ## Wall finishes (D26): unique ids with names, prices of 0 or more, a known

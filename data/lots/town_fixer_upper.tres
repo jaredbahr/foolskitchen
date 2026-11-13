@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="LotDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/lot_def.gd" id="1_lot"]
+[ext_resource type="Resource" path="res://data/layouts/lot_town_fixer_upper.tres" id="2_layout"]
+
+[resource]
+script = ExtResource("1_lot")
+id = &"town_fixer_upper"
+display_name = "Old Mill Street"
+blurb = "A big old bakery in the middle of town. Cheap, but it needs work before it can open."
+base_layout = ExtResource("2_layout")
+fixer_price = 6000
+renovation_bill = 2500
+renovation_days = 3
+daily_rent = 70
+expansion_price = 4000
+expanded_daily_rent = 95
+min_tier = 3
+guest_mix = Dictionary[StringName, float]({
+&"regular": 0.4,
+&"family": 0.35,
+&"student": 0.25
+})
+upstairs_allowed = true
+tags = Array[StringName]([])
