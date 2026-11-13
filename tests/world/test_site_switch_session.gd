@@ -6,6 +6,9 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "site_switch_session"
 const BOOKINGS: BookingTuning = preload("res://data/balance/bookings.tres")
+const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+const CAREER: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
+const HOURS: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 var _main: Node
 var _old_dir: String
 var _providers: Dictionary
@@ -441,3 +444,88 @@ func _assert_not_linked_to_session(old: Object) -> void:
 			var target: Object = (connection["callable"] as Callable).get_object()
 			assert_false(target == _main or target == view or target == _main.get("sound"),
 				"%s.%s still reaches the session after the switch" % [old.get_class(), signal_info["name"]])
+
+
+func _hours() -> Vector3i:
+	return Vector3i(Clock.sim.display_open_minute, Clock.sim.display_close_minute, Clock.sim.open_ticks)
+
+
+func _default_hours() -> Vector3i:
+	return Vector3i(HOURS.default_open_minute, HOURS.default_close_minute,
+		OpeningHours.open_ticks(HOURS.default_open_minute, HOURS.default_close_minute, HOURS))
+
+
+## Opening hours and the lease belong to each site (#408 part 1): the
+## "site_hours" section and the shop's "lease_expanded" swap with the site,
+## and the global clock and owner carry neither across.
+func test_each_site_keeps_its_own_hours_and_lease() -> void:
+	_start()
+	var progress: OwnerProgress = _main.get("owner_progress")
+	progress.award_bonus(progress.threshold_for(LEASE.owner_level))
+	assert_eq(progress.raise_career_tier(CAREER, 3.0), 2)
+	# A morning at the new level first, so each morning's plans (critic,
+	# bookings) are already made when the sites are compared.
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var day: int = Clock.sim.day
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", day, _captures()))
+	Economy.cash = LEASE.deposit + 10000
+	assert_true(_main.call("set_opening_hours", 12 * 60, 20 * 60))
+	assert_true(_main.call("lease_buy"))
+	var home_hours: Vector3i = _hours()
+	var home_lot: Rect2i = (_main.get("shop_editor") as ShopEditor).footprint().lot
+	var home: Dictionary = _captures()
+	assert_eq(int(home["site_hours"]["open_minute"]), 12 * 60)
+	assert_eq(home["shop"]["lease_expanded"], true)
+	assert_eq(_main.call("_home_rent"), LEASE.daily_rent, "the active home pays its expanded rent")
+
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_hours(), _default_hours(), "the second site opens on its own hours")
+	assert_false(_main.get("lease_expanded"), "and on its own lease")
+	assert_true((_main.get("shop_editor") as ShopEditor).footprint().lot != home_lot)
+	assert_true(_main.call("lease_refusal") != "Your lease is already upgraded",
+		"the second site could still expand its own lease")
+	assert_eq(_main.call("_home_rent"), LEASE.daily_rent, "the frozen home still owes its expanded rent")
+	assert_true(_main.call("set_opening_hours", 10 * 60, 22 * 60))
+	var second_hours: Vector3i = _hours()
+	assert_eq(int(Clock.sim.to_dict()["display_open_minute"]), 10 * 60, "the clock's copy follows the site")
+
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_eq(_hours(), home_hours, "the home site's hours came back")
+	assert_true(_main.get("lease_expanded"))
+	assert_eq((_main.get("shop_editor") as ShopEditor).footprint().lot, home_lot)
+	_assert_sections(_captures(), home, "a switch and back is lossless")
+	var frozen_second: Dictionary = _book().frozen_sections(&"second")
+	assert_eq(Vector3i(int(frozen_second["site_hours"]["open_minute"]),
+		int(frozen_second["site_hours"]["close_minute"]), int(frozen_second["site_hours"]["open_ticks"])),
+		second_hours, "the second site froze with its own hours")
+	assert_eq(frozen_second["shop"]["lease_expanded"], false)
+
+
+## A frozen copy without "site_hours" (none exists in a player save today)
+## opens on the default day, never on the departing site's hours.
+func test_a_frozen_site_without_hours_opens_on_the_default_day() -> void:
+	_start()
+	var frozen: Dictionary = _captures()
+	frozen.erase("site_hours")
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", Clock.sim.day, frozen))
+	assert_true(_main.call("set_opening_hours", 12 * 60, 20 * 60))
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_hours(), _default_hours())
+
+
+## Hours outside the limits in a frozen copy reset to the default day, as a
+## load does with the clock's, instead of refusing the switch.
+func test_a_frozen_site_with_bad_hours_opens_on_the_default_day() -> void:
+	_start()
+	var frozen: Dictionary = _captures()
+	frozen["site_hours"]["open_minute"] = 60
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", Clock.sim.day, frozen))
+	assert_true(_main.call("set_opening_hours", 12 * 60, 20 * 60))
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_hours(), _default_hours())
+	var logged: bool = false
+	for line: Variant in _sim().world.event_log:
+		logged = logged or String(line).contains("Saved opening hours were outside the limits")
+	assert_true(logged, "the reset is reported")
