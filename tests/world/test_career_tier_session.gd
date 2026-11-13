@@ -47,7 +47,7 @@ func test_close_raises_tier_announces_it_and_saves_next_morning() -> void:
 	var morning_file: String = _saved_text()
 	_close_day(main)
 	assert_eq(owner.career_tier, 2)
-	assert_eq(owner.property_tier, 1, "the lease is untouched")
+	assert_false(main.get("lease_expanded"), "the lease is untouched")
 	var report: DayReport = main.get("shown_report") as DayReport
 	assert_eq(report.career_tier_line, "Your restaurant reached Tier 2!")
 	assert_eq(DayReport.from_dict(report.to_dict()).career_tier_line, report.career_tier_line)
@@ -96,7 +96,7 @@ func test_tier_two_dish_opens_at_level_three_without_the_lease() -> void:
 	main.call("_refresh_menu_catalogue")
 	assert_null(menu.recipe(recipe.id), "level 3 alone waits for the close's Tier 2")
 	_close_day(main)
-	assert_eq([owner.career_tier, owner.property_tier], [2, 1])
+	assert_eq([owner.career_tier, main.get("lease_expanded")], [2, false])
 	assert_true((main.get("shown_report") as DayReport).owner_unlocks.has("Tomato melt recipe"),
 		"the report names content the new tier opened")
 	assert_true(Clock.sim.next_day())
@@ -113,13 +113,15 @@ func test_legacy_owner_section_loads_tier_from_the_lease() -> void:
 		var document: Dictionary = _document()
 		var progress: Dictionary = document["data"]["owner"]["progress"]
 		progress.erase("career_tier")
+		# Saves from before #408 part 1 kept the lease on the owner only.
+		document["data"]["shop"].erase("lease_expanded")
 		if expanded:
 			progress["property_tier"] = 2
 		_write_document(document)
 		var second: Node = await _start(true)
 		var owner: OwnerProgress = second.get("owner_progress") as OwnerProgress
 		assert_eq(owner.career_tier, 2 if expanded else 1)
-		assert_eq(owner.property_tier, 2 if expanded else 1)
+		assert_eq(second.get("lease_expanded"), expanded, "the old owner lease is the site's own")
 		_close(second)
 		SaveSystem.delete_slot(SLOT)
 

@@ -30,16 +30,17 @@ func layout_for(base: ShopLayout, tier: int) -> ShopLayout:
 	return layout
 
 
-func offered(progress: OwnerProgress, phase: int) -> bool:
-	return is_valid() and progress != null and progress.property_tier == 1 \
+## `expanded`: the active site's own lease (FK-087), never the owner's.
+func offered(progress: OwnerProgress, expanded: bool, phase: int) -> bool:
+	return is_valid() and progress != null and not expanded \
 		and progress.effective_tier() >= 2 and phase == SimClock.Phase.MORNING
 
 
 ## One source of plain player-facing refusal text for the panel and command.
-func refusal(progress: OwnerProgress, phase: int, cash: int, loan: int) -> String:
+func refusal(progress: OwnerProgress, expanded: bool, phase: int, cash: int, loan: int) -> String:
 	if not is_valid():
 		return "This lease is not available"
-	if progress.property_tier != 1:
+	if expanded:
 		return "Your lease is already upgraded"
 	if phase != SimClock.Phase.MORNING:
 		return "Upgrade your lease in the morning"

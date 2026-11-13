@@ -7,8 +7,8 @@ extends RefCounted
 
 const GLOBAL: PackedStringArray = [
 	"owner", "game_state",
-	# The clock is the shared calendar. Per-site opening hours split out of it
-	# later as "site_hours".
+	# The clock is the shared calendar. Each site's opening hours are its own
+	# "site_hours" section; the clock's copy follows the active site.
 	"clock",
 	"economy", "blueprints", "milestones", "weekly_challenge", "hints", "weather",
 	"collection_toasts", "sites",
@@ -21,6 +21,8 @@ const PER_SITE: PackedStringArray = [
 	"regulars", "reorder", "deliveries", "demand", "viral", "business_history",
 	"shop_records", "cat", "inspection", "critic", "bookings", "rush_hour",
 	"aquarium", "pantry",
+	# Opening hours (FK-087 part 1, #408), split out of "clock".
+	"site_hours",
 ]
 
 

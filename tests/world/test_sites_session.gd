@@ -113,3 +113,106 @@ func test_a_site_frozen_after_this_morning_refuses_the_load() -> void:
 	_start(true)
 	var loaded: SiteBook = _main.get("site_book")
 	assert_eq(loaded.site_count(), 1, "a refused load starts over with the starter site")
+
+
+func _hours() -> Vector3i:
+	return Vector3i(Clock.sim.display_open_minute, Clock.sim.display_close_minute, Clock.sim.open_ticks)
+
+
+## Saves from before #408 part 1 kept the hours in the clock only: they load
+## with those hours, and the next save writes them as the site's own.
+func test_an_old_save_without_site_hours_keeps_the_clocks_hours() -> void:
+	_start(true)
+	var document: Dictionary = _document()
+	document["data"].erase("site_hours")
+	document["data"]["clock"]["display_open_minute"] = 12 * 60
+	document["data"]["clock"]["display_close_minute"] = 20 * 60
+	document["data"]["clock"]["open_ticks"] = 8 * 60 * 6
+	_write(document)
+	_close()
+	_start(true)
+	assert_eq(_hours(), Vector3i(12 * 60, 20 * 60, 8 * 60 * 6))
+	var saved: Dictionary = SaveSystem.capture_sections(PackedStringArray(["site_hours"]))
+	assert_eq(JSON.stringify(saved["site_hours"]), JSON.stringify({"version": 1.0, "open_minute": 720.0,
+		"close_minute": 1200.0, "open_ticks": 2880.0}))
+
+
+## The site's own hours win over the clock's copy; hours outside the limits
+## reset to the default day without losing the game; a malformed section is
+## refused like any other.
+func test_saved_site_hours_load_and_bad_ones_reset() -> void:
+	_start(true)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var day: int = Clock.sim.day
+	var document: Dictionary = _document()
+	var default_hours: Vector3i = _hours()
+	document["data"]["site_hours"] = {"version": 1, "open_minute": 12 * 60, "close_minute": 20 * 60,
+		"open_ticks": 100}
+	_write(document)
+	_close()
+	_start(true)
+	assert_eq(_hours(), Vector3i(12 * 60, 20 * 60, 100), "the site's own hours, with its service length")
+	_close()
+	document["data"]["site_hours"]["close_minute"] = 23 * 60 + 45
+	_write(document)
+	_start(true)
+	assert_eq(Clock.sim.day, day, "the game was kept")
+	assert_eq(_hours(), default_hours, "hours off the half-hour steps reset")
+	_close()
+	for bad: Dictionary in [{"version": 1, "open_minute": "noon", "close_minute": 1200, "open_ticks": 1},
+			{"version": 2, "open_minute": 720, "close_minute": 1200, "open_ticks": 1},
+			{"version": 1, "open_minute": 720, "close_minute": 1200, "open_ticks": 0},
+			{"version": 1, "open_minute": 720, "close_minute": 1200, "open_ticks": 1, "extra": 1}]:
+		document["data"]["site_hours"] = bad
+		_write(document)
+		_start(true)
+		assert_true(Clock.sim.day != day, "a malformed section refuses the load: %s" % JSON.stringify(bad))
+		_close()
+
+
+## Bad hours in both the clock and its site_hours copy are one problem: the
+## load resets them and says so once (#463 review).
+func test_bad_hours_in_clock_and_site_hours_are_reported_once() -> void:
+	_start(true)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var day: int = Clock.sim.day
+	var default_hours: Vector3i = _hours()
+	var document: Dictionary = _document()
+	document["data"]["clock"]["display_open_minute"] = 60
+	document["data"]["site_hours"]["open_minute"] = 60
+	_write(document)
+	_close()
+	_start(true)
+	assert_eq(Clock.sim.day, day, "the game was kept")
+	assert_eq(_hours(), default_hours)
+	var notes: int = 0
+	for line: Variant in (_main.get("sim") as RestaurantSim).world.event_log:
+		if String(line).contains("Saved opening hours were outside the limits"):
+			notes += 1
+	assert_eq(notes, 1, "reported once")
+
+
+## An old save (no site_hours) whose clock hours are out of limits used to
+## lose the note: it was logged into the world the load then replaced.
+func test_an_old_save_with_bad_clock_hours_still_reports_the_reset() -> void:
+	_start(true)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var default_hours: Vector3i = _hours()
+	var document: Dictionary = _document()
+	document["data"]["clock"]["display_open_minute"] = 60
+	(document["data"] as Dictionary).erase("site_hours")
+	_write(document)
+	_close()
+	_start(true)
+	assert_eq(_hours(), default_hours)
+	var notes: int = 0
+	for line: Variant in (_main.get("sim") as RestaurantSim).world.event_log:
+		if String(line).contains("Saved opening hours were outside the limits"):
+			notes += 1
+	assert_eq(notes, 1, "the reset is reported")
