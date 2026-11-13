@@ -3392,6 +3392,9 @@ func switch_site(target: StringName) -> bool:
 	var refunds: Array = thawed["refunds"]
 	for refund: Dictionary in refunds:
 		Economy.add_cash(int(refund["amount"]), StringName(refund["category"]), String(refund["note"]))
+	# A switch is this morning's site choice: the card does not come back.
+	_site_card_day = day
+	set_site_card_visible(false)
 	# The arriving site's morning, for today: delivery and restock, staff, plans
 	# and offers. Weather, the weekly challenge and the calendar are global
 	# and already set for today, so they are not drawn again. Its autosave is
@@ -4916,12 +4919,7 @@ func _purchase_refusal(lot: LotDef) -> PropertyMarket.Refusal:
 
 
 func _lot_def(lot_id: StringName) -> LotDef:
-	if content == null:
-		return null
-	for lot: LotDef in content.lots():
-		if lot.id == lot_id:
-			return lot
-	return null
+	return content.lot(lot_id) if content != null else null
 
 
 ## Buys a lot this morning (FK-087, #464): pays its price, or a fixer-upper's

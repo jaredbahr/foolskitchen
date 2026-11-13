@@ -57,7 +57,8 @@ func set_rows(rows: Array[Row]) -> void:
 	var list: VBoxContainer = get_node("Center/Panel/Content/List") as VBoxContainer
 	for child: Node in list.get_children():
 		list.remove_child(child)
-		child.free()
+		# Queued: a pick button may be the one emitting right now.
+		child.queue_free()
 	_ids.clear()
 	for row: Row in rows:
 		list.add_child(_make_row(row, _ids.size()))

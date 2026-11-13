@@ -97,7 +97,9 @@ func test_malformed_sections_are_refused() -> void:
 		{"id": "harbour", "lot": "pier_lot", "name": "", "manager": "", "frozen_day": "2", "sections": {}}]}
 	assert_true(SiteBook.from_dict(good) != null)
 	var cases: Array[Callable] = [
-		func(d: Dictionary) -> void: d["version"] = 2,
+		func(d: Dictionary) -> void: d["version"] = 3,
+		func(d: Dictionary) -> void: d["version"] = 0,
+		func(d: Dictionary) -> void: d["sites"][1]["renovation_days_left"] = 2,
 		func(d: Dictionary) -> void: d["active"] = "elsewhere",
 		func(d: Dictionary) -> void: d["sites"] = {},
 		func(d: Dictionary) -> void: d["sites"].append(d["sites"][1].duplicate(true)),
@@ -125,3 +127,69 @@ func test_malformed_sections_are_refused() -> void:
 		var data: Dictionary = good.duplicate(true)
 		cases[index].call(data)
 		assert_true(SiteBook.from_dict(data) == null, "malformed case %d is refused" % index)
+
+
+## #464: version 2 keeps a fixer-upper's days of work on its row.
+func _v2_with(days: Variant) -> Dictionary:
+	return {"version": 2, "active": "home", "sites": [
+		{"id": "home", "lot": "home", "name": "", "manager": ""},
+		{"id": "mill", "lot": "mill_lot", "name": "Old Mill", "manager": "", "frozen_day": "2",
+			"sections": {}, "renovation_days_left": days}]}
+
+
+func test_a_version_one_section_migrates_with_every_site_ready() -> void:
+	var old: Dictionary = {"version": 1, "active": "harbour", "sites": [
+		{"id": "home", "lot": "home", "name": "", "manager": "", "frozen_day": "3", "sections": {}},
+		{"id": "harbour", "lot": "pier_lot", "name": "Pier Shack", "manager": "staff_2"}]}
+	var book: SiteBook = SiteBook.from_dict(_json(old))
+	assert_true(book != null, "a version 1 section still loads")
+	assert_eq(book.active_id, &"harbour")
+	assert_eq(book.renovation_days_left(&"home"), 0)
+	assert_eq(book.renovation_days_left(&"harbour"), 0)
+	assert_true(book.can_swap(&"home", 3))
+	var saved: Dictionary = _json(book.to_dict())
+	assert_eq(int(saved["version"]), SiteBook.VERSION, "it saves as the new version")
+	assert_eq(SiteBook.VERSION, 2)
+	for row: Dictionary in saved["sites"]:
+		assert_false(row.has("renovation_days_left"), "a ready site writes no renovation field")
+	assert_eq(_json(SiteBook.from_dict(saved).to_dict()), saved, "and round-trips")
+
+
+func test_a_renovating_site_round_trips_counts_down_and_cannot_swap_until_ready() -> void:
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.add_site(&"mill", &"mill_lot", "Old Mill", 4, SECTIONS, 3))
+	assert_eq(book.renovation_days_left(&"mill"), 3)
+	assert_false(book.can_swap(&"mill", 4), "a site under renovation is not a swap target")
+	assert_false(book.swap_active(&"mill", 4, SECTIONS))
+	var copy: SiteBook = SiteBook.from_dict(_json(book.to_dict()))
+	assert_true(copy != null)
+	assert_eq(copy.renovation_days_left(&"mill"), 3, "the days left are saved on the row")
+	assert_eq(_json(copy.to_dict()), _json(book.to_dict()))
+	assert_eq(copy.count_down_renovations(), [] as Array[StringName])
+	assert_eq(copy.renovation_days_left(&"mill"), 2)
+	assert_eq(copy.count_down_renovations(), [] as Array[StringName])
+	assert_false(copy.can_swap(&"mill", 6))
+	assert_eq(copy.count_down_renovations(), [&"mill"] as Array[StringName], "ready on the third day")
+	assert_eq(copy.renovation_days_left(&"mill"), 0)
+	assert_true(copy.can_swap(&"mill", 7))
+	assert_eq(copy.count_down_renovations(), [] as Array[StringName], "a ready site stays at 0")
+	assert_false((copy.to_dict()["sites"][1] as Dictionary).has("renovation_days_left"))
+
+
+func test_renovation_days_are_checked() -> void:
+	var book: SiteBook = SiteBook.new()
+	assert_false(book.add_site(&"mill", &"mill_lot", "", 1, SECTIONS, -1))
+	assert_false(book.add_site(&"mill", &"mill_lot", "", 1, SECTIONS, SiteBook.MAX_RENOVATION_DAYS + 1))
+	assert_eq(book.site_count(), 1)
+	assert_true(SiteBook.from_dict(_json(_v2_with(5))) != null)
+	assert_true(SiteBook.from_dict(_json(_v2_with(1))) != null)
+	for bad: Variant in [0, 6, -1, 2.5, "2", null, true]:
+		assert_true(SiteBook.from_dict(_v2_with(bad)) == null, "renovation %s is refused" % str(bad))
+
+
+func test_owns_lot_reads_every_site() -> void:
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.owns_lot(SiteBook.HOME_LOT))
+	assert_false(book.owns_lot(&"mill_lot"))
+	assert_true(book.add_site(&"mill", &"mill_lot", "", 1, SECTIONS, 2))
+	assert_true(book.owns_lot(&"mill_lot"))

@@ -43,7 +43,8 @@ func set_market(lots: Array[LotDef], buyer: Buyer, catalogue: CustomerTypeCatalo
 	for child: Node in list.get_children():
 		if child.name != "EmptyState":
 			list.remove_child(child)
-			child.free()
+			# Queued: a Buy button may be the one emitting right now.
+			child.queue_free()
 	_ids.clear()
 	for lot: LotDef in PropertyMarket.listing(lots):
 		list.add_child(_make_card(lot, buyer, catalogue, _ids.size()))
