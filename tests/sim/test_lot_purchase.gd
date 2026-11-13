@@ -104,6 +104,10 @@ func test_buy_button_words_and_reasons_are_plain() -> void:
 	capped.sites_by_tier = [1, 1, 2, 2, 2, 2] as Array[int]
 	assert_eq(PropertyText.refusal_line(fixer, PropertyMarket.Refusal.LIMIT, 0, 2, capped),
 		"You run as many restaurants as you can.")
+	assert_eq(PropertyText.renovation_report_note(2, false), "; renovating, 2 days left")
+	assert_eq(PropertyText.renovation_report_note(1, false), "; renovating, 1 day left")
+	assert_eq(PropertyText.renovation_report_note(0, true), "; renovation done, ready to open")
+	assert_eq(PropertyText.renovation_report_note(0, false), "")
 	assert_eq(PropertyText.bought_line(fixer),
 		"You bought Old Mill Street. It needs 3 days of work before it can open.")
 

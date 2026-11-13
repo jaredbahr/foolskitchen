@@ -13,6 +13,9 @@ const BUY_REFUSED: String = "Buy"
 const OWNED_LINE: String = "You own this lot."
 const LOAN_LINE: String = "Pay off your loan before buying a lot."
 const LIMIT_TOP_LINE: String = "You run as many restaurants as you can."
+const UNKNOWN_LOT_LINE: String = "That lot is not on the market."
+const NOT_LISTED_LINE: String = "That lot is not on the market yet."
+const MORNING_LINE: String = "Buy property in the morning."
 const EMPTY: String = "No lots are on the market."
 ## Lot tags as perks (LotDef.KNOWN_TAGS); a tag missing here shows nothing.
 const TAG_PERKS: Dictionary[StringName, String] = {
@@ -123,6 +126,13 @@ static func refusal_line(lot: LotDef, refusal: PropertyMarket.Refusal, cash: int
 		PropertyMarket.Refusal.CASH:
 			return "Not enough cash: you need %s more." % Fmt.money(maxi(0, lot.cost_to_open() - cash))
 	return ""
+
+
+## The evening report's note on a renovating away site, or "" when none.
+static func renovation_report_note(days_left: int, just_finished: bool) -> String:
+	if days_left > 0:
+		return "; renovating, %d %s left" % [days_left, "day" if days_left == 1 else "days"]
+	return "; renovation done, ready to open" if just_finished else ""
 
 
 ## The log line after a purchase.

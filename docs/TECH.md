@@ -3674,10 +3674,55 @@ foodies" from half the mix, else the top two). The Menu's header has a
 Property button from Tier 3 (`MenuPanel.set_property_available`, set by
 `set_menu_visible`); it opens `PropertyPanel` (`main.gd`
 `set_property_visible`, a morning view like Goals that closes back to the
-Menu and is dismissed wherever Goals is). Each card's Buy button is disabled
-and reads "Coming soon". Nothing is bought, moved, saved or simulated
-differently; `AwaySites.lot_rent` still charges nothing for a non-home lot.
-Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12`.
+Menu and is dismissed wherever Goals is). `AwaySites.lot_rent` still charges
+nothing for a non-home lot (#465).
+Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12` (Tier 3
+with $9,000 on the live owner: the fixer-upper's Buy button enabled).
+
+**Buying a lot (#464, part 1b).** `PropertyMarket.purchase_refusal(lot, tier,
+reputation, owned, site_count, limits, cash, loan)` gives the first reason,
+in order: `OWNED`, `LOCKED` (tier, stars, or below the market tier), `LIMIT`
+(`SiteLimitTuning`, `data/balance/sites.tres`: `sites_by_tier` = 1, 1, 2, 2,
+3, unlimited for Tiers 1 to 6), `LOAN` (an open loan, like the lease), `CASH`
+(less than `cost_to_open`); `NONE` when it can be bought.
+`purchase_charges(lot)` is the price as `LOT_PURCHASE`, or the fixer price as
+`LOT_PURCHASE` plus the renovation bill as `RENOVATION`, both booked to the
+active site (non-operating, so they show as "New premises" and "Renovation"
+on its report but never reach its profit, XP or history). `PropertyText`
+words the Buy button ("Buy for $8,500", "Owned", "Locked", "Buy") and the
+card's reason line ("Not enough cash: you need $500 more.", "Your tier allows
+2 restaurants. Reach Tier 5 to run more.", "Pay off your loan before buying a
+lot.", "You own this lot."). `main.gd` `buy_lot(lot_id)` (the panel's
+`buy_requested`) refuses with `lot_purchase_refusal` (also "Buy property in
+the morning."), builds the new site's sections (`_new_site_sections`: only a
+`shop` section, the lot's `base_layout` as a fresh `ShopEditor` saves it, no
+trays, lease not expanded; every other per-site section takes its new-game
+default on the first switch, as a load does, so the site starts with the
+default crew and menu), and adds it with `SiteBook.add_site(lot.id, lot.id,
+lot.display_name, today, sections, renovation_days)`: the site id is the lot
+id. `_base_for_saved_shop` resolves a lot's `save_layout_id`
+(`lot_<id>`) to its `base_layout`. Nothing is saved at the purchase (code rule
+9); the next morning's autosave writes it.
+Locks read `main.gd` `closing_reputation()`: the active site's reputation once
+it has closed a day (its `business_history` has a row), the value `CareerTier`
+read at that close; NAN before the first close, so a first-morning lock line
+reads "Locked: needs 4.2 stars" instead of quoting the starting 3.0.
+
+**Morning site card (#464, Jared 2026-11-13).** `SiteCard`
+(`src/ui/site_card.tscn`, every line in `site_card.gd`) shows at the end of
+`_begin_morning` once a morning (`_site_card_day`) when the owner has two or
+more sites and the first-morning owner picker is not up; a dim backdrop
+blocks the world until a choice. One row per site (active first): its name,
+"Yesterday's takings: $412" (`SiteMorning.takings`: that site's own `SALE`,
+`TIP` and `AWAY_SITE_INCOME` ledger entries for yesterday) or "Renovating: 3
+days", "Manager: Ana" or "No manager" (the active roster, or the frozen
+`staff` section), and a button: "Stay here" on the current site (and
+Escape), "Work here" (calls `switch_site`), or a disabled "Renovating" when
+`can_switch_site` refuses. A switch marks the card shown for that day, so the
+arriving site's morning does not show it again. Opening the restaurant hides
+it, and it cannot be shown outside the morning. Capture:
+`tools/screenshot.sh --site-card-review --speed=0 --frames=12` (Tier 5, the
+fixer-upper bought, the seaside lot added as a ready site).
 
 **Lot-only content.** `ItemDef` and `IngredientDef` gain `lot_tags` (empty =
 everywhere). The catalogue, blueprint stamps and stock panel show a tagged
@@ -3750,9 +3795,8 @@ made): that morning's results stay with it. Steps:
    then autosave once.
 Owner is global and already installed, so its order before `shop` and `menu`
 still holds.
-Built so far (#408 C3): `main.gd` `switch_site(target)` (tests only, no UI
-yet; a plain morning site picker comes with buying a lot, since until then no
-game has a second site). Validation and install are `_validate_staged_sections` and
+Built so far (#408 C3): `main.gd` `switch_site(target)`, called by the
+morning site card since #464. Validation and install are `_validate_staged_sections` and
 `_install_staged_sections`, shared with the morning load (which also stages
 the global sections); the switch carries today's weather to the new world. A
 frozen copy without a `pantry` gets an empty one (the pantry restores in
@@ -3825,9 +3869,21 @@ business history or weekly challenge.
 
 **Limits and renovation.** `data/balance/sites.tres`: sites allowed by career
 tier (2 at Tier 3, 3 at Tier 5, unlimited at Tier 6). A fixer-upper's site
-stores `renovation_days_left`; while above 0 it can be active for designing but
-cannot open, and the days count down at each close of whichever site is
-active.
+stores `renovation_days_left`, and the days count down at each close of
+whichever site is active.
+Built (#464): the `sites` section is VERSION 2. A row may carry
+`"renovation_days_left"`: a whole number 1 to `LotDef.MAX_RENOVATION_DAYS`,
+written only while above 0 (0 or anything else present is refused). Version 1
+still loads (the migration: every site ready) and saves as version 2.
+`SiteBook.add_site(..., renovation_days)`, `renovation_days_left(id)`,
+`count_down_renovations()` (called at the top of `_close_away_sites`, so only
+with two or more sites; returns the ids that became ready) and `owns_lot`.
+While above 0 the site cannot be switched to (`SiteBook.can_swap` refuses, so
+`can_switch_site` does), which also keeps it from opening: this follows the
+#464 brief, not D28's "you can design inside" during renovation, which is
+left for later. The evening report's away line adds "; renovating, 2 days
+left", then "; renovation done, ready to open". A fixer-upper bought on day D
+with 3 days can be chosen on the morning of D+3.
 
 **Bookings.** A group booking belongs to its site. If that site is not
 active on the booked day, the booking lapses at that day's close with the

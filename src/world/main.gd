@@ -4902,13 +4902,13 @@ func closing_reputation() -> float:
 func lot_purchase_refusal(lot_id: StringName) -> String:
 	var lot: LotDef = _lot_def(lot_id)
 	if lot == null:
-		return "That lot is not on the market."
+		return PropertyText.UNKNOWN_LOT_LINE
 	if not can_edit_menu() or display_only:
-		return "Buy property in the morning."
+		return PropertyText.MORNING_LINE
 	var refusal: PropertyMarket.Refusal = _purchase_refusal(lot)
 	if refusal == PropertyMarket.Refusal.LOCKED:
 		var lock: String = PropertyText.lock_line(lot, owner_progress.career_tier, closing_reputation())
-		return lock if not lock.is_empty() else "That lot is not on the market yet."
+		return lock if not lock.is_empty() else PropertyText.NOT_LISTED_LINE
 	return PropertyText.refusal_line(lot, refusal, Economy.spendable(), site_book.site_count(), SITE_LIMITS)
 
 
@@ -6430,13 +6430,8 @@ func _close_away_sites(day: int) -> void:
 		for movement: Dictionary in plan["movements"]:
 			Economy.add_cash_for_site(int(movement["amount"]), movement["category"],
 				String(movement["note"]), site)
-		var line: String = AwaySites.report_line(label, plan)
-		var left: int = site_book.renovation_days_left(site)
-		if left > 0:
-			line += "; renovating, %d %s left" % [left, "day" if left == 1 else "days"]
-		elif ready.has(site):
-			line += "; renovation done, ready to open"
-		_away_site_lines.append(line)
+		_away_site_lines.append(AwaySites.report_line(label, plan)
+			+ PropertyText.renovation_report_note(site_book.renovation_days_left(site), ready.has(site)))
 
 
 ## The member running the active site while the owner is at another, or
