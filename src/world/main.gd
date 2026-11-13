@@ -48,6 +48,7 @@ const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
 const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
 const HOURS_TUNING: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 const SITE_HOURS_VERSION: int = 1
+const HOURS_RESET_NOTE: String = "Saved opening hours were outside the limits; reset to the default hours"
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 ## A Creative game's Goals panel (FK-141): collections and records only.
@@ -2982,6 +2983,9 @@ class StagedSite extends RefCounted:
 	## minute, z service ticks. hours_note says why they were reset, if so.
 	var hours: Vector3i
 	var hours_note: String = ""
+	## True when the hours went back to the default day: the rush plan is
+	## fitted to them at install rather than checked.
+	var hours_reset: bool = false
 	## Global parts, staged by a morning load only.
 	var weather: WeatherState
 	var career: MilestoneTracker
@@ -3027,14 +3031,16 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 		return _refuse_staged(with_globals, "Saved business history is ahead of this morning")
 	if _loaded_shop_records != null and not _loaded_shop_records.valid_before(Clock.sim.day):
 		return _refuse_staged(with_globals, "Saved records are ahead of this morning")
+	var clock_hours_reset: bool = false
 	if with_globals:
 		if _loaded_sites != null and not _loaded_sites.valid_before(Clock.sim.day):
 			world.log_event("Saved sites are ahead of this morning; starting a new game")
 			return null
 		if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 			# Keep the game; only the hours go back to the default day.
+			# The note is logged once, at install, in the installed world.
 			OpeningHours.apply(Clock.sim, HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING)
-			world.log_event("Saved opening hours were outside the limits; reset to the default hours")
+			clock_hours_reset = true
 		if owner_progress.last_awarded_day >= Clock.sim.day:
 			world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
 			return null
@@ -3062,7 +3068,13 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 	# A save without a shop section predates part 1: its lease is the owner's.
 	staged.lease_expanded = _loaded_lease_expanded if _loaded_layout != null \
 		else owner_progress.property_tier == 2
-	_stage_site_hours(staged, with_globals)
+	_stage_site_hours(staged, with_globals, clock_hours_reset)
+	# The rush plan is checked against the hours the site will open with (its
+	# own staged hours, not the departing site's clock). Hours that went back
+	# to the default day fit the plan to them at install instead.
+	if not _loaded_rush_hour.is_empty() and not staged.hours_reset \
+			and not RushHour.new(RUSH_TUNING).from_dict(_loaded_rush_hour, staged.hours.x, staged.hours.y):
+		return _refuse_staged(with_globals, "Saved rush hour does not fit its opening hours")
 	var layout: ShopLayout = _loaded_layout
 	if layout == null:
 		layout = LEASE.layout_for(base, 2 if staged.lease_expanded else 1)
@@ -3103,16 +3115,21 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 
 
 ## The opening hours the staged site opens with (FK-087). Its own saved
-## "site_hours" when present and within the limits; otherwise the default day,
-## except that a morning load of a save from before the section keeps the
-## clock's hours (which the load has already checked). Changes nothing live.
-func _stage_site_hours(staged: StagedSite, with_globals: bool) -> void:
+## "site_hours" when present and within the limits; otherwise the default day
+## (hours_reset), except that a morning load of a save from before the section
+## keeps the clock's hours (which the load has already checked, and reset when
+## `clock_reset`). Either reset sets the one note the install logs. Changes
+## nothing live.
+func _stage_site_hours(staged: StagedSite, with_globals: bool, clock_reset: bool) -> void:
 	var default_hours: Vector3i = Vector3i(HOURS_TUNING.default_open_minute,
 		HOURS_TUNING.default_close_minute, OpeningHours.open_ticks(
 		HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING))
 	if _loaded_site_hours.is_empty():
 		staged.hours = Vector3i(Clock.sim.display_open_minute, Clock.sim.display_close_minute,
 			Clock.sim.open_ticks) if with_globals else default_hours
+		staged.hours_reset = clock_reset if with_globals else true
+		if clock_reset:
+			staged.hours_note = HOURS_RESET_NOTE
 		return
 	var saved: Vector3i = Vector3i(int(_loaded_site_hours["open_minute"]),
 		int(_loaded_site_hours["close_minute"]), int(_loaded_site_hours["open_ticks"]))
@@ -3120,7 +3137,10 @@ func _stage_site_hours(staged: StagedSite, with_globals: bool) -> void:
 		staged.hours = saved
 	else:
 		staged.hours = default_hours
-		staged.hours_note = "Saved opening hours were outside the limits; reset to the default hours"
+		staged.hours_reset = true
+		staged.hours_note = HOURS_RESET_NOTE
+	if clock_reset:
+		staged.hours_note = HOURS_RESET_NOTE
 
 
 ## Records why staged sections were refused; a load also logs the reason.
@@ -3181,6 +3201,8 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 	Clock.sim.display_open_minute = staged.hours.x
 	Clock.sim.display_close_minute = staged.hours.y
 	Clock.sim.open_ticks = staged.hours.z
+	if staged.hours_reset:
+		sim.rush_hour.fit_to_hours(staged.hours.x, staged.hours.y)
 	if not staged.hours_note.is_empty():
 		world.log_event(staged.hours_note)
 	menu_settings = staged.choices
@@ -3939,9 +3961,11 @@ func _capture_rush_hour() -> Dictionary:
 
 
 ## Stage the strict morning plan until the new sim has completed its load.
+## Shape only here: the window is checked against the site's own staged
+## hours in _validate_staged_sections (a switch restores this before the
+## arriving site's hours reach the clock).
 func _restore_rush_hour(data: Dictionary) -> bool:
-	if not RushHour.new(RUSH_TUNING).from_dict(data, Clock.sim.display_open_minute,
-		Clock.sim.display_close_minute):
+	if not RushHour.new(RUSH_TUNING).from_dict(data):
 		return false
 	_loaded_rush_hour = data.duplicate(true)
 	return true

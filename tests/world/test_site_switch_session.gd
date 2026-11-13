@@ -529,3 +529,48 @@ func test_a_frozen_site_with_bad_hours_opens_on_the_default_day() -> void:
 	for line: Variant in _sim().world.event_log:
 		logged = logged or String(line).contains("Saved opening hours were outside the limits")
 	assert_true(logged, "the reset is reported")
+
+
+## A rush planned for today at a site with late hours survives a same-morning
+## switch away and back (#463 review): the plan is checked against the
+## arriving site's own hours, not the departing site's clock.
+func test_a_same_morning_round_trip_keeps_a_rush_outside_the_other_sites_hours() -> void:
+	_start()
+	var day: int = Clock.sim.day
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", day, _captures()))
+	assert_true(_main.call("set_opening_hours", 17 * 60, 23 * 60))
+	var rush: RushHour = _sim().rush_hour
+	rush.rolled_day = day
+	rush.occasion = rush.tuning.occasions[0]
+	rush.start_minute = 20 * 60
+	rush.duration_minutes = 60
+	assert_true(rush.has_event())
+	var home: Dictionary = _captures()
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_hours(), _default_hours(), "the second site keeps 11:00 to 21:00")
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID), "the home site and its rush come back")
+	assert_eq(_book().active_id, SiteBook.HOME_ID)
+	assert_eq(_sim().rush_hour.start_minute, 20 * 60, "today's rush is still planned at 20:00")
+	_assert_sections(_captures(), home, "a switch and back is lossless")
+
+
+## Hours that go back to the default day fit a saved rush to them instead of
+## refusing the site.
+func test_a_rush_fits_hours_reset_to_the_default_day() -> void:
+	_start()
+	var day: int = Clock.sim.day
+	assert_true(_main.call("set_opening_hours", 17 * 60, 23 * 60))
+	var rush: RushHour = _sim().rush_hour
+	rush.rolled_day = day
+	rush.occasion = rush.tuning.occasions[0]
+	rush.start_minute = 21 * 60
+	rush.duration_minutes = 60
+	var frozen: Dictionary = _captures()
+	frozen["site_hours"]["open_minute"] = 60
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", day, frozen))
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_hours(), _default_hours())
+	var fitted: RushHour = _sim().rush_hour
+	assert_true(fitted.has_event(), "the rush still happens")
+	assert_true(fitted.start_minute + fitted.duration_minutes
+		<= _default_hours().y - fitted.tuning.last_orders_margin_minutes, "inside the default day")

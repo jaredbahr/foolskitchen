@@ -170,3 +170,27 @@ func test_saved_site_hours_load_and_bad_ones_reset() -> void:
 		_start(true)
 		assert_true(Clock.sim.day != day, "a malformed section refuses the load: %s" % JSON.stringify(bad))
 		_close()
+
+
+## Bad hours in both the clock and its site_hours copy are one problem: the
+## load resets them and says so once (#463 review).
+func test_bad_hours_in_clock_and_site_hours_are_reported_once() -> void:
+	_start(true)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var day: int = Clock.sim.day
+	var default_hours: Vector3i = _hours()
+	var document: Dictionary = _document()
+	document["data"]["clock"]["display_open_minute"] = 60
+	document["data"]["site_hours"]["open_minute"] = 60
+	_write(document)
+	_close()
+	_start(true)
+	assert_eq(Clock.sim.day, day, "the game was kept")
+	assert_eq(_hours(), default_hours)
+	var notes: int = 0
+	for line: Variant in (_main.get("sim") as RestaurantSim).world.event_log:
+		if String(line).contains("Saved opening hours were outside the limits"):
+			notes += 1
+	assert_eq(notes, 1, "reported once")
