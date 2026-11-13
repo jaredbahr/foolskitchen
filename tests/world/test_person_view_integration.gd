@@ -87,7 +87,7 @@ func test_native_tray_keeps_legacy_shape_and_follows_loaded_hands_and_live_count
 	var tray: MeshInstance3D = person.get_node("Tray") as MeshInstance3D
 	assert_true(tray.visible)
 	assert_eq(person.current_clip(), &"holding-both")
-	assert_eq(tray.position, person.carry_anchor_position())
+	assert_eq(tray.position, person.carry_anchor_position() + FoodPresentation.TRAY_FORWARD)
 	assert_eq((tray.mesh as BoxMesh).size, FoodPresentation.TRAY_SIZE)
 	task.payload["carried_count"] = 1
 	_view._process(0.0)

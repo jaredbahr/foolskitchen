@@ -1847,7 +1847,7 @@ func _sync_agents() -> void:
 		node.visible = not frame.hidden
 		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
-		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
+		tray.position = frame.tray_anchor + FoodPresentation.TRAY_FORWARD if ready_person else Vector3(0.0, 0.02, -0.48)
 		_show_held_crates(node, frame, ready_person)
 		_show_notebook(node, frame, ready_person)
 		_apply_fade(node, frame.fade)

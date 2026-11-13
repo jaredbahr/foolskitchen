@@ -11,6 +11,9 @@ const PASS_PLATE_STEP: float = 0.33
 const TRAY_SIZE: Vector3 = Vector3(0.72, 0.045, 0.62)
 const TRAY_PLATE_STEP: Vector2 = Vector2(0.34, 0.30)
 const TRAY_PLATE_LIFT: float = 0.025
+## The tray sits this far in front of the hands, so its back edge stays clear
+## of the server's chest (the same back edge as the old, smaller tray).
+const TRAY_FORWARD: Vector3 = Vector3(0.0, 0.0, -0.12)
 const PASS_STACK_STEP: float = 0.0375
 const SINK_STACK_STEP: float = 0.027
 ## Sideways shift of the dirty stack on the sink; the basin is only 0.32 across.
@@ -195,6 +198,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 				parent = people[ticket.carrier_id]
 				spot = frame.tray_anchor + Vector3.UP * (TRAY_PLATE_LIFT if frame.show_tray else 0.0)
 				if frame.show_tray:
+					spot += TRAY_FORWARD
 					var index: int = ticket.carry_index
 					spot += Vector3((index % 2 - 0.5) * TRAY_PLATE_STEP.x, 0.0, (index / 2 - 0.5) * TRAY_PLATE_STEP.y)
 				stage = &"carried"
