@@ -3627,8 +3627,8 @@ before part 1; buying a lot and switching wait for part 1 (#408).
 
 **Career tier (D30).** `OwnerProgress.career_tier` (1 to 6, global, saved in
 `owner`) is separate from the home lease. Today's `property_tier` (1 or 2)
-only means "the home lease is expanded"; part 1 moves it into that site's own
-data (`lease_expanded`), and a missing career tier loads as 1, or 2 when the
+only meant "the home lease is expanded"; part 1 moved it into each site's own
+data (`lease_expanded`, built: see "Save sections"), and a missing career tier loads as 1, or 2 when the
 old `property_tier` was 2 or the owner was already at Tier 2's level (#419). Tier 2 needs owner level 3 (the level today's lease
 offer needs), with or without buying the lease. Tiers 3 to 6 need an owner
 level **and** the active site's closing reputation. Tiers are climbed in order,
@@ -3638,7 +3638,7 @@ stars, Tier 4 level 9 and 4.2, Tier 5 level 12 and 4.4, Tier 6 level 15 and
 4.5). The evening report announces a new tier. Content gates (`unlock_tier`
 on items, recipes, floors and wall finishes) read `career_tier`; the lease
 offer needs `career_tier >= 2`, and lease size and rent read the site's own
-`lease_expanded` (today `property_tier == 2`).
+`lease_expanded`.
 
 **Lots (data).** `data/lots/<id>.tres` is a `LotDef`: `id`,
 `display_name`, `blurb`, `base_layout` (its own `ShopLayout` and lot
@@ -3667,7 +3667,22 @@ site when furniture moves (part 5).
   `business_history`, `shop_records`, `cat`, `inspection`, `critic`,
   `bookings`, `rush_hour`, `aquarium`, plus two split out in part 1: `pantry`
   (the kitchen stock, split out of `economy` in #411) and `site_hours`
-  (opening hours, today in `clock`).
+  (opening hours, split out of `clock` in #408).
+
+Built (#408 part 1): `site_hours` is `{"version": 1, "open_minute",
+"close_minute", "open_ticks"}`, captured from the live `SimClock` and staged
+like every per-site section; the morning load and the switch install it on
+the clock (`_stage_site_hours`, `_install_staged_sections`). The `clock`
+section keeps its own copy of the hours, which simply follows the active
+site; a save from before the section keeps the clock's hours, a frozen copy
+without it opens on the default day, and hours outside the limits reset to
+the default day with the load's note rather than refusing. The lease is the
+`shop` section's `"lease_expanded": bool` (main.gd `lease_expanded`), read by
+`_lease_layout`, `LeaseUpgrade.offered/refusal(progress, expanded, ...)` and
+`_home_rent` (which reads the home site's frozen `shop` when another site is
+active). `OwnerProgress.property_tier` is no longer saved: an old save's
+value 2 is read once as the site's lease when its `shop` has no
+`lease_expanded`, and set back to 1 once the load has installed.
 
 **Where a site's own fields live (#413).** `SiteBook` (`src/sim/sites`)
 holds the active site id and one row per site: id, lot, name, manager (a
@@ -3708,7 +3723,8 @@ made): that morning's results stay with it. Steps:
 Owner is global and already installed, so its order before `shop` and `menu`
 still holds.
 Built so far (#408 C3): `main.gd` `switch_site(target)` (tests only, no UI
-yet). Validation and install are `_validate_staged_sections` and
+yet; a plain morning site picker comes with buying a lot, since until then no
+game has a second site). Validation and install are `_validate_staged_sections` and
 `_install_staged_sections`, shared with the morning load (which also stages
 the global sections); the switch carries today's weather to the new world. A
 frozen copy without a `pantry` gets an empty one (the pantry restores in

@@ -110,12 +110,14 @@ func test_legacy_saves_load_tier_from_the_lease() -> void:
 func test_lease_offer_needs_tier_two_not_the_lease_level() -> void:
 	var lease: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 	var progress: OwnerProgress = _owner_at(5)
-	assert_false(lease.offered(progress, SimClock.Phase.MORNING))
-	assert_eq(lease.refusal(progress, SimClock.Phase.MORNING, 100000, 0),
+	assert_false(lease.offered(progress, false, SimClock.Phase.MORNING))
+	assert_eq(lease.refusal(progress, false, SimClock.Phase.MORNING, 100000, 0),
 		"Unlocks when your restaurant reaches Tier 2")
 	progress.raise_career_tier(CAREER, 3.0)
-	assert_true(lease.offered(progress, SimClock.Phase.MORNING))
-	assert_eq(lease.refusal(progress, SimClock.Phase.MORNING, 100000, 0), "")
+	assert_true(lease.offered(progress, false, SimClock.Phase.MORNING))
+	assert_eq(lease.refusal(progress, false, SimClock.Phase.MORNING, 100000, 0), "")
+	assert_false(lease.offered(progress, true, SimClock.Phase.MORNING), "an expanded site has no offer")
+	assert_eq(lease.refusal(progress, true, SimClock.Phase.MORNING, 100000, 0), "Your lease is already upgraded")
 
 
 func test_goal_and_report_text() -> void:

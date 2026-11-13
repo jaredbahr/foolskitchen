@@ -145,7 +145,7 @@ func _sample_second_morning(stars: int) -> Dictionary:
 			"menu_ids": menu_ids, "menu_count": menu.enabled_count(),
 			"visit_kinds": sim.visit_kinds(), "visit_rate": visit_rate,
 			"vibe_valid": sim.vibe_result.valid, "vibe_score": sim.vibe_result.score,
-			"owner_level": owner.level, "property_tier": owner.property_tier,
+			"owner_level": owner.level, "lease_expanded": _main.get("lease_expanded"),
 			"weather": sim.world.weather.to_dict()},
 		# Diagnostic context only: never assert old gap numbers in GREEN.
 		"existing_gap_min": sim.spawner.min_gap, "existing_gap_max": sim.spawner.max_gap,

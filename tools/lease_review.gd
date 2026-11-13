@@ -94,7 +94,7 @@ func _capture_view(main: Node, mode: String, output: String, errors: ErrorCounte
 		valid = valid and offer.is_visible_in_tree() and refusal.is_visible_in_tree() \
 			and refusal.text == "Not enough cash for the lease deposit" and accept.disabled
 	else:
-		valid = valid and progress.get("property_tier") == 2 and catalogue.is_visible_in_tree() \
+		valid = valid and main.get("lease_expanded") == true and catalogue.is_visible_in_tree() \
 			and catalogue.get("selected_category") == &"floor"
 	var image: Image = root.get_texture().get_image()
 	var png: String = output.path_join("lease-%s.png" % mode)
@@ -103,7 +103,7 @@ func _capture_view(main: Node, mode: String, output: String, errors: ErrorCounte
 	var metadata: Dictionary = {
 		"fixture": "Seed 1; synthetic owner XP/cash; no saves; production lease purchase and Expand tab",
 		"mode": mode, "engine_errors": errors.count(), "capture_timing": "frame_post_draw",
-		"cash": economy.get("cash"), "property_tier": progress.get("property_tier"),
+		"cash": economy.get("cash"), "property_tier": (2 if main.get("lease_expanded") else 1),
 		"cost": (offer.get_node("Cost") as Label).text,
 		"warning": warning.text, "warning_visible": warning.is_visible_in_tree(),
 		"refusal": refusal.text, "refusal_visible": refusal.is_visible_in_tree(),
@@ -166,7 +166,7 @@ static func prepare(main: Node, context_root: Node, mode: String) -> Dictionary:
 	var progress: RefCounted = main.get("owner_progress")
 	if mode not in ["offer", "short", "expand"] or main.get("use_saves") != false \
 			or time.get("phase") != 0 or time.get("day") != 1 or world.get("now") != 0 \
-			or clock.get("speed") != 0 or main.get("new_game_seed_override") != 1 or progress.get("level") != 1 or progress.get("property_tier") != 1:
+			or clock.get("speed") != 0 or main.get("new_game_seed_override") != 1 or progress.get("level") != 1 or main.get("lease_expanded") != false:
 		result["error"] = "lease review requires a fresh paused unsaved day-one Main"
 		return result
 	var lease: Resource = load("res://data/balance/lease_upgrade.tres")
@@ -231,7 +231,7 @@ static func evidence(main: Node, context_root: Node, fixture: Dictionary) -> Dic
 	var menu: Control = main.get_node("Overlay/MenuPanel")
 	return {"mode": fixture.get("mode"), "use_saves": main.get("use_saves"), "world_tick": main.get("world").get("now"),
 		"phase": time.get("phase"), "speed": clock.get("speed"), "owner_level": progress.get("level"),
-		"property_tier": progress.get("property_tier"), "cash": context_root.get_node("Economy").get("cash"),
+		"property_tier": (2 if main.get("lease_expanded") else 1), "cash": context_root.get_node("Economy").get("cash"),
 		"enabled_recipes": _enabled_recipes(main.get("menu_settings")),
 		"lot": _lot_data(editor.call("footprint").lot), "view_lot": _lot_data(main.get_node("ShopView").get("_lot")),
 		"menu_visible": menu.is_visible_in_tree(), "offer_visible": offer.is_visible_in_tree(),

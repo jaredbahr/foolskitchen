@@ -15,7 +15,9 @@ const LEGACY_TIER_TWO_LEVEL: int = 3
 var tuning: ProgressionTuning
 var total_xp: int = 0
 var level: int = 1
-## 1 or 2: only whether the home lease is expanded (lease size and rent).
+## Legacy, load only: 1 or 2, whether the home lease was expanded in a save
+## from before #408 part 1. The lease now belongs to each site (main.gd
+## `lease_expanded`, saved in its "shop" section), so this is never saved.
 var property_tier: int = 1
 ## The career ladder (D30), 1 to 6. Content gates read this; it is never lost.
 var career_tier: int = 1
@@ -133,8 +135,7 @@ func raise_career_tier(ladder: CareerTierTuning, reputation: float) -> int:
 
 func to_dict() -> Dictionary:
 	return {"version": SAVE_VERSION, "total_xp": total_xp, "level": level,
-		"last_awarded_day": last_awarded_day, "property_tier": property_tier,
-		"career_tier": career_tier}
+		"last_awarded_day": last_awarded_day, "career_tier": career_tier}
 
 
 ## Decode a present section transactionally. The Main save provider supplies
