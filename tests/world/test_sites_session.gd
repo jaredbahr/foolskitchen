@@ -194,3 +194,25 @@ func test_bad_hours_in_clock_and_site_hours_are_reported_once() -> void:
 		if String(line).contains("Saved opening hours were outside the limits"):
 			notes += 1
 	assert_eq(notes, 1, "reported once")
+
+
+## An old save (no site_hours) whose clock hours are out of limits used to
+## lose the note: it was logged into the world the load then replaced.
+func test_an_old_save_with_bad_clock_hours_still_reports_the_reset() -> void:
+	_start(true)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.day += 1
+	_main.call("_begin_morning")
+	var default_hours: Vector3i = _hours()
+	var document: Dictionary = _document()
+	document["data"]["clock"]["display_open_minute"] = 60
+	(document["data"] as Dictionary).erase("site_hours")
+	_write(document)
+	_close()
+	_start(true)
+	assert_eq(_hours(), default_hours)
+	var notes: int = 0
+	for line: Variant in (_main.get("sim") as RestaurantSim).world.event_log:
+		if String(line).contains("Saved opening hours were outside the limits"):
+			notes += 1
+	assert_eq(notes, 1, "the reset is reported")
