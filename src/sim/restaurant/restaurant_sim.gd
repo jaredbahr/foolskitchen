@@ -13,6 +13,8 @@ const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres"
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
+signal dish_sold_out(display_name: String)
+signal health_inspector_arrived()
 ## A detached, player-facing row without the scorer's internal cause id.
 signal review_recorded(row: Dictionary)
 ## Emitted once service has closed and every guest's departure is recorded,
@@ -460,6 +462,7 @@ func _advance_inspection() -> void:
 	inspector = arrival
 	_inspector_looked = 0
 	world.add_agent(arrival)
+	health_inspector_arrived.emit()
 
 
 func _record_inspection(facts: Dictionary) -> void:
@@ -657,6 +660,7 @@ func refresh_sold_out() -> void:
 		var short: StringName = _short_ingredient(recipe, {})
 		if not short.is_empty():
 			_mark_sold_out(recipe.id, short)
+			dish_sold_out.emit(recipe.display_name)
 
 
 ## Captures the full menu after opening deliveries. It records an opening

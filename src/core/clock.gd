@@ -134,7 +134,7 @@ func _process(delta: float) -> void:
 		return
 	_accumulator += maxf(delta, 0.0) * speed * TICKS_PER_SECOND
 	var ticks_this_frame: int = 0
-	while _accumulator >= 1.0 and ticks_this_frame < MAX_TICKS_PER_FRAME:
+	while speed > 0 and _accumulator >= 1.0 and ticks_this_frame < MAX_TICKS_PER_FRAME:
 		if sim.phase != SimClock.Phase.OPEN and sim.phase != SimClock.Phase.LAST_ORDERS:
 			_accumulator = 0.0
 			break
@@ -149,7 +149,7 @@ func _process(delta: float) -> void:
 		_accumulator -= 1.0
 		ticks_this_frame += 1
 		driven_world_tick = attached_world.now if attached_world != null else -1
-	if ticks_this_frame == MAX_TICKS_PER_FRAME:
+	if speed == 0 or ticks_this_frame == MAX_TICKS_PER_FRAME:
 		# Discard overdue whole ticks; retain only the sub-tick fraction.
 		_accumulator = fmod(_accumulator, 1.0)
 

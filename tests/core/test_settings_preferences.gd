@@ -79,6 +79,9 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	assert_true(_model.set_fullscreen_enabled(true))
 	assert_true(_model.set_edge_pan_enabled(false))
 	assert_true(_model.set_build_grid_enabled(false))
+	assert_true(_model.set_auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT, false))
+	assert_true(_model.set_auto_pause_enabled(SettingsPreferences.PAUSE_ON_INSPECTOR, false))
+	assert_true(_model.set_auto_pause_enabled(SettingsPreferences.PAUSE_ON_ANGRY_GUEST, true))
 	var restored: SettingsPreferences = SettingsPreferences.new(_path)
 	assert_true(restored.load_from_disk())
 	assert_false(restored.build_grid_enabled)
@@ -90,7 +93,29 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	assert_eq(restored.default_open_speed, 2)
 	assert_true(restored.fullscreen_enabled)
 	assert_false(restored.edge_pan_enabled)
+	assert_false(restored.auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT))
+	assert_false(restored.auto_pause_enabled(SettingsPreferences.PAUSE_ON_INSPECTOR))
+	assert_true(restored.auto_pause_enabled(SettingsPreferences.PAUSE_ON_ANGRY_GUEST))
 	restored.free()
+
+
+func test_auto_pause_uses_defaults_for_legacy_preferences_and_rejects_invalid_values() -> void:
+	var config: ConfigFile = ConfigFile.new()
+	assert_true(_model.set_volume_percent(&"Master", 37))
+	assert_eq(config.load(_path), OK)
+	for key: StringName in SettingsPreferences.AUTO_PAUSE_DEFAULTS:
+		config.erase_section_key(SettingsPreferences.SECTION, String(key))
+	assert_eq(config.save(_path), OK)
+	assert_true(_model.load_from_disk())
+	assert_eq(_model.master_volume_percent, 37)
+	assert_true(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT))
+	assert_true(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_INSPECTOR))
+	assert_false(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_ANGRY_GUEST))
+	config.set_value(SettingsPreferences.SECTION, String(SettingsPreferences.PAUSE_ON_SOLD_OUT), 3)
+	assert_eq(config.save(_path), OK)
+	assert_false(_model.load_from_disk())
+	assert_eq(_model.master_volume_percent, 100)
+	assert_true(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT))
 
 
 func test_missing_or_invalid_field_discards_the_whole_file() -> void:
@@ -177,6 +202,8 @@ func test_invalid_choices_and_unwritable_path_do_not_change_memory() -> void:
 	var unwritable: SettingsPreferences = SettingsPreferences.new("res://settings.cfg")
 	assert_false(unwritable.set_edge_pan_enabled(false))
 	assert_true(unwritable.edge_pan_enabled)
+	assert_false(unwritable.set_auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT, false))
+	assert_true(unwritable.auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT))
 	unwritable.free()
 
 
@@ -206,6 +233,18 @@ func test_panel_exposes_all_choices_and_writes_through_the_model() -> void:
 	assert_eq(scale.item_count, 3)
 	assert_eq(speed.item_count, 2)
 	assert_eq(fullscreen_row.visible, not OS.has_feature("web"))
+	var sold_out: CheckBox = panel.get_node("%PauseOnSoldOut") as CheckBox
+	var inspector: CheckBox = panel.get_node("%PauseOnInspector") as CheckBox
+	var angry_guest: CheckBox = panel.get_node("%PauseOnAngryGuest") as CheckBox
+	assert_true(sold_out.button_pressed)
+	assert_true(inspector.button_pressed)
+	assert_false(angry_guest.button_pressed)
+	sold_out.button_pressed = false
+	inspector.button_pressed = false
+	angry_guest.button_pressed = true
+	assert_false(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_SOLD_OUT))
+	assert_false(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_INSPECTOR))
+	assert_true(_model.auto_pause_enabled(SettingsPreferences.PAUSE_ON_ANGRY_GUEST))
 	music.value = 35
 	ambience.value = 60
 	scale.item_selected.emit(2)

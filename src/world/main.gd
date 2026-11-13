@@ -739,6 +739,7 @@ func start() -> void:
 		_new_game()
 	if not _wire_session():
 		return
+	($HUD/AutoPause as AutoPause).activate()
 	if not loaded and not skip_owner_picker and (owner_creation_requested \
 			or use_saves and DisplayServer.get_name() != "headless"):
 		# Creation finishes before the existing initial morning checkpoint.
@@ -838,6 +839,8 @@ func _connect_session() -> void:
 	sim.customer_paid.connect(_on_customer_paid)
 	if not sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.connect(_on_vibe_customer_left)
+	sim.dish_sold_out.connect(_on_dish_sold_out)
+	sim.health_inspector_arrived.connect(_on_health_inspector_arrived)
 	sim.review_recorded.connect(_on_review_recorded)
 	sim.service_closed.connect(_on_service_closed)
 	if not world.board.task_completed.is_connected(_on_staff_task_completed):
@@ -890,6 +893,7 @@ func _exit_tree() -> void:
 		sim.customer_paid.disconnect(_on_customer_paid)
 	if sim != null and sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
+	_disconnect_service_alerts()
 	if sim != null and sim.review_recorded.is_connected(_on_review_recorded):
 		sim.review_recorded.disconnect(_on_review_recorded)
 	if sim != null and sim.kitchen != null and sim.kitchen.plates_changed.is_connected(_on_plates_changed):
@@ -1669,6 +1673,8 @@ func forecast_next_demand() -> Dictionary:
 ## evidence; review calculation and its random stream remain in RestaurantSim.
 func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
 	_settle_booking_after_departure(customer, reason)
+	if Clock.attached_world == world and ShopRecords.ANGRY_REASONS.has(reason):
+		EventBus.guest_left_angry.emit()
 	if customer != null and customer.paid and is_finite(customer.vibe_review_bonus) \
 			and customer.vibe_review_bonus > 0.0 \
 			and VIBE_TUNING.theme_labels.values().has(customer.vibe_theme_label):
@@ -1676,6 +1682,25 @@ func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void
 		_vibe_experiences[label] = _vibe_experiences.get(label, 0) + 1
 		_report.call(&"set_vibe", vibe_result, _experienced_vibe_theme())
 	_refresh_goals()
+
+
+func _on_dish_sold_out(display_name: String) -> void:
+	if Clock.attached_world == world:
+		EventBus.dish_sold_out.emit(display_name)
+
+
+func _on_health_inspector_arrived() -> void:
+	if Clock.attached_world == world:
+		EventBus.health_inspector_arrived.emit()
+
+
+func _disconnect_service_alerts() -> void:
+	if sim == null:
+		return
+	if sim.dish_sold_out.is_connected(_on_dish_sold_out):
+		sim.dish_sold_out.disconnect(_on_dish_sold_out)
+	if sim.health_inspector_arrived.is_connected(_on_health_inspector_arrived):
+		sim.health_inspector_arrived.disconnect(_on_health_inspector_arrived)
 
 
 func _experienced_vibe_theme() -> String:
@@ -3437,6 +3462,7 @@ func _disconnect_session() -> void:
 		sim.customer_paid.disconnect(_on_customer_paid)
 	if sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
+	_disconnect_service_alerts()
 	if sim.review_recorded.is_connected(_on_review_recorded):
 		sim.review_recorded.disconnect(_on_review_recorded)
 	if sim.service_closed.is_connected(_on_service_closed):
