@@ -666,6 +666,28 @@ func test_a_push_through_waits_for_the_squeeze_limit_to_move_a_busy_worker() -> 
 	assert_eq(int(world.movement.escape_counts.get(&"line", 0)), 1, "through the push-through")
 
 
+## #458: the owner resting on their home spot walks straight back if cleared,
+## so the backstop leaves them be until the squeeze limit; an owner helping
+## out with nothing to do is just an idle worker and is cleared at once.
+func test_a_resting_owner_at_home_is_left_alone_until_the_squeeze_limit() -> void:
+	for mode: StringName in [&"rest", &"floor"]:
+		var world: SimWorld = _service_world(["....", "...."])
+		var tuning: MovementTuning = world.movement_tuning
+		var walker: Walker = _walker(world, Vector2i(0, 0), Vector2i(3, 0))
+		var boss: OwnerAgent = OwnerAgent.new(Vector2i(1, 0))
+		world.add_agent(boss)
+		assert_true(boss.assign_mode(mode))
+		world.movement._escape(world, walker, tuning.escape_after_ticks)
+		if mode == &"floor":
+			assert_true(world.movement.is_yielding(boss.id), "an idle helping owner is cleared at the escape limit")
+			continue
+		assert_false(world.movement.is_yielding(boss.id), "a resting owner at home is not cleared at the escape limit")
+		world.movement._right_of_way.clear()
+		world.movement._way_holder = -1
+		world.movement._escape(world, walker, tuning.squeeze_after_ticks)
+		assert_true(world.movement.is_yielding(boss.id), "but is from the squeeze limit")
+
+
 func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(rows)))
 	if open:

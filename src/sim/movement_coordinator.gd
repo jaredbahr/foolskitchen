@@ -1203,8 +1203,9 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 	if cleared:
 		return ESCAPE_ACTED
 	# Nobody in the way can go anywhere (a leaving guest meeting an arrival in
-	# the doorway, with only the street behind it): waiting for the longer
-	# limit cannot help, so squeeze now if allowed.
+	# the doorway, with only the street behind it) or may be moved yet (busy
+	# where they stand): waiting for the longer limit cannot help, so squeeze
+	# now if allowed.
 	if stalled < tuning.squeeze_after_ticks:
 		var swapped: int = _try_squeeze(world, stuck, route_cells, blockers)
 		if swapped != ESCAPE_FUTILE:
@@ -1346,7 +1347,9 @@ func _clearable(world: SimWorld, agent: SimAgent, stuck: SimAgent) -> bool:
 
 ## Busy where they stand: a worker carrying food, working, waiting at a
 ## station (WAIT_UNTIL) or standing on their leased work cell before the work
-## starts; the owner; the inspector looking something over. Clearing them
+## starts; the owner resting at their home spot; the inspector looking
+## something over. An owner helping out is treated as staff (an idle one is
+## cleared like any idle worker, and keeps the new spot). Clearing them
 ## only sends them straight back (and the next retry clears them again), so
 ## the backstop leaves them be until its squeeze limit (#458). A seated guest
 ## is not on this list: one on the diagonal corner of a doorway step then held
@@ -1357,7 +1360,9 @@ func _busy_worker(agent: SimAgent) -> bool:
 	if not agent is StaffAgent:
 		return false
 	if agent is OwnerAgent:
-		return true
+		var boss: OwnerAgent = agent as OwnerAgent
+		if boss.current_mode() == &"rest" and boss.task == null:
+			return boss.cell == boss.home_cell()
 	var staff: StaffAgent = agent as StaffAgent
 	if staff.carries_food():
 		return true
