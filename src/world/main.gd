@@ -944,6 +944,21 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var photo: PhotoMode = $PhotoMode
+	var key: InputEventKey = event as InputEventKey
+	if photo.held or photo.capture_pending():
+		# Shift still tracks while the UI is hidden, so a release made during
+		# a photo is not lost to the build and paint pointers (#475 review).
+		if key != null and not key.echo:
+			_on_shift_changed(key)
+		if key != null and key.pressed and not key.echo:
+			var photo_code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+			if photo_code == KEY_ESCAPE:
+				photo.leave()
+				_mark_input_handled()
+			elif photo_code == KEY_F12:
+				_take_photo_key(photo, key)
+		return
 	if is_haggle_active():
 		_mark_input_handled()
 		return
@@ -960,7 +975,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_settings_visible(false)
 		_mark_input_handled()
 		return
-	var key: InputEventKey = event as InputEventKey
 	if is_shortcuts_visible():
 		if key != null and not key.echo:
 			_on_shift_changed(key)
@@ -974,6 +988,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+		if code == KEY_F12 and PhotoMode.available():
+			if not Clock.text_entry_has_focus() and world != null:
+				_take_photo_key(photo, key)
+			return
 		if code == KEY_F1:
 			if not Clock.text_entry_has_focus():
 				set_shortcuts_visible(true)
@@ -1030,6 +1048,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		pick_screen_position(mouse.position)
 		_mark_input_handled()
+
+
+func _take_photo_key(photo: PhotoMode, key: InputEventKey) -> void:
+	if key.shift_pressed:
+		photo.toggle_held()
+	else:
+		photo.capture(world.clock.day, world.clock.display_minutes())
+	_mark_input_handled()
 
 
 ## The single Main input owner calls this before normal inspection. Inactive

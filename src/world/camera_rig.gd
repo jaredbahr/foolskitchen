@@ -57,6 +57,7 @@ var grid_visible: bool = true
 var build_grid_visible: bool = true
 var _grid_forced: bool = false
 var _shown_grid: bool = true
+var _photo_mode: bool = false
 var _camera: Camera3D
 var _yaw: float = 0.0
 var _target_yaw: float = 0.0
@@ -451,10 +452,15 @@ func _apply_camera() -> void:
 	_camera.rotation = Vector3(-pitch, 0.0, 0.0)
 
 
+func set_photo_mode(value: bool) -> void:
+	_photo_mode = value
+	_apply_grid()
+
+
 func _apply_grid() -> void:
 	var material: ShaderMaterial = grid_material
 	if material != null:
-		material.set_shader_parameter("grid_visible", effective_grid_visible())
+		material.set_shader_parameter("grid_visible", effective_grid_visible() and not _photo_mode)
 	if _shown_grid != effective_grid_visible():
 		_shown_grid = effective_grid_visible()
 		grid_shown_changed.emit(_shown_grid)
