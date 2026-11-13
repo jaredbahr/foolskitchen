@@ -3697,7 +3697,9 @@ lot.", "You own this lot."). `main.gd` `buy_lot(lot_id)` (the panel's
 the morning."), builds the new site's sections (`_new_site_sections`: only a
 `shop` section, the lot's `base_layout` as a fresh `ShopEditor` saves it, no
 trays, lease not expanded, plus an empty `staff` section: a new site starts
-with nobody, Jared 2026-11-13; every other per-site section takes its
+with nobody, Jared 2026-11-13; plus a copy of the active site's `menu`
+section, taken once at purchase (dishes, enabled flags, prices and name; not
+the daily special or signature), Jared 2026-11-13; every other per-site section takes its
 new-game default on the first switch, as a load does), and adds it with `SiteBook.add_site(lot.id, lot.id,
 lot.display_name, today, sections, renovation_days)`: the site id is the lot
 id. `_base_for_saved_shop` resolves a lot's `save_layout_id`
@@ -3909,11 +3911,18 @@ menu-catalogue refresh, so every morning, switch and Build change, and after
 each hire or let-go) puts it on `SimClock.opening_refusal` (not saved; while
 set, `start_service` refuses) and the HUD: the Open shop button reads "Close
 for today" with the reason, and emits `close_day_requested`.
+A layout with no cookable dish (`_menu_access_error`, `MenuAccess.NO_DISH`)
+also goes on `opening_refusal` (with its own notice, and no "Close for
+today"), so nothing opens past it once the site's own reason clears.
 `close_for_today()` then ends the day without a service:
 `SimClock.close_without_opening()` (MORNING to CLOSED, only while a refusal
 is set), the dock's stock is put away, and `_on_service_closed` runs the
 ordinary close (wages, rent, away sites, the countdown, the report with no
-guests). The evening report's away line adds "; renovating, 2 days left",
+guests). It is not a business day (`_closed_day`): no `business_history` row
+(so `closing_reputation()` stays NAN at a site that never served, and
+manager averages skip it), no trending-post or demand close, no owner XP,
+goals, records or tier climb; the weekly goal is evaluated with nothing
+earned so its saved day still follows the calendar. The evening report's away line adds "; renovating, 2 days left",
 then "; renovation done, ready to open". A fixer-upper bought on day D with 3
 days can open on day D+3 once it has a cook and a server.
 
