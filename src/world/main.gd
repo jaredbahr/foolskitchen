@@ -319,6 +319,8 @@ var _settings_previous_speed: int = 0
 var _quit_title_previous_speed: int = 0
 var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
+## The browse-only property market (FK-087 part 2), opened from the Menu.
+var _property_panel: PropertyPanel
 var _goals_snapshot: Dictionary = {}
 var _stock_panel: StockPanel
 var _owner_picker: OwnerPicker
@@ -498,6 +500,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.restaurant_name_requested.connect(_on_restaurant_name_requested)
 	if not _menu_panel.goals_requested.is_connected(_on_menu_goals_requested):
 		_menu_panel.goals_requested.connect(_on_menu_goals_requested)
+	if not _menu_panel.property_requested.is_connected(_on_menu_property_requested):
+		_menu_panel.property_requested.connect(_on_menu_property_requested)
 	if not _menu_panel.hours_requested.is_connected(_on_hours_requested):
 		_menu_panel.hours_requested.connect(_on_hours_requested)
 	if not _menu_panel.quit_to_title_requested.is_connected(request_quit_to_title):
@@ -507,6 +511,10 @@ func _bind_world_presentation() -> void:
 	_dismiss_goals()
 	if not _goals_panel.close_requested.is_connected(_on_goals_close_requested):
 		_goals_panel.close_requested.connect(_on_goals_close_requested)
+	_property_panel = $Overlay/PropertyPanel
+	_dismiss_property()
+	if not _property_panel.close_requested.is_connected(_on_property_close_requested):
+		_property_panel.close_requested.connect(_on_property_close_requested)
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
 	_settings_panel = $Overlay/SettingsPanel
@@ -621,9 +629,10 @@ func _frame_shop(reset: bool) -> void:
 func _on_header_layout_changed() -> void:
 	var top: float = float($HUD.call("panel_top"))
 	for path: NodePath in [^"Overlay/MenuPanel/Panel", ^"Overlay/StaffPanel/Panel", ^"Overlay/StockPanel/Panel",
-			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel", ^"Overlay/GoalsPanel/Panel"]:
+			^"Overlay/EveningReport/Panel", ^"Overlay/DebugOverlay/Panel", ^"Overlay/GoalsPanel/Panel",
+			^"Overlay/PropertyPanel/Panel"]:
 		var panel: Control = get_node(path) as Control
-		if path == ^"Overlay/GoalsPanel/Panel":
+		if path == ^"Overlay/GoalsPanel/Panel" or path == ^"Overlay/PropertyPanel/Panel":
 			panel.anchor_top = 0.0
 		panel.offset_top = top
 	if _settings_panel != null:
@@ -966,7 +975,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if $HUD.dismiss_loan_repayment(true):
 				_mark_input_handled()
 				return
-			if is_goals_visible():
+			if is_property_visible():
+				set_property_visible(false)
+			elif is_goals_visible():
 				set_goals_visible(false)
 			elif is_menu_visible():
 				set_menu_visible(false)
@@ -1296,6 +1307,7 @@ func set_paint_active(active: bool) -> bool:
 	if active:
 		build_mode.exit()
 		_dismiss_goals()
+		_dismiss_property()
 		set_menu_visible(false)
 		set_staff_visible(false)
 		set_stock_visible(false)
@@ -1808,6 +1820,7 @@ func set_build_active(active: bool) -> bool:
 		return false
 	if active:
 		_dismiss_goals()
+		_dismiss_property()
 		if _paint_active:
 			set_paint_active(false)
 		return build_mode.enter()
@@ -2189,6 +2202,7 @@ func _on_build_changed() -> void:
 		_build_phase = world.clock.phase
 		_clear_rooms_note()
 		_dismiss_goals()
+		_dismiss_property()
 		set_menu_visible(false)
 		set_staff_visible(false)
 		set_stock_visible(false)
@@ -2855,6 +2869,7 @@ func _new_game() -> void:
 	_weekly_challenge_reward_day = 0
 	_weekly_challenge_report_line = ""
 	_dismiss_goals()
+	_dismiss_property()
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
 	_owner_tips_today.clear()
@@ -4313,6 +4328,7 @@ func set_staff_visible(value: bool) -> bool:
 		set_menu_visible(false)
 		set_stock_visible(false)
 		_dismiss_goals()
+		_dismiss_property()
 		clear_selection()
 		_report.hide()
 	_staff_panel.set_phase(Clock.sim.phase)
@@ -4726,6 +4742,7 @@ func set_menu_visible(value: bool) -> bool:
 		return false
 	if value:
 		_dismiss_goals()
+		_dismiss_property()
 		if is_settings_visible():
 			_settings_return_to_menu = false
 			if not set_settings_visible(false):
@@ -4738,6 +4755,7 @@ func set_menu_visible(value: bool) -> bool:
 		_refresh_menu_details()
 		_menu_panel.set_drink_hints(drink_station_hints())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
+		_menu_panel.set_property_available(PropertyMarket.shown(owner_progress.career_tier))
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
 	refresh_hints()
@@ -4770,6 +4788,7 @@ func set_goals_visible(value: bool) -> bool:
 		set_staff_visible(false)
 		set_menu_visible(false)
 		set_stock_visible(false)
+		_dismiss_property()
 		clear_selection()
 		_report.hide()
 		_goals_return_to_menu = from_menu
@@ -4778,6 +4797,7 @@ func set_goals_visible(value: bool) -> bool:
 	else:
 		var return_to_menu: bool = _goals_return_to_menu and can_edit_menu()
 		_dismiss_goals()
+		_dismiss_property()
 		if return_to_menu:
 			set_menu_visible(true)
 		elif Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
@@ -4802,6 +4822,50 @@ func _on_menu_goals_requested() -> void:
 
 func _on_goals_close_requested() -> void:
 	set_goals_visible(false)
+
+
+## The browse-only property market (FK-087 part 2): a morning view opened from
+## the Menu from Tier 3. Opening it buys, moves and saves nothing; closing it
+## returns to the Menu.
+func set_property_visible(value: bool) -> bool:
+	if _property_panel == null:
+		return false
+	if not value:
+		var was_open: bool = _property_panel.visible
+		_dismiss_property()
+		if was_open and can_edit_menu():
+			set_menu_visible(true)
+		return true
+	if not can_edit_menu() or not PropertyMarket.shown(owner_progress.career_tier):
+		return false
+	if is_settings_visible():
+		_settings_return_to_menu = false
+		if not set_settings_visible(false):
+			return false
+	_dismiss_goals()
+	set_menu_visible(false)
+	_property_panel.set_market(content.lots(), owner_progress.career_tier, reputation.average(),
+		customer_type_catalogue)
+	_property_panel.show()
+	refresh_hints()
+	return true
+
+
+func is_property_visible() -> bool:
+	return _property_panel != null and _property_panel.visible
+
+
+func _dismiss_property() -> void:
+	if _property_panel != null:
+		_property_panel.hide()
+
+
+func _on_menu_property_requested() -> void:
+	set_property_visible(true)
+
+
+func _on_property_close_requested() -> void:
+	set_property_visible(false)
 
 
 func _milestone_observation(operating_profit: int) -> MilestoneDay:
@@ -4884,6 +4948,7 @@ func set_settings_visible(value: bool) -> bool:
 		return true
 	if value:
 		_dismiss_goals()
+		_dismiss_property()
 		$HUD.dismiss_loan_repayment()
 		_settings_return_to_menu = is_menu_visible()
 		_settings_previous_speed = Clock.speed
@@ -5249,6 +5314,7 @@ func _begin_morning() -> void:
 	# The preceding close may unlock a new type; current guests are unaffected.
 	sim.set_customer_level(owner_progress.effective_level())
 	_dismiss_goals()
+	_dismiss_property()
 	_milestones_reached_today.clear()
 	_milestone_award_day = 0
 	_milestone_xp_today = 0
@@ -5831,6 +5897,7 @@ func set_stock_visible(value: bool) -> bool:
 		return false
 	if value and not _stock_panel.visible:
 		_dismiss_goals()
+		_dismiss_property()
 		if is_settings_visible():
 			_settings_return_to_menu = false
 			if not set_settings_visible(false):
@@ -6421,7 +6488,7 @@ func _on_service_closed(day: int) -> void:
 	elif _milestone_award_day == day and not _milestones_reached_today.is_empty():
 		Sounds.play(&"milestone")
 	_show_evening_report(shown_report)
-	if _paint_active or is_staff_visible() or is_goals_visible():
+	if _paint_active or is_staff_visible() or is_goals_visible() or is_property_visible():
 		_report.hide()
 	if is_staff_visible():
 		_staff_panel.refresh()
@@ -6507,6 +6574,7 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 			_haggle_game.call("_on_skip_pressed")
 		_haggle_percent = 0
 	_dismiss_goals()
+	_dismiss_property()
 	_clear_rooms_note()
 	if _aisle_note:
 		_show_aisle_note("")
@@ -6776,7 +6844,7 @@ func refresh_hints() -> void:
 	var step: int = hints.observe(context)
 	# Modal panels keep their own input and remain readable. Progress waits
 	# here; closing Settings after a replay immediately reveals the guide.
-	if step < 0 or is_settings_visible() or is_goals_visible() or is_staff_visible() or is_owner_picker_visible() \
+	if step < 0 or is_settings_visible() or is_goals_visible() or is_property_visible() or is_staff_visible() or is_owner_picker_visible() \
 			or is_menu_visible() or is_stock_visible() or is_build_active() or _paint_active:
 		_hints_bubble.clear_hint()
 		return

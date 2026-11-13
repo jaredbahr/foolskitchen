@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="LotDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/lot_def.gd" id="1_lot"]
+[ext_resource type="Resource" path="res://data/layouts/lot_seaside_cliff.tres" id="2_layout"]
+
+[resource]
+script = ExtResource("1_lot")
+id = &"seaside_cliff"
+display_name = "Seaside Cliff"
+blurb = "A white cottage on the cliff path. Holiday crowds stroll past, and the catch comes in fresh each morning."
+base_layout = ExtResource("2_layout")
+price = 18000
+daily_rent = 140
+expansion_price = 9000
+expanded_daily_rent = 190
+min_tier = 3
+min_reputation = 4.2
+guest_mix = Dictionary[StringName, float]({
+&"family": 0.45,
+&"foodie": 0.4,
+&"regular": 0.15
+})
+upstairs_allowed = false
+tags = Array[StringName]([&"seaside"])

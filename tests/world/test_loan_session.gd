@@ -476,6 +476,47 @@ func test_loan_refuses_large_furniture_and_all_trays_without_mutation_but_allows
 	assert_eq(_saved_text(), original)
 
 
+func test_repayment_and_property_escape_preserve_each_panel_close_path() -> void:
+	var main: Node = await _start()
+	_fresh_books(40, 150)
+	main.call("_refresh_loan_hud")
+	(main.get("owner_progress") as OwnerProgress).career_tier = 3
+	assert_true(main.call("set_menu_visible", true))
+	assert_true(main.call("set_property_visible", true))
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	var trigger: Button = hud.get_node("Top/Row/Loan/OpenRepayment") as Button
+	var repayment: PanelContainer = hud.get_node("LoanPopover/Panel") as PanelContainer
+	var escape: InputEventKey = InputEventKey.new()
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	var original: String = _saved_text()
+
+	trigger.pressed.emit()
+	assert_true(repayment.is_visible_in_tree())
+	main.call("_unhandled_input", escape)
+	assert_false(repayment.visible)
+	assert_true(trigger.has_focus())
+	assert_true(main.call("is_property_visible"))
+	assert_false(main.call("is_menu_visible"))
+
+	main.call("_unhandled_input", escape)
+	assert_false(main.call("is_property_visible"))
+	assert_true(main.call("is_menu_visible"))
+	assert_false(main.call("is_settings_visible"))
+
+	assert_true(main.call("set_property_visible", true))
+	trigger.pressed.emit()
+	assert_true(repayment.is_visible_in_tree())
+	assert_true(main.call("set_settings_visible", true))
+	assert_false(repayment.visible)
+	assert_false(main.call("is_property_visible"))
+	assert_true(main.call("set_settings_visible", false))
+	assert_false(main.call("is_menu_visible"))
+	assert_eq(Economy.cash, 40)
+	assert_eq(Economy.loan.principal, 150)
+	assert_eq(_saved_text(), original)
+
+
 func test_hud_full_repayment_unlocks_trays_and_rejects_stale_full_payment() -> void:
 	var main: Node = await _start()
 	_fresh_books(1000, 150)

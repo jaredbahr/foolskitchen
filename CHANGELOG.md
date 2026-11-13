@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Click the loan amount in the top bar to repay some or all of your debt before opening or after closing. (#462)
+- From Tier 3, a Property button in the morning Menu opens the property market: three lots for a second restaurant (a big fixer-upper in town, a seaside cliff with fresh catch and a skyscraper rooftop bar), cheapest first, each with its price, size, rent, what expanding it would cost, its usual guests and perks, and what it still needs if it is locked. It is for browsing and saving up: the Buy button says "Coming soon". (#470)
 - At a door that opens onto a one-cell way in, arriving guests now wait outside while anyone is leaving, so the doorway no longer jams; at any door, a guest leaving through a doorway already crowded with waiting guests gets out much sooner, as the waiting guests let them through (squeezing past when there is no room to step aside). (#467)
 - Staff at their station (about to start, or waiting there for something like a clean plate), the owner resting at their spot and the health inspector mid-check are no longer shooed aside early by someone trying to get past, so they stop walking away from their spot and straight back. (#460)
 - Seasons change every 28 days and move some ingredient prices, mostly seafood: cheaper in season, pricier out of it. The date names the season, Stock tags an ingredient whose price the season moved today, and dish details point out ingredients that are cheaper in season. (#395)
