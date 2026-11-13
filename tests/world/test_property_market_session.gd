@@ -1,7 +1,7 @@
 extends TestCase
 ## The morning Menu's Property button (FK-087 part 2): hidden below Tier 3,
-## then a browse-only screen whose Buy buttons say "Coming soon". Opening it
-## changes no money, tier, save or sim state.
+## then the market screen. Opening it changes no money, tier, save or sim
+## state; buying is tests/world/test_lot_purchase_session.gd (#464).
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 
@@ -51,7 +51,7 @@ func test_property_is_hidden_below_tier_three() -> void:
 		_main.call("set_menu_visible", false)
 
 
-func test_tier_three_browses_lots_cheapest_first_and_cannot_buy() -> void:
+func test_tier_three_browses_lots_cheapest_first_without_buying() -> void:
 	await _start()
 	var owner: OwnerProgress = _main.get("owner_progress") as OwnerProgress
 	owner.career_tier = 3
@@ -66,14 +66,17 @@ func test_tier_three_browses_lots_cheapest_first_and_cannot_buy() -> void:
 	for id: StringName in _panel().lot_ids():
 		var card: Control = _panel().card_for(id)
 		var buy: Button = card.get_node("Body/Top/Buy") as Button
-		assert_true(buy.disabled, "browse only")
-		assert_eq(buy.text, "Coming soon")
+		assert_true(buy.disabled, "the starting cash buys nothing, and two lots are locked")
 		for label: Label in card.find_children("*", "Label", true, false):
 			assert_false(label.text.contains(String(id)) or label.text.contains("_"), "no raw id on screen: " + label.text)
 	var rooftop: Control = _panel().card_for(&"skyscraper_rooftop")
 	assert_true(rooftop.get_meta(&"locked"), "the rooftop needs Tier 4")
 	assert_true((rooftop.get_node("Body/Lock") as Label).text.begins_with("Locked: needs Tier 4"))
 	assert_null(_panel().card_for(&"town_fixer_upper").get_node_or_null("Body/Lock"), "the fixer-upper is open at Tier 3")
+	assert_eq((_panel().card_for(&"town_fixer_upper").get_node("Body/Top/Buy") as Button).text, "Buy")
+	assert_true((_panel().card_for(&"town_fixer_upper").get_node("Body/Reason") as Label).text.begins_with(
+		"Not enough cash"), "a plain reason on the card")
+	assert_eq((rooftop.get_node("Body/Top/Buy") as Button).text, "Locked")
 	assert_eq(Economy.cash, cash, "browsing spends nothing")
 	assert_eq(owner.to_dict(), saved_owner)
 	assert_true(_main.call("set_property_visible", false))

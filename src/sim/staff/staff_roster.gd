@@ -272,6 +272,16 @@ func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = f
 	# Check the whole pool before consuming the hiring stream or changing state.
 	if names.size() < CANDIDATE_COUNT:
 		return false
+	# A roster still missing a cook or a server (a new site, #464) is offered
+	# one of each first. The draws are the same, so a staffed roster's pool
+	# never changes.
+	var needed: Array[StringName] = []
+	for role: StringName in [&"cook", &"server"]:
+		var has_role: bool = false
+		for member: StaffMember in _members:
+			has_role = has_role or member.role == role
+		if not has_role:
+			needed.append(role)
 	var next: Array[StaffMember] = []
 	for index: int in range(CANDIDATE_COUNT):
 		var member: StaffMember = StaffMember.new()
@@ -285,6 +295,8 @@ func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = f
 		if managers:
 			roles.append(StaffMember.MANAGER)
 		member.role = roles[random.randi_range(0, roles.size() - 1)]
+		if index < needed.size():
+			member.role = needed[index]
 		member.skill = random.randi_range(1, 5)
 		member.trait_id = catalogue.traits[random.randi_range(0, catalogue.traits.size() - 1)].id
 		member.wage = _tuning.staff_wage(member.role, member.skill)
@@ -304,7 +316,22 @@ func to_dict() -> Dictionary:
 	return {"version": 1, "candidate_day": candidate_day, "members": employees, "candidates": available}
 
 
-## Validate all records, IDs, role minimums and bounds before replacing choices.
+## True when the roster can run a service: at least one cook and one server.
+## A newly bought site starts with nobody (FK-087, #464) and cannot open until
+## it is staffed; an established roster keeps its last cook and server
+## (can_let_go), so it never falls below this.
+func is_staffed() -> bool:
+	var cook: bool = false
+	var server: bool = false
+	for member: StaffMember in _members:
+		cook = cook or member.role == &"cook"
+		server = server or member.role == &"server"
+	return cook and server
+
+
+## Validate all records, IDs and bounds before replacing choices. A roster
+## without a cook or a server is valid (a new site still hiring, #464); it
+## just cannot open (is_staffed).
 func from_dict(data: Dictionary) -> bool:
 	if data.size() != 4 or not StaffMember._whole_number(data.get("version"), 1, 1) \
 			or not StaffMember._whole_number(data.get("candidate_day"), 0, 100000000):
@@ -313,7 +340,7 @@ func from_dict(data: Dictionary) -> bool:
 		return false
 	var employees: Array = data["members"]
 	var available: Array = data["candidates"]
-	if employees.size() < 2 or employees.size() > CAPACITY or available.size() > CANDIDATE_COUNT:
+	if employees.size() > CAPACITY or available.size() > CANDIDATE_COUNT:
 		return false
 	if int(data["candidate_day"]) == 0 and not available.is_empty():
 		return false
@@ -330,11 +357,6 @@ func from_dict(data: Dictionary) -> bool:
 				next_members.append(member)
 			else:
 				next_candidates.append(member)
-	var roles: Array[StringName] = []
-	for member: StaffMember in next_members:
-		roles.append(member.role)
-	if not roles.has(&"cook") or not roles.has(&"server"):
-		return false
 	_members = next_members
 	_candidates = next_candidates
 	candidate_day = int(data["candidate_day"])

@@ -91,6 +91,15 @@ func test_a_manager_gets_no_worker_in_the_restaurant() -> void:
 	# Letting the manager go (or keeping them) leaves the floor workers alone.
 	assert_true(sim.set_staff_roster(roster.members()))
 	assert_eq(sim.world.agents.size(), 3, "cook, server and owner")
-	# A manager does not stand in for the required cook and server.
+	# A manager does not stand in for a cook and a server: managers alone
+	# install (a site still hiring, #464) but put nobody on the floor, and
+	# such a roster is not staffed, so the site cannot open.
 	var managers_only: Array[StaffMember] = [_manager(&"a"), _manager(&"b")]
-	assert_false(sim.set_staff_roster(managers_only))
+	assert_true(sim.set_staff_roster(managers_only))
+	for agent: SimAgent in sim.world.all_agents():
+		assert_true(not agent is StaffAgent or agent is OwnerAgent, "no floor worker for a manager")
+	var unstaffed: StaffRoster = StaffRoster.new(TUNING)
+	var data: Dictionary = unstaffed.to_dict()
+	data["members"] = [_manager(&"a").to_dict()]
+	assert_true(unstaffed.from_dict(data))
+	assert_false(unstaffed.is_staffed())
