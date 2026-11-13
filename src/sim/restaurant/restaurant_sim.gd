@@ -934,15 +934,29 @@ func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
 		return 0
 	var price: int = maxi(0, prices.get(recipe.id, recipe.standard_price))
+	return _price_with_special(recipe, price)
+
+
+func _price_with_special(recipe: RecipeDef, price: int) -> int:
 	return daily_special.price_for(recipe, price) if daily_special != null else price
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.
 func price_walkout_chance(recipe: RecipeDef, budget_multiplier: float = 1.0) -> float:
+	return _price_walkout_chance(recipe, budget_multiplier, -1)
+
+
+## Read-only forecast for the displayed menu price, which can be a stashed price.
+func preview_price_walkout_chance(recipe: RecipeDef, menu_price: int, budget_multiplier: float = 1.0) -> float:
+	return _price_walkout_chance(recipe, budget_multiplier, maxi(0, menu_price))
+
+
+func _price_walkout_chance(recipe: RecipeDef, budget_multiplier: float, preview_price: int) -> float:
 	if recipe == null or recipe.standard_price <= 0 or pricing_tuning == null \
 			or not is_finite(budget_multiplier) or budget_multiplier <= 0.0:
 		return 0.0
-	var ratio: float = float(price_of(recipe)) / float(recipe.standard_price)
+	var price: int = price_of(recipe) if preview_price < 0 else _price_with_special(recipe, preview_price)
+	var ratio: float = float(price) / float(recipe.standard_price)
 	if ratio <= 1.0:
 		return 0.0
 	var sensitivity: float = pricing_tuning.price_sensitivity

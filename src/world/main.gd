@@ -4519,6 +4519,7 @@ func menu_set_special(recipe_id: StringName) -> bool:
 	if not can_edit_menu() or not daily_special.select(recipe_id, menu_settings.enabled_recipes()):
 		return false
 	_apply_menu(sim, menu_settings)
+	_refresh_menu_details()
 	return true
 
 
@@ -4534,10 +4535,10 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 		return false
 	_apply_menu(sim, menu_settings)
 	_sync_effective_signature()
-	_refresh_menu_details()
 	if was_enabled != menu_settings.is_enabled(recipe_id):
 		_recompute_vibe()
 		_refresh_stock_panel()
+	_refresh_menu_details()
 	return true
 
 
@@ -6415,6 +6416,11 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 	var installed: Dictionary[StringName, bool] = station_state["installed"]
 	var support: Array[Dictionary] = station_state["support"]
 	var freezer_ready: bool = int(_storage_capacity().get(StorageSpace.FREEZER, 0)) > 0
+	var budget: float = 1.0
+	if sim != null:
+		var vibe: VibeModel.Result = sim.vibe_result
+		budget = CustomerTypePicker.average_budget(sim.customer_types, sim.customer_level,
+			sim.review_book.average(), vibe.active_theme, vibe.arrival_theme_strength)
 	for recipe: RecipeDef in content.recipes():
 		var equipment: Array[Dictionary] = []
 		var required: Dictionary[StringName, bool] = {}
@@ -6475,6 +6481,8 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 			"is_morning": Clock.sim != null and Clock.sim.phase == SimClock.Phase.MORNING}
 		rows[recipe.id] = {"equipment": equipment, "ingredients": ingredients, "other": other,
 			"signature": signature_details,
+			"price_walkout_chance": sim.preview_price_walkout_chance(recipe, menu_settings.shown_price(recipe), budget)
+				if sim != null else -1.0,
 			"quality_breakdown": expected.explanation() if expected != null else "No available worker or reachable station",
 			"quality": quality.get("quality", recipe.base_quality),
 			"quality_source": "%d served dishes on day %d" % [quality.get("count", 0), quality.get("day", 0)]
