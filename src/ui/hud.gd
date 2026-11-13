@@ -210,6 +210,9 @@ func refresh() -> void:
 		_repay_affordable = _loan_panel.get_node("Content/Actions/RepayAffordable") as Button
 		_repay_all = _loan_panel.get_node("Content/Actions/RepayAll") as Button
 		_close_loan = _loan_panel.get_node("Content/Actions/Close") as Button
+		var loan_text_color: Color = _loan_panel.get_theme_color(&"font_color", &"Button")
+		for button: Button in [_repay_affordable, _repay_all, _close_loan]:
+			button.add_theme_color_override(&"font_focus_color", loan_text_color)
 		_loan_trigger.pressed.connect(_toggle_loan_repayment)
 		visibility_changed.connect(dismiss_loan_repayment)
 		_loan_label.item_rect_changed.connect(_layout_loan_repayment)

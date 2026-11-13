@@ -712,6 +712,9 @@ func test_native_loan_click_shows_affordability_and_service_dismisses_the_panel(
 	await _layout_frames()
 	assert_true(panel.is_visible_in_tree())
 	assert_true(close.has_focus())
+	for button: Button in [affordable, all, close]:
+		assert_eq(button.get_theme_color(&"font_focus_color"), button.get_theme_color(&"font_color"),
+			"repayment button text keeps the theme contrast when focused")
 	assert_eq(owed.text, "Owed $150")
 	assert_eq(affordable.text, "Repay $60")
 	assert_false(affordable.disabled)
