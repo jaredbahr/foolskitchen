@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Click the loan amount in the top bar to repay some or all of your debt before opening or after closing.
+- Staff at their station (about to start, or waiting there for something like a clean plate), the owner resting at their spot and the health inspector mid-check are no longer shooed aside early by someone trying to get past, so they stop walking away from their spot and straight back. (#460)
 - Seasons change every 28 days and move some ingredient prices, mostly seafood: cheaper in season, pricier out of it. The date names the season, Stock tags an ingredient whose price the season moved today, and dish details point out ingredients that are cheaper in season. (#395)
 - A cook no longer walks round and round the counter when a server waiting for the same coffee machine stands in the way: the server now steps aside. A guest stepping in at a jammed narrow door also finishes the step instead of freezing in the doorway. (#457)
 - A table's seat or a serving spot can no longer be placed in the doorway; the editor now says so. (#456)
@@ -32,6 +33,7 @@ Each line ends with its PR number.
 - Paint is much richer: 40 colours that go together (warm neutrals, pastels, brights, deep tones, woods and metals), and most furniture now has two or three parts you can paint separately, like a chair's frame and its cushion or a bar's counter, top and panels. Each part can be painted, wood grain, woven fabric or brushed metal. Pick the part and material in Paint, hover to preview, and Shift-click to repaint every piece of that kind in the room at once. Rugs and the modern chairs can be painted too. Recolouring is still free, and saved shops keep their colours. (#435)
 - Open Staff to see what each employee did today and in total. (#417)
 - Use −10%, +10%, or Reset to standard to change menu prices together in the morning. (#409)
+- When you change a dish's price in Menu, you can see roughly how many guests will find it too expensive. (#455)
 - Your restaurant now climbs career tiers 1 to 6. Tier 2 comes at owner level 3; Tiers 3 to 6 need both an owner level and a good reputation at closing (Tier 3: level 6 and 4.0 stars). A tier is never lost. Goals shows what the next tier needs, and the evening report announces a new one. The larger lease is now offered once you reach Tier 2. (#419)
 - Two staff who meet head-on in a one-cell corridor now squeeze past each other instead of stepping back and forth until a task times out. (#402)
 - A new Mediterranean seaside song, "Coastal Afternoon", is in the game files. It will play in seafood restaurants and the seaside café once those music themes arrive. (#396)

@@ -16,12 +16,7 @@ static func choose(catalogue: CustomerTypeCatalogue, owner_level: int,
 	var weights: Array[float] = []
 	var total: float = 0.0
 	for kind: CustomerType in catalogue.types:
-		if kind.unlock_level > owner_level:
-			continue
-		var weight: float = kind.weight_for_stars(stars)
-		var liking: float = kind.theme_multiplier(theme, strength)
-		if liking != 1.0:
-			weight *= liking
+		var weight: float = _arrival_weight(kind, owner_level, stars, theme, strength)
 		if weight <= 0.0:
 			continue
 		available.append(kind)
@@ -39,3 +34,29 @@ static func choose(catalogue: CustomerTypeCatalogue, owner_level: int,
 		if ticket < 0.0:
 			return available[index]
 	return available.back()  # Floating-point boundary at the total.
+
+
+## A representative budget for today's arrival weights, without sampling.
+static func average_budget(catalogue: CustomerTypeCatalogue, owner_level: int,
+		stars: float, theme: StringName = &"", strength: float = 0.0) -> float:
+	if catalogue == null or owner_level < 1 or not catalogue.is_valid() or not is_finite(stars):
+		return 1.0
+	var total_weight: float = 0.0
+	var total_budget: float = 0.0
+	for kind: CustomerType in catalogue.types:
+		var weight: float = _arrival_weight(kind, owner_level, stars, theme, strength)
+		total_weight += weight
+		total_budget += weight * kind.budget_multiplier
+	if total_weight <= 0.0 or not is_finite(total_weight) or not is_finite(total_budget):
+		return 1.0
+	var budget: float = total_budget / total_weight
+	return budget if is_finite(budget) and budget > 0.0 else 1.0
+
+
+static func _arrival_weight(kind: CustomerType, owner_level: int, stars: float,
+		theme: StringName, strength: float) -> float:
+	if kind.unlock_level > owner_level:
+		return 0.0
+	var weight: float = kind.weight_for_stars(stars)
+	var liking: float = kind.theme_multiplier(theme, strength)
+	return weight * liking if liking != 1.0 else weight

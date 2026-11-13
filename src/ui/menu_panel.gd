@@ -314,6 +314,10 @@ func refresh() -> void:
 		minus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Minimum price: $%d" % minimum)
 		plus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Maximum price: $%d" % maximum)
 		amount.text = "$%d" % price
+		var walkout: Label = row["walkout"]
+		var chance: float = float(_details.get(definition.id, {}).get("price_walkout_chance", -1.0))
+		walkout.visible = chance >= 0.0
+		walkout.text = _price_walkout_text(chance) if walkout.visible else ""
 		standard_label.text = "Suggested $%d" % standard
 		if standard == 0:
 			ratio_label.text = "Free at suggested price"
@@ -662,6 +666,8 @@ func _rebuild_rows() -> void:
 		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var plus: Button = _add_button(price_line, "Plus", "+")
 		plus.pressed.connect(_on_price_step.bind(definition.id, 1))
+		var walkout: Label = _add_label(row, "PriceWalkout", "")
+		walkout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var reference: HBoxContainer = _add_line(row, "Reference")
 		var standard: Label = _add_label(reference, "Standard", "")
 		standard.custom_minimum_size.x = 150.0
@@ -674,7 +680,7 @@ func _rebuild_rows() -> void:
 		row.add_child(separator)
 		_rows[definition.id] = {"root": row, "title": title, "unlock": unlock,
 			"toggle": toggle, "minus": minus,
-			"plus": plus, "amount": amount, "standard": standard, "ratio": ratio,
+			"plus": plus, "amount": amount, "walkout": walkout, "standard": standard, "ratio": ratio,
 			"signature_button": signature_button, "signature_status": signature_status,
 			"signature_sales": signature_sales}
 		index += 1
@@ -756,6 +762,16 @@ func _signature_reason(signature: Dictionary) -> String:
 	if day > 0:
 		return "You can choose a different signature on day %d." % day
 	return "This dish cannot be selected right now."
+
+
+static func _price_walkout_text(chance: float) -> String:
+	if chance <= 0.0:
+		return "Everyone's happy with this price."
+	if chance < 0.05:
+		return "Hardly anyone will mind."
+	if chance > 0.5:
+		return "Most guests will walk out at this price."
+	return "About 1 in %d guests will think this is too expensive." % roundi(1.0 / chance)
 
 
 func _on_price_step(recipe_id: StringName, direction: int) -> void:

@@ -89,6 +89,29 @@ func test_rows_defaults_shared_styles_and_mouse_scope_work_before_ready() -> voi
 	assert_null(_panel.row_for(&"missing"))
 
 
+func test_walkout_hint_formats_each_band_at_chosen_prices() -> void:
+	var recipe: RecipeDef = _recipe(&"test_dish", "Test dish", 100)
+	var choices: MenuSettings = MenuSettings.new([recipe])
+	var sim: RestaurantSim = RestaurantSim.new()
+	_panel.bind_menu(choices)
+	var cases: Dictionary[int, String] = {
+		100: "Everyone's happy with this price.",
+		102: "Hardly anyone will mind.",
+		108: "About 1 in 8 guests will think this is too expensive.",
+		134: "Most guests will walk out at this price.",
+	}
+	for price: int in cases:
+		assert_true(choices.set_price(recipe.id, price))
+		var details: Dictionary[StringName, Dictionary] = {recipe.id: {
+			"price_walkout_chance": sim.preview_price_walkout_chance(recipe, price),
+		}}
+		_panel.set_recipe_details([recipe], details)
+		assert_eq(_label(recipe.id, "Price/Amount").text, "$%d" % price)
+		assert_eq(_label(recipe.id, "PriceWalkout").text, cases[price])
+	assert_eq(MenuPanel._price_walkout_text(0.05), "About 1 in 20 guests will think this is too expensive.")
+	assert_eq(MenuPanel._price_walkout_text(0.5), "About 1 in 2 guests will think this is too expensive.")
+
+
 func test_daily_special_picker_is_request_only_enabled_menu_and_morning_gated() -> void:
 	assert_true(_menu.set_enabled(&"grilled_cheese", false))
 	_panel.refresh()
