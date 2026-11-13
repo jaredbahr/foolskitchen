@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Desktop photo shortcuts wait until you've answered the morning restaurant choice or the prompt after buying a lot. (#483)
+- "Stir It Slow", now with vocals, is the title screen song. Daytime service now alternates "Buoyant Swing Groove" and "Kitchen Jamboree", one after the other, and the evening report no longer has its own song: the service music just carries on under it. (#486)
 - Click the loan amount in the top bar to repay some or all of your debt before opening or after closing. (#462)
 - On desktop, press F12 to save a photo of your shop without the interface, or Shift+F12 to hide the interface while you frame a shot. (#475)
 - You can now buy a lot on the property market for a second restaurant. The Buy button shows the cost when you can afford it, and otherwise says why not (not enough cash, an open loan, already owned, locked, or your tier's limit: two restaurants at Tier 3, three at Tier 5, as many as you like at Tier 6). A new restaurant starts with no staff (hire a cook and a server there before it can open) and with a copy of your current menu, dishes and prices, which you can then change on its own. It takes the name of its lot. Right after buying, you are asked whether to work at your new place today. A fixer-upper costs its price plus the renovation bill and needs its days of work before it can open to guests, but you can go there and design it in the meantime; on such a day, Open shop becomes Close for today and the day passes without guests: you still pay wages and rent, but it earns no XP and does not count toward goals, records or the restaurant's history. The days count down every evening wherever you are. On mornings when you own more than one restaurant, a small card before opening lists each one with yesterday's takings (or, for a site a manager ran, what it earned after the manager; or the renovation days left) and its manager: pick where to work today, or stay where you are. For now only your first restaurant can expand its lease. Locked lots no longer quote your starting 3.0 stars before your first day has closed. (#472)
@@ -208,6 +209,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The screenshot check in CI now has 60 minutes instead of 45: runs were taking up to 44 minutes, so a slow runner cancelled PRs that changed nothing visual. Splitting the job is tracked in #477. (#485)
 - Each restaurant now keeps its own opening hours and its own bigger lease, so switching restaurants (once you can own two) never carries one shop's hours or lease to the other. Older saves keep their hours and lease. (#463)
 - Design doc: how every street outside the restaurant should look, and how each new site gets its own street from the same parts. (#441)
 - Design doc: the game's direction, how new sites and the outside world should feel, six small rule calls, Creative mode, the build tool priorities and the game's feel (D31 to D36). (#428)
