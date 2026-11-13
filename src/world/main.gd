@@ -398,7 +398,8 @@ func _bind_world_presentation() -> void:
 	# The actual service/delivery lot above keeps its existing semantics.
 	var presentation_base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
 		if _loaded_layout != null else _base_layout
-	var maximum_reserve: Rect2i = ShopFootprint.from_layout(_lease_for(presentation_base).layout_for(presentation_base, 2)).lot.merge(lot)
+	var maximum_lease: ShopLayout = _lease_for(presentation_base).layout_for(presentation_base, 2)
+	var maximum_reserve: Rect2i = ShopFootprint.from_layout(maximum_lease).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
 	# A new dressing starts at day: light its lamps now, not a frame later.
 	if view.neighbourhood_dressing != null and world.clock != null:
