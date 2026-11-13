@@ -155,12 +155,11 @@ func test_a_version_one_section_migrates_with_every_site_ready() -> void:
 	assert_eq(_json(SiteBook.from_dict(saved).to_dict()), saved, "and round-trips")
 
 
-func test_a_renovating_site_round_trips_counts_down_and_cannot_swap_until_ready() -> void:
+func test_a_renovating_site_round_trips_counts_down_and_can_be_designed() -> void:
 	var book: SiteBook = SiteBook.new()
 	assert_true(book.add_site(&"mill", &"mill_lot", "Old Mill", 4, SECTIONS, 3))
 	assert_eq(book.renovation_days_left(&"mill"), 3)
-	assert_false(book.can_swap(&"mill", 4), "a site under renovation is not a swap target")
-	assert_false(book.swap_active(&"mill", 4, SECTIONS))
+	assert_true(book.can_swap(&"mill", 4), "a site under renovation can be visited to design (D28)")
 	var copy: SiteBook = SiteBook.from_dict(_json(book.to_dict()))
 	assert_true(copy != null)
 	assert_eq(copy.renovation_days_left(&"mill"), 3, "the days left are saved on the row")
@@ -168,10 +167,12 @@ func test_a_renovating_site_round_trips_counts_down_and_cannot_swap_until_ready(
 	assert_eq(copy.count_down_renovations(), [] as Array[StringName])
 	assert_eq(copy.renovation_days_left(&"mill"), 2)
 	assert_eq(copy.count_down_renovations(), [] as Array[StringName])
-	assert_false(copy.can_swap(&"mill", 6))
 	assert_eq(copy.count_down_renovations(), [&"mill"] as Array[StringName], "ready on the third day")
 	assert_eq(copy.renovation_days_left(&"mill"), 0)
-	assert_true(copy.can_swap(&"mill", 7))
+	# The countdown runs whichever site is active.
+	assert_true(book.swap_active(&"mill", 5, SECTIONS))
+	assert_eq(book.count_down_renovations(), [] as Array[StringName])
+	assert_eq(book.renovation_days_left(&"mill"), 2, "the active, renovating site counts down too")
 	assert_eq(copy.count_down_renovations(), [] as Array[StringName], "a ready site stays at 0")
 	assert_false((copy.to_dict()["sites"][1] as Dictionary).has("renovation_days_left"))
 

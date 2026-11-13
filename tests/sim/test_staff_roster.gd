@@ -213,17 +213,10 @@ func test_invalid_decoder_is_atomic_for_roster_pool_and_day() -> void:
 	row["candidate_day"] = 0
 	invalid.append(row)
 	row = before.duplicate(true)
-	row["members"] = []
-	invalid.append(row)
-	row = before.duplicate(true)
 	row["candidates"] = "not an array"
 	invalid.append(row)
 	row = before.duplicate(true)
 	row["candidates"][0]["id"] = row["members"][0]["id"]
-	invalid.append(row)
-	row = before.duplicate(true)
-	for employee: Dictionary in row["members"]:
-		employee["role"] = "cook"
 	invalid.append(row)
 	for field: String in ["skill", "wage", "role", "trait", "id"]:
 		row = before.duplicate(true)
@@ -307,3 +300,47 @@ func _random(seed: int) -> RandomNumberGenerator:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = seed
 	return random
+
+
+## A new site starts with nobody (#464): a roster without a cook or a server
+## decodes, but is not staffed, and its first pool offers one of each.
+func test_an_unstaffed_roster_decodes_and_is_offered_a_cook_and_a_server() -> void:
+	var roster: StaffRoster = StaffRoster.new()
+	assert_true(roster.is_staffed(), "the starter crew")
+	var cook_only: Dictionary = roster.to_dict()
+	var kept: Array = []
+	for employee: Dictionary in cook_only["members"]:
+		if employee["role"] == "cook":
+			kept.append(employee)
+	cook_only["members"] = kept
+	var copy: StaffRoster = StaffRoster.new()
+	assert_true(copy.from_dict(JSON.parse_string(JSON.stringify(cook_only))), "a cook alone decodes")
+	assert_false(copy.is_staffed(), "no server")
+	var nobody: Dictionary = roster.to_dict()
+	nobody["members"] = []
+	nobody["candidates"] = []
+	nobody["candidate_day"] = 0
+	var empty: StaffRoster = StaffRoster.new()
+	assert_true(empty.from_dict(nobody))
+	assert_eq(empty.members().size(), 0)
+	assert_false(empty.is_staffed())
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 464
+	assert_true(empty.draw_candidates(5, random))
+	var roles: Array[StringName] = []
+	for member: StaffMember in empty.candidates():
+		roles.append(member.role)
+	assert_eq(roles.slice(0, 2), [&"cook", &"server"] as Array[StringName])
+	assert_true(empty.hire(empty.candidates()[0].id))
+	assert_true(empty.hire(empty.candidates()[0].id))
+	assert_true(empty.is_staffed())
+	# A staffed roster's pool is drawn exactly as before.
+	var staffed: StaffRoster = StaffRoster.new()
+	var again: StaffRoster = StaffRoster.new()
+	var first: RandomNumberGenerator = RandomNumberGenerator.new()
+	var second: RandomNumberGenerator = RandomNumberGenerator.new()
+	first.seed = 9
+	second.seed = 9
+	assert_true(staffed.draw_candidates(2, first))
+	assert_true(again.draw_candidates(2, second))
+	assert_eq(staffed.to_dict(), again.to_dict())

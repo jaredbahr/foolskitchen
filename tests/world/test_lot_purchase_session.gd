@@ -211,56 +211,146 @@ func test_the_tier_site_limit_refuses_a_purchase_over_the_cap() -> void:
 	assert_eq(_buy_button(FIXER).text, "Owned", "the open screen refreshes after a buy")
 
 
-func test_a_fixer_upper_counts_down_at_each_close_and_opens_when_ready() -> void:
+func test_a_fixer_upper_can_be_designed_counts_down_and_opens_once_ready_and_staffed() -> void:
 	_start()
 	_owner().career_tier = 3
 	_set_cash(9000)
 	assert_true(_main.call("buy_lot", FIXER))
-	assert_false(_main.call("can_switch_site", FIXER), "renovating: no switch")
-	assert_false(_main.call("switch_site", FIXER))
+	assert_true(_main.call("can_switch_site", FIXER), "a renovating site can be visited to design (D28)")
 	assert_true(_main.call("set_site_card_visible", true))
 	assert_eq(_row_text(FIXER, "Status"), "Renovating: 3 days")
-	assert_true(_pick(FIXER).disabled)
-	assert_eq(_pick(FIXER).text, "Renovating")
-	_pick(FIXER).pressed.emit()
-	assert_eq(_book().active_id, SiteBook.HOME_ID, "a disabled pick does nothing")
-	assert_true(_main.call("set_site_card_visible", false))
-	for left: int in [2, 1]:
-		var report: DayReport = _play_to_close()
-		assert_eq(_book().renovation_days_left(FIXER), left)
-		assert_eq(report.away_site_lines.size(), 1)
-		assert_true(report.away_site_lines[0].begins_with("Old Mill Street (closed)"), report.away_site_lines[0])
-		assert_true(report.away_site_lines[0].ends_with("renovating, %d %s left" % [left, "day" if left == 1 else "days"]),
-			report.away_site_lines[0])
-		_next_morning()
-		assert_true(_main.call("is_site_card_visible"), "two sites: the card shows each morning")
-		assert_eq(_row_text(FIXER, "Status"), "Renovating: %d %s" % [left, "day" if left == 1 else "days"])
-		assert_false(_main.call("can_switch_site", FIXER))
-		_pick(SiteBook.HOME_ID).pressed.emit()
-		assert_false(_main.call("is_site_card_visible"))
-		# The morning autosave keeps the count: a reload reads it back.
-		_close()
-		_start()
-		assert_eq(_book().renovation_days_left(FIXER), left, "the days left reload")
-	var last: DayReport = _play_to_close()
-	assert_true(last.away_site_lines[0].ends_with("renovation done, ready to open"), last.away_site_lines[0])
-	_next_morning()
-	assert_eq(_book().renovation_days_left(FIXER), 0)
-	assert_true(_main.call("is_site_card_visible"))
 	assert_false(_pick(FIXER).disabled)
-	assert_eq(_pick(FIXER).text, "Work here")
+	assert_eq(_pick(FIXER).text, "Design here")
+	_pick(SiteBook.HOME_ID).pressed.emit()
+	# A day at home: the fixer-upper counts down while away.
+	var report: DayReport = _play_to_close()
+	assert_eq(_book().renovation_days_left(FIXER), 2)
+	assert_true(report.away_site_lines[0].begins_with("Old Mill Street (closed)"), report.away_site_lines[0])
+	assert_true(report.away_site_lines[0].ends_with("renovating, 2 days left"), report.away_site_lines[0])
+	_next_morning()
+	assert_true(_main.call("is_site_card_visible"), "two sites: the card shows each morning")
+	assert_eq(_row_text(FIXER, "Status"), "Renovating: 2 days")
 	_pick(FIXER).pressed.emit()
-	assert_eq(_book().active_id, FIXER, "the card switched to the finished site")
-	assert_false(_main.call("is_site_card_visible"), "not shown again by the switch's own morning")
-	var base: ShopLayout = _main.get("_base_layout")
-	assert_eq(base.save_layout_id, &"lot_town_fixer_upper", "the site runs on its lot's layout")
-	# The switch's autosave reloads at the new site.
+	assert_eq(_book().active_id, FIXER, "switched there to design")
+	assert_eq((_main.get("_base_layout") as ShopLayout).save_layout_id, &"lot_town_fixer_upper")
+	assert_eq((_main.get("staff_roster") as StaffRoster).members().size(), 0, "a new site starts with nobody")
+	# It cannot open, but Build works and the day can be closed.
+	assert_eq(_main.call("site_opening_refusal"), "Still renovating: 2 days left")
+	assert_false(Clock.sim.start_service(), "no guests while renovating")
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	var hud: Node = _main.get_node("HUD")
+	assert_eq(hud.call("closed_day_reason"), "Still renovating: 2 days left")
+	assert_eq((hud.get_node("Top/Row/Context") as Button).text, "Close for today")
+	assert_false((hud.get_node("Top/Row/Context") as Button).disabled)
+	assert_true(_main.call("set_build_active", true), "designing is allowed")
+	assert_true(_main.call("set_build_active", false))
+	assert_true(_main.call("close_for_today"))
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_eq(_book().renovation_days_left(FIXER), 1, "the active site counts down too")
+	var closed: DayReport = _main.get("shown_report")
+	assert_true(closed != null and closed.day == Clock.sim.day, "the evening report shows")
+	assert_eq(closed.customers_served, 0)
+	_next_morning()
+	# The morning autosave keeps the count and the site: a reload reads them.
 	_close()
 	_start()
+	hud = _main.get_node("HUD")
 	assert_eq(_book().active_id, FIXER)
-	assert_eq((_main.get("_base_layout") as ShopLayout).save_layout_id, &"lot_town_fixer_upper")
-	assert_true(Clock.sim.start_service(), "the finished site opens")
+	assert_eq(_book().renovation_days_left(FIXER), 1, "the days left reload")
+	assert_true(_main.call("close_for_today"))
+	assert_eq(_book().renovation_days_left(FIXER), 0)
+	_next_morning()
+	# Ready, but nobody to cook and serve: hire first.
+	assert_eq(_main.call("site_opening_refusal"), "Hire a cook and a server before you open")
+	assert_false(Clock.sim.start_service())
+	var roster: StaffRoster = _main.get("staff_roster")
+	var roles: Array[StringName] = []
+	for member: StaffMember in roster.candidates():
+		roles.append(member.role)
+	assert_true(roles.has(&"cook") and roles.has(&"server"), "the pool offers a cook and a server")
+	for role: StringName in [&"cook", &"server"]:
+		for member: StaffMember in (_main.get("staff_roster") as StaffRoster).candidates():
+			if member.role == role:
+				assert_true(_main.call("staff_hire", member.id), "hired a %s" % role)
+				break
+	assert_eq(_main.call("site_opening_refusal"), "")
+	assert_eq(hud.call("closed_day_reason"), "")
+	var opened: DayReport = _play_to_close()
+	assert_true(opened.customers_served > 0, "the finished, staffed site serves guests")
 
+
+func test_closing_a_day_needs_a_reason() -> void:
+	_start()
+	assert_false(_main.call("close_for_today"), "a staffed, finished site opens instead")
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_eq(Clock.sim.opening_refusal, "")
+
+
+func test_the_lease_upgrade_is_offered_only_at_the_home_lot() -> void:
+	_start()
+	_owner().career_tier = 3
+	_set_cash(100000)
+	assert_eq(_main.call("lease_refusal"), "", "home can expand at Tier 2+")
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", Clock.sim.day,
+		SaveSystem.capture_sections(SiteSections.PER_SITE)))
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_main.call("lease_refusal"), "Only your first restaurant can expand its lease for now")
+	var cash: int = Economy.cash
+	assert_false(_main.call("lease_buy"), "a bought site cannot buy the home lease (#465)")
+	assert_eq(Economy.cash, cash)
+	assert_false(_main.get("lease_expanded"))
+	assert_true(_main.call("set_menu_visible", true))
+	assert_false((_main.get_node("Overlay/MenuPanel/Panel/Content/LeaseOffer") as Control).visible,
+		"no lease offer on the Menu")
+
+
+func test_buying_asks_to_go_there_today() -> void:
+	_start()
+	_owner().career_tier = 3
+	_set_cash(20000)
+	assert_true(_main.call("set_property_visible", true))
+	_buy_button(FIXER).pressed.emit()
+	assert_true(_main.call("is_site_card_visible"))
+	assert_true(_card().is_prompting())
+	assert_eq((_card().get_node("Center/Panel/Content/Title") as Label).text, "Design it today?")
+	assert_false(_main.call("is_property_visible"))
+	(_card().get_node("Center/Panel/Content/List/Answers/Accept") as Button).pressed.emit()
+	assert_eq(_book().active_id, FIXER, "yes switches now")
+	assert_false(_main.call("is_site_card_visible"))
+	# A move-in-ready site asks "Work at your new place today?"; No stays.
+	assert_true(_book().add_site(SEASIDE, SEASIDE, "Seaside Cliff", Clock.sim.day,
+		SaveSystem.capture_sections(SiteSections.PER_SITE)))
+	assert_true(_main.call("offer_new_site", SEASIDE))
+	assert_eq((_card().get_node("Center/Panel/Content/Title") as Label).text, "Work at your new place today?")
+	(_card().get_node("Center/Panel/Content/List/Answers/Decline") as Button).pressed.emit()
+	assert_eq(_book().active_id, FIXER, "no stays")
+	assert_true(_main.call("is_property_visible"), "back to the market")
+
+
+func test_the_card_holds_build_and_owner_keys() -> void:
+	_start()
+	assert_true(_book().add_site(&"second", &"second_lot", "Second", Clock.sim.day,
+		SaveSystem.capture_sections(SiteSections.PER_SITE)))
+	assert_true(_main.call("set_site_card_visible", true))
+	var key: InputEventKey = InputEventKey.new()
+	key.keycode = KEY_B
+	key.physical_keycode = KEY_B
+	key.pressed = true
+	_main.call("_unhandled_input", key)
+	assert_false(_main.call("is_build_active"), "B does nothing under the card")
+	assert_true(_main.call("is_site_card_visible"))
+	var escape: InputEventKey = InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	_main.call("_unhandled_input", escape)
+	assert_false(_main.call("is_site_card_visible"), "Escape keeps the current site")
+	assert_eq(_book().active_id, SiteBook.HOME_ID)
+	# A refused pick names its reason on the button.
+	assert_true(_main.call("set_build_active", true))
+	assert_true(_main.call("set_site_card_visible", true))
+	assert_eq(_pick(&"second").text, "Close Build first")
+	assert_true(_pick(&"second").disabled)
 
 func test_the_card_never_shows_with_one_site() -> void:
 	_start()
@@ -280,7 +370,7 @@ func test_the_card_switches_in_the_morning_only() -> void:
 	assert_eq(_pick(SiteBook.HOME_ID).text, "Stay here")
 	assert_eq(_pick(&"second").text, "Work here")
 	assert_eq(_row_text(&"second", "Name"), "Second")
-	assert_eq(_row_text(&"second", "Status"), "Yesterday's takings: $0")
+	assert_eq(_row_text(&"second", "Status"), "Closed yesterday")
 	assert_eq(_row_text(&"second", "Manager"), "No manager")
 	assert_true(_card().row_for(SiteBook.HOME_ID).get_node_or_null("Body/Lines/Here") != null)
 	# Keeping the current site.
@@ -302,3 +392,23 @@ func test_the_card_switches_in_the_morning_only() -> void:
 	assert_false(_main.call("set_site_card_visible", true), "not during service")
 	_card().site_chosen.emit(SiteBook.HOME_ID)
 	assert_eq(_book().active_id, &"second", "no switch outside the morning")
+
+
+func test_switching_to_a_new_site_and_back_keeps_each_sites_own_staff_and_shop() -> void:
+	_start()
+	_owner().career_tier = 3
+	_set_cash(9000)
+	var home_staff: String = JSON.stringify((_main.get("staff_roster") as StaffRoster).to_dict())
+	var home_shop: String = JSON.stringify(SaveSystem.capture_sections(["shop"] as Array[String])["shop"])
+	assert_true(_main.call("buy_lot", FIXER))
+	assert_true(_main.call("switch_site", FIXER))
+	assert_eq((_main.get("staff_roster") as StaffRoster).members().size(), 0, "nobody at the new site")
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_eq(JSON.stringify((_main.get("staff_roster") as StaffRoster).to_dict()), home_staff,
+		"the home crew is back, unchanged")
+	assert_eq(JSON.stringify(SaveSystem.capture_sections(["shop"] as Array[String])["shop"]), home_shop,
+		"and the home shop")
+	var frozen: Dictionary = _book().frozen_sections(FIXER)
+	assert_eq((frozen["staff"]["members"] as Array).size(), 0, "the new site's empty roster stays its own")
+	assert_eq(frozen["shop"]["layout_id"], "lot_town_fixer_upper")
+	assert_eq(_main.call("site_opening_refusal"), "", "home opens as usual")

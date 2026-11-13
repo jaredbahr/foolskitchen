@@ -127,7 +127,9 @@ func test_takings_read_a_sites_own_guest_money() -> void:
 	ledger.record(4, 84, Ledger.AWAY_SITE_INCOME, "", &"mill")
 	ledger.record(5, 999, Ledger.SALE, "", &"home")
 	assert_eq(SiteMorning.takings(ledger, 4, &"home"), 320, "sales and tips only")
-	assert_eq(SiteMorning.takings(ledger, 4, &"mill"), 84, "a manager's takings")
+	assert_eq(SiteMorning.takings(ledger, 4, &"mill"), 0, "a managed site's income is not takings")
+	assert_eq(SiteMorning.away_earnings(ledger, 4, &"mill"), 84, "it is its net earnings")
+	assert_eq(SiteMorning.away_earnings(ledger, 4, &"home"), 0)
 	assert_eq(SiteMorning.takings(ledger, 3, &"home"), 0)
 	assert_eq(SiteMorning.takings(ledger, 0, &"home"), 0)
 	assert_eq(SiteMorning.takings(null, 4, &"home"), 0)
@@ -136,7 +138,20 @@ func test_takings_read_a_sites_own_guest_money() -> void:
 func test_card_lines() -> void:
 	var row: SiteCard.Row = SiteCard.Row.new()
 	row.takings = 1412
-	assert_eq(SiteCard.status_line(row), "Yesterday's takings: $1,412")
+	assert_eq(SiteCard.status_line(row), "Closed yesterday", "an away site without a manager")
+	row.managed = true
+	row.earnings = 84
+	assert_eq(SiteCard.status_line(row), "Yesterday's earnings (after the manager): $84")
+	row.earnings = -12
+	assert_eq(SiteCard.status_line(row), "Yesterday's earnings (after the manager): -$12")
+	assert_eq(SiteCard.pick_label(row), "Work here")
+	row.refusal = SiteCard.CLOSE_BUILD
+	assert_eq(SiteCard.pick_label(row), "Close Build first", "the real reason")
+	row.refusal = ""
+	row.current = true
+	assert_eq(SiteCard.status_line(row), "Yesterday's takings: $1,412", "gross where the owner worked")
+	assert_eq(SiteCard.pick_label(row), "Stay here")
+	row.current = false
 	assert_eq(SiteCard.manager_line(row), "No manager")
 	row.manager = "Ana"
 	assert_eq(SiteCard.manager_line(row), "Manager: Ana")
@@ -144,3 +159,6 @@ func test_card_lines() -> void:
 	assert_eq(SiteCard.status_line(row), "Renovating: 1 day")
 	row.renovation_days = 3
 	assert_eq(SiteCard.status_line(row), "Renovating: 3 days")
+	assert_eq(SiteCard.pick_label(row), "Design here")
+	assert_eq(PropertyText.renovating_line(2), "Still renovating: 2 days left")
+	assert_eq(PropertyText.renovating_line(1), "Still renovating: 1 day left")
