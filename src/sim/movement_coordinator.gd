@@ -68,6 +68,13 @@ var _memo_on: bool = false
 var escape_counts: Dictionary[StringName, int] = {}
 ## Pairs whose squeeze finished during the current tick (for observers).
 var _squeezed: Dictionary[int, int] = {}
+## Leavers asking to squeeze past arrivals at the door (#459), started at the
+## next begin_tick.
+var _counterflow: Dictionary[int, bool] = {}
+## Narrow way in cache (#459), valid for one grid version.
+var _narrow: bool = false
+var _narrow_grid: SimGrid = null
+var _narrow_version: int = -1
 ## Door lane cache (#305), valid for one grid version.
 var _lane: Dictionary[Vector2i, bool] = {}
 var _lane_grid: SimGrid = null
@@ -136,7 +143,8 @@ func register_agent(world: SimWorld, agent: SimAgent, cause: String = "admission
 	if agent.movement_admitted:
 		return world.agents.has(agent) and _occupied.get(agent.cell, -1) == agent.id
 	var requested: Vector2i = agent.cell
-	if cause == "admission" and agent is CustomerAgent and _someone_leaving_by_the_door(world):
+	if cause == "admission" and agent is CustomerAgent \
+			and (_someone_leaving_by_the_door(world) or door_counterflow(world)):
 		# Let them out first: while the door is jammed (someone on the way out
 		# has been stuck in the door lane for the escape limit), a guest
 		# arriving from the street waits outside instead of adding to it, but
@@ -179,6 +187,7 @@ func unregister_agent(agent_id: int) -> void:
 	_stopping.erase(agent_id)
 	_after_stop.erase(agent_id)
 	_stall.erase(agent_id)
+	_counterflow.erase(agent_id)
 	_right_of_way.erase(agent_id)
 	if _way_holder == agent_id:
 		_way_holder = -1
@@ -277,6 +286,7 @@ func begin_tick(world: SimWorld) -> void:
 				else:
 					agent.clear_path()
 					agent.needs_repath = true
+	_squeeze_counterflow(world)
 	_watch_liveness(world)
 
 
@@ -344,6 +354,13 @@ static func lane_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 
 
 func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
+	# Counterflow at the door (#459): someone on the way out goes before a guest
+	# still arriving or waiting for a table, even one granted right of way.
+	# A stuck arrival's escape otherwise won the head-on against the leaver,
+	# who stepped back and let the next waiting guest refill the doorway.
+	var first_out: bool = _leaving(first) and _waiting_guest(second)
+	if first_out or (_leaving(second) and _waiting_guest(first)):
+		return first_out
 	var a: int = priority(world, first)
 	var b: int = priority(world, second)
 	# Food in hand keeps its priority; otherwise a stuck person's granted
@@ -353,6 +370,68 @@ func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
 			and a != CARRYING_PRIORITY and b != CARRYING_PRIORITY:
 		return first_way
 	return a > b or (a == b and first.id < second.id)
+
+
+## A guest still arriving or waiting for a table (not yet walking to a seat).
+func _waiting_guest(agent: SimAgent) -> bool:
+	return agent is CustomerAgent and (agent as CustomerAgent).state <= CustomerAgent.State.QUEUED
+
+
+## Counterflow at the door (#459): someone leaving whose step enters the door
+## lane (or the step after it does), and who is held up only by guests still
+## arriving or waiting for a table: those guests. The leaver then swaps past
+## them (an ordinary squeeze) instead of waiting for the stall backstop. At a
+## one-cell way in they have nowhere to step aside to, and yielding only
+## shuffled the crowd: the leaver took 180 to 360 ticks to get out. Boxed-in
+## blockers are passed after half the yield limit, the others at the yield
+## limit, so an ordinary doorway, where waiting guests can step aside, still
+## sorts itself out by yielding first.
+func _counterflow_blockers(world: SimWorld, agent: SimAgent, next: Vector2i, waits: int) -> Array[SimAgent]:
+	var blockers: Array[SimAgent] = []
+	var tuning: MovementTuning = world.movement_tuning
+	if waits * 2 < tuning.yield_after_ticks or not _leaving(agent) or agent is CourierAgent \
+			or (_resume.has(agent.id) and not _returning.has(agent.id)):
+		return blockers
+	var lane: Dictionary[Vector2i, bool] = door_lane(world)
+	var near: bool = lane.has(agent.cell) or lane.has(next)
+	if not near and agent.path_index + 1 < agent.path.size():
+		near = lane.has(agent.path[agent.path_index + 1])
+	if not near:
+		return blockers
+	for cell: Vector2i in _step_cells(agent.cell, next):
+		var other: SimAgent = _holder(world, cell)
+		if other == null or other == agent or blockers.has(other):
+			continue
+		if not _waiting_guest(other):
+			blockers.clear()
+			return blockers
+		blockers.append(other)
+	if waits < tuning.yield_after_ticks:
+		for other: SimAgent in blockers:
+			var reachable: Dictionary[Vector2i, bool] = world.grid.reachable_avoiding(other.cell,
+				_route_blocked(world, other, other.cell, SimGrid.NO_CELL, true), other.uses_guest_layer())
+			if reachable.size() > 1:
+				blockers.clear()
+				return blockers
+	return blockers
+
+
+## Starts the counterflow squeezes asked for last tick (_counterflow_blockers),
+## lowest ID first, if they still hold.
+func _squeeze_counterflow(world: SimWorld) -> void:
+	var ids: Array[int] = _counterflow.keys()
+	_counterflow.clear()
+	ids.sort()
+	for id: int in ids:
+		var agent: SimAgent = world.agent(id)
+		if agent == null or agent.has_arrived() or _mid_move(agent):
+			continue
+		var blockers: Array[SimAgent] = _counterflow_blockers(world, agent, agent.next_cell(),
+			int(_blocked.get(id, 0)))
+		if blockers.is_empty():
+			continue
+		if _try_squeeze(world, agent, agent.path.slice(agent.path_index - 1), blockers) == ESCAPE_SQUEEZED:
+			escape_counts[&"counterflow"] = int(escape_counts.get(&"counterflow", 0)) + 1
 
 
 ## A stuck person given right of way (#306) keeps the cells of the step it is
@@ -658,6 +737,10 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 				holder = corner_holder
 				break
 	if holder != null and holder.move_progress == 0.0:
+		if not _counterflow_blockers(world, agent, next, waits).is_empty():
+			# Started before anyone moves next tick, like a backstop squeeze;
+			# ordinary waiting goes on meanwhile, in case it cannot start.
+			_counterflow[agent.id] = true
 		if waits >= world.movement_tuning.yield_after_ticks \
 				and _idle_station_holder(world, agent, holder, next):
 			if _yield(world, holder, agent) == YieldAttempt.STARTED:
@@ -667,7 +750,11 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 		var yielding: SimAgent = holder if _before(world, agent, holder) else agent
 		if waits >= world.movement_tuning.yield_after_ticks:
 			var winner: SimAgent = agent if yielding == holder else holder
-			if _yield(world, yielding, winner) == YieldAttempt.NO_POCKET:
+			# A leaver never steps back to make room for a boxed-in arrival
+			# (#459): the arrival's way in is the leaver's way out, so the gap
+			# only lets the crowd behind it press further in.
+			if _yield(world, yielding, winner) == YieldAttempt.NO_POCKET \
+					and not (_leaving(winner) and _waiting_guest(yielding)):
 				# A boxed lower-priority actor cannot clear itself. Only then
 				# ask the normal winner to make a physical cooperative vacancy.
 				var blocked_cell: Vector2i = yielding.cell
@@ -1282,6 +1369,79 @@ func _someone_leaving_by_the_door(world: SimWorld) -> bool:
 		# back has not helped, so they come in and the backstop sorts it out.
 		var stalled: int = world.now - int(_stall[other.id]["since"])
 		if stalled >= world.movement_tuning.escape_after_ticks and stalled < world.movement_tuning.give_up_after_ticks:
+			return true
+	return false
+
+
+## Let them out first at a narrow way in (#459): while anyone is on the way out
+## of a shop whose door opens onto a one-cell way in (narrow_way_in), arrivals
+## wait on the street instead of stepping in, so the way stays clear for them.
+## At such a door an arrival and a leaver cannot pass, and every arrival that
+## stepped in filled the cells beside the way, the only ones a leaver could
+## use. Wide doors are never held this way.
+func door_counterflow(world: SimWorld) -> bool:
+	if not narrow_way_in(world):
+		return false
+	for other: SimAgent in world.agents:
+		if _leaving(other):
+			return true
+	return false
+
+
+## Whether a guest on the street holds back for "let them out first", either
+## rule: a stalled leaver at the door (door_outflow_stalled, #322) or someone
+## leaving through a narrow way in (door_counterflow, #459). The narrow-door
+## hold never keeps one guest out longer than door_hold_max_ticks.
+func hold_at_door(world: SimWorld, agent: SimAgent) -> bool:
+	if door_outflow_stalled(world):
+		return true
+	if not door_counterflow(world):
+		_held_since.erase(agent.id)
+		return false
+	var since: int = int(_held_since.get(agent.id, world.now))
+	_held_since[agent.id] = since
+	return world.now - since < world.movement_tuning.door_hold_max_ticks
+
+
+## The door opens onto a one-cell way in: some floor cell of the door lane
+## that, if blocked, leaves the street entries reaching no floor beyond the
+## lane. Cached per grid edit.
+func narrow_way_in(world: SimWorld) -> bool:
+	if _narrow_grid != world.grid or _narrow_version != world.grid.version:
+		_narrow_grid = world.grid
+		_narrow_version = world.grid.version
+		_narrow = narrow_cells(world.grid)
+	return _narrow
+
+
+## narrow_way_in() for any grid, uncached.
+static func narrow_cells(grid: SimGrid) -> bool:
+	var lane: Dictionary[Vector2i, bool] = lane_cells(grid)
+	var entries: Array[Vector2i] = grid.entries()
+	if entries.is_empty():
+		return false
+	for choke: Vector2i in lane:
+		if grid.terrain(choke) != SimGrid.Terrain.FLOOR:
+			continue
+		var blocked: Dictionary[Vector2i, bool] = {choke: true}
+		var seen: Dictionary[Vector2i, bool] = {}
+		var frontier: Array[Vector2i] = []
+		for entry: Vector2i in entries:
+			seen[entry] = true
+			frontier.append(entry)
+		var beyond: bool = false
+		while not frontier.is_empty() and not beyond:
+			var cell: Vector2i = frontier.pop_back()
+			for neighbour: Vector2i in grid.guest_neighbours(cell):
+				if seen.has(neighbour) or blocked.has(neighbour) \
+						or grid.terrain(neighbour) not in [SimGrid.Terrain.FLOOR, SimGrid.Terrain.ENTRY]:
+					continue
+				if not lane.has(neighbour):
+					beyond = true
+					break
+				seen[neighbour] = true
+				frontier.append(neighbour)
+		if not beyond:
 			return true
 	return false
 
