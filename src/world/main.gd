@@ -42,6 +42,8 @@ const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
 const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_managers.tres")
+## How many sites each career tier allows (FK-087, D28).
+const SITE_LIMITS: SiteLimitTuning = preload("res://data/balance/sites.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
@@ -319,8 +321,17 @@ var _settings_previous_speed: int = 0
 var _quit_title_previous_speed: int = 0
 var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
-## The browse-only property market (FK-087 part 2), opened from the Menu.
+## The property market (FK-087), opened from the Menu: lots to browse and buy.
 var _property_panel: PropertyPanel
+## The morning site card (FK-087, #464): shown once a morning with 2+ sites.
+var _site_card: SiteCard
+var _site_card_day: int = 0
+## The new site the same-day question is about (#464), or &"".
+var _site_prompt_target: StringName = &""
+## The day `close_for_today` ended without a service (#464): its close books
+## the costs but is not a business day (no history row, XP, goals, records,
+## trending post or demand).
+var _closed_day: int = 0
 var _goals_snapshot: Dictionary = {}
 var _stock_panel: StockPanel
 var _owner_picker: OwnerPicker
@@ -513,8 +524,18 @@ func _bind_world_presentation() -> void:
 	_dismiss_property()
 	if not _property_panel.close_requested.is_connected(_on_property_close_requested):
 		_property_panel.close_requested.connect(_on_property_close_requested)
+	if not _property_panel.buy_requested.is_connected(_on_property_buy_requested):
+		_property_panel.buy_requested.connect(_on_property_buy_requested)
+	_site_card = $Overlay/SiteCard
+	_site_card.hide()
+	if not _site_card.site_chosen.is_connected(_on_site_card_chosen):
+		_site_card.site_chosen.connect(_on_site_card_chosen)
+	if not _site_card.prompt_answered.is_connected(_on_site_prompt_answered):
+		_site_card.prompt_answered.connect(_on_site_prompt_answered)
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
+	if not $HUD.is_connected(&"close_day_requested", close_for_today):
+		$HUD.connect(&"close_day_requested", close_for_today)
 	_settings_panel = $Overlay/SettingsPanel
 	_shortcuts_panel = $Overlay/ShortcutsPanel
 	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
@@ -872,6 +893,8 @@ func _connect_session() -> void:
 
 func _exit_tree() -> void:
 	_end_haggle_modal()
+	# The shared clock outlives this session: a site's refusal goes with it.
+	Clock.sim.opening_refusal = ""
 	if sound != null:
 		sound.unbind()
 	_disconnect_vibe_grid()
@@ -964,6 +987,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 	if key != null and not key.echo:
 		_on_shift_changed(key)
+	if is_site_card_visible():
+		# The card holds the morning until a choice (#464): no build, paint
+		# or owner keys under it. Escape keeps the current site.
+		if key != null and key.pressed and not key.echo \
+				and (key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode) == KEY_ESCAPE:
+			if _site_card.is_prompting():
+				_on_site_prompt_answered(false)
+			else:
+				_on_site_card_chosen(site_book.active_id)
+		if key != null:
+			_mark_input_handled()
+		return
 	if route_paint_input(event) or route_build_input(event):
 		_mark_input_handled()
 		return
@@ -3300,8 +3335,8 @@ func can_switch_site(target: StringName) -> bool:
 ## Returns false with nothing changed when refused, or when the target does
 ## not load (the session stays exactly as it was). The one exception is a
 ## refused rollback inside SaveSystem (an error is pushed): the session may
-## then be inconsistent. Called from tests only so far; a site picker comes
-## later. Never starts a new game.
+## then be inconsistent. The morning site card calls it (#464). Never starts
+## a new game.
 func switch_site(target: StringName) -> bool:
 	if not can_switch_site(target):
 		return false
@@ -3378,6 +3413,9 @@ func switch_site(target: StringName) -> bool:
 	var refunds: Array = thawed["refunds"]
 	for refund: Dictionary in refunds:
 		Economy.add_cash(int(refund["amount"]), StringName(refund["category"]), String(refund["note"]))
+	# A switch is this morning's site choice: the card does not come back.
+	_site_card_day = day
+	set_site_card_visible(false)
 	# The arriving site's morning, for today: delivery and restock, staff, plans
 	# and offers. Weather, the weekly challenge and the calendar are global
 	# and already set for today, so they are not drawn again. Its autosave is
@@ -3695,15 +3733,23 @@ func _lease_layout() -> ShopLayout:
 
 
 func lease_refusal() -> String:
+	if not _lease_at_home():
+		return PropertyText.LEASE_HOME_ONLY_LINE
 	return LEASE.refusal(owner_progress, lease_expanded, Clock.sim.phase, Economy.spendable(),
 		Economy.loan.principal)
+
+
+## The lease upgrade is the home lot's (D30) until each lot's own expansion
+## and rent are charged (#465): a bought site is never offered it.
+func _lease_at_home() -> bool:
+	return site_book.lot_id(site_book.active_id) == SiteBook.HOME_LOT
 
 
 func _refresh_lease_offer() -> void:
 	_refresh_cat_offer()
 	if _menu_panel == null:
 		return
-	if not LEASE.offered(owner_progress, lease_expanded, Clock.sim.phase):
+	if not _lease_at_home() or not LEASE.offered(owner_progress, lease_expanded, Clock.sim.phase):
 		_menu_panel.set_lease_offer(false, "", "", "")
 		return
 	_menu_panel.set_lease_offer(true,
@@ -4118,6 +4164,11 @@ func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
 		return ROOMIER_LAYOUT
 	if StringName(identity) == LAYOUT.save_layout_id:
 		return LAYOUT
+	# A bought lot's own shell (FK-087, #464): its authored id, lot_<id>.
+	if content != null and not StringName(identity).is_empty():
+		for lot: LotDef in content.lots():
+			if lot.base_layout != null and lot.base_layout.save_layout_id == StringName(identity):
+				return lot.base_layout
 	return null
 
 
@@ -4283,6 +4334,7 @@ func _change_staff(id: StringName, hiring: bool) -> bool:
 	staff_roster = choices
 	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
+	_refresh_opening_block()
 	refresh_presentation()
 	return true
 
@@ -4432,6 +4484,7 @@ func _refresh_menu_catalogue() -> void:
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
 		$HUD.set_menu_notice(_menu_access_error, true)
+		_refresh_opening_block()
 		return
 	_menu_access_error = ""
 	_track_menu_access_losses(menu_settings.enabled_recipes(), cookable)
@@ -4442,6 +4495,7 @@ func _refresh_menu_catalogue() -> void:
 		_recompute_vibe()
 		_refresh_stock_panel()
 	$HUD.set_menu_notice(menu_open_note())
+	_refresh_opening_block()
 
 
 ## Load filters the saved choices before normal morning setup. Retain those
@@ -4838,8 +4892,7 @@ func set_property_visible(value: bool) -> bool:
 			return false
 	_dismiss_goals()
 	set_menu_visible(false)
-	_property_panel.set_market(content.lots(), owner_progress.career_tier, reputation.average(),
-		customer_type_catalogue)
+	_refresh_property()
 	_property_panel.show()
 	refresh_hints()
 	return true
@@ -4847,6 +4900,323 @@ func set_property_visible(value: bool) -> bool:
 
 func is_property_visible() -> bool:
 	return _property_panel != null and _property_panel.visible
+
+
+func _refresh_property() -> void:
+	if _property_panel != null:
+		_property_panel.set_market(content.lots(), _property_buyer(), customer_type_catalogue)
+
+
+## What the market's Buy buttons read: detached values.
+func _property_buyer() -> PropertyPanel.Buyer:
+	var buyer: PropertyPanel.Buyer = PropertyPanel.Buyer.new()
+	buyer.career_tier = owner_progress.career_tier
+	buyer.reputation = closing_reputation()
+	buyer.site_count = site_book.site_count()
+	for id: StringName in site_book.site_ids():
+		buyer.owned_lots.append(site_book.lot_id(id))
+	buyer.limits = SITE_LIMITS
+	buyer.cash = Economy.spendable()
+	buyer.loan = Economy.loan.principal
+	return buyer
+
+
+## The active site's closing reputation: the stars the career tier read at
+## its last close (D30), which the reviews keep until the next service. NAN
+## before the site's first close, so a lock line never quotes the starting
+## reviews as if they were earned (the property market's star locks).
+func closing_reputation() -> float:
+	return reputation.average() if not business_history.recent(1).is_empty() else NAN
+
+
+## Why `lot_id` cannot be bought now, in plain words ("" when it can). Lock
+## lines are the market's own.
+func lot_purchase_refusal(lot_id: StringName) -> String:
+	var lot: LotDef = _lot_def(lot_id)
+	if lot == null:
+		return PropertyText.UNKNOWN_LOT_LINE
+	if not can_edit_menu() or display_only:
+		return PropertyText.MORNING_LINE
+	var refusal: PropertyMarket.Refusal = _purchase_refusal(lot)
+	if refusal == PropertyMarket.Refusal.LOCKED:
+		var lock: String = PropertyText.lock_line(lot, owner_progress.career_tier, closing_reputation())
+		return lock if not lock.is_empty() else PropertyText.NOT_LISTED_LINE
+	return PropertyText.refusal_line(lot, refusal, Economy.spendable(), site_book.site_count(), SITE_LIMITS)
+
+
+func _purchase_refusal(lot: LotDef) -> PropertyMarket.Refusal:
+	return PropertyMarket.purchase_refusal(lot, owner_progress.career_tier, closing_reputation(),
+		site_book.owns_lot(lot.id), site_book.site_count(), SITE_LIMITS, Economy.spendable(),
+		Economy.loan.principal)
+
+
+func _lot_def(lot_id: StringName) -> LotDef:
+	return content.lot(lot_id) if content != null else null
+
+
+## Buys a lot this morning (FK-087, #464): pays its price, or a fixer-upper's
+## price and renovation bill, and adds a site built from the lot's own layout,
+## frozen as of today (a fixer-upper with its days of work still to do). The
+## site's id is the lot's id. Nothing is saved here: the next morning's
+## autosave keeps it (code rule 9). Returns false, changing nothing, when
+## `lot_purchase_refusal` has a reason.
+func buy_lot(lot_id: StringName) -> bool:
+	var lot: LotDef = _lot_def(lot_id)
+	if lot == null or not lot_purchase_refusal(lot_id).is_empty():
+		return false
+	var sections: Dictionary = _new_site_sections(lot)
+	if sections.is_empty():
+		push_warning("A bought lot's shop could not be built; nothing was bought")
+		return false
+	if not site_book.add_site(lot.id, lot.id, lot.display_name, Clock.sim.day, sections,
+			PropertyMarket.renovation_days(lot)):
+		push_warning("The site list could not take the bought lot; nothing was bought")
+		return false
+	for charge: Dictionary in PropertyMarket.purchase_charges(lot):
+		Economy.add_cash(int(charge["amount"]), charge["category"], lot.display_name)
+	world.log_event(PropertyText.bought_line(lot))
+	if is_property_visible():
+		_refresh_property()
+	refresh_hints()
+	return true
+
+
+## The new site's frozen sections: only its shop, the lot's own layout as a
+## fresh editor saves it (no trays, lease not expanded). Every other per-site
+## section takes its new-game default when the site is first switched to,
+## as a load does. {} when the layout does not build.
+func _new_site_sections(lot: LotDef) -> Dictionary:
+	if lot.base_layout == null or _base_for_saved_shop({"layout_id": lot.base_layout.save_layout_id}) \
+			!= lot.base_layout:
+		return {}
+	var errors: Array[String] = []
+	var shell: RestaurantSim = RestaurantSim.new()
+	shell.world = ShopBuilder.build(lot.base_layout, content, errors)
+	if not errors.is_empty() or shell.world == null:
+		return {}
+	var shop: Dictionary = ShopEditor.new(shell, content, ShopEditBooks.new(), lot.base_layout).to_dict()
+	shop["tray_level"] = 0
+	shop["lease_expanded"] = false
+	# Nobody works there yet (Jared, #464): the owner hires a crew on site.
+	var nobody: StaffRoster = StaffRoster.new(TUNING)
+	var staff: Dictionary = nobody.to_dict()
+	staff["members"] = []
+	staff["candidates"] = []
+	staff["candidate_day"] = 0
+	if not nobody.from_dict(staff):
+		return {}
+	var sections: Dictionary = {"shop": shop, "staff": staff}
+	# The new place starts with a copy of this site's menu (Jared, #464):
+	# dishes, what is on and prices, copied once, here; today's special and the
+	# signature dish are each site's own. It is named after its lot (Jared), not
+	# after the restaurant it was bought from. A dish the lot cannot cook stays
+	# off its live menu, as after any layout change.
+	# Only dishes the lot's own stations can make are copied: a saved menu
+	# naming a dish its layout cannot cook does not load, and the site could
+	# never be switched to. With nothing left on, the lot starts on its default
+	# menu instead.
+	var menu: Dictionary = _capture_menu()
+	if not menu.is_empty():
+		var cookable: Array[RecipeDef] = _cookable_recipes(lot.base_layout)
+		var ids: Dictionary[String, bool] = {}
+		for recipe: RecipeDef in cookable:
+			ids[String(recipe.id)] = true
+		var enabled: Array = []
+		for value: Variant in menu.get("enabled", []):
+			if ids.has(String(value)):
+				enabled.append(value)
+		var prices: Dictionary = {}
+		var saved_prices: Dictionary = menu.get("prices", {})
+		for key: Variant in saved_prices:
+			if ids.has(String(key)):
+				prices[key] = saved_prices[key]
+		var copy: Dictionary = menu.duplicate(true)
+		copy["enabled"] = enabled
+		copy["prices"] = prices
+		var lot_name: String = MenuSettings.normalized_restaurant_name(lot.display_name)
+		if copy.has("name") and not lot_name.is_empty():
+			copy["name"] = lot_name
+		var check: MenuSettings = MenuSettings.new(cookable, owner_progress.effective_level())
+		if not enabled.is_empty() and check.from_dict(copy):
+			sections["menu"] = copy
+	return sections
+
+
+func _on_property_buy_requested(lot_id: StringName) -> void:
+	if not buy_lot(lot_id):
+		var reason: String = lot_purchase_refusal(lot_id)
+		if not reason.is_empty() and world != null:
+			world.log_event(reason)
+		_refresh_property()
+		return
+	offer_new_site(lot_id)
+
+
+## Right after a purchase (Jared, #464): "Work at your new place today?" (a
+## fixer-upper: "Design it today?"). Yes switches there now; No stays. Only
+## when the switch is possible this morning. Marks the morning's site choice
+## as made, so the card does not follow.
+func offer_new_site(site: StringName) -> bool:
+	var lot: LotDef = _lot_def(site_book.lot_id(site))
+	if _site_card == null or lot == null or not can_switch_site(site):
+		return false
+	var fixer: bool = site_book.renovation_days_left(site) > 0
+	_dismiss_property()
+	_site_prompt_target = site
+	_site_card_day = Clock.sim.day
+	_site_card.show_prompt(SiteCard.PROMPT_FIXER if fixer else SiteCard.PROMPT_NEW,
+		PropertyText.prompt_detail(lot), SiteCard.PROMPT_DESIGN if fixer else SiteCard.PROMPT_GO,
+		SiteCard.PROMPT_STAY)
+	_site_card.show()
+	refresh_hints()
+	return true
+
+
+func _on_site_prompt_answered(accept: bool) -> void:
+	var target: StringName = _site_prompt_target
+	_site_prompt_target = &""
+	set_site_card_visible(false)
+	if accept and not target.is_empty():
+		if not switch_site(target):
+			_log_switch_refusal(target, site_switch_refusal(target))
+	elif can_edit_menu():
+		set_property_visible(true)
+
+
+## Why the owner cannot switch to `target` right now, as the card's short
+## button text; "" when they can.
+func site_switch_refusal(target: StringName) -> String:
+	if can_switch_site(target):
+		return ""
+	if Clock.sim.phase != SimClock.Phase.MORNING:
+		return SiteCard.ONLY_MORNING
+	if is_build_active() or _paint_active:
+		return SiteCard.CLOSE_BUILD
+	if is_haggle_active():
+		return SiteCard.FINISH_HAGGLE
+	if _owner_first_morning_pending or is_owner_picker_visible():
+		return SiteCard.CHOOSE_OWNER
+	if site_book.is_frozen(target) and site_book.frozen_day(target) > Clock.sim.day:
+		return SiteCard.NOT_UNTIL_TOMORROW
+	return SiteCard.NOT_NOW
+
+
+## Why the active site cannot open today, or "": still renovating, or
+## nobody to cook and serve yet (FK-087, #464).
+func site_opening_refusal() -> String:
+	var days: int = site_book.renovation_days_left(site_book.active_id)
+	if days > 0:
+		return PropertyText.renovating_line(days)
+	if staff_roster != null and not staff_roster.is_staffed():
+		return PropertyText.UNSTAFFED_LINE
+	return ""
+
+
+## Puts the site's opening refusal on the clock (start_service refuses) and
+## the HUD (its button closes the day instead, with the reason shown).
+## A layout with no cookable dish (`_menu_access_error`) keeps its own
+## refusing notice once the site's reason clears, so the Open shop button
+## stays disabled, as before #464. It is not put on the clock: a legacy
+## layout the access check flags can still serve (test_default_play_golden).
+func _refresh_opening_block() -> void:
+	var reason: String = site_opening_refusal() if Clock.sim.phase == SimClock.Phase.MORNING else ""
+	Clock.sim.opening_refusal = reason
+	$HUD.set_closed_day(reason)
+	if not reason.is_empty():
+		$HUD.set_menu_notice(reason, true)
+	elif not _menu_access_error.is_empty():
+		$HUD.set_menu_notice(_menu_access_error, true)
+	else:
+		$HUD.set_menu_notice(menu_open_note())
+
+
+## Ends a morning that cannot open (renovating or still hiring): the day
+## passes without a service and closes as usual (wages, rent, away sites,
+## the renovation countdown, the evening report). Returns false otherwise.
+func close_for_today() -> bool:
+	if not _started or display_only or sim == null or is_haggle_active() \
+			or site_opening_refusal().is_empty():
+		return false
+	_refresh_opening_block()
+	if is_site_card_visible():
+		set_site_card_visible(false)
+	if _paint_active:
+		set_paint_active(false)
+	build_mode.exit()
+	var day: int = Clock.sim.day
+	_closed_day = day
+	if not Clock.sim.close_without_opening():
+		_closed_day = 0
+		return false
+	if sim.dock != null:
+		sim.dock.store_all()
+	_on_service_closed(day)
+	return true
+
+
+## The morning site card (FK-087, #464): on a morning with more than one
+## site, once, before opening. Refuses with one site, outside the morning or
+## while the first morning's owner picker is up.
+func set_site_card_visible(value: bool) -> bool:
+	if _site_card == null:
+		return false
+	if not value:
+		_site_card.hide()
+		return true
+	if not _started or display_only or site_book.site_count() < 2 \
+			or Clock.sim.phase != SimClock.Phase.MORNING or _owner_first_morning_pending:
+		return false
+	_site_card.set_rows(_site_card_rows())
+	_site_card.show()
+	return true
+
+
+func is_site_card_visible() -> bool:
+	return _site_card != null and _site_card.visible
+
+
+## Shows the card at most once each morning: a switch's own morning setup
+## (the same day) does not show it again.
+func _offer_site_card() -> void:
+	if _site_card_day == Clock.sim.day or site_book.site_count() < 2:
+		return
+	if set_site_card_visible(true):
+		_site_card_day = Clock.sim.day
+
+
+func _site_card_rows() -> Array[SiteCard.Row]:
+	var rows: Array[SiteCard.Row] = []
+	var yesterday: int = Clock.sim.day - 1
+	for id: StringName in site_book.site_ids():
+		var row: SiteCard.Row = SiteCard.Row.new()
+		row.id = id
+		row.current = id == site_book.active_id
+		row.takings = SiteMorning.takings(Economy.ledger, yesterday, id)
+		row.renovation_days = site_book.renovation_days_left(id)
+		if row.current:
+			var own: String = site_book.site_name(id)
+			row.name = own if not own.is_empty() else menu_settings.restaurant_name()
+			row.manager = SiteMorning.member_name(staff_roster.members(), site_book.manager(id))
+		else:
+			row.name = AwaySites.display_name(site_book, id)
+			var staff: Variant = site_book.frozen_sections(id).get("staff", {})
+			row.manager = SiteMorning.manager_name(staff if staff is Dictionary else {}, site_book.manager(id))
+			row.managed = not row.manager.is_empty()
+			row.earnings = SiteMorning.away_earnings(Economy.ledger, yesterday, id)
+			row.refusal = site_switch_refusal(id)
+		rows.append(row)
+	return rows
+
+
+func _on_site_card_chosen(id: StringName) -> void:
+	set_site_card_visible(false)
+	if id == site_book.active_id:
+		return
+	if not can_switch_site(id):
+		_log_switch_refusal(id, site_switch_refusal(id))
+		return
+	# switch_site logs its own refusal when the site does not load.
+	switch_site(id)
 
 
 func _dismiss_property() -> void:
@@ -5398,6 +5768,7 @@ func _begin_morning() -> void:
 	_refresh_menu_catalogue()
 	_refresh_stock_panel()
 	refresh_presentation()
+	_offer_site_card()
 
 
 ## Fetch the current run's stream lazily: reloads and legacy saves fetch none.
@@ -6223,6 +6594,9 @@ func _close_away_sites(day: int) -> void:
 	_away_site_lines.clear()
 	if site_book.site_count() < 2:
 		return
+	# A day of renovation done at every fixer-upper (docs/TECH.md "Limits and
+	# renovation"), before tonight's lines say how much is left.
+	var ready: Array[StringName] = site_book.count_down_renovations()
 	for plan: Dictionary in AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
 			BOOKING_TUNING):
 		var site: StringName = plan["site"]
@@ -6241,7 +6615,8 @@ func _close_away_sites(day: int) -> void:
 		for movement: Dictionary in plan["movements"]:
 			Economy.add_cash_for_site(int(movement["amount"]), movement["category"],
 				String(movement["note"]), site)
-		_away_site_lines.append(AwaySites.report_line(label, plan))
+		_away_site_lines.append(AwaySites.report_line(label, plan)
+			+ PropertyText.renovation_report_note(site_book.renovation_days_left(site), ready.has(site)))
 
 
 ## The member running the active site while the owner is at another, or
@@ -6364,7 +6739,7 @@ func _on_review_recorded(_row: Dictionary) -> void:
 func _show_evening_report(report: DayReport) -> void:
 	shown_report = report
 	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == report.day \
-			and report.day == Clock.sim.day:
+			and report.day == Clock.sim.day and _closed_day != report.day:
 		business_history.record(report)
 	_report.call(&"show_report", report)
 	_report.call(&"show_history", business_history.summaries(), report.day)
@@ -6375,13 +6750,17 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	# A day closed without opening (#464) pays its costs but is no business
+	# day: no trending post, demand, XP, goals, records or history row.
+	var business_day: bool = _closed_day != day
 	var sold: DayReport = DayReport.new()
 	sold.dishes_sold = dishes_sold_today.duplicate()
-	viral_review.close_open_day(day, sim.served_today, sim.lost_today,
-		int(sim.leave_reasons_today.get(&"happy", 0)), sold.best_dish(),
-		GameState.rng.bind(&"viral"))
-	demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
-		sim.demand_factor, demand_tuning)
+	if business_day:
+		viral_review.close_open_day(day, sim.served_today, sim.lost_today,
+			int(sim.leave_reasons_today.get(&"happy", 0)), sold.best_dish(),
+			GameState.rng.bind(&"viral"))
+		demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
+			sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
 	_charge_closing_costs()
 	_settle_due_booking_at_close(day)
@@ -6400,12 +6779,16 @@ func _on_service_closed(day: int) -> void:
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
 		operating_profit -= int(day_movements.get(category, 0))
-	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
+	# A closed day still evaluates the weekly goal (its saved day must follow
+	# the calendar) but with nothing earned: no profit, sales or guests.
+	var closing_observation: MilestoneDay = _milestone_observation(operating_profit if business_day else 0)
 	# A Creative game (FK-141) has no owner XP, career goals, weekly goal or
 	# tier climb: everything is already unlocked.
 	var career: bool = not GameMode.is_creative()
 	if career:
 		_award_weekly_challenge(closing_observation)
+	# Owner XP, goals and the tier climb are business-day rewards only.
+	career = career and business_day
 	staff_roster.close_growth_day()
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
@@ -6451,7 +6834,9 @@ func _on_service_closed(day: int) -> void:
 		_build_catalogue.set_owner_level(owner_progress.effective_level())
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
-	var beaten: Array[StringName] = shop_records.record(shown_report)
+	var beaten: Array[StringName] = []
+	if business_day:
+		beaten = shop_records.record(shown_report)
 	_record_notice_day = day
 	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten,
 		not GameMode.is_creative())
@@ -6550,6 +6935,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		_haggle_percent = 0
 	_dismiss_goals()
 	_dismiss_property()
+	if phase != SimClock.Phase.MORNING:
+		set_site_card_visible(false)
 	_clear_rooms_note()
 	if _aisle_note:
 		_show_aisle_note("")
@@ -6592,7 +6979,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 func _on_next_day_pressed() -> void:
 	# Evening purchases can change cash while their panel hides the report.
 	# Capture them before next_day clears day-local counters; do not save here.
-	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == Clock.sim.day:
+	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == Clock.sim.day \
+			and _closed_day != Clock.sim.day:
 		business_history.record(build_report(Clock.sim.day))
 	Clock.sim.next_day()
 
@@ -6819,7 +7207,8 @@ func refresh_hints() -> void:
 	var step: int = hints.observe(context)
 	# Modal panels keep their own input and remain readable. Progress waits
 	# here; closing Settings after a replay immediately reveals the guide.
-	if step < 0 or is_settings_visible() or is_goals_visible() or is_property_visible() or is_staff_visible() or is_owner_picker_visible() \
+	if step < 0 or is_settings_visible() or is_goals_visible() or is_property_visible() or is_site_card_visible() \
+			or is_staff_visible() or is_owner_picker_visible() \
 			or is_menu_visible() or is_stock_visible() or is_build_active() or _paint_active:
 		_hints_bubble.clear_hint()
 		return

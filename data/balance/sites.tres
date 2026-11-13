@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="SiteLimitTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/sites/site_limit_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+sites_by_tier = Array[int]([1, 1, 2, 2, 3, 0])

@@ -1,10 +1,13 @@
 class_name PropertyPanel
 extends Control
-## The property market screen (FK-087 part 2, D28): browse only. One card per
-## lot, cheapest first, with its price, size, rent, guests, perks and any lock.
-## The Buy button is shown disabled until buying a lot lands (part 1).
+## The property market screen (FK-087, D28). One card per lot, cheapest
+## first, with its price, size, rent, guests, perks, any lock and a Buy
+## button: enabled with the cost when the lot can be bought now (#464),
+## otherwise disabled with the reason on the card. Buying is main.gd's
+## `buy_lot`, asked for through `buy_requested`.
 
 signal close_requested()
+signal buy_requested(lot_id: StringName)
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 ## The Menu panel's muted and warning tones, so the screens read as one.
@@ -22,17 +25,29 @@ func _ready() -> void:
 	(get_node("Panel/Content/Header/Title") as Label).text = PropertyText.TITLE
 
 
-## Detached display inputs; the session owns the lots, tier and reputation.
-func set_market(lots: Array[LotDef], career_tier: int, reputation: float,
-		catalogue: CustomerTypeCatalogue) -> void:
+## What the owner has, for the Buy buttons: detached values, read only.
+class Buyer extends RefCounted:
+	var career_tier: int = 1
+	## The closing reputation (NAN before the first close).
+	var reputation: float = NAN
+	var site_count: int = 1
+	var owned_lots: Array[StringName] = []
+	var limits: SiteLimitTuning
+	var cash: int = 0
+	var loan: int = 0
+
+
+## Detached display inputs; the session owns the lots and the buyer's state.
+func set_market(lots: Array[LotDef], buyer: Buyer, catalogue: CustomerTypeCatalogue) -> void:
 	var list: VBoxContainer = %List as VBoxContainer
 	for child: Node in list.get_children():
 		if child.name != "EmptyState":
 			list.remove_child(child)
-			child.free()
+			# Queued: a Buy button may be the one emitting right now.
+			child.queue_free()
 	_ids.clear()
 	for lot: LotDef in PropertyMarket.listing(lots):
-		list.add_child(_make_card(lot, career_tier, reputation, catalogue, _ids.size()))
+		list.add_child(_make_card(lot, buyer, catalogue, _ids.size()))
 		_ids.append(lot.id)
 	(%EmptyState as Label).visible = _ids.is_empty()
 
@@ -49,8 +64,9 @@ func card_for(id: StringName) -> Control:
 	return null
 
 
-func _make_card(lot: LotDef, career_tier: int, reputation: float,
-		catalogue: CustomerTypeCatalogue, index: int) -> Control:
+func _make_card(lot: LotDef, buyer: Buyer, catalogue: CustomerTypeCatalogue, index: int) -> Control:
+	var career_tier: int = buyer.career_tier
+	var reputation: float = buyer.reputation
 	var card: PanelContainer = PanelContainer.new()
 	card.name = "Lot%d" % index
 	card.theme = SHARED_THEME
@@ -59,6 +75,9 @@ func _make_card(lot: LotDef, career_tier: int, reputation: float,
 	card.set_meta(&"lot_id", lot.id)
 	var lock: String = PropertyText.lock_line(lot, career_tier, reputation)
 	card.set_meta(&"locked", not lock.is_empty())
+	var refusal: PropertyMarket.Refusal = PropertyMarket.purchase_refusal(lot, career_tier, reputation,
+		buyer.owned_lots.has(lot.id), buyer.site_count, buyer.limits, buyer.cash, buyer.loan)
+	card.set_meta(&"refusal", refusal)
 	var style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
 	if style is StyleBoxFlat:
 		var flat: StyleBoxFlat = style as StyleBoxFlat
@@ -82,10 +101,12 @@ func _make_card(lot: LotDef, career_tier: int, reputation: float,
 	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var buy: Button = Button.new()
 	buy.name = "Buy"
-	buy.text = PropertyText.BUY_SOON
-	buy.tooltip_text = PropertyText.BUY_TOOLTIP
-	buy.disabled = true
+	buy.text = PropertyText.buy_label(lot, refusal)
+	var reason: String = PropertyText.refusal_line(lot, refusal, buyer.cash, buyer.site_count, buyer.limits)
+	buy.tooltip_text = reason if not reason.is_empty() else lock
+	buy.disabled = refusal != PropertyMarket.Refusal.NONE
 	buy.focus_mode = Control.FOCUS_NONE
+	buy.pressed.connect(_on_buy_pressed.bind(lot.id))
 	buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(buy)
 	var blurb: Label = _add_label(body, "Blurb", lot.blurb, LINE_FONT_SIZE)
@@ -103,6 +124,10 @@ func _make_card(lot: LotDef, career_tier: int, reputation: float,
 	if not lock.is_empty():
 		var locked: Label = _add_label(body, "Lock", lock, LINE_FONT_SIZE)
 		locked.add_theme_color_override(&"font_color", LOCK_COLOR)
+	if not reason.is_empty():
+		var why: Label = _add_label(body, "Reason", reason, LINE_FONT_SIZE)
+		why.add_theme_color_override(&"font_color",
+			MUTED_COLOR if refusal == PropertyMarket.Refusal.OWNED else LOCK_COLOR)
 	return card
 
 
@@ -116,6 +141,10 @@ func _add_label(parent: Control, node_name: String, text: String, font_size: int
 	label.add_theme_font_size_override(&"font_size", font_size)
 	parent.add_child(label)
 	return label
+
+
+func _on_buy_pressed(lot_id: StringName) -> void:
+	buy_requested.emit(lot_id)
 
 
 func _on_close_pressed() -> void:
