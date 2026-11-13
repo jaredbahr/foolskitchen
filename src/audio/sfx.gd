@@ -52,6 +52,8 @@ var _clink_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _music_players: Dictionary[AudioStream, AudioStreamPlayer] = {}
 var _music_levels: Dictionary[AudioStream, float] = {}
 var _music_context: StringName = &""
+## Which of the context's tracks is up (they alternate; 0 on entering a context).
+var _music_index: int = 0
 var _music_ducked: bool = false
 
 
@@ -213,7 +215,19 @@ func set_loop_level(loop: StringName, level: float) -> void:
 ## fades the music out. Looping, fading and silence in headless runs are handled
 ## here, so callers only say where the game is.
 func set_music_context(context: StringName) -> void:
+	if context != _music_context:
+		_music_index = 0
 	_music_context = context
+
+
+## The current context's next track takes over (the one playing has ended).
+## Several tracks alternate in order, wrapping round; one just repeats.
+func advance_music() -> void:
+	_music_index = posmod(_music_index + 1, maxi(MusicTracks.track_count(_music_context), 1))
+
+
+func music_track() -> AudioStream:
+	return MusicTracks.track_for(_music_context, _music_index)
 
 
 ## A jukebox playing its own loop takes over: the theme fades out while ducked.
@@ -227,7 +241,7 @@ func music_context() -> StringName:
 
 ## 1 when the current context has a track and nothing is ducking it, else 0.
 func music_target() -> float:
-	return 0.0 if _music_ducked or MusicTracks.track_for(_music_context) == null else 1.0
+	return 0.0 if _music_ducked or music_track() == null else 1.0
 
 
 ## A track's current fade level, 0 (silent) to 1. Headless runs track it but
@@ -246,7 +260,7 @@ func is_unlocked() -> bool:
 
 
 func _step_music(delta: float) -> void:
-	var wanted: AudioStream = MusicTracks.track_for(_music_context) if _unlocked and not _music_ducked else null
+	var wanted: AudioStream = music_track() if _unlocked and not _music_ducked else null
 	for track: AudioStream in MusicTracks.all_tracks():
 		var target: float = 1.0 if track == wanted else 0.0
 		var level: float = move_toward(float(_music_levels.get(track, 0.0)), target, delta / MUSIC_FADE_SECONDS)
@@ -265,12 +279,20 @@ func _apply_music_player(track: AudioStream, level: float, target: float) -> voi
 		player = AudioStreamPlayer.new()
 		player.name = "Music_" + track.resource_path.get_file().get_basename()
 		player.bus = MUSIC_BUS
-		player.stream = _looping(track)
+		player.stream = music_stream_for(track)
+		player.finished.connect(_on_music_finished.bind(track))
 		add_child(player)
 		_music_players[track] = player
 	player.volume_db = linear_to_db(maxf(level, 0.0001))
-	if not player.playing and level >= SILENT_LEVEL:
+	if not player.playing and target > 0.0 and level >= SILENT_LEVEL:
 		player.play()
+
+
+## A playlist track ran out: if it is the one wanted, the next follows (and
+## fades in while this one, already silent, fades out).
+func _on_music_finished(track: AudioStream) -> void:
+	if track == music_track() and MusicTracks.in_playlist(track):
+		advance_music()
 
 
 func loop_level(loop: StringName) -> float:
@@ -305,6 +327,22 @@ func _free_clink_player() -> AudioStreamPlayer3D:
 	var oldest: AudioStreamPlayer3D = _clink_players[_next_clink % _clink_players.size()]
 	_next_clink += 1
 	return oldest
+
+
+## The stream a music player gets: a playlist track plays once so it can end
+## and hand over to the next (its import loops, which would never end); any
+## other track loops.
+static func music_stream_for(track: AudioStream) -> AudioStream:
+	return _once(track) if MusicTracks.in_playlist(track) else _looping(track)
+
+
+static func _once(stream: AudioStream) -> AudioStream:
+	var copy: AudioStream = stream.duplicate()
+	if copy is AudioStreamOggVorbis:
+		(copy as AudioStreamOggVorbis).loop = false
+	elif copy is AudioStreamWAV:
+		(copy as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+	return copy
 
 
 static func _looping(stream: AudioStream) -> AudioStream:
