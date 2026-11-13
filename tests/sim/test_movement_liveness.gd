@@ -494,9 +494,10 @@ func test_the_backstop_keeps_the_inspector_off_the_door_it_avoids() -> void:
 ## Let them out first: while someone on the way out has been stuck in the
 ## door lane for the escape limit, a guest arriving from the street waits
 ## outside (every lasting doorway crowd in the soak was arrivals stepping into
-## a jammed door). A brisk exit never holds anyone up.
+## a jammed door). A brisk exit never holds anyone up. Two cells wide: a
+## one-cell way in holds arrivals while anyone leaves (#459).
 func test_arrivals_wait_outside_while_the_door_is_jammed_with_leavers() -> void:
-	var world: SimWorld = _service_world(["E...."])
+	var world: SimWorld = _service_world(["E....", "....."])
 	var leaving: GuestWalker = _guest(world, Vector2i(1, 0))
 	leaving.state = CustomerAgent.State.LEAVING
 	assert_true(world.movement.in_door_lane(world, leaving.cell))
@@ -516,7 +517,7 @@ func test_arrivals_wait_outside_while_the_door_is_jammed_with_leavers() -> void:
 ## end the wait, so it lifts once the oldest arrival has waited
 ## door_hold_max_ticks, or once the jammed leaver reaches the give-up limit.
 func test_the_arrival_hold_never_lasts_past_its_limits() -> void:
-	var world: SimWorld = _service_world(["E...."])
+	var world: SimWorld = _service_world(["E....", "....."])
 	var leaving: GuestWalker = _guest(world, Vector2i(1, 0))
 	leaving.state = CustomerAgent.State.LEAVING
 	var tuning: MovementTuning = world.movement_tuning
@@ -533,7 +534,7 @@ func test_the_arrival_hold_never_lasts_past_its_limits() -> void:
 	jam.call(tuning.escape_after_ticks)
 	assert_true(world.movement.register_agent(world, arriving), "comes in at the limit")
 	assert_true(arriving.movement_admitted)
-	var fresh: SimWorld = _service_world(["E...."])
+	var fresh: SimWorld = _service_world(["E....", "....."])
 	var stuck: GuestWalker = _guest(fresh, Vector2i(1, 0))
 	stuck.state = CustomerAgent.State.LEAVING
 	fresh.movement._stall[stuck.id] = {"goal": MovementCoordinator.EXIT_GOAL, "best": 1.0,
