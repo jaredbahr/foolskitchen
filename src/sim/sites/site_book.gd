@@ -4,16 +4,24 @@ extends RefCounted
 ## ordinary per-site save sections; every other site is frozen here as a copy
 ## of those sections, with the day it was frozen. Pure data, no nodes.
 ## Older saves have no "sites" section and load as the starter site alone.
+## Version 2 (#464) adds a fixer-upper's "renovation_days_left" to its row;
+## a version 1 section loads with no site under renovation.
 
-const VERSION: int = 1
+const VERSION: int = 2
+## The oldest sites section this decoder still reads.
+const MIN_VERSION: int = 1
 const HOME_ID: StringName = &"home"
 ## The starter shop is the implicit home lot (docs/TECH.md "Lots").
 const HOME_LOT: StringName = &"home"
 const MAX_NAME_LENGTH: int = 40
+## The longest renovation a lot may need (LotDef's own limit).
+const MAX_RENOVATION_DAYS: int = LotDef.MAX_RENOVATION_DAYS
 
-## id -> {"lot": StringName, "name": String, "manager": StringName}. A manager
-## is a member id in that site's own "staff" section (ids are unique only
-## within one roster).
+## id -> {"lot": StringName, "name": String, "manager": StringName,
+## "renovation": int}. A manager is a member id in that site's own "staff"
+## section (ids are unique only within one roster). "renovation" is the days
+## of work a fixer-upper still needs before it can open (0 = ready); it lives
+## on the row because it changes while the site is inactive.
 var _info: Dictionary[StringName, Dictionary] = {}
 ## id -> {"day": int, "sections": Dictionary}; never holds the active site.
 var _frozen: Dictionary[StringName, Dictionary] = {}
@@ -21,7 +29,7 @@ var active_id: StringName = HOME_ID
 
 
 func _init() -> void:
-	_info[HOME_ID] = {"lot": HOME_LOT, "name": "", "manager": &""}
+	_info[HOME_ID] = {"lot": HOME_LOT, "name": "", "manager": &"", "renovation": 0}
 
 
 ## Every site id: the active one first, then the frozen ones sorted.
@@ -56,6 +64,31 @@ func manager(id: StringName) -> StringName:
 	return _info[id]["manager"] if _info.has(id) else &""
 
 
+## Days of work a fixer-upper still needs before it can open; 0 when ready
+## (or for an unknown site).
+func renovation_days_left(id: StringName) -> int:
+	return int(_info[id]["renovation"]) if _info.has(id) else 0
+
+
+## True when one of the sites stands on `lot` (an owned lot is not for sale).
+func owns_lot(lot: StringName) -> bool:
+	return _has_lot(lot)
+
+
+## One day of renovation done at every site still under it (each close of
+## the active site, docs/TECH.md "Limits and renovation"). Returns the ids
+## that became ready, sorted.
+func count_down_renovations() -> Array[StringName]:
+	var ready: Array[StringName] = []
+	for id: StringName in site_ids():
+		var left: int = int(_info[id]["renovation"])
+		if left > 0:
+			_info[id]["renovation"] = left - 1
+			if left == 1:
+				ready.append(id)
+	return ready
+
+
 func is_frozen(id: StringName) -> bool:
 	return _frozen.has(id)
 
@@ -81,23 +114,28 @@ func set_frozen_section(id: StringName, key: String, section: Dictionary) -> boo
 	return true
 
 
-## Adds a new inactive site, frozen as of `day` with the given sections.
-## Each lot holds at most one site.
-func add_site(id: StringName, lot: StringName, display_name: String, day: int, sections: Dictionary) -> bool:
+## Adds a new inactive site, frozen as of `day` with the given sections and,
+## for a fixer-upper, the days of work it needs before it can open. Each lot
+## holds at most one site.
+func add_site(id: StringName, lot: StringName, display_name: String, day: int, sections: Dictionary,
+		renovation_days: int = 0) -> bool:
 	if _info.has(id) or not _valid_id(String(id)) or not _valid_id(String(lot)) \
 			or _has_lot(lot) or not _valid_name(display_name) or day < 0 \
-			or not _valid_sections(sections):
+			or not _valid_sections(sections) or renovation_days < 0 \
+			or renovation_days > MAX_RENOVATION_DAYS:
 		return false
-	_info[id] = {"lot": lot, "name": display_name, "manager": &""}
+	_info[id] = {"lot": lot, "name": display_name, "manager": &"", "renovation": renovation_days}
 	_frozen[id] = {"day": day, "sections": _as_json(sections)}
 	return true
 
 
 ## True when `target` is a frozen site that can become active on `day` (never
-## before the day it was frozen). A switch checks this before restoring
-## anything, so the swap after the restore cannot refuse.
+## before the day it was frozen, nor while it is under renovation). A switch
+## checks this before restoring anything, so the swap after the restore
+## cannot refuse.
 func can_swap(target: StringName, day: int) -> bool:
-	return target != active_id and _frozen.has(target) and day >= int(_frozen[target]["day"])
+	return target != active_id and _frozen.has(target) and day >= int(_frozen[target]["day"]) \
+		and renovation_days_left(target) == 0
 
 
 ## Makes `target` the active site: the departing one is frozen with `sections`
@@ -133,6 +171,8 @@ func to_dict() -> Dictionary:
 	for id: StringName in site_ids():
 		var row: Dictionary = {"id": String(id), "lot": String(_info[id]["lot"]),
 			"name": _info[id]["name"], "manager": String(_info[id]["manager"])}
+		if int(_info[id]["renovation"]) > 0:
+			row["renovation_days_left"] = int(_info[id]["renovation"])
 		if _frozen.has(id):
 			row["frozen_day"] = str(_frozen[id]["day"])
 			row["sections"] = (_frozen[id]["sections"] as Dictionary).duplicate(true)
@@ -143,12 +183,18 @@ func to_dict() -> Dictionary:
 ## Strict: returns null for anything malformed, including unknown keys (a
 ## newer field must come with a new VERSION, never be dropped silently). The
 ## active site must be listed without frozen data; every other site must
-## carry it. The home site may be absent (a future sale).
+## carry it. The home site may be absent (a future sale). Version 1 (before
+## renovation) migrates by loading every site as ready.
 static func from_dict(data: Dictionary) -> SiteBook:
 	var version: Variant = data.get("version", null)
-	if not (version is int or version is float) or float(version) != float(VERSION) \
-			or not _only_keys(data, ["version", "active", "sites"]):
+	if not (version is int or version is float) or not _only_keys(data, ["version", "active", "sites"]):
 		return null
+	var number: float = float(version)
+	if number != float(MIN_VERSION) and number != float(VERSION):
+		return null
+	var row_keys: Array[String] = ["id", "lot", "name", "manager", "frozen_day", "sections"]
+	if number >= 2.0:
+		row_keys.append("renovation_days_left")
 	var active: Variant = data.get("active", null)
 	var rows: Variant = data.get("sites", null)
 	if not active is String or not _valid_id(active) or not rows is Array:
@@ -159,7 +205,11 @@ static func from_dict(data: Dictionary) -> SiteBook:
 		if not raw is Dictionary:
 			return null
 		var row: Dictionary = raw
-		if not _only_keys(row, ["id", "lot", "name", "manager", "frozen_day", "sections"]):
+		if not _only_keys(row, row_keys):
+			return null
+		var renovation: int = _decode_renovation(row.get("renovation_days_left", 0)) \
+			if row.has("renovation_days_left") else 0
+		if renovation < 0 or (row.has("renovation_days_left") and renovation == 0):
 			return null
 		var id: Variant = row.get("id", null)
 		var lot: Variant = row.get("lot", null)
@@ -171,7 +221,7 @@ static func from_dict(data: Dictionary) -> SiteBook:
 				or book._info.has(StringName(id)) or book._has_lot(StringName(lot)):
 			return null
 		book._info[StringName(id)] = {"lot": StringName(lot), "name": display_name,
-			"manager": StringName(staff)}
+			"manager": StringName(staff), "renovation": renovation}
 		var frozen: bool = row.has("frozen_day") or row.has("sections")
 		if id == active:
 			if frozen:
@@ -234,6 +284,17 @@ static func _valid_sections(sections: Dictionary) -> bool:
 		if not key is String or not SiteSections.is_per_site(key) or not sections[key] is Dictionary:
 			return false
 	return true
+
+
+## A saved renovation count: a whole number of days up to the longest
+## renovation, or -1.
+static func _decode_renovation(value: Variant) -> int:
+	if not (value is int or value is float):
+		return -1
+	var days: float = float(value)
+	if not is_finite(days) or days != floorf(days) or days < 0.0 or days > float(MAX_RENOVATION_DAYS):
+		return -1
+	return int(days)
 
 
 static func _decode_day(value: Variant) -> int:

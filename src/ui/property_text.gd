@@ -1,13 +1,18 @@
 class_name PropertyText
 extends RefCounted
-## Every player-facing line of the property market screen (FK-087 part 2), in
-## one place, so no lot id, tag or customer type id reaches the screen.
+## Every player-facing line of the property market screen (FK-087), in one
+## place, so no lot id, tag, customer type id or refusal code reaches the
+## screen.
 
 const TITLE: String = "Property"
-const BUTTON_TOOLTIP: String = "Browse lots for a second restaurant"
-const INTRO: String = "Lots for a second restaurant. Save up: buying opens in a later update."
-const BUY_SOON: String = "Coming soon"
-const BUY_TOOLTIP: String = "Buying a lot is not open yet"
+const BUTTON_TOOLTIP: String = "Buy a lot for another restaurant"
+const INTRO: String = "Lots for another restaurant. A fixer-upper is cheaper, but needs a few days of work before it can open."
+const BUY_OWNED: String = "Owned"
+const BUY_LOCKED: String = "Locked"
+const BUY_REFUSED: String = "Buy"
+const OWNED_LINE: String = "You own this lot."
+const LOAN_LINE: String = "Pay off your loan before buying a lot."
+const LIMIT_TOP_LINE: String = "You run as many restaurants as you can."
 const EMPTY: String = "No lots are on the market."
 ## Lot tags as perks (LotDef.KNOWN_TAGS); a tag missing here shows nothing.
 const TAG_PERKS: Dictionary[StringName, String] = {
@@ -82,9 +87,50 @@ static func lock_line(lot: LotDef, career_tier: int, reputation: float) -> Strin
 	if tier_short:
 		return "Locked: needs Tier %d" % lot.min_tier
 	if stars_short:
-		var now: float = reputation if is_finite(reputation) else 0.0
-		return "Locked: needs %.1f stars (you have %.1f)" % [lot.min_reputation, now]
+		# Before the first close there is no closing reputation to quote.
+		if not is_finite(reputation):
+			return "Locked: needs %.1f stars" % lot.min_reputation
+		return "Locked: needs %.1f stars (you have %.1f)" % [lot.min_reputation, reputation]
 	return ""
+
+
+## The Buy button: "Buy for $8,500" when it can be bought, else a short word.
+static func buy_label(lot: LotDef, refusal: PropertyMarket.Refusal) -> String:
+	match refusal:
+		PropertyMarket.Refusal.NONE:
+			return "Buy for %s" % Fmt.money(lot.cost_to_open())
+		PropertyMarket.Refusal.OWNED:
+			return BUY_OWNED
+		PropertyMarket.Refusal.LOCKED:
+			return BUY_LOCKED
+	return BUY_REFUSED
+
+
+## Why the lot cannot be bought now, as a sentence; "" when it can, or when
+## the card's lock line already says why.
+static func refusal_line(lot: LotDef, refusal: PropertyMarket.Refusal, cash: int,
+		site_count: int, limits: SiteLimitTuning) -> String:
+	match refusal:
+		PropertyMarket.Refusal.OWNED:
+			return OWNED_LINE
+		PropertyMarket.Refusal.LIMIT:
+			var tier: int = limits.tier_for_more(site_count) if limits != null else 0
+			if tier <= 0:
+				return LIMIT_TOP_LINE
+			return "Your tier allows %d restaurants. Reach Tier %d to run more." % [site_count, tier]
+		PropertyMarket.Refusal.LOAN:
+			return LOAN_LINE
+		PropertyMarket.Refusal.CASH:
+			return "Not enough cash: you need %s more." % Fmt.money(maxi(0, lot.cost_to_open() - cash))
+	return ""
+
+
+## The log line after a purchase.
+static func bought_line(lot: LotDef) -> String:
+	if PropertyMarket.renovation_days(lot) > 0:
+		return "You bought %s. It needs %d days of work before it can open." % [
+			lot.display_name, PropertyMarket.renovation_days(lot)]
+	return "You bought %s. You can choose it tomorrow morning." % lot.display_name
 
 
 ## "Foodie" -> "foodies", "Family" -> "families": a lower-case plural.

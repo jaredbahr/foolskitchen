@@ -19,7 +19,8 @@
 # --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
 # --walls=place --speed=0 --frames=12 holds a dragged wall run (ghost + cost); --walls=room --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows a built room, Walls Up or Cutaway.
 # --expand=drag --speed=0 --frames=12 holds a dragged floor rectangle on the lot (ghost + cost + lot outline); --expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows the finished L-shaped shop.
-# --property-review --speed=0 --frames=12 shows the browse-only property market at Tier 3, opened from the morning Menu.
+# --property-review --speed=0 --frames=12 shows the property market at Tier 3, opened from the morning Menu, with the fixer-upper buyable.
+# --site-card-review --speed=0 --frames=12 shows the morning site card with three sites (one renovating).
 # --floors-review --speed=0 --frames=12,30 shows laid floor types (thresholds, both doors, staff on them), then Build > Floors with a held drag.
 # --walls-review --speed=0 --frames=12,30 [--quarter=N] shows wall finishes and hung wall decor in Cutaway, then Walls Up with Build > Wall finish holding a striped wallpaper drag.
 # --street-front-review --speed=0 --frames=60 shows the purchased, finished front in daylight, with its live restaurant name and real owner for scale.
