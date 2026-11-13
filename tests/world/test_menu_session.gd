@@ -237,6 +237,30 @@ func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation()
 	assert_eq((second.get("content") as ContentDB).recipe(&"burger").standard_price, standard)
 
 
+func test_menu_price_buttons_and_daily_special_refresh_walkout_estimate() -> void:
+	var main: Node = _start()
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
+	assert_true(panel.select_recipe(&"burger"))
+	var row: Control = panel.row_for(&"burger")
+	var hint: Label = row.get_node("PriceWalkout") as Label
+	var plus: Button = row.get_node("Price/Plus") as Button
+	var rng_before: int = GameState.rng(&"customers").state
+	assert_true(hint.visible)
+	assert_eq(hint.text, "Everyone's happy with this price.")
+	plus.pressed.emit()
+	assert_eq((row.get_node("Price/Amount") as Label).text, "$13")
+	var raised_hint: String = hint.text
+	assert_true(raised_hint.begins_with("About 1 in "), raised_hint)
+	assert_true(main.call("menu_set_special", &"burger"))
+	assert_eq(hint.text, "Everyone's happy with this price.", "the special brings $13 back to $12")
+	assert_true(main.call("menu_set_special", &""))
+	assert_eq(hint.text, raised_hint, "clearing the special refreshes the same row")
+	assert_true(main.call("menu_reset_prices"))
+	assert_eq(hint.text, "Everyone's happy with this price.")
+	assert_eq(GameState.rng(&"customers").state, rng_before, "previewing does not draw a guest")
+
+
 func test_real_menu_reset_uses_morning_session_bridge_and_refreshes_prices() -> void:
 	var main: Node = _start()
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings

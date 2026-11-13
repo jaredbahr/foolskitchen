@@ -100,6 +100,25 @@ func test_foodie_frequency_rises_with_stars_for_the_same_seed() -> void:
 		"authored reputation curve substantially changes the type mix")
 
 
+func test_average_budget_weights_eligible_arrivals_by_reputation_and_theme() -> void:
+	var frugal: CustomerType = _weighted_type(&"frugal", 2.0, 6.0)
+	frugal.budget_multiplier = 0.5
+	var spender: CustomerType = _weighted_type(&"spender", 4.0, 4.0)
+	spender.budget_multiplier = 1.5
+	spender.liked_themes = [&"cozy"]
+	spender.liked_theme_bonus = 0.5
+	var locked: CustomerType = _weighted_type(&"locked", 1000.0, 1000.0, 2)
+	locked.budget_multiplier = 10.0
+	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
+	catalogue.types = [frugal, spender, locked]
+	assert_almost_eq(CustomerTypePicker.average_budget(catalogue, 1, 5.0), 0.9)
+	assert_almost_eq(CustomerTypePicker.average_budget(catalogue, 1, 3.0, &"cozy", 1.0), 1.1)
+	assert_eq(CustomerTypePicker.average_budget(null, 1, 3.0), 1.0)
+	assert_eq(CustomerTypePicker.average_budget(catalogue, 1, NAN), 1.0)
+	catalogue.types = [locked]
+	assert_eq(CustomerTypePicker.average_budget(catalogue, 1, 3.0), 1.0)
+
+
 func test_invalid_types_and_missing_rng_cannot_be_selected() -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = 4
