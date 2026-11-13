@@ -987,7 +987,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		if code == KEY_F12 and PhotoMode.available():
+		if code == KEY_F12 and PhotoMode.available() and not is_site_card_visible():
 			if not Clock.text_entry_has_focus() and world != null:
 				_take_photo_key(photo, key)
 			return
