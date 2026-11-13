@@ -88,7 +88,7 @@ func test_native_tray_keeps_legacy_shape_and_follows_loaded_hands_and_live_count
 	assert_true(tray.visible)
 	assert_eq(person.current_clip(), &"holding-both")
 	assert_eq(tray.position, person.carry_anchor_position())
-	assert_eq((tray.mesh as BoxMesh).size, Vector3(0.68, 0.045, 0.38))
+	assert_eq((tray.mesh as BoxMesh).size, FoodPresentation.TRAY_SIZE)
 	task.payload["carried_count"] = 1
 	_view._process(0.0)
 	assert_false(tray.visible)

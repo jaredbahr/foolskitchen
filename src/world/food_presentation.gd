@@ -7,10 +7,14 @@ const CREAM: SwatchDef = preload("res://data/swatches/cream.tres")
 ## Plate spacing, sized for ArtScale.FOOD_SCALE (a plate is about 0.29 across).
 ## Pass: along the counter. Tray: across and along the carried tray.
 const PASS_PLATE_STEP: float = 0.33
-const TRAY_PLATE_STEP: Vector2 = Vector2(0.34, 0.27)
-const TRAY_PLATE_LIFT: float = 0.0375
+## The carried tray, sized to hold four plates in two rows with small gaps.
+const TRAY_SIZE: Vector3 = Vector3(0.72, 0.045, 0.62)
+const TRAY_PLATE_STEP: Vector2 = Vector2(0.34, 0.30)
+const TRAY_PLATE_LIFT: float = 0.025
 const PASS_STACK_STEP: float = 0.0375
 const SINK_STACK_STEP: float = 0.027
+## Sideways shift of the dirty stack on the sink; the basin is only 0.32 across.
+const SINK_STACK_OFFSET: float = 0.02
 ## A drink sits this far to the side of its plate; the table clamp keeps it on the top.
 const DRINK_SIDE_OFFSET: float = 0.24
 
@@ -260,7 +264,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		var dish: DishVisual = stack[index]
 		dish.visible = washing_sink > 0 and restaurant.kitchen.plate_cycle_enabled and index < restaurant.kitchen.plates.dirty
 		if dish.visible:
-			dish.position = surfaces[washing_sink] + Vector3(0.12, index * SINK_STACK_STEP, 0.0)
+			dish.position = surfaces[washing_sink] + Vector3(SINK_STACK_OFFSET, index * SINK_STACK_STEP, 0.0)
 
 
 ## Keep the dish beside its own seat, including the end of a long table.

@@ -592,6 +592,31 @@ func _point_on_native_top(point: Vector3, faces: PackedVector3Array) -> bool:
 	return false
 
 
+func test_four_plates_fit_on_the_carried_tray_in_two_rows_without_overlap() -> void:
+	var radius: float = _view.food.pool[0].footprint_radius
+	var half: Vector3 = FoodPresentation.TRAY_SIZE * 0.5
+	var step: Vector2 = FoodPresentation.TRAY_PLATE_STEP
+	var centres: Array[Vector2] = []
+	for index: int in range(4):
+		var centre: Vector2 = Vector2((index % 2 - 0.5) * step.x, (index / 2 - 0.5) * step.y)
+		assert_true(absf(centre.x) + radius <= half.x, "plate %d stays inside the tray width" % index)
+		assert_true(absf(centre.y) + radius <= half.z, "plate %d stays inside the tray depth" % index)
+		for other: Vector2 in centres:
+			assert_true(centre.distance_to(other) >= radius * 2.0, "plates %d do not overlap" % index)
+		centres.append(centre)
+	assert_true(FoodPresentation.TRAY_PLATE_LIFT <= FoodPresentation.TRAY_SIZE.y, "plates rest on the tray, not above it")
+
+
+func test_dirty_sink_stack_sits_inside_the_basin() -> void:
+	var sink: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"sink")[0]
+	var radius: float = _view.food.pool[0].footprint_radius
+	var bounds: AABB = _view.food.surface_bounds[sink.id]
+	var centre: Vector3 = _view.food.surfaces[sink.id]
+	var edge: float = absf(FoodPresentation.SINK_STACK_OFFSET) + radius
+	assert_true(edge <= bounds.size.x * 0.5 + 0.02, "the stack overhangs the basin by at most 2 cm")
+	assert_true(centre.x + FoodPresentation.SINK_STACK_OFFSET > bounds.position.x)
+
+
 ## Planar distance from a point to the nearest edge of the support triangles.
 func _native_top_distance(point: Vector3, faces: PackedVector3Array) -> float:
 	var p: Vector2 = Vector2(point.x, point.z)
@@ -628,10 +653,10 @@ func test_two_passes_and_sinks_follow_kitchen_order_and_refresh_after_removal() 
 	assert_eq(_sim.kitchen.plates.collect_table(table.id), 1)
 	_view._sync_agents()
 	assert_true(_view.food.stack[0].visible)
-	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[first_sink.id] + Vector3(0.12, 0, 0)))
+	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[first_sink.id] + Vector3(FoodPresentation.SINK_STACK_OFFSET, 0, 0)))
 	_sim.world.grid.remove(first_sink.id)
 	_view._sync_agents()
-	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[other_sink.id] + Vector3(0.12, 0, 0)))
+	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[other_sink.id] + Vector3(FoodPresentation.SINK_STACK_OFFSET, 0, 0)))
 	_sim.world.grid.remove(other_sink.id)
 	_view._sync_agents()
 	assert_false(_view.food.stack[0].visible)
@@ -707,7 +732,7 @@ func test_dirty_stack_follows_real_washing_at_a_reachable_second_sink() -> void:
 			assert_eq(server.task.payload["sink_id"], second.id)
 			assert_eq(second.reserved_by(server.cell), server.id)
 			assert_true(_view.food.stack[0].visible)
-			assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[second.id] + Vector3(0.12, 0, 0)))
+			assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[second.id] + Vector3(FoodPresentation.SINK_STACK_OFFSET, 0, 0)))
 			break
 	assert_true(saw_washing, "the real server worked the reachable second sink")
 

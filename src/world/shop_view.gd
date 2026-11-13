@@ -1824,9 +1824,8 @@ func _sync_agents() -> void:
 			created.set_meta(&"courier", agent is CourierAgent)
 			created.set_meta("shop_geometry", true)
 			created.set_meta("unsupported_role", not frame.look_supported)
-			# Keep FK-079's exact tray shape. Its size beside Mini Characters is
-			# an open visual gate pending one coordinated uniform presentation scale.
-			var tray: MeshInstance3D = _box(Vector3(0.68, 0.045, 0.38), Color("b89568"))
+			# The tray holds four food-scale plates (FoodPresentation.TRAY_SIZE).
+			var tray: MeshInstance3D = _box(FoodPresentation.TRAY_SIZE, Color("b89568"))
 			tray.name = "Tray"
 			tray.visible = false
 			created.add_child(tray)
