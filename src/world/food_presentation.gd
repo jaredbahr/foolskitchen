@@ -4,6 +4,15 @@ extends Node3D
 ## never in sync(): carried dishes inherit the actual smoothed person's transform.
 
 const CREAM: SwatchDef = preload("res://data/swatches/cream.tres")
+## Plate spacing, sized for ArtScale.FOOD_SCALE (a plate is about 0.29 across).
+## Pass: along the counter. Tray: across and along the carried tray.
+const PASS_PLATE_STEP: float = 0.33
+const TRAY_PLATE_STEP: Vector2 = Vector2(0.34, 0.27)
+const TRAY_PLATE_LIFT: float = 0.0375
+const PASS_STACK_STEP: float = 0.0375
+const SINK_STACK_STEP: float = 0.027
+## A drink sits this far to the side of its plate; the table clamp keeps it on the top.
+const DRINK_SIDE_OFFSET: float = 0.24
 
 class Surface extends RefCounted:
 	var point: Vector3
@@ -180,17 +189,17 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 			if ticket.carrier_id > 0 and people.has(ticket.carrier_id):
 				var frame: AgentPresentationController.Frame = frames[ticket.carrier_id]
 				parent = people[ticket.carrier_id]
-				spot = frame.tray_anchor + Vector3.UP * (0.025 if frame.show_tray else 0.0)
+				spot = frame.tray_anchor + Vector3.UP * (TRAY_PLATE_LIFT if frame.show_tray else 0.0)
 				if frame.show_tray:
 					var index: int = ticket.carry_index
-					spot += Vector3((index % 2 - 0.5) * 0.24, 0.0, (index / 2 - 0.5) * 0.18)
+					spot += Vector3((index % 2 - 0.5) * TRAY_PLATE_STEP.x, 0.0, (index / 2 - 0.5) * TRAY_PLATE_STEP.y)
 				stage = &"carried"
 			elif not ticket.recipe.is_drink() and surfaces.has(_pass_id):
 				# One centered row fits the measured counter depth. Additional
 				# groups of three retain the existing 0.025 m stacking convention.
 				spot = _inset_spot(_pass_id, surfaces[_pass_id]
-					+ _bases[_pass_id] * Vector3((pass_index % 3 - 1) * 0.24, 0.0, 0.0))
-				spot.y += float(pass_index / 3) * 0.025
+					+ _bases[_pass_id] * Vector3((pass_index % 3 - 1) * PASS_PLATE_STEP, 0.0, 0.0))
+				spot.y += float(pass_index / 3) * PASS_STACK_STEP
 				pass_index += 1
 				stage = &"ready"
 		elif order.state == Order.State.DELIVERED and surfaces.has(order.table_item_id):
@@ -213,7 +222,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 			toward.y = 0.0
 			spot = _seat_spot(order.table_item_id, order.seat_cell)
 			if ticket.recipe.is_drink():
-				spot += Vector3(-toward.z, 0.0, toward.x).normalized() * 0.16
+				spot += Vector3(-toward.z, 0.0, toward.x).normalized() * DRINK_SIDE_OFFSET
 				spot = _inset_spot(order.table_item_id, spot)
 		if stage.is_empty():
 			_release(ticket)
@@ -251,7 +260,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		var dish: DishVisual = stack[index]
 		dish.visible = washing_sink > 0 and restaurant.kitchen.plate_cycle_enabled and index < restaurant.kitchen.plates.dirty
 		if dish.visible:
-			dish.position = surfaces[washing_sink] + Vector3(0.12, index * 0.018, 0.0)
+			dish.position = surfaces[washing_sink] + Vector3(0.12, index * SINK_STACK_STEP, 0.0)
 
 
 ## Keep the dish beside its own seat, including the end of a long table.
