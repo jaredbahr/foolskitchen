@@ -889,6 +889,8 @@ func _connect_session() -> void:
 
 func _exit_tree() -> void:
 	_end_haggle_modal()
+	# The shared clock outlives this session: a site's refusal goes with it.
+	Clock.sim.opening_refusal = ""
 	if sound != null:
 		sound.unbind()
 	_disconnect_vibe_grid()

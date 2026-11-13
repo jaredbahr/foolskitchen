@@ -3696,13 +3696,27 @@ lot.", "You own this lot."). `main.gd` `buy_lot(lot_id)` (the panel's
 `buy_requested`) refuses with `lot_purchase_refusal` (also "Buy property in
 the morning."), builds the new site's sections (`_new_site_sections`: only a
 `shop` section, the lot's `base_layout` as a fresh `ShopEditor` saves it, no
-trays, lease not expanded; every other per-site section takes its new-game
-default on the first switch, as a load does, so the site starts with the
-default crew and menu), and adds it with `SiteBook.add_site(lot.id, lot.id,
+trays, lease not expanded, plus an empty `staff` section: a new site starts
+with nobody, Jared 2026-11-13; every other per-site section takes its
+new-game default on the first switch, as a load does), and adds it with `SiteBook.add_site(lot.id, lot.id,
 lot.display_name, today, sections, renovation_days)`: the site id is the lot
 id. `_base_for_saved_shop` resolves a lot's `save_layout_id`
 (`lot_<id>`) to its `base_layout`. Nothing is saved at the purchase (code rule
-9); the next morning's autosave writes it.
+9); the next morning's autosave writes it. Bought from the panel, the site is
+offered at once (`offer_new_site`, Jared 2026-11-13): the card asks "Work at
+your new place today?" (a fixer-upper: "Design it today?"); "Go there now" /
+"Design it now" calls `switch_site`, "Stay here today" returns to the market.
+It marks the morning's site choice as made, so the card does not follow.
+The lease upgrade is the home lot's only until #465 (`_lease_at_home`: no
+offer on the Menu, and `lease_refusal` reads "Only your first restaurant can
+expand its lease for now"), since a bought lot's rent would not change.
+
+**Unstaffed sites (#464).** `StaffRoster.from_dict` and
+`RestaurantSim.set_staff_roster` accept a roster without a cook or a server
+(0 to 6 people); `StaffRoster.is_staffed()` says whether it can run a
+service. `can_let_go` still keeps an established roster's last cook and
+server. While a roster lacks either, `draw_candidates` gives the first
+candidates those roles (same draws, so a staffed roster's pool is unchanged).
 Locks read `main.gd` `closing_reputation()`: the active site's reputation once
 it has closed a day (its `business_history` has a row), the value `CareerTier`
 read at that close; NAN before the first close, so a first-morning lock line
@@ -3717,12 +3731,21 @@ blocks the world until a choice. One row per site (active first): its name,
 `TIP` and `AWAY_SITE_INCOME` ledger entries for yesterday) or "Renovating: 3
 days", "Manager: Ana" or "No manager" (the active roster, or the frozen
 `staff` section), and a button: "Stay here" on the current site (and
-Escape), "Work here" (calls `switch_site`), or a disabled "Renovating" when
-`can_switch_site` refuses. A switch marks the card shown for that day, so the
+Escape), "Work here" or, while renovating, "Design here" (calls
+`switch_site`), or, disabled, the real reason from `site_switch_refusal`
+("Close Build first", "Finish the haggle first", "Choose your owner first",
+"From tomorrow", "Mornings only"). A refused pick is logged
+(`_log_switch_refusal`). The status line is "Yesterday's takings: $X" (gross
+`SALE` and `TIP`) for the site the owner worked, "Yesterday's earnings
+(after the manager): $X" (`SiteMorning.away_earnings`, net) for a managed
+away site, "Closed yesterday" for an unmanaged one, or "Renovating: N days".
+While the card is up, `_unhandled_input` swallows every key but Escape (no
+Build, Paint or owner-mode keys under it). A switch marks the card shown for that day, so the
 arriving site's morning does not show it again. Opening the restaurant hides
 it, and it cannot be shown outside the morning. Capture:
-`tools/screenshot.sh --site-card-review --speed=0 --frames=12` (Tier 5, the
-fixer-upper bought, the seaside lot added as a ready site).
+`tools/screenshot.sh --site-card-review --speed=0 --frames=12,30` (Tier 5, the
+fixer-upper bought, the seaside lot added as a ready site; frame 30 shows the
+same-day question for the seaside lot).
 
 **Lot-only content.** `ItemDef` and `IngredientDef` gain `lot_tags` (empty =
 everywhere). The catalogue, blueprint stamps and stock panel show a tagged
@@ -3878,12 +3901,21 @@ still loads (the migration: every site ready) and saves as version 2.
 `SiteBook.add_site(..., renovation_days)`, `renovation_days_left(id)`,
 `count_down_renovations()` (called at the top of `_close_away_sites`, so only
 with two or more sites; returns the ids that became ready) and `owns_lot`.
-While above 0 the site cannot be switched to (`SiteBook.can_swap` refuses, so
-`can_switch_site` does), which also keeps it from opening: this follows the
-#464 brief, not D28's "you can design inside" during renovation, which is
-left for later. The evening report's away line adds "; renovating, 2 days
-left", then "; renovation done, ready to open". A fixer-upper bought on day D
-with 3 days can be chosen on the morning of D+3.
+While above 0 the site can be switched to and designed (D28; Jared
+2026-11-13), but cannot open to guests. `main.gd site_opening_refusal()`
+gives "Still renovating: 2 days left", else, for an unstaffed roster, "Hire a
+cook and a server before you open". `_refresh_opening_block` (after each
+menu-catalogue refresh, so every morning, switch and Build change, and after
+each hire or let-go) puts it on `SimClock.opening_refusal` (not saved; while
+set, `start_service` refuses) and the HUD: the Open shop button reads "Close
+for today" with the reason, and emits `close_day_requested`.
+`close_for_today()` then ends the day without a service:
+`SimClock.close_without_opening()` (MORNING to CLOSED, only while a refusal
+is set), the dock's stock is put away, and `_on_service_closed` runs the
+ordinary close (wages, rent, away sites, the countdown, the report with no
+guests). The evening report's away line adds "; renovating, 2 days left",
+then "; renovation done, ready to open". A fixer-upper bought on day D with 3
+days can open on day D+3 once it has a cook and a server.
 
 **Bookings.** A group booking belongs to its site. If that site is not
 active on the booked day, the booking lapses at that day's close with the
