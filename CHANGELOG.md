@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Settings can pause service when a dish sells out, the health inspector arrives or a guest leaves angry. (#478)
 - Menu shows the price estimate only after a dish unlocks. (#469)
 - From Tier 3, a Property button in the morning Menu opens the property market: three lots for a second restaurant (a big fixer-upper in town, a seaside cliff with fresh catch and a skyscraper rooftop bar), cheapest first, each with its price, size, rent, what expanding it would cost, its usual guests and perks, and what it still needs if it is locked. It is for browsing and saving up: the Buy button says "Coming soon". (#470)
 - At a door that opens onto a one-cell way in, arriving guests now wait outside while anyone is leaving, so the doorway no longer jams; at any door, a guest leaving through a doorway already crowded with waiting guests gets out much sooner, as the waiting guests let them through (squeezing past when there is no room to step aside). (#467)

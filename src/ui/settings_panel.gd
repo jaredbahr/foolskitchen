@@ -38,6 +38,11 @@ var _whats_new: WhatsNewPanel
 @onready var _edge_pan: CheckButton = %EdgePanToggle
 @onready var _play_grid: CheckButton = %PlayGridToggle
 @onready var _build_grid: CheckButton = %BuildGridToggle
+@onready var _auto_pause_toggles: Dictionary[StringName, CheckBox] = {
+	SettingsPreferences.PAUSE_ON_SOLD_OUT: %PauseOnSoldOut,
+	SettingsPreferences.PAUSE_ON_INSPECTOR: %PauseOnInspector,
+	SettingsPreferences.PAUSE_ON_ANGRY_GUEST: %PauseOnAngryGuest,
+}
 @onready var _whats_new_button: Button = %WhatsNewButton
 @onready var _version_label: Label = %VersionLabel
 @onready var _status: Label = %Status
@@ -71,6 +76,8 @@ func _ready() -> void:
 	_build_grid.text = BUILD_GRID_LABEL
 	_play_grid.toggled.connect(_on_play_grid_toggled)
 	_build_grid.toggled.connect(_on_build_grid_toggled)
+	for key: StringName in _auto_pause_toggles:
+		_auto_pause_toggles[key].toggled.connect(_on_auto_pause_toggled.bind(key))
 	_close.pressed.connect(_on_close_pressed)
 	_whats_new = WHATS_NEW_SCENE.instantiate() as WhatsNewPanel
 	add_child(_whats_new)
@@ -140,6 +147,8 @@ func refresh() -> void:
 	_edge_pan.set_pressed_no_signal(_preferences.edge_pan_enabled)
 	_play_grid.set_pressed_no_signal(_preferences.play_grid_enabled)
 	_build_grid.set_pressed_no_signal(_preferences.build_grid_enabled)
+	for key: StringName in _auto_pause_toggles:
+		_auto_pause_toggles[key].set_pressed_no_signal(_preferences.auto_pause_enabled(key))
 	_status.text = "Changes are saved automatically."
 	_layout_card()
 
@@ -251,6 +260,10 @@ func _on_play_grid_toggled(value: bool) -> void:
 
 func _on_build_grid_toggled(value: bool) -> void:
 	_record(_preferences != null and _preferences.set_build_grid_enabled(value))
+
+
+func _on_auto_pause_toggled(value: bool, key: StringName) -> void:
+	_record(_preferences != null and _preferences.set_auto_pause_enabled(key, value))
 
 
 func _on_close_pressed() -> void:

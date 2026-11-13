@@ -19,6 +19,14 @@ const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 ## Later additions: a file without them still loads, with their defaults.
 const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid"]
+const PAUSE_ON_SOLD_OUT: StringName = &"pause_on_sold_out"
+const PAUSE_ON_INSPECTOR: StringName = &"pause_on_inspector"
+const PAUSE_ON_ANGRY_GUEST: StringName = &"pause_on_angry_guest"
+const AUTO_PAUSE_DEFAULTS: Dictionary[StringName, bool] = {
+	PAUSE_ON_SOLD_OUT: true,
+	PAUSE_ON_INSPECTOR: true,
+	PAUSE_ON_ANGRY_GUEST: false,
+}
 ## The Ambience slider (#366) came later too: a file without it loads at 100%.
 const OPTIONAL_INTEGER_KEYS: Array[String] = ["ambience_volume"]
 ## Optional text key: the build version whose What's new panel was last shown.
@@ -44,6 +52,7 @@ var last_seen_version: String = ""
 var _file_path: String = DEFAULT_PATH
 var _disk_enabled: bool = true
 var _pending_volume_save: bool = false
+var _auto_pause: Dictionary[StringName, bool] = AUTO_PAUSE_DEFAULTS.duplicate()
 
 
 func _init(path: String = DEFAULT_PATH) -> void:
@@ -98,6 +107,8 @@ func load_from_disk() -> bool:
 	build_grid_enabled = build_grid
 	play_grid_enabled = play_grid
 	last_seen_version = last_seen
+	for key: StringName in AUTO_PAUSE_DEFAULTS:
+		_auto_pause[key] = config.get_value(SECTION, String(key), AUTO_PAUSE_DEFAULTS[key])
 	return true
 
 
@@ -131,7 +142,7 @@ func _has_safe_config_syntax() -> bool:
 		if INTEGER_KEYS.has(key) or OPTIONAL_INTEGER_KEYS.has(key):
 			if not value.is_valid_int():
 				return false
-		elif BOOL_KEYS.has(key) or OPTIONAL_BOOL_KEYS.has(key):
+		elif BOOL_KEYS.has(key) or OPTIONAL_BOOL_KEYS.has(key) or AUTO_PAUSE_DEFAULTS.has(StringName(key)):
 			if value != "true" and value != "false":
 				return false
 		elif key == LAST_SEEN_KEY:
@@ -162,6 +173,8 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "build_grid", build_grid_enabled)
 	config.set_value(SECTION, "play_grid", play_grid_enabled)
 	config.set_value(SECTION, LAST_SEEN_KEY, last_seen_version)
+	for key: StringName in _auto_pause:
+		config.set_value(SECTION, String(key), _auto_pause[key])
 	var saved: bool = config.save(_file_path) == OK
 	if saved:
 		_pending_volume_save = false
@@ -288,6 +301,24 @@ func set_edge_pan_enabled(value: bool) -> bool:
 	return true
 
 
+func auto_pause_enabled(key: StringName) -> bool:
+	return _auto_pause.get(key, false)
+
+
+func set_auto_pause_enabled(key: StringName, enabled: bool) -> bool:
+	if not _auto_pause.has(key):
+		return false
+	var before: bool = _auto_pause[key]
+	if before == enabled:
+		return true
+	_auto_pause[key] = enabled
+	if not save_to_disk():
+		_auto_pause[key] = before
+		return false
+	changed.emit(key)
+	return true
+
+
 ## A view convenience: the choice holds for this session even when the file
 ## cannot be written; the return value says whether it was saved.
 func set_build_grid_enabled(value: bool) -> bool:
@@ -387,3 +418,4 @@ func _reset_defaults() -> void:
 	build_grid_enabled = true
 	play_grid_enabled = true
 	last_seen_version = ""
+	_auto_pause = AUTO_PAUSE_DEFAULTS.duplicate()

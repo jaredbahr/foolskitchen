@@ -139,6 +139,27 @@ text = "Starting service speed"
 unique_name_in_owner = true
 layout_mode = 2
 
+[node name="AutoPauseLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+layout_mode = 2
+text = "Pause when…"
+
+[node name="PauseOnSoldOut" type="CheckBox" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "A dish sells out"
+
+[node name="PauseOnInspector" type="CheckBox" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "The health inspector arrives"
+
+[node name="PauseOnAngryGuest" type="CheckBox" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "A guest leaves angry"
+
 [node name="FullscreenRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2

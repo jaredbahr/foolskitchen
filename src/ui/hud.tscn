@@ -1,14 +1,17 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/ui/hud.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
 [ext_resource type="Texture2D" path="res://assets/kenney/icons/gear.png" id="3_gear"]
 [ext_resource type="Script" path="res://src/ui/hud_groups.gd" id="4_groups"]
+[ext_resource type="PackedScene" path="res://src/ui/auto_pause.tscn" id="5_auto_pause"]
 
 [sub_resource type="ButtonGroup" id="Speeds"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_script")
+
+[node name="AutoPause" parent="." instance=ExtResource("5_auto_pause")]
 
 [node name="Top" type="PanelContainer" parent="."]
 anchors_preset = 10
