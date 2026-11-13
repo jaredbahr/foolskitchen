@@ -233,9 +233,30 @@ func test_an_unmanaged_home_site_pays_its_rent() -> void:
 	assert_eq(AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS)[0]["status"], AwaySites.CLOSED)
 	assert_true(book.set_manager(SiteBook.HOME_ID, &"boss"))
 	var managed: Dictionary = AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS)[0]
-	assert_eq(managed["status"], AwaySites.MANAGED)
-	assert_eq(int(managed["amount"]), 0, "no history: nothing earned, and no rent")
-	assert_true((managed["movements"] as Array).is_empty())
+	assert_eq(managed["status"], AwaySites.CLOSED, "no history: nothing to go on, so it stays closed")
+	assert_eq(int(managed["amount"]), -40, "and pays its rent")
+	assert_eq(JSON.stringify(managed["movements"]), JSON.stringify([{"amount": -40,
+		"category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE}]))
+	assert_eq(AwaySites.report_line("Fool's Kitchen", managed),
+		"Fool's Kitchen (closed: your manager needs a day you ran there first): rent -$40")
+
+
+func test_a_managed_lot_needs_a_recorded_day_before_its_manager_runs_it() -> void:
+	var lots: Array[LotDef] = [_lot(&"pier_lot", 70, 95)]
+	var book: SiteBook = SiteBook.new()
+	var unrecorded: BusinessHistory = BusinessHistory.new()
+	for row: Dictionary in _rows([0], false):
+		unrecorded._days.append(row)
+	var sections: Dictionary = {"staff": _staff_with_manager(5),
+		"business_history": JSON.parse_string(JSON.stringify(unrecorded.capture()))}
+	assert_true(book.add_site(&"harbour", &"pier_lot", "Pier Shack", 3, sections))
+	assert_true(book.set_manager(&"harbour", &"boss"))
+	assert_eq(AwaySites.recorded_days(sections["business_history"]), 0)
+	var plan: Dictionary = AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, lots)[0]
+	assert_eq(plan["status"], AwaySites.CLOSED, "only unrecorded days: still nothing to go on")
+	assert_eq(int(plan["amount"]), -70)
+	assert_true(bool(plan.get("no_history", false)))
+	assert_eq(AwaySites.recorded_days(_history([60, 80])), 2)
 
 
 func test_set_frozen_section_keeps_the_frozen_day() -> void:

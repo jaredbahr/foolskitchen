@@ -3893,7 +3893,10 @@ site's report, history, records and XP never see it:
   formula is applied as written, and min() takes the whole mean, since a
   manager never does better than the owner did (and the mean already
   includes the wages and rent that would otherwise make the loss).
-- **No valid manager** (or still renovating): rent only, as
+- **No valid manager** (or still renovating, or a manager with no recorded
+  day to go on yet: away days never build history, so such a site would
+  otherwise never pay; its line reads "Pier Shack (closed: your manager
+  needs a day you ran there first): rent -$70", #465): rent only, as
   `AWAY_SITE_RENT`. `AwaySites.lot_rent` gives the home lot's lease rule and
   any other lot's own rent, expanded or not (#465, "Lot rent and
   expansion").

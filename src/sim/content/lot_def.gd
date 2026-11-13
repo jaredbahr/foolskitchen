@@ -12,7 +12,7 @@ const KNOWN_TAGS: Array[StringName] = [&"seaside", &"rooftop"]
 const MIN_RENOVATION_DAYS: int = 2
 const MAX_RENOVATION_DAYS: int = 5
 ## The most one expansion adds on a side (the home lease's own limit).
-const MAX_EXPANSION_CELLS: int = 32
+const MAX_EXPANSION_CELLS: int = LeaseUpgrade.MAX_EXTRA_CELLS
 
 @export var id: StringName = &""
 @export var display_name: String = ""

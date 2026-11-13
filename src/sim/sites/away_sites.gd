@@ -12,6 +12,9 @@ extends RefCounted
 ##   A negative mean is paid as a loss: the formula is applied as written, and
 ##   min() then takes the whole mean (a manager never does better than the
 ##   owner did in person, on a bad run as on a good one).
+## - A managed site with no recorded day yet has nothing to go on: it stays
+##   closed and pays its rent (away days never build history, so it would
+##   otherwise never pay any).
 ## - A site without one stays closed and pays only its rent: its lot's
 ##   `daily_rent`, or `expanded_daily_rent` once its own lease is expanded
 ##   (#465). Rent runs from the day a lot is bought (Jared, 2026-11-13), so a
@@ -56,6 +59,19 @@ static func earnings_from_section(history: Dictionary, skill: int, tuning: SiteM
 	if not decoded.restore(history):
 		return 0
 	return earnings(decoded.summaries(), skill, tuning)
+
+
+## How many days with a recorded dish profit a saved business_history
+## section holds (0 when it has none or does not decode).
+static func recorded_days(history: Dictionary) -> int:
+	var decoded: BusinessHistory = BusinessHistory.new()
+	if history.is_empty() or not decoded.restore(history):
+		return 0
+	var count: int = 0
+	for row: Dictionary in decoded.summaries():
+		if bool(row.get("dish_profit_recorded", false)):
+			count += 1
+	return count
 
 
 ## The service skill of `member_id` when that person is a Manager in the
@@ -132,10 +148,14 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 		var staff: Dictionary = sections.get("staff", {}) if sections.get("staff") is Dictionary else {}
 		var skill: int = manager_skill(staff, book.manager(id)) \
 			if book.renovation_days_left(id) == 0 else 0
+		var history: Dictionary = sections.get("business_history", {}) \
+			if sections.get("business_history") is Dictionary else {}
+		if skill > 0 and recorded_days(history) == 0:
+			# Nothing to go on: the manager keeps it closed, and it pays rent.
+			plan["no_history"] = true
+			skill = 0
 		if skill > 0:
 			plan["status"] = MANAGED
-			var history: Dictionary = sections.get("business_history", {}) \
-				if sections.get("business_history") is Dictionary else {}
 			var earned: int = earnings_from_section(history, skill, tuning)
 			plan["amount"] = earned
 			if earned != 0:
@@ -192,7 +212,9 @@ static func report_line(name: String, plan: Dictionary) -> String:
 	elif not bool(plan.get("rent_known", true)):
 		line = "%s (closed): no rent charged" % name
 	else:
-		line = "%s (closed): rent %s" % [name, _signed_money(amount) if amount != 0 else "$0"]
+		var closed: String = "closed: your manager needs a day you ran there first" \
+			if bool(plan.get("no_history", false)) else "closed"
+		line = "%s (%s): rent %s" % [name, closed, _signed_money(amount) if amount != 0 else "$0"]
 	var refund: int = int(plan.get("refund", 0))
 	if refund > 0:
 		line += "; a group booking there was refunded (%s)" % _signed_money(-refund)

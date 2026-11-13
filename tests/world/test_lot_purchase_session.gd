@@ -383,6 +383,47 @@ func test_a_lot_site_offers_and_sells_its_own_expansion() -> void:
 	assert_eq((_main.get("shop_editor") as ShopEditor).footprint().lot, grown, "the grown lot comes back")
 
 
+func test_a_managed_lot_with_no_days_of_its_own_pays_its_rent() -> void:
+	_start()
+	_play_to_close()
+	_next_morning()
+	# A first close at home gives a closing reputation; lift it past the lock.
+	(_main.get("reputation") as ReputationBook)._scores.assign([5, 5, 5, 5, 5])
+	_owner().career_tier = 3
+	_set_cash(100000)
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(SEASIDE)
+	assert_eq(_main.call("lot_purchase_refusal", SEASIDE), "")
+	assert_true(_main.call("buy_lot", SEASIDE))
+	assert_eq(_book().renovation_days_left(SEASIDE), 0, "move-in ready")
+	assert_true(_main.call("switch_site", SEASIDE))
+	# A Manager hired and assigned there, then the owner goes home.
+	var data: Dictionary = (_main.get("staff_roster") as StaffRoster).to_dict()
+	var manager: StaffMember = StaffMember.new()
+	manager.id = &"candidate_manager"
+	manager.display_name = "Morgan"
+	manager.role = StaffMember.MANAGER
+	manager.skill = 3
+	manager.wage = preload("res://data/balance/tier1_economy.tres").staff_wage(StaffMember.MANAGER, 3)
+	var pool: Array = data["candidates"]
+	if pool.size() >= StaffRoster.CANDIDATE_COUNT:
+		pool.pop_back()
+	pool.append(manager.to_dict())
+	var roster: StaffRoster = StaffRoster.new(preload("res://data/balance/tier1_economy.tres"))
+	assert_true(roster.from_dict(JSON.parse_string(JSON.stringify(data))))
+	_main.set("staff_roster", roster)
+	assert_true(_main.call("staff_hire", manager.id))
+	assert_true(_main.call("assign_site_manager", manager.id))
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_eq(_book().manager(SEASIDE), manager.id)
+	var day: int = Clock.sim.day
+	var report: DayReport = _play_to_close()
+	assert_eq(_site_total(day, SEASIDE, Ledger.AWAY_SITE_RENT), -lot.daily_rent,
+		"no days of its own to go on: closed, and it pays its rent")
+	assert_eq(_site_total(day, SEASIDE, Ledger.AWAY_SITE_INCOME), 0, "and earns nothing")
+	assert_eq(report.away_site_lines[0],
+		"Seaside Cliff (closed: your manager needs a day you ran there first): rent -$%d" % lot.daily_rent)
+
+
 func _next_morning_from_closed_day() -> void:
 	assert_true(_main.call("close_for_today"))
 	_next_morning()
