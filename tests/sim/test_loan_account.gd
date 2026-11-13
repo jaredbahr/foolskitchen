@@ -4,6 +4,51 @@ extends TestCase
 const TERMS: LoanTuning = preload("res://data/balance/loans.tres")
 
 
+func test_early_repayment_reduces_principal_and_records_only_the_paid_amount() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.cash = 120
+	var account: LoanAccount = LoanAccount.new()
+	account.principal = 150
+	account.last_settled_day = 2
+	assert_eq(account.repay_now(ledger, 25, 3, &"bistro"), 25)
+	assert_eq(account.principal, 125)
+	assert_eq(ledger.cash, 95)
+	assert_eq(ledger.entries_for_day(3, &"bistro"), [{"day": 3, "amount": -25,
+		"category": Ledger.EARLY_LOAN_REPAYMENT, "note": "Loan repaid early", "site": &"bistro"}])
+	assert_eq(account.repay_now(ledger, 1000, 3, &"bistro"), 95)
+	assert_eq(ledger.cash, 0, "payment cannot overdraw cash")
+	assert_eq(account.principal, 30)
+	assert_eq(account.repay_now(ledger, 1, 3, &"bistro"), 0)
+	assert_eq(ledger.entries_for_day(3).size(), 2)
+	ledger.cash = 70
+	assert_eq(account.repay_now(ledger, 70), 30, "payment cannot exceed remaining principal")
+	assert_eq(account.principal, 0)
+	assert_eq(ledger.cash, 40)
+	assert_eq(account.last_settled_day, 2, "early payment leaves daily settlement scheduled normally")
+	assert_true(LoanAccount.from_dict(account.to_dict()).has_borrowed, "repaid loan history survives saving")
+
+
+func test_invalid_early_repayment_leaves_books_and_account_unchanged() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.cash = 100
+	var account: LoanAccount = LoanAccount.new()
+	account.principal = 40
+	var books: Dictionary = ledger.to_dict()
+	var loan: Dictionary = account.to_dict()
+	assert_eq(account.repay_now(ledger, -1), 0)
+	assert_eq(account.repay_now(ledger, 0), 0)
+	assert_eq(account.repay_now(ledger, 20, 0), 0)
+	assert_eq(account.repay_now(ledger, 20, 1, &""), 0)
+	assert_eq(account.repay_now(null, 20), 0)
+	assert_eq(ledger.to_dict(), books)
+	assert_eq(account.to_dict(), loan)
+	ledger.cash = -1
+	assert_eq(account.repay_now(ledger, 20), 0)
+	assert_eq(ledger.cash, -1)
+	assert_eq(account.to_dict(), loan)
+	assert_true(ledger.entries_for_day(1).is_empty())
+
+
 func test_shortfall_is_covered_in_fifty_dollar_steps_without_opening_day_interest() -> void:
 	var ledger: Ledger = Ledger.new()
 	var account: LoanAccount = LoanAccount.new()

@@ -12,6 +12,21 @@ var last_settled_day: int = 0
 var has_borrowed: bool = false
 
 
+## Pays principal from cash on hand, with no fee or change to the close schedule.
+## Returns the amount actually paid.
+func repay_now(ledger: Ledger, amount: int, day: int = 1,
+		site: StringName = Ledger.HOME_SITE) -> int:
+	if ledger == null or amount <= 0 or day < 1 or not Ledger.is_valid_site(site):
+		return 0
+	var paid: int = mini(amount, mini(principal, ledger.cash))
+	if paid <= 0:
+		return 0
+	principal -= paid
+	has_borrowed = true
+	ledger.record(day, -paid, Ledger.EARLY_LOAN_REPAYMENT, Ledger.EARLY_REPAYMENT_NOTE, site)
+	return paid
+
+
 ## Profit is sampled before financing so a bank advance never counts as income
 ## available for repayment. Existing principal pays interest before repayment;
 ## a newly opened advance starts accruing on the following close.

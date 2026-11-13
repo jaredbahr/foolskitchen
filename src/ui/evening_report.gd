@@ -10,6 +10,7 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
+	Ledger.EARLY_LOAN_REPAYMENT: Ledger.EARLY_REPAYMENT_NOTE,
 	Ledger.MILESTONE_BONUS: "Milestone bonus",
 	Ledger.WEEKLY_CHALLENGE_BONUS: "Weekly challenge",
 	Ledger.BOOKING_DEPOSIT: "Booking deposit",
