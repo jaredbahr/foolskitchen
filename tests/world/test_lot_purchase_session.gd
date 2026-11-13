@@ -421,7 +421,7 @@ func test_a_managed_lot_with_no_days_of_its_own_pays_its_rent() -> void:
 		"no days of its own to go on: closed, and it pays its rent")
 	assert_eq(_site_total(day, SEASIDE, Ledger.AWAY_SITE_INCOME), 0, "and earns nothing")
 	assert_eq(report.away_site_lines[0],
-		"Seaside Cliff (closed: your manager needs a day you ran there first): rent -$%d" % lot.daily_rent)
+		"Seaside Cliff (closed until you run it for a day): rent -$%d" % lot.daily_rent)
 
 
 func _next_morning_from_closed_day() -> void:

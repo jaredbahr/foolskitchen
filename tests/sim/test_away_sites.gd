@@ -238,7 +238,7 @@ func test_an_unmanaged_home_site_pays_its_rent() -> void:
 	assert_eq(JSON.stringify(managed["movements"]), JSON.stringify([{"amount": -40,
 		"category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE}]))
 	assert_eq(AwaySites.report_line("Fool's Kitchen", managed),
-		"Fool's Kitchen (closed: your manager needs a day you ran there first): rent -$40")
+		"Fool's Kitchen (closed until you run it for a day): rent -$40")
 
 
 func test_a_managed_lot_needs_a_recorded_day_before_its_manager_runs_it() -> void:

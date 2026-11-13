@@ -212,7 +212,7 @@ static func report_line(name: String, plan: Dictionary) -> String:
 	elif not bool(plan.get("rent_known", true)):
 		line = "%s (closed): no rent charged" % name
 	else:
-		var closed: String = "closed: your manager needs a day you ran there first" \
+		var closed: String = "closed until you run it for a day" \
 			if bool(plan.get("no_history", false)) else "closed"
 		line = "%s (%s): rent %s" % [name, closed, _signed_money(amount) if amount != 0 else "$0"]
 	var refund: int = int(plan.get("refund", 0))
