@@ -232,9 +232,20 @@ func test_level_change_signal_refreshes_row_without_rebinding_or_auto_enable() -
 	seasonal.unlock_level = 2
 	var menu: MenuSettings = MenuSettings.new([_burger, seasonal])
 	_panel.bind_menu(menu)
+	var details: Dictionary[StringName, Dictionary] = {
+		_burger.id: {"price_walkout_chance": 0.0},
+		seasonal.id: {"price_walkout_chance": 0.25},
+	}
+	_panel.set_recipe_details([_burger, seasonal], details)
+	var walkout: Label = _label(&"seasonal", "PriceWalkout")
+	assert_false(walkout.visible)
+	assert_true(walkout.text.is_empty())
+	assert_true(_label(&"burger", "PriceWalkout").visible)
 	var row_id: int = _panel.row_for(&"seasonal").get_instance_id()
 	assert_true(menu.set_owner_level(2))
 	assert_eq(_panel.row_for(&"seasonal").get_instance_id(), row_id)
+	assert_true(walkout.visible)
+	assert_eq(walkout.text, "About 1 in 4 guests will think this is too expensive.")
 	assert_false(_label(&"seasonal", "Unlock").visible)
 	assert_false(_label(&"seasonal", "Top/Name").has_theme_color_override("font_color"))
 	assert_eq(_label(&"seasonal", "Reference/Ratio").get_theme_color("font_color"), MenuPanel.STANDARD_COLOR)
