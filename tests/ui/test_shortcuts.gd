@@ -197,6 +197,66 @@ func test_f1_panel_is_modal_nonpausing_and_escape_restores_focus() -> void:
 	await _send_key(KEY_F1, false)
 
 
+func test_photo_name_and_desktop_only_shortcuts() -> void:
+	assert_eq(PhotoMode.file_name(3, 9 * 60 + 5), "fools_kitchen_3_0905.png")
+	assert_eq(PhotoMode.file_name(12, 0), "fools_kitchen_12_0000.png")
+	assert_true(PhotoMode.available(false))
+	assert_false(PhotoMode.available(true))
+	var desktop: Array[Dictionary] = ShortcutsText.rows_for("Game", PhotoMode.available(false))
+	var web: Array[Dictionary] = ShortcutsText.rows_for("Game", PhotoMode.available(true))
+	assert_eq(desktop.size(), web.size() + 2)
+	assert_eq(desktop[-2]["keys"], "F12")
+	assert_eq(desktop[-1]["keys"], "Shift + F12")
+	for row: Dictionary in web:
+		assert_false(String(row["keys"]).contains("F12"))
+
+
+func test_held_photo_mode_keeps_camera_keys_and_restores_original_visibility() -> void:
+	await _start_main()
+	var photo: PhotoMode = _main.get_node("PhotoMode")
+	var hud: CanvasLayer = _main.get_node("HUD")
+	var overlay: CanvasLayer = _main.get_node("Overlay")
+	var debug: Node3D = _main.get_node("DebugGeometry")
+	var camera: CameraRig = _main.get_node("CameraRig")
+	var speed: int = Clock.speed
+	var grid: bool = camera.effective_grid_visible()
+	var turn: int = camera.camera_quarter()
+	overlay.hide()
+	debug.hide()
+	await _send_photo_toggle()
+	assert_true(photo.held)
+	assert_false(hud.visible)
+	assert_false(overlay.visible)
+	assert_false(debug.visible)
+	assert_eq(camera.grid_material.get_shader_parameter("grid_visible"), false)
+	await _send_key(KEY_Q, true)
+	await _send_key(KEY_Q, false)
+	assert_eq(camera.camera_quarter(), posmod(turn - 1, 4), "camera input stays available in photo mode")
+	await _send_key(KEY_ESCAPE, true)
+	await _send_key(KEY_ESCAPE, false)
+	assert_false(photo.held)
+	assert_true(hud.visible)
+	assert_false(overlay.visible)
+	assert_false(debug.visible)
+	assert_eq(camera.grid_material.get_shader_parameter("grid_visible"), grid)
+	assert_eq(Clock.speed, speed)
+	assert_false(_main.call("is_settings_visible"), "Escape only leaves photo mode")
+	await _send_photo_toggle()
+	assert_true(photo.held)
+	await _send_photo_toggle()
+	assert_false(photo.held)
+	assert_true(hud.visible)
+	assert_false(overlay.visible)
+
+
+func _send_photo_toggle() -> void:
+	for pressed: bool in [true, false]:
+		var event: InputEventKey = _key_event(KEY_F12, pressed)
+		event.shift_pressed = true
+		Input.parse_input_event(event)
+		await _frame()
+
+
 func _start_main() -> void:
 	_main = MAIN.instantiate() as Node3D
 	_main.set("use_saves", false)

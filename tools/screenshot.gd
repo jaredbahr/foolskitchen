@@ -2998,6 +2998,9 @@ func _shortcuts_state() -> Dictionary:
 	var panel_card: PanelContainer = panel.get_node("Panel") as PanelContainer
 	var bounds: Rect2 = panel_card.get_global_rect()
 	var viewport_size: Vector2 = root.get_visible_rect().size
+	var expected_row_count: int = 0
+	for group_name: String in ShortcutsText.GROUPS:
+		expected_row_count += ShortcutsText.rows_for(group_name).size()
 	return {
 		"available": true,
 		"visible": panel.visible and panel.is_visible_in_tree() and bool(_main.call("is_shortcuts_visible")),
@@ -3005,7 +3008,7 @@ func _shortcuts_state() -> Dictionary:
 		"group_headings": group_headings,
 		"expected_group_headings": ShortcutsText.GROUPS,
 		"row_count": row_count,
-		"expected_row_count": ShortcutsText.ROWS.size(),
+		"expected_row_count": expected_row_count,
 		"column_count": columns.get_child_count(),
 		"two_cell_rows": two_cell_rows,
 		"panel_bounds": [bounds.position.x, bounds.position.y, bounds.size.x, bounds.size.y],
@@ -3018,8 +3021,8 @@ func _shortcuts_capture_valid(state: Dictionary) -> bool:
 	if state.get("available") != true or state.get("visible") != true or state.get("close_button_focused") != true \
 			or state.get("group_headings") != ShortcutsText.GROUPS \
 			or state.get("expected_group_headings") != ShortcutsText.GROUPS \
-			or state.get("row_count") != ShortcutsText.ROWS.size() \
-			or state.get("expected_row_count") != ShortcutsText.ROWS.size() \
+			or int(state.get("expected_row_count", 0)) <= 0 \
+			or state.get("row_count") != state.get("expected_row_count") \
 			or state.get("column_count") != 2 or state.get("two_cell_rows") != true:
 		return false
 	var bounds: Array = state["panel_bounds"]
