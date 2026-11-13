@@ -456,6 +456,25 @@ func test_a_layout_with_no_dish_still_refuses_after_hiring_a_crew() -> void:
 
 
 
+## A home menu that lists dishes the lot's stations cannot make (a fryer's
+## fries, a drinks fridge's soft drinks) used to be copied whole: the menu then
+## failed to load and the bought site could never be switched to (#472 review).
+func test_a_copied_menu_keeps_only_what_the_lot_can_cook() -> void:
+	_start()
+	_owner().career_tier = 3
+	_set_cash(9000)
+	var content: ContentDB = _main.get("content")
+	var wide: MenuSettings = MenuSettings.new(content.recipes(), 99)
+	assert_true(wide.from_dict(_main.call("_capture_menu")))
+	assert_true((wide.to_dict()["prices"] as Dictionary).has("fries"), "home lists a dish the lot cannot cook")
+	_main.set("menu_settings", wide)
+	assert_true(_main.call("buy_lot", FIXER))
+	var frozen: Dictionary = _book().frozen_sections(FIXER).get("menu", {})
+	assert_false((frozen.get("prices", {}) as Dictionary).has("fries"), "only the lot's dishes are copied")
+	assert_true(_main.call("switch_site", FIXER), "the new site can be switched to")
+	assert_eq(_book().active_id, FIXER)
+
+
 func test_a_new_site_starts_with_a_copy_of_the_menu_it_was_bought_from() -> void:
 	_start()
 	_owner().career_tier = 3

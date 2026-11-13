@@ -5011,13 +5011,34 @@ func _new_site_sections(lot: LotDef) -> Dictionary:
 	# signature dish are each site's own. It is named after its lot (Jared), not
 	# after the restaurant it was bought from. A dish the lot cannot cook stays
 	# off its live menu, as after any layout change.
+	# Only dishes the lot's own stations can make are copied: a saved menu
+	# naming a dish its layout cannot cook does not load, and the site could
+	# never be switched to. With nothing left on, the lot starts on its default
+	# menu instead.
 	var menu: Dictionary = _capture_menu()
 	if not menu.is_empty():
+		var cookable: Array[RecipeDef] = _cookable_recipes(lot.base_layout)
+		var ids: Dictionary[String, bool] = {}
+		for recipe: RecipeDef in cookable:
+			ids[String(recipe.id)] = true
+		var enabled: Array = []
+		for value: Variant in menu.get("enabled", []):
+			if ids.has(String(value)):
+				enabled.append(value)
+		var prices: Dictionary = {}
+		var saved_prices: Dictionary = menu.get("prices", {})
+		for key: Variant in saved_prices:
+			if ids.has(String(key)):
+				prices[key] = saved_prices[key]
 		var copy: Dictionary = menu.duplicate(true)
+		copy["enabled"] = enabled
+		copy["prices"] = prices
 		var lot_name: String = MenuSettings.normalized_restaurant_name(lot.display_name)
 		if copy.has("name") and not lot_name.is_empty():
 			copy["name"] = lot_name
-		sections["menu"] = copy
+		var check: MenuSettings = MenuSettings.new(cookable, owner_progress.effective_level())
+		if not enabled.is_empty() and check.from_dict(copy):
+			sections["menu"] = copy
 	return sections
 
 
