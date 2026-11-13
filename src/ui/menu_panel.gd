@@ -10,6 +10,8 @@ signal special_requested(recipe_id: StringName)
 signal signature_requested(recipe_id: StringName)
 signal settings_requested()
 signal goals_requested()
+## The browse-only property market (FK-087 part 2), offered from Tier 3.
+signal property_requested()
 signal lease_requested()
 ## The one-time morning cat adoption (#119); the session checks and charges it.
 signal cat_adoption_requested()
@@ -66,6 +68,7 @@ var _list: VBoxContainer
 var _detail: VBoxContainer
 var _settings_button: Button
 var _goals_button: Button
+var _property_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
 ## Food rows stay in Rows; drink rows are in DrinkRows (FK-083). Both sit in
@@ -474,6 +477,10 @@ func _bind_nodes() -> void:
 	quit_button.text = TitleText.QUIT_TO_TITLE
 	quit_button.pressed.connect(_on_quit_to_title_pressed)
 	_goals_button.pressed.connect(_on_goals_pressed)
+	_property_button = %PropertyButton
+	_property_button.text = PropertyText.TITLE
+	_property_button.tooltip_text = PropertyText.BUTTON_TOOLTIP
+	_property_button.pressed.connect(_on_property_pressed)
 
 
 ## Opening hours with the restaurant name (#181), above both columns, and the
@@ -609,6 +616,20 @@ func _on_quit_to_title_pressed() -> void:
 
 func _on_goals_pressed() -> void:
 	goals_requested.emit()
+
+
+## Main decides (PropertyMarket.shown); hidden below Tier 3.
+func set_property_available(available: bool) -> void:
+	_bind_nodes()
+	_property_button.visible = available
+
+
+func is_property_available() -> bool:
+	return _property_button != null and _property_button.visible
+
+
+func _on_property_pressed() -> void:
+	property_requested.emit()
 
 
 func _rebuild_rows() -> void:

@@ -3650,6 +3650,34 @@ and `tags: Array[StringName]` (`&"seaside"`, `&"rooftop"`). `ContentDB`
 validates them like recipes; a bad lot fails the load. The starter shop is the
 implicit home lot and is never listed. `_base_for_saved_shop` gains a lookup
 by lot id.
+Built (#405, part 2, browse only): `LotDef` (`src/sim/content/lot_def.gd`)
+has the fields above plus `expansion_price` and `expanded_daily_rent` (every
+lot can expand, Jared 2026-11-13; nothing charges them yet, that is #465).
+`ContentDB.validate_lots` refuses a missing or unbuildable-looking layout
+(no floor, uneven rows, no street entry, an unknown starting item), anything
+but exactly one way to pay (a price, or a fixer price with a renovation bill
+and 2 to 5 days), zero rent, an expansion that is free or lowers the rent, a
+tier outside 1 to 6, stars outside 0 to 5, a guest mix that is empty, has a
+non-positive share or names an unknown customer type (read from
+`data/customers/types.tres`), an unknown or duplicated tag, and the id
+`home`. The starter lots are `town_fixer_upper` (fixer-upper, 3 days,
+upstairs), `seaside_cliff` (Tier 3 and 4.2 stars) and `skyscraper_rooftop`
+(Tier 4 and 4.3 stars), each with its own `data/layouts/lot_*.tres` (the
+starter's kitchen block in a different-sized shell); placeholder numbers.
+`PropertyMarket` (`src/sim/sites`, pure) decides: `shown(career_tier)` (from
+Tier 3), `listing` (cheapest to open first: the price, or fixer price plus
+renovation bill; then name, id) and the tier and star locks (stars at one
+decimal, like `CareerTier`). `PropertyText` (`src/ui`) holds every line of the
+screen, including tag perks ("Fresh catch", "Rooftop bar", plus "Room for an
+upstairs") and the guest summary from the customer types' own names ("mostly
+foodies" from half the mix, else the top two). The Menu's header has a
+Property button from Tier 3 (`MenuPanel.set_property_available`, set by
+`set_menu_visible`); it opens `PropertyPanel` (`main.gd`
+`set_property_visible`, a morning view like Goals that closes back to the
+Menu and is dismissed wherever Goals is). Each card's Buy button is disabled
+and reads "Coming soon". Nothing is bought, moved, saved or simulated
+differently; `AwaySites.lot_rent` still charges nothing for a non-home lot.
+Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12`.
 
 **Lot-only content.** `ItemDef` and `IngredientDef` gain `lot_tags` (empty =
 everywhere). The catalogue, blueprint stamps and stock panel show a tagged
