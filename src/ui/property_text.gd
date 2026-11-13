@@ -158,7 +158,7 @@ static func bought_line(lot: LotDef) -> String:
 	if PropertyMarket.renovation_days(lot) > 0:
 		return "You bought %s. It needs %d days of work before it can open." % [
 			lot.display_name, PropertyMarket.renovation_days(lot)]
-	return "You bought %s. You can choose it tomorrow morning." % lot.display_name
+	return "You bought %s. Hire a cook and a server there before it opens." % lot.display_name
 
 
 ## "Foodie" -> "foodies", "Family" -> "families": a lower-case plural.

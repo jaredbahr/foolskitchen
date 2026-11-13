@@ -244,8 +244,13 @@ func test_a_fixer_upper_can_be_designed_counts_down_and_opens_once_ready_and_sta
 	assert_false((hud.get_node("Top/Row/Context") as Button).disabled)
 	assert_true(_main.call("set_build_active", true), "designing is allowed")
 	assert_true(_main.call("set_build_active", false))
+	var xp_before: int = _owner().total_xp
 	assert_true(_main.call("close_for_today"))
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	# A closed day is no business day: no history row, no XP, no closing stars.
+	assert_eq((_main.get("business_history") as BusinessHistory).recent(1).size(), 0, "no history row")
+	assert_true(is_nan(float(_main.call("closing_reputation"))), "still no closing reputation")
+	assert_eq(_owner().total_xp, xp_before, "no owner XP")
 	assert_eq(_book().renovation_days_left(FIXER), 1, "the active site counts down too")
 	var closed: DayReport = _main.get("shown_report")
 	assert_true(closed != null and closed.day == Clock.sim.day, "the evening report shows")
@@ -412,3 +417,59 @@ func test_switching_to_a_new_site_and_back_keeps_each_sites_own_staff_and_shop()
 	assert_eq((frozen["staff"]["members"] as Array).size(), 0, "the new site's empty roster stays its own")
 	assert_eq(frozen["shop"]["layout_id"], "lot_town_fixer_upper")
 	assert_eq(_main.call("site_opening_refusal"), "", "home opens as usual")
+
+
+
+func test_a_layout_with_no_dish_still_refuses_after_hiring_a_crew() -> void:
+	_start()
+	_owner().career_tier = 3
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(FIXER)
+	var sections: Dictionary = _main.call("_new_site_sections", lot)
+	assert_true(_book().add_site(FIXER, FIXER, lot.display_name, Clock.sim.day, sections))
+	assert_true(_main.call("switch_site", FIXER))
+	assert_eq(_main.call("site_opening_refusal"), "Hire a cook and a server before you open")
+	# Block the stove: no dish can be cooked.
+	var world: SimWorld = _main.get("world")
+	var stove: PlacedItem = null
+	for placed: PlacedItem in world.grid.items():
+		if (placed.def as ItemDef).id == &"stove":
+			stove = placed
+	assert_not_null(stove)
+	var plant: ItemDef = (_main.get("content") as ContentDB).item(&"potted_plant")
+	assert_not_null(world.grid.place_def(plant, stove.work_cells[0]))
+	_main.call("_refresh_menu_catalogue")
+	var notice: Label = _main.get_node("HUD/MenuNotice/Text") as Label
+	assert_eq(notice.text, "Hire a cook and a server before you open", "the site's own reason first")
+	for role: StringName in [&"cook", &"server"]:
+		for member: StaffMember in (_main.get("staff_roster") as StaffRoster).candidates():
+			if member.role == role:
+				assert_true(_main.call("staff_hire", member.id))
+				break
+	assert_eq(_main.call("site_opening_refusal"), "")
+	assert_eq(notice.text, MenuAccess.NO_DISH, "the no-dish block comes back, not a stale hiring note")
+	var context: Button = _main.get_node("HUD/Top/Row/Context") as Button
+	assert_true(context.disabled)
+	assert_eq(context.text, "Open shop")
+	assert_false(Clock.sim.start_service(), "nothing can open past the no-dish block")
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	assert_false(_main.call("close_for_today"), "and it is no closed day either")
+
+
+
+func test_a_new_site_starts_with_a_copy_of_the_menu_it_was_bought_from() -> void:
+	_start()
+	_owner().career_tier = 3
+	_set_cash(9000)
+	var dish: StringName = (_main.get("menu_settings") as MenuSettings).enabled_recipes()[0].id
+	var menu: MenuSettings = _main.get("menu_settings")
+	assert_true(_main.call("menu_set_price", dish, menu.price_of(menu.recipe(dish)) + 2))
+	var home_menu: String = JSON.stringify(_main.call("_capture_menu"))
+	assert_true(_main.call("buy_lot", FIXER))
+	assert_true(_main.call("switch_site", FIXER))
+	var copied: MenuSettings = _main.get("menu_settings")
+	assert_eq(copied.price_of(copied.recipe(dish)), menu.price_of(menu.recipe(dish)), "the same prices")
+	assert_eq(JSON.stringify(_main.call("_capture_menu")), home_menu, "the same dishes, flags and prices")
+	assert_true(_main.call("menu_set_price", dish, copied.price_of(copied.recipe(dish)) + 5))
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_eq(JSON.stringify(_main.call("_capture_menu")), home_menu, "home's menu is unchanged")
+	assert_ne(JSON.stringify(_book().frozen_sections(FIXER)["menu"]), home_menu, "the new site kept its own change")

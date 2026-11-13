@@ -328,6 +328,10 @@ var _site_card: SiteCard
 var _site_card_day: int = 0
 ## The new site the same-day question is about (#464), or &"".
 var _site_prompt_target: StringName = &""
+## The day `close_for_today` ended without a service (#464): its close books
+## the costs but is not a business day (no history row, XP, goals, records,
+## trending post or demand).
+var _closed_day: int = 0
 var _goals_snapshot: Dictionary = {}
 var _stock_panel: StockPanel
 var _owner_picker: OwnerPicker
@@ -5001,7 +5005,15 @@ func _new_site_sections(lot: LotDef) -> Dictionary:
 	staff["candidate_day"] = 0
 	if not nobody.from_dict(staff):
 		return {}
-	return {"shop": shop, "staff": staff}
+	var sections: Dictionary = {"shop": shop, "staff": staff}
+	# The new place starts with a copy of this site's menu (Jared, #464):
+	# dishes, what is on, prices and the name. Copied once, here; today's
+	# special and the signature dish are each site's own. A dish the lot
+	# cannot cook stays off its live menu, as after any layout change.
+	var menu: Dictionary = _capture_menu()
+	if not menu.is_empty():
+		sections["menu"] = menu.duplicate(true)
+	return sections
 
 
 func _on_property_buy_requested(lot_id: StringName) -> void:
@@ -5076,12 +5088,19 @@ func site_opening_refusal() -> String:
 
 ## Puts the site's opening refusal on the clock (start_service refuses) and
 ## the HUD (its button closes the day instead, with the reason shown).
+## A layout with no cookable dish (`_menu_access_error`) also refuses on the
+## clock, so no caller can open past it; it keeps its own notice and does not
+## offer "Close for today".
 func _refresh_opening_block() -> void:
 	var reason: String = site_opening_refusal() if Clock.sim.phase == SimClock.Phase.MORNING else ""
-	Clock.sim.opening_refusal = reason
+	Clock.sim.opening_refusal = reason if not reason.is_empty() else _menu_access_error
 	$HUD.set_closed_day(reason)
 	if not reason.is_empty():
-		$HUD.set_menu_notice(reason)
+		$HUD.set_menu_notice(reason, true)
+	elif not _menu_access_error.is_empty():
+		$HUD.set_menu_notice(_menu_access_error, true)
+	else:
+		$HUD.set_menu_notice(menu_open_note())
 
 
 ## Ends a morning that cannot open (renovating or still hiring): the day
@@ -5098,7 +5117,9 @@ func close_for_today() -> bool:
 		set_paint_active(false)
 	build_mode.exit()
 	var day: int = Clock.sim.day
+	_closed_day = day
 	if not Clock.sim.close_without_opening():
+		_closed_day = 0
 		return false
 	if sim.dock != null:
 		sim.dock.store_all()
@@ -6691,7 +6712,7 @@ func _on_review_recorded(_row: Dictionary) -> void:
 func _show_evening_report(report: DayReport) -> void:
 	shown_report = report
 	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == report.day \
-			and report.day == Clock.sim.day:
+			and report.day == Clock.sim.day and _closed_day != report.day:
 		business_history.record(report)
 	_report.call(&"show_report", report)
 	_report.call(&"show_history", business_history.summaries(), report.day)
@@ -6702,13 +6723,17 @@ func _on_service_closed(day: int) -> void:
 	if day != Clock.sim.day or _closed_report_day == day:
 		return
 	_closed_report_day = day
+	# A day closed without opening (#464) pays its costs but is no business
+	# day: no trending post, demand, XP, goals, records or history row.
+	var business_day: bool = _closed_day != day
 	var sold: DayReport = DayReport.new()
 	sold.dishes_sold = dishes_sold_today.duplicate()
-	viral_review.close_open_day(day, sim.served_today, sim.lost_today,
-		int(sim.leave_reasons_today.get(&"happy", 0)), sold.best_dish(),
-		GameState.rng.bind(&"viral"))
-	demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
-		sim.demand_factor, demand_tuning)
+	if business_day:
+		viral_review.close_open_day(day, sim.served_today, sim.lost_today,
+			int(sim.leave_reasons_today.get(&"happy", 0)), sold.best_dish(),
+			GameState.rng.bind(&"viral"))
+		demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
+			sim.demand_factor, demand_tuning)
 	_remember_menu_quality()
 	_charge_closing_costs()
 	_settle_due_booking_at_close(day)
@@ -6727,12 +6752,16 @@ func _on_service_closed(day: int) -> void:
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
 		operating_profit -= int(day_movements.get(category, 0))
-	var closing_observation: MilestoneDay = _milestone_observation(operating_profit)
+	# A closed day still evaluates the weekly goal (its saved day must follow
+	# the calendar) but with nothing earned: no profit, sales or guests.
+	var closing_observation: MilestoneDay = _milestone_observation(operating_profit if business_day else 0)
 	# A Creative game (FK-141) has no owner XP, career goals, weekly goal or
 	# tier climb: everything is already unlocked.
 	var career: bool = not GameMode.is_creative()
 	if career:
 		_award_weekly_challenge(closing_observation)
+	# Owner XP, goals and the tier climb are business-day rewards only.
+	career = career and business_day
 	staff_roster.close_growth_day()
 	var five_star_reviews: int = 0
 	for row: Dictionary in sim.reviews_today:
@@ -6778,7 +6807,9 @@ func _on_service_closed(day: int) -> void:
 		_build_catalogue.set_owner_level(owner_progress.effective_level())
 		$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	shown_report = build_report(day)
-	var beaten: Array[StringName] = shop_records.record(shown_report)
+	var beaten: Array[StringName] = []
+	if business_day:
+		beaten = shop_records.record(shown_report)
 	_record_notice_day = day
 	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten,
 		not GameMode.is_creative())
@@ -6921,7 +6952,8 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 func _on_next_day_pressed() -> void:
 	# Evening purchases can change cash while their panel hides the report.
 	# Capture them before next_day clears day-local counters; do not save here.
-	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == Clock.sim.day:
+	if Clock.sim.phase == SimClock.Phase.CLOSED and _closed_report_day == Clock.sim.day \
+			and _closed_day != Clock.sim.day:
 		business_history.record(build_report(Clock.sim.day))
 	Clock.sim.next_day()
 
