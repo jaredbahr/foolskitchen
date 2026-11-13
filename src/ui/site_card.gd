@@ -3,10 +3,12 @@ extends Control
 ## The morning site card (FK-087, #464; Jared's call): on a morning when the
 ## owner has more than one restaurant, a small card before opening lists each
 ## one with yesterday's takings (or its renovation) and its manager. Picking
-## another asks main.gd to switch there; the current one keeps it. Every line
-## of the card is here.
+## another asks main.gd to switch there; the current one keeps it. The same
+## card asks the same-day question after a purchase ("Work at your new place
+## today?"). Every line of the card is here.
 
 signal site_chosen(site_id: StringName)
+signal prompt_answered(accept: bool)
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 ## The Property screen's muted tone, so the screens read as one.
@@ -18,9 +20,24 @@ const TITLE: String = "Your restaurants"
 const INTRO: String = "Where will you work today?"
 const STAY: String = "Stay here"
 const GO: String = "Work here"
-const RENOVATING: String = "Renovating"
+const DESIGN: String = "Design here"
 const HERE_NOW: String = "You are here"
 const NO_MANAGER: String = "No manager"
+const CLOSED_YESTERDAY: String = "Closed yesterday"
+const PROMPT_NEW: String = "Work at your new place today?"
+const PROMPT_FIXER: String = "Design it today?"
+const PROMPT_GO: String = "Go there now"
+const PROMPT_DESIGN: String = "Design it now"
+const PROMPT_STAY: String = "Stay here today"
+## Why a site cannot be chosen right now (its disabled button).
+const ONLY_MORNING: String = "Mornings only"
+const CLOSE_BUILD: String = "Close Build first"
+const FINISH_HAGGLE: String = "Finish the haggle first"
+const CHOOSE_OWNER: String = "Choose your owner first"
+const NOT_UNTIL_TOMORROW: String = "From tomorrow"
+const NOT_NOW: String = "Not available"
+
+var _prompting: bool = false
 
 var _ids: Array[StringName] = []
 
@@ -30,11 +47,17 @@ class Row extends RefCounted:
 	var id: StringName
 	var name: String = ""
 	var current: bool = false
+	## Gross takings from guests yesterday (the site the owner worked).
 	var takings: int = 0
+	## A site away yesterday: true when its manager ran it (earnings is then
+	## its net away income), false when it stayed closed.
+	var managed: bool = false
+	var earnings: int = 0
 	var renovation_days: int = 0
 	var manager: String = ""
-	## False when the site cannot be switched to now (a renovation).
-	var can_choose: bool = true
+	## "" when the site can be switched to now; otherwise why not, shown on
+	## its disabled button.
+	var refusal: String = ""
 
 
 func _ready() -> void:
@@ -42,11 +65,31 @@ func _ready() -> void:
 	(get_node("Center/Panel/Content/Intro") as Label).text = INTRO
 
 
-## "Yesterday's takings: $412", or the renovation still to do.
+## "Yesterday's takings: $412" where the owner worked (gross), "Yesterday's
+## earnings (after the manager): $84" for a managed site (net of its wages
+## and rent), "Closed yesterday", or the renovation still to do.
 static func status_line(row: Row) -> String:
 	if row.renovation_days > 0:
 		return "Renovating: %d %s" % [row.renovation_days, "day" if row.renovation_days == 1 else "days"]
-	return "Yesterday's takings: %s" % Fmt.money(row.takings)
+	if row.current:
+		return "Yesterday's takings: %s" % Fmt.money(row.takings)
+	if row.managed:
+		return "Yesterday's earnings (after the manager): %s" % _signed(row.earnings)
+	return CLOSED_YESTERDAY
+
+
+## The button on a row: Stay here, Work here, Design here (renovating), or
+## the reason it cannot be chosen now.
+static func pick_label(row: Row) -> String:
+	if row.current:
+		return STAY
+	if not row.refusal.is_empty():
+		return row.refusal
+	return DESIGN if row.renovation_days > 0 else GO
+
+
+static func _signed(amount: int) -> String:
+	return ("-" if amount < 0 else "") + Fmt.money(absi(amount))
 
 
 static func manager_line(row: Row) -> String:
@@ -54,15 +97,54 @@ static func manager_line(row: Row) -> String:
 
 
 func set_rows(rows: Array[Row]) -> void:
-	var list: VBoxContainer = get_node("Center/Panel/Content/List") as VBoxContainer
-	for child: Node in list.get_children():
-		list.remove_child(child)
-		# Queued: a pick button may be the one emitting right now.
-		child.queue_free()
-	_ids.clear()
+	_prompting = false
+	(get_node("Center/Panel/Content/Title") as Label).text = TITLE
+	(get_node("Center/Panel/Content/Intro") as Label).text = INTRO
+	_clear_list()
+	var list: VBoxContainer = _list()
 	for row: Row in rows:
 		list.add_child(_make_row(row, _ids.size()))
 		_ids.append(row.id)
+
+
+## The same-day question after buying a lot (#464): `question` as the title,
+## `detail` below it, and two buttons. Answered through prompt_answered.
+func show_prompt(question: String, detail: String, accept_text: String, decline_text: String) -> void:
+	_prompting = true
+	(get_node("Center/Panel/Content/Title") as Label).text = question
+	(get_node("Center/Panel/Content/Intro") as Label).text = detail
+	_clear_list()
+	var answers: HBoxContainer = HBoxContainer.new()
+	answers.name = "Answers"
+	answers.alignment = BoxContainer.ALIGNMENT_END
+	answers.add_theme_constant_override(&"separation", 12)
+	answers.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for answer: Array in [[decline_text, false, "Decline"], [accept_text, true, "Accept"]]:
+		var button: Button = Button.new()
+		button.name = answer[2]
+		button.text = answer[0]
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(150.0, 0.0)
+		button.pressed.connect(_on_answer_pressed.bind(answer[1]))
+		answers.add_child(button)
+	_list().add_child(answers)
+
+
+func is_prompting() -> bool:
+	return _prompting
+
+
+func _list() -> VBoxContainer:
+	return get_node("Center/Panel/Content/List") as VBoxContainer
+
+
+func _clear_list() -> void:
+	var list: VBoxContainer = _list()
+	for child: Node in list.get_children():
+		list.remove_child(child)
+		# Queued: a button may be the one emitting right now.
+		child.queue_free()
+	_ids.clear()
 
 
 ## Listed site ids in screen order, for tests and capture evidence.
@@ -113,8 +195,8 @@ func _make_row(row: Row, index: int) -> Control:
 		here.add_theme_color_override(&"font_color", MUTED_COLOR)
 	var pick: Button = Button.new()
 	pick.name = "Pick"
-	pick.text = STAY if row.current else (GO if row.can_choose else RENOVATING)
-	pick.disabled = not row.current and not row.can_choose
+	pick.text = pick_label(row)
+	pick.disabled = not row.current and not row.refusal.is_empty()
 	pick.focus_mode = Control.FOCUS_NONE
 	pick.custom_minimum_size = Vector2(130.0, 0.0)
 	pick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -133,6 +215,10 @@ func _add_label(parent: Control, node_name: String, text: String, font_size: int
 	label.add_theme_font_size_override(&"font_size", font_size)
 	parent.add_child(label)
 	return label
+
+
+func _on_answer_pressed(accept: bool) -> void:
+	prompt_answered.emit(accept)
 
 
 func _on_pick_pressed(id: StringName) -> void:

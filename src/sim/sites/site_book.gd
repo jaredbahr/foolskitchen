@@ -130,12 +130,11 @@ func add_site(id: StringName, lot: StringName, display_name: String, day: int, s
 
 
 ## True when `target` is a frozen site that can become active on `day` (never
-## before the day it was frozen, nor while it is under renovation). A switch
-## checks this before restoring anything, so the swap after the restore
-## cannot refuse.
+## before the day it was frozen). A site under renovation can be switched to
+## for designing (D28; it cannot open, see main.gd). A switch checks this
+## before restoring anything, so the swap after the restore cannot refuse.
 func can_swap(target: StringName, day: int) -> bool:
-	return target != active_id and _frozen.has(target) and day >= int(_frozen[target]["day"]) \
-		and renovation_days_left(target) == 0
+	return target != active_id and _frozen.has(target) and day >= int(_frozen[target]["day"])
 
 
 ## Makes `target` the active site: the departing one is frozen with `sections`

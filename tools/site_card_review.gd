@@ -1,12 +1,17 @@
 extends RefCounted
 ## Morning site card review fixture (FK-087, #464), for
-## `tools/screenshot.sh --site-card-review --speed=0 --frames=12`. The seed-1
+## `tools/screenshot.sh --site-card-review --speed=0 --frames=12,30`. The seed-1
 ## first morning at Tier 5 (three sites allowed) with cash on the live owner
 ## (nothing saved): the fixer-upper is bought through main.gd `buy_lot` (so it
 ## is renovating), and the seaside lot joins the site list built the same way
 ## (its star lock cannot be met on a first morning). Then main.gd shows the
 ## card: the current shop with "Stay here", the seaside lot with "Work here"
-## and the fixer-upper's disabled "Renovating" button.
+## and the fixer-upper's "Design here". At PROMPT_FRAME the card is answered
+## "Stay here" and main.gd asks the same-day question for the seaside lot, as
+## after buying it ("Work at your new place today?").
+
+## The frame (after the first capture) that swaps the card for the question.
+const PROMPT_FRAME: int = 20
 
 const TIER: int = 5
 ## Enough for the fixer-upper; the seaside site is added, not bought.
@@ -39,10 +44,23 @@ static func prepare(main: Node, _root: Window) -> Dictionary:
 	return {"tier": TIER, "sites": book.site_count()}
 
 
+static func show_prompt(main: Node) -> Dictionary:
+	var card: SiteCard = main.get_node_or_null("Overlay/SiteCard") as SiteCard
+	if card == null or not bool(main.call("is_site_card_visible")):
+		return {"error": "the site card was not open before the question"}
+	card.site_chosen.emit(&"home")
+	if not bool(main.call("offer_new_site", &"seaside_cliff")):
+		return {"error": "the same-day question was not offered"}
+	return {}
+
+
 static func evidence(main: Node) -> Dictionary:
 	var card: SiteCard = main.get_node_or_null("Overlay/SiteCard") as SiteCard
 	if card == null:
 		return {}
+	if card.is_prompting():
+		return {"visible": bool(main.call("is_site_card_visible")), "prompting": true,
+			"title": (card.get_node("Center/Panel/Content/Title") as Label).text}
 	var buttons: Dictionary = {}
 	for id: StringName in card.site_ids():
 		var pick: Button = card.row_for(id).get_node_or_null("Body/Pick") as Button
@@ -52,9 +70,11 @@ static func evidence(main: Node) -> Dictionary:
 
 
 static func valid(state: Dictionary) -> bool:
+	if state.get("prompting") == true:
+		return state.get("visible") == true and state.get("title") == SiteCard.PROMPT_NEW
 	var buttons: Dictionary = state.get("buttons", {})
 	return state.get("visible") == true \
 		and state.get("sites") == ["home", "seaside_cliff", "town_fixer_upper"] \
 		and buttons.get("home") == [SiteCard.STAY, false] \
 		and buttons.get("seaside_cliff") == [SiteCard.GO, false] \
-		and buttons.get("town_fixer_upper") == [SiteCard.RENOVATING, true]
+		and buttons.get("town_fixer_upper") == [SiteCard.DESIGN, false]

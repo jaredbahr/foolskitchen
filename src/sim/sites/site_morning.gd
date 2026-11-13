@@ -5,18 +5,30 @@ extends RefCounted
 ## SiteCard.
 
 ## Ledger categories that count as a site's takings: money taken from guests
-## where the owner worked, or by its manager while the owner was away.
-const TAKINGS: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.AWAY_SITE_INCOME]
+## where the owner worked (gross).
+const TAKINGS: Array[StringName] = [Ledger.SALE, Ledger.TIP]
+## What a managed site earned while the owner was away: already net of its
+## wages and rent (AwaySites), so it is never added to takings.
+const AWAY_EARNINGS: Array[StringName] = [Ledger.AWAY_SITE_INCOME]
 
 
-## A site's takings on `day` from its own ledger entries (0 when it made
-## none, or the day has been pruned).
+## A site's gross takings from guests on `day` from its own ledger entries
+## (0 when it made none, or the day has been pruned).
 static func takings(ledger: Ledger, day: int, site: StringName) -> int:
+	return _sum(ledger, day, site, TAKINGS)
+
+
+## A managed site's net earnings on `day` while the owner was elsewhere.
+static func away_earnings(ledger: Ledger, day: int, site: StringName) -> int:
+	return _sum(ledger, day, site, AWAY_EARNINGS)
+
+
+static func _sum(ledger: Ledger, day: int, site: StringName, categories: Array[StringName]) -> int:
 	if ledger == null or day < 1 or not Ledger.is_valid_site(site):
 		return 0
 	var total: int = 0
 	for entry: Dictionary in ledger.entries_for_day(day, site):
-		if TAKINGS.has(StringName(entry["category"])):
+		if categories.has(StringName(entry["category"])):
 			total += int(entry["amount"])
 	return total
 

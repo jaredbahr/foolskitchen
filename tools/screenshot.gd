@@ -46,8 +46,9 @@ extends SceneTree
 ##             real Main collection progress and native Goals rows after the toast clears
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
-##   --site-card-review --speed=0 --frames=12  the morning site card with three
-##             sites (tools/site_card_review.gd): Tier 5, the fixer-upper bought.
+##   --site-card-review --speed=0 --frames=12,30  the morning site card with three
+##             sites (tools/site_card_review.gd): Tier 5, the fixer-upper bought;
+##             then the same-day "Work at your new place today?" question.
 ##   --property-review --speed=0 --frames=12  the property market
 ##             (tools/property_review.gd): Tier 3 on the seed-1 morning, opened
 ##             from the Menu's Property button (FK-087), the fixer-upper buyable
@@ -2539,6 +2540,11 @@ func _process(_delta: float) -> bool:
 		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
 		if rig != null and rig.grid_visible:
 			rig.toggle_grid()
+	if _site_card_review and _frames == SITE_CARD_REVIEW.PROMPT_FRAME:
+		var prompt: Dictionary = SITE_CARD_REVIEW.show_prompt(_main)
+		if not String(prompt.get("error", "")).is_empty():
+			_fail_capture(String(prompt["error"]))
+			return true
 	if _floors_review and _frames == FLOORS_DRAG_FRAME:
 		var drag: Dictionary = FLOORS_REVIEW.begin_drag(_main, root)
 		if not String(drag.get("error", "")).is_empty():

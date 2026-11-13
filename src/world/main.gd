@@ -326,6 +326,8 @@ var _property_panel: PropertyPanel
 ## The morning site card (FK-087, #464): shown once a morning with 2+ sites.
 var _site_card: SiteCard
 var _site_card_day: int = 0
+## The new site the same-day question is about (#464), or &"".
+var _site_prompt_target: StringName = &""
 var _goals_snapshot: Dictionary = {}
 var _stock_panel: StockPanel
 var _owner_picker: OwnerPicker
@@ -524,8 +526,12 @@ func _bind_world_presentation() -> void:
 	_site_card.hide()
 	if not _site_card.site_chosen.is_connected(_on_site_card_chosen):
 		_site_card.site_chosen.connect(_on_site_card_chosen)
+	if not _site_card.prompt_answered.is_connected(_on_site_prompt_answered):
+		_site_card.prompt_answered.connect(_on_site_prompt_answered)
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
+	if not $HUD.is_connected(&"close_day_requested", close_for_today):
+		$HUD.connect(&"close_day_requested", close_for_today)
 	_settings_panel = $Overlay/SettingsPanel
 	_shortcuts_panel = $Overlay/ShortcutsPanel
 	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
@@ -975,16 +981,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 	if key != null and not key.echo:
 		_on_shift_changed(key)
+	if is_site_card_visible():
+		# The card holds the morning until a choice (#464): no build, paint
+		# or owner keys under it. Escape keeps the current site.
+		if key != null and key.pressed and not key.echo \
+				and (key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode) == KEY_ESCAPE:
+			if _site_card.is_prompting():
+				_on_site_prompt_answered(false)
+			else:
+				_on_site_card_chosen(site_book.active_id)
+		if key != null:
+			_mark_input_handled()
+		return
 	if route_paint_input(event) or route_build_input(event):
 		_mark_input_handled()
 		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE:
-			if is_site_card_visible():
-				# Escape keeps the current site, like its own button.
-				_on_site_card_chosen(site_book.active_id)
-			elif is_property_visible():
+			if is_property_visible():
 				set_property_visible(false)
 			elif is_goals_visible():
 				set_goals_visible(false)
@@ -3712,15 +3727,23 @@ func _lease_layout() -> ShopLayout:
 
 
 func lease_refusal() -> String:
+	if not _lease_at_home():
+		return PropertyText.LEASE_HOME_ONLY_LINE
 	return LEASE.refusal(owner_progress, lease_expanded, Clock.sim.phase, Economy.spendable(),
 		Economy.loan.principal)
+
+
+## The lease upgrade is the home lot's (D30) until each lot's own expansion
+## and rent are charged (#465): a bought site is never offered it.
+func _lease_at_home() -> bool:
+	return site_book.lot_id(site_book.active_id) == SiteBook.HOME_LOT
 
 
 func _refresh_lease_offer() -> void:
 	_refresh_cat_offer()
 	if _menu_panel == null:
 		return
-	if not LEASE.offered(owner_progress, lease_expanded, Clock.sim.phase):
+	if not _lease_at_home() or not LEASE.offered(owner_progress, lease_expanded, Clock.sim.phase):
 		_menu_panel.set_lease_offer(false, "", "", "")
 		return
 	_menu_panel.set_lease_offer(true,
@@ -4305,6 +4328,7 @@ func _change_staff(id: StringName, hiring: bool) -> bool:
 	staff_roster = choices
 	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
+	_refresh_opening_block()
 	refresh_presentation()
 	return true
 
@@ -4454,6 +4478,7 @@ func _refresh_menu_catalogue() -> void:
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
 		$HUD.set_menu_notice(_menu_access_error, true)
+		_refresh_opening_block()
 		return
 	_menu_access_error = ""
 	_track_menu_access_losses(menu_settings.enabled_recipes(), cookable)
@@ -4464,6 +4489,7 @@ func _refresh_menu_catalogue() -> void:
 		_recompute_vibe()
 		_refresh_stock_panel()
 	$HUD.set_menu_notice(menu_open_note())
+	_refresh_opening_block()
 
 
 ## Load filters the saved choices before normal morning setup. Retain those
@@ -4965,7 +4991,15 @@ func _new_site_sections(lot: LotDef) -> Dictionary:
 	var shop: Dictionary = ShopEditor.new(shell, content, ShopEditBooks.new(), lot.base_layout).to_dict()
 	shop["tray_level"] = 0
 	shop["lease_expanded"] = false
-	return {"shop": shop}
+	# Nobody works there yet (Jared, #464): the owner hires a crew on site.
+	var nobody: StaffRoster = StaffRoster.new(TUNING)
+	var staff: Dictionary = nobody.to_dict()
+	staff["members"] = []
+	staff["candidates"] = []
+	staff["candidate_day"] = 0
+	if not nobody.from_dict(staff):
+		return {}
+	return {"shop": shop, "staff": staff}
 
 
 func _on_property_buy_requested(lot_id: StringName) -> void:
@@ -4974,6 +5008,100 @@ func _on_property_buy_requested(lot_id: StringName) -> void:
 		if not reason.is_empty() and world != null:
 			world.log_event(reason)
 		_refresh_property()
+		return
+	offer_new_site(lot_id)
+
+
+## Right after a purchase (Jared, #464): "Work at your new place today?" (a
+## fixer-upper: "Design it today?"). Yes switches there now; No stays. Only
+## when the switch is possible this morning. Marks the morning's site choice
+## as made, so the card does not follow.
+func offer_new_site(site: StringName) -> bool:
+	var lot: LotDef = _lot_def(site_book.lot_id(site))
+	if _site_card == null or lot == null or not can_switch_site(site):
+		return false
+	var fixer: bool = site_book.renovation_days_left(site) > 0
+	_dismiss_property()
+	_site_prompt_target = site
+	_site_card_day = Clock.sim.day
+	_site_card.show_prompt(SiteCard.PROMPT_FIXER if fixer else SiteCard.PROMPT_NEW,
+		PropertyText.prompt_detail(lot), SiteCard.PROMPT_DESIGN if fixer else SiteCard.PROMPT_GO,
+		SiteCard.PROMPT_STAY)
+	_site_card.show()
+	refresh_hints()
+	return true
+
+
+func _on_site_prompt_answered(accept: bool) -> void:
+	var target: StringName = _site_prompt_target
+	_site_prompt_target = &""
+	set_site_card_visible(false)
+	if accept and not target.is_empty():
+		if not switch_site(target):
+			_log_switch_refusal(target, site_switch_refusal(target))
+	elif can_edit_menu():
+		set_property_visible(true)
+
+
+## Why the owner cannot switch to `target` right now, as the card's short
+## button text; "" when they can.
+func site_switch_refusal(target: StringName) -> String:
+	if can_switch_site(target):
+		return ""
+	if Clock.sim.phase != SimClock.Phase.MORNING:
+		return SiteCard.ONLY_MORNING
+	if is_build_active() or _paint_active:
+		return SiteCard.CLOSE_BUILD
+	if is_haggle_active():
+		return SiteCard.FINISH_HAGGLE
+	if _owner_first_morning_pending or is_owner_picker_visible():
+		return SiteCard.CHOOSE_OWNER
+	if site_book.is_frozen(target) and site_book.frozen_day(target) > Clock.sim.day:
+		return SiteCard.NOT_UNTIL_TOMORROW
+	return SiteCard.NOT_NOW
+
+
+## Why the active site cannot open today, or "": still renovating, or
+## nobody to cook and serve yet (FK-087, #464).
+func site_opening_refusal() -> String:
+	var days: int = site_book.renovation_days_left(site_book.active_id)
+	if days > 0:
+		return PropertyText.renovating_line(days)
+	if staff_roster != null and not staff_roster.is_staffed():
+		return PropertyText.UNSTAFFED_LINE
+	return ""
+
+
+## Puts the site's opening refusal on the clock (start_service refuses) and
+## the HUD (its button closes the day instead, with the reason shown).
+func _refresh_opening_block() -> void:
+	var reason: String = site_opening_refusal() if Clock.sim.phase == SimClock.Phase.MORNING else ""
+	Clock.sim.opening_refusal = reason
+	$HUD.set_closed_day(reason)
+	if not reason.is_empty():
+		$HUD.set_menu_notice(reason)
+
+
+## Ends a morning that cannot open (renovating or still hiring): the day
+## passes without a service and closes as usual (wages, rent, away sites,
+## the renovation countdown, the evening report). Returns false otherwise.
+func close_for_today() -> bool:
+	if not _started or display_only or sim == null or is_haggle_active() \
+			or site_opening_refusal().is_empty():
+		return false
+	_refresh_opening_block()
+	if is_site_card_visible():
+		set_site_card_visible(false)
+	if _paint_active:
+		set_paint_active(false)
+	build_mode.exit()
+	var day: int = Clock.sim.day
+	if not Clock.sim.close_without_opening():
+		return false
+	if sim.dock != null:
+		sim.dock.store_all()
+	_on_service_closed(day)
+	return true
 
 
 ## The morning site card (FK-087, #464): on a morning with more than one
@@ -5023,15 +5151,22 @@ func _site_card_rows() -> Array[SiteCard.Row]:
 			row.name = AwaySites.display_name(site_book, id)
 			var staff: Variant = site_book.frozen_sections(id).get("staff", {})
 			row.manager = SiteMorning.manager_name(staff if staff is Dictionary else {}, site_book.manager(id))
-			row.can_choose = can_switch_site(id)
+			row.managed = not row.manager.is_empty()
+			row.earnings = SiteMorning.away_earnings(Economy.ledger, yesterday, id)
+			row.refusal = site_switch_refusal(id)
 		rows.append(row)
 	return rows
 
 
 func _on_site_card_chosen(id: StringName) -> void:
 	set_site_card_visible(false)
-	if id != site_book.active_id:
-		switch_site(id)
+	if id == site_book.active_id:
+		return
+	if not can_switch_site(id):
+		_log_switch_refusal(id, site_switch_refusal(id))
+		return
+	# switch_site logs its own refusal when the site does not load.
+	switch_site(id)
 
 
 func _dismiss_property() -> void:

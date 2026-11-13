@@ -16,6 +16,10 @@ const LIMIT_TOP_LINE: String = "You run as many restaurants as you can."
 const UNKNOWN_LOT_LINE: String = "That lot is not on the market."
 const NOT_LISTED_LINE: String = "That lot is not on the market yet."
 const MORNING_LINE: String = "Buy property in the morning."
+## A new site starts with nobody (#464): it cannot open until it has both.
+const UNSTAFFED_LINE: String = "Hire a cook and a server before you open"
+## Lot leases expand from #465; until then only the first restaurant can.
+const LEASE_HOME_ONLY_LINE: String = "Only your first restaurant can expand its lease for now"
 const EMPTY: String = "No lots are on the market."
 ## Lot tags as perks (LotDef.KNOWN_TAGS); a tag missing here shows nothing.
 const TAG_PERKS: Dictionary[StringName, String] = {
@@ -133,6 +137,20 @@ static func renovation_report_note(days_left: int, just_finished: bool) -> Strin
 	if days_left > 0:
 		return "; renovating, %d %s left" % [days_left, "day" if days_left == 1 else "days"]
 	return "; renovation done, ready to open" if just_finished else ""
+
+
+## Why a renovating site cannot open: "Still renovating: 2 days left".
+static func renovating_line(days_left: int) -> String:
+	return "Still renovating: %d %s left" % [days_left, "day" if days_left == 1 else "days"]
+
+
+## The same-day question's detail line after a purchase.
+static func prompt_detail(lot: LotDef) -> String:
+	var days: int = PropertyMarket.renovation_days(lot)
+	if days > 0:
+		return "%s needs %d days of work before it can open, but you can design inside. It has no staff yet." % [
+			lot.display_name, days]
+	return "%s is yours. It has no staff yet: hire a cook and a server there before you open." % lot.display_name
 
 
 ## The log line after a purchase.
