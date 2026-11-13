@@ -3912,8 +3912,9 @@ each hire or let-go) puts it on `SimClock.opening_refusal` (not saved; while
 set, `start_service` refuses) and the HUD: the Open shop button reads "Close
 for today" with the reason, and emits `close_day_requested`.
 A layout with no cookable dish (`_menu_access_error`, `MenuAccess.NO_DISH`)
-also goes on `opening_refusal` (with its own notice, and no "Close for
-today"), so nothing opens past it once the site's own reason clears.
+gets its own refusing notice back once the site's reason clears, so Open shop
+stays disabled (no "Close for today"); as before, it is not on the clock,
+since a legacy layout the access check flags can still serve.
 `close_for_today()` then ends the day without a service:
 `SimClock.close_without_opening()` (MORNING to CLOSED, only while a refusal
 is set), the dock's stock is put away, and `_on_service_closed` runs the

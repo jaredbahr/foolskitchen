@@ -450,8 +450,8 @@ func test_a_layout_with_no_dish_still_refuses_after_hiring_a_crew() -> void:
 	var context: Button = _main.get_node("HUD/Top/Row/Context") as Button
 	assert_true(context.disabled)
 	assert_eq(context.text, "Open shop")
-	assert_false(Clock.sim.start_service(), "nothing can open past the no-dish block")
-	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	(_main.get_node("HUD") as Node).call("_on_context_pressed")
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING, "the Open shop button cannot open past the no-dish block")
 	assert_false(_main.call("close_for_today"), "and it is no closed day either")
 
 

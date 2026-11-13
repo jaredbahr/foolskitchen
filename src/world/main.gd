@@ -5088,12 +5088,13 @@ func site_opening_refusal() -> String:
 
 ## Puts the site's opening refusal on the clock (start_service refuses) and
 ## the HUD (its button closes the day instead, with the reason shown).
-## A layout with no cookable dish (`_menu_access_error`) also refuses on the
-## clock, so no caller can open past it; it keeps its own notice and does not
-## offer "Close for today".
+## A layout with no cookable dish (`_menu_access_error`) keeps its own
+## refusing notice once the site's reason clears, so the Open shop button
+## stays disabled, as before #464. It is not put on the clock: a legacy
+## layout the access check flags can still serve (test_default_play_golden).
 func _refresh_opening_block() -> void:
 	var reason: String = site_opening_refusal() if Clock.sim.phase == SimClock.Phase.MORNING else ""
-	Clock.sim.opening_refusal = reason if not reason.is_empty() else _menu_access_error
+	Clock.sim.opening_refusal = reason
 	$HUD.set_closed_day(reason)
 	if not reason.is_empty():
 		$HUD.set_menu_notice(reason, true)
