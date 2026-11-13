@@ -316,7 +316,7 @@ func refresh() -> void:
 		amount.text = "$%d" % price
 		var walkout: Label = row["walkout"]
 		var chance: float = float(_details.get(definition.id, {}).get("price_walkout_chance", -1.0))
-		walkout.visible = chance >= 0.0
+		walkout.visible = not locked and chance >= 0.0
 		walkout.text = _price_walkout_text(chance) if walkout.visible else ""
 		standard_label.text = "Suggested $%d" % standard
 		if standard == 0:
