@@ -36,9 +36,12 @@ const ROWS: Array[Dictionary] = [
 ]
 
 
-static func rows_for(group: String) -> Array[Dictionary]:
+static func rows_for(group: String, show_photo: bool = PhotoMode.available()) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for row: Dictionary in ROWS:
 		if row["group"] == group:
 			result.append(row)
+	if group == "Game" and show_photo:
+		result.append({"keys": "F12", "action": "Save a photo without the interface"})
+		result.append({"keys": "Shift + F12", "action": "Toggle photo mode (Esc to leave)"})
 	return result
