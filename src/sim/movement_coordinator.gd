@@ -1142,7 +1142,7 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 			var keep: Dictionary[Vector2i, bool] = {stuck.cell: true}
 			for cell: Vector2i in route_cells:
 				keep[cell] = true
-			if _clear_to_pocket(world, ahead, keep) or _push_through(world, ahead, stuck, keep):
+			if _clear_to_pocket(world, ahead, keep) or _push_through(world, ahead, stuck, keep, stalled):
 				if detour:
 					stuck.install_movement_route(route_cells)
 				escape_counts[&"ahead"] = int(escape_counts.get(&"ahead", 0)) + 1
@@ -1189,7 +1189,7 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 		if not _clearable(world, blocker, stuck) \
 				or (stalled < tuning.squeeze_after_ticks and _busy_worker(blocker)):
 			continue
-		if _clear_to_pocket(world, blocker, avoid) or _push_through(world, blocker, stuck, avoid):
+		if _clear_to_pocket(world, blocker, avoid) or _push_through(world, blocker, stuck, avoid, stalled):
 			cleared = true
 			continue
 		# Boxed in: open space around the blocker; a later retry uses it.
@@ -1203,8 +1203,9 @@ func _escape(world: SimWorld, stuck: SimAgent, stalled: int, visited: Dictionary
 	if cleared:
 		return ESCAPE_ACTED
 	# Nobody in the way can go anywhere (a leaving guest meeting an arrival in
-	# the doorway, with only the street behind it): waiting for the longer
-	# limit cannot help, so squeeze now if allowed.
+	# the doorway, with only the street behind it) or may be moved yet (busy
+	# where they stand): waiting for the longer limit cannot help, so squeeze
+	# now if allowed.
 	if stalled < tuning.squeeze_after_ticks:
 		var swapped: int = _try_squeeze(world, stuck, route_cells, blockers)
 		if swapped != ESCAPE_FUTILE:
@@ -1344,17 +1345,33 @@ func _clearable(world: SimWorld, agent: SimAgent, stuck: SimAgent) -> bool:
 		and not _edges.has(agent.id) and not _stopping.has(agent.id) and not _squeezes.has(agent.id)
 
 
-## Mid-work or carrying food: finishing soon frees the cell anyway, so the
-## backstop leaves them be until its squeeze limit.
+## Busy where they stand: a worker carrying food, working, waiting at a
+## station (WAIT_UNTIL) or standing on their leased work cell before the work
+## starts; the owner resting at their home spot; the inspector looking
+## something over. An owner helping out is treated as staff (an idle one is
+## cleared like any idle worker, and keeps the new spot). Clearing them
+## only sends them straight back (and the next retry clears them again), so
+## the backstop leaves them be until its squeeze limit (#458). A seated guest
+## is not on this list: one on the diagonal corner of a doorway step then held
+## a leaving line past the stall limit, waiting for the squeeze.
 func _busy_worker(agent: SimAgent) -> bool:
+	if agent is InspectorAgent:
+		return (agent as InspectorAgent).state == InspectorAgent.State.LOOKING
 	if not agent is StaffAgent:
 		return false
+	if agent is OwnerAgent:
+		var boss: OwnerAgent = agent as OwnerAgent
+		if boss.current_mode() == &"rest" and boss.task == null:
+			return boss.cell == boss.home_cell()
 	var staff: StaffAgent = agent as StaffAgent
 	if staff.carries_food():
 		return true
 	if staff.task == null or staff.step_index < 0 or staff.step_index >= staff.task.steps.size():
 		return false
-	return staff.task.steps[staff.step_index].kind == TaskStep.Kind.WORK and staff._step_started
+	if staff._held_item_id != 0 and staff.cell == staff._held_cell:
+		return true
+	var kind: TaskStep.Kind = staff.task.steps[staff.step_index].kind
+	return (kind == TaskStep.Kind.WORK and staff._step_started) or kind == TaskStep.Kind.WAIT_UNTIL
 
 
 ## Unbounded search for the nearest free floor cell this person can walk to
@@ -1434,9 +1451,11 @@ func _pocket_cell(world: SimWorld, agent: SimAgent, cell: Vector2i) -> bool:
 ## could reach if the stationary people between were not there (unbounded
 ## search, never through the stuck person). Each of those people first clears
 ## to a pocket off both routes; this person then follows them out, waiting
-## behind each one on ordinary claimed steps.
+## behind each one on ordinary claimed steps. Before squeeze_after_ticks a
+## busy person (_busy_worker) in the way is a wall, as for the first one.
 func _push_through(world: SimWorld, first: SimAgent, stuck: SimAgent,
-		avoid: Dictionary[Vector2i, bool]) -> bool:
+		avoid: Dictionary[Vector2i, bool], stalled: int) -> bool:
+	var shield: bool = stalled < world.movement_tuning.squeeze_after_ticks
 	var previous: Dictionary[Vector2i, Vector2i] = {}
 	var queue: Array[Vector2i] = [first.cell]
 	var seen: Dictionary[Vector2i, bool] = {first.cell: true, stuck.cell: true}
@@ -1450,7 +1469,7 @@ func _push_through(world: SimWorld, first: SimAgent, stuck: SimAgent,
 			if seen.has(next) or not _line_step(world, first, current, next):
 				continue
 			var holder: SimAgent = _holder(world, next)
-			if holder != null and not _clearable(world, holder, stuck):
+			if holder != null and (not _clearable(world, holder, stuck) or (shield and _busy_worker(holder))):
 				continue
 			seen[next] = true
 			previous[next] = current
