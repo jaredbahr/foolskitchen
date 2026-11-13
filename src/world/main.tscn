@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=23 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -22,6 +22,8 @@
 [ext_resource type="Script" path="res://src/ui/hints_bubble.gd" id="16_hints"]
 [ext_resource type="PackedScene" path="res://src/ui/shortcuts_panel.tscn" id="17_shortcuts"]
 [ext_resource type="PackedScene" path="res://src/minigames/haggle_game.tscn" id="18_haggle"]
+[ext_resource type="Script" path="res://src/world/photo_mode.gd" id="19_photo"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="20_theme"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -96,3 +98,43 @@ ok_button_text = "Keep playing"
 [node name="HaggleGame" parent="Overlay" instance=ExtResource("18_haggle")]
 
 [node name="ShortcutsPanel" parent="Overlay" instance=ExtResource("17_shortcuts")]
+
+
+[node name="PhotoToast" type="PanelContainer" parent="Overlay"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -275.0
+offset_top = -78.0
+offset_right = 275.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme = ExtResource("20_theme")
+
+[node name="Row" type="HBoxContainer" parent="Overlay/PhotoToast"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Notice" type="Label" parent="Overlay/PhotoToast/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 2
+
+[node name="OpenFolder" type="Button" parent="Overlay/PhotoToast/Row"]
+layout_mode = 2
+focus_mode = 0
+text = "Open folder"
+
+[node name="Timer" type="Timer" parent="Overlay/PhotoToast"]
+process_mode = 3
+wait_time = 5.0
+one_shot = true
+ignore_time_scale = true
+
+[node name="PhotoMode" type="Node" parent="."]
+script = ExtResource("19_photo")
