@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/ui/hud.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
@@ -6,6 +6,8 @@
 [ext_resource type="Script" path="res://src/ui/hud_groups.gd" id="4_groups"]
 
 [sub_resource type="ButtonGroup" id="Speeds"]
+
+[sub_resource type="StyleBoxEmpty" id="LoanTrigger"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_script")
@@ -162,6 +164,20 @@ layout_mode = 2
 mouse_filter = 1
 text = "Loan $0"
 
+[node name="OpenRepayment" type="Button" parent="Top/Row/Loan"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("LoanTrigger")
+theme_override_styles/pressed = SubResource("LoanTrigger")
+theme_override_styles/hover = SubResource("LoanTrigger")
+theme_override_styles/hover_pressed = SubResource("LoanTrigger")
+
 [node name="Reputation" type="Label" parent="Top/Row"]
 layout_mode = 2
 mouse_filter = 1
@@ -247,6 +263,36 @@ focus_mode = 0
 icon = ExtResource("3_gear")
 icon_alignment = 1
 tooltip_text = "Settings (Esc)"
+
+[node name="LoanPopover" type="CanvasLayer" parent="."]
+layer = 11
+
+[node name="Panel" type="PanelContainer" parent="LoanPopover"]
+visible = false
+theme = ExtResource("2_theme")
+
+[node name="Content" type="VBoxContainer" parent="LoanPopover/Panel"]
+layout_mode = 2
+
+[node name="Owed" type="Label" parent="LoanPopover/Panel/Content"]
+layout_mode = 2
+text = "Owed $0"
+
+[node name="Actions" type="HBoxContainer" parent="LoanPopover/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RepayAffordable" type="Button" parent="LoanPopover/Panel/Content/Actions"]
+layout_mode = 2
+text = "Repay $0"
+
+[node name="RepayAll" type="Button" parent="LoanPopover/Panel/Content/Actions"]
+layout_mode = 2
+text = "Repay all"
+
+[node name="Close" type="Button" parent="LoanPopover/Panel/Content/Actions"]
+layout_mode = 2
+text = "Close"
 
 [node name="Deltas" type="Control" parent="."]
 layout_mode = 0

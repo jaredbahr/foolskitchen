@@ -211,6 +211,16 @@ func settle_loan_day(day: int, repayment_profit: Variant = null) -> Dictionary:
 	return result
 
 
+## Posts voluntary principal repayment before notifying cash and loan observers.
+func repay_loan_now(amount: int) -> int:
+	if is_free():
+		return 0
+	var paid: int = loan.repay_now(ledger, amount, Clock.sim.day, active_site)
+	if paid > 0:
+		EventBus.cash_changed.emit(cash, -paid, Ledger.EARLY_LOAN_REPAYMENT)
+	return paid
+
+
 ## Buys one ingredient batch atomically, or returns false without changes.
 @warning_ignore("integer_division")
 func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:

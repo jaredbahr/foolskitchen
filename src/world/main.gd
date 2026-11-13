@@ -418,6 +418,8 @@ func _bind_world_presentation() -> void:
 	$HUD.bind_shop_view(view)
 	$HUD.bind_preferences(Preferences)
 	_refresh_loan_hud()
+	if not $HUD.is_connected(&"loan_repayment_requested", _on_loan_repayment_requested):
+		$HUD.connect(&"loan_repayment_requested", _on_loan_repayment_requested)
 	if not $HUD.is_connected(&"header_layout_changed", _on_header_layout_changed):
 		$HUD.connect(&"header_layout_changed", _on_header_layout_changed)
 	if not $HUD.is_connected(&"settings_pressed", _on_hud_settings_requested):
@@ -943,6 +945,21 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var photo: PhotoMode = $PhotoMode
+	var key: InputEventKey = event as InputEventKey
+	if photo.held or photo.capture_pending():
+		# Shift still tracks while the UI is hidden, so a release made during
+		# a photo is not lost to the build and paint pointers (#475 review).
+		if key != null and not key.echo:
+			_on_shift_changed(key)
+		if key != null and key.pressed and not key.echo:
+			var photo_code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+			if photo_code == KEY_ESCAPE:
+				photo.leave()
+				_mark_input_handled()
+			elif photo_code == KEY_F12:
+				_take_photo_key(photo, key)
+		return
 	if is_haggle_active():
 		_mark_input_handled()
 		return
@@ -959,7 +976,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_settings_visible(false)
 		_mark_input_handled()
 		return
-	var key: InputEventKey = event as InputEventKey
 	if is_shortcuts_visible():
 		if key != null and not key.echo:
 			_on_shift_changed(key)
@@ -973,6 +989,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+		if code == KEY_F12 and PhotoMode.available():
+			if not Clock.text_entry_has_focus() and world != null:
+				_take_photo_key(photo, key)
+			return
 		if code == KEY_F1:
 			if not Clock.text_entry_has_focus():
 				set_shortcuts_visible(true)
@@ -1005,6 +1025,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE:
+			if $HUD.dismiss_loan_repayment(true):
+				_mark_input_handled()
+				return
 			if is_property_visible():
 				set_property_visible(false)
 			elif is_goals_visible():
@@ -1029,6 +1052,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		pick_screen_position(mouse.position)
 		_mark_input_handled()
+
+
+func _take_photo_key(photo: PhotoMode, key: InputEventKey) -> void:
+	if key.shift_pressed:
+		photo.toggle_held()
+	else:
+		photo.capture(world.clock.day, world.clock.display_minutes())
+	_mark_input_handled()
 
 
 ## The single Main input owner calls this before normal inspection. Inactive
@@ -4092,6 +4123,7 @@ func show_owner_picker(creating: bool = false) -> bool:
 		_owner_picker.confirmed.connect(_on_owner_appearance_confirmed)
 		_owner_picker.random_requested.connect(_on_owner_appearance_random)
 		_owner_picker.cancelled.connect(_on_owner_appearance_cancelled)
+	$HUD.dismiss_loan_repayment()
 	if _staff_panel != null:
 		_staff_panel.hide()
 	_owner_picker.open(owner_appearance, not creating)
@@ -5313,6 +5345,7 @@ func set_settings_visible(value: bool) -> bool:
 	if value:
 		_dismiss_goals()
 		_dismiss_property()
+		$HUD.dismiss_loan_repayment()
 		_settings_return_to_menu = is_menu_visible()
 		_settings_previous_speed = Clock.speed
 		Clock.set_speed(0)
@@ -5347,6 +5380,7 @@ func set_shortcuts_visible(value: bool) -> bool:
 		return true
 	if value:
 		var viewport: Viewport = get_viewport()
+		$HUD.dismiss_loan_repayment()
 		_shortcuts_previous_focus = viewport.gui_get_focus_owner() if viewport != null else null
 		_shortcuts_panel.visible = true
 		_shortcuts_panel.focus_close_button()
@@ -5626,6 +5660,22 @@ func _furniture_purchase_refusal(amount: int) -> String:
 
 func _loan_upgrade_refusal() -> String:
 	return LOAN_LOCK_REASON if Economy.loan.principal > 0 else ""
+
+
+func _on_loan_repayment_requested(amount: int, repay_all: bool) -> void:
+	var phase: SimClock.Phase = Clock.sim.phase
+	if not _started or display_only or world == null or Clock.attached_world != world \
+			or is_haggle_active() or is_owner_picker_visible() or is_settings_visible() or is_shortcuts_visible() \
+			or (phase != SimClock.Phase.MORNING and phase != SimClock.Phase.CLOSED):
+		return
+	if repay_all:
+		# A stale full-payment request must never silently become a partial payment.
+		amount = Economy.loan.principal
+		if Economy.cash < amount:
+			return
+	if Economy.repay_loan_now(amount) > 0 and phase == SimClock.Phase.CLOSED \
+			and _report.visible:
+		_show_evening_report(build_report(Clock.sim.day))
 
 
 func _refresh_loan_hud() -> void:
@@ -6777,7 +6827,8 @@ func _on_service_closed(day: int) -> void:
 	# (test_loan_session). A new non-operating category that can be booked
 	# before the close must be added here as well as to DayReport.
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
-			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
+			Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
+			Ledger.EARLY_LOAN_REPAYMENT]:
 		operating_profit -= int(day_movements.get(category, 0))
 	# A closed day still evaluates the weekly goal (its saved day must follow
 	# the calendar) but with nothing earned: no profit, sales or guests.

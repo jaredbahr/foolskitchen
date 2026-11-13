@@ -641,6 +641,13 @@ func _native_mouse(position: Vector2, down: bool) -> void:
 	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
 
 
+func _native_accept(down: bool) -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.keycode = KEY_ENTER
+	event.pressed = down
+	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
+
+
 func _native_space(down: bool) -> void:
 	var event: InputEventKey = InputEventKey.new()
 	event.physical_keycode = KEY_SPACE
@@ -648,7 +655,7 @@ func _native_space(down: bool) -> void:
 	(Engine.get_main_loop() as SceneTree).root.push_input(event, true)
 
 
-func test_loan_chip_is_read_only_uses_existing_theme_and_clears_when_paid() -> void:
+func test_loan_chip_uses_existing_theme_and_clears_when_paid() -> void:
 	var books: Dictionary = Economy.ledger.to_dict()
 	var debt: Dictionary = Economy.loan.to_dict()
 	var clock: Dictionary = Clock.sim.to_dict()
@@ -681,6 +688,78 @@ func test_loan_chip_is_read_only_uses_existing_theme_and_clears_when_paid() -> v
 	assert_eq(Economy.ledger.to_dict(), books)
 	assert_eq(Economy.loan.to_dict(), debt)
 	assert_eq(Clock.sim.to_dict(), clock)
+
+
+func test_native_loan_click_shows_affordability_and_service_dismisses_the_panel() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	tree.root.add_child(_hud)
+	var loan: Label = _control("Loan") as Label
+	var panel: PanelContainer = _hud.get_node("LoanPopover/Panel") as PanelContainer
+	var owed: Label = panel.get_node("Content/Owed") as Label
+	var affordable: Button = panel.get_node("Content/Actions/RepayAffordable") as Button
+	var all: Button = panel.get_node("Content/Actions/RepayAll") as Button
+	var close: Button = panel.get_node("Content/Actions/Close") as Button
+	var trigger: Button = loan.get_node("OpenRepayment") as Button
+	var requests: Array[Dictionary] = []
+	_hud.loan_repayment_requested.connect(func(amount: int, repay_all: bool) -> void:
+		requests.append({"amount": amount, "repay_all": repay_all}))
+	_hud.call("set_loan_state", 150, 0.5, 0.05)
+	EventBus.cash_changed.emit(60, 0, Ledger.OTHER)
+	await _layout_frames()
+	_native_mouse(loan.get_global_rect().get_center(), true)
+	_native_mouse(loan.get_global_rect().get_center(), false)
+	await _layout_frames()
+	assert_true(panel.is_visible_in_tree())
+	assert_true(close.has_focus())
+	for button: Button in [affordable, all, close]:
+		assert_eq(button.get_theme_color(&"font_focus_color"), button.get_theme_color(&"font_color"),
+			"repayment button text keeps the theme contrast when focused")
+	assert_eq(owed.text, "Owed $150")
+	assert_eq(affordable.text, "Repay $60")
+	assert_false(affordable.disabled)
+	assert_true(all.disabled)
+	_native_mouse(affordable.get_global_rect().get_center(), true)
+	_native_mouse(affordable.get_global_rect().get_center(), false)
+	assert_eq(requests, [{"amount": 60, "repay_all": false}])
+	close.grab_focus()
+	_native_accept(true)
+	_native_accept(false)
+	assert_false(panel.visible)
+	assert_true(trigger.has_focus(), "closing with the keyboard returns focus to the loan chip")
+	_native_accept(true)
+	_native_accept(false)
+	assert_true(panel.visible, "the focused loan chip can reopen with the keyboard")
+	assert_true(close.has_focus())
+	EventBus.cash_changed.emit(0, 0, Ledger.OTHER)
+	assert_true(affordable.disabled)
+	assert_true(all.disabled)
+	EventBus.cash_changed.emit(150, 0, Ledger.OTHER)
+	assert_eq(affordable.text, "Repay $150")
+	assert_false(all.disabled)
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	assert_false(panel.visible)
+	_native_mouse(loan.get_global_rect().get_center(), true)
+	_native_mouse(loan.get_global_rect().get_center(), false)
+	assert_false(panel.visible)
+	Clock.sim.advance()
+	assert_eq(Clock.sim.phase, SimClock.Phase.LAST_ORDERS)
+	assert_false(panel.visible)
+	Clock.sim.advance()
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	await _layout_frames()
+	_native_mouse(loan.get_global_rect().get_center(), true)
+	_native_mouse(loan.get_global_rect().get_center(), false)
+	await _layout_frames()
+	assert_true(panel.visible)
+	_native_mouse(all.get_global_rect().get_center(), true)
+	_native_mouse(all.get_global_rect().get_center(), false)
+	assert_eq(requests, [{"amount": 60, "repay_all": false}, {"amount": 150, "repay_all": true}])
+	_hud.call("set_loan_state", 0, 0.5, 0.05)
+	assert_false(panel.visible)
+	assert_false(loan.visible)
 
 
 func test_native_loan_chip_stays_in_financial_group_and_releases_space_at_supported_scales() -> void:
