@@ -205,6 +205,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Run visual review captures in two parallel jobs and verify every requested frame. (#479)
 - Each restaurant now keeps its own opening hours and its own bigger lease, so switching restaurants (once you can own two) never carries one shop's hours or lease to the other. Older saves keep their hours and lease. (#463)
 - Design doc: how every street outside the restaurant should look, and how each new site gets its own street from the same parts. (#441)
 - Design doc: the game's direction, how new sites and the outside world should feel, six small rule calls, Creative mode, the build tool priorities and the game's feel (D31 to D36). (#428)
