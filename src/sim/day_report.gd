@@ -3,7 +3,7 @@ extends RefCounted
 ## Plain end-of-day results, independent of the ledger, clock and scene tree.
 
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
-	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT,
+	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.EARLY_LOAN_REPAYMENT,
 	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS,
 	Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 	Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
