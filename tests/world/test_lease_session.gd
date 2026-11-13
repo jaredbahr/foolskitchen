@@ -96,7 +96,7 @@ func test_offer_and_refusals_are_morning_only_and_side_effect_free() -> void:
 		_main.call("_refresh_lease_offer")
 		assert_false(_offer().visible)
 		assert_false(_main.call("lease_buy"))
-	assert_eq(_progress().property_tier, 1)
+	assert_false(_main.get("lease_expanded"))
 
 
 func test_purchase_exact_books_preserves_build_and_moves_alley() -> void:
@@ -114,7 +114,7 @@ func test_purchase_exact_books_preserves_build_and_moves_alley() -> void:
 	if old_route.is_empty():
 		return
 	assert_true(_main.call("lease_buy"))
-	assert_eq(_progress().property_tier, 2)
+	assert_true(_main.get("lease_expanded"))
 	assert_eq(Economy.cash, cash - LEASE.deposit)
 	assert_eq(_editor().to_dict(), shop, "no floor, furniture, paint or room changes")
 	assert_eq(GameState._capture_save(), rng)
@@ -160,7 +160,7 @@ func test_new_floor_is_buyable_and_survives_the_next_morning_save() -> void:
 	_main.call("_begin_morning")
 	_close()
 	_start(true)
-	assert_eq(_progress().property_tier, 2)
+	assert_true(_main.get("lease_expanded"))
 	assert_eq(_editor().footprint().lot, upgraded_lot)
 	assert_eq(_editor().bought_floor(), floor)
 	assert_false(_main.call("lease_buy"))
@@ -170,15 +170,47 @@ func test_legacy_owner_progress_loads_as_tier_one() -> void:
 	_start(true)
 	var path: String = SaveSystem.save_dir.path_join(SLOT + ".json")
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
-	document["data"]["owner"]["progress"].erase("property_tier")
+	assert_false(document["data"]["owner"]["progress"].has("property_tier"),
+		"the lease is no longer saved on the owner (#408)")
+	assert_eq(document["data"]["shop"]["lease_expanded"], false, "it is the site's own")
+	document["data"]["shop"].erase("lease_expanded")
+	_write(path, document)
+	_close()
+	_start(true)
+	assert_false(_main.get("lease_expanded"))
+	var base: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
+	assert_eq(_editor().footprint().lot, ShopFootprint.from_layout(base).lot)
+
+
+## A save from before #408 part 1 kept an expanded lease as the owner's
+## property_tier 2: it loads as the home site's own expanded lease, and the
+## next save keeps it in the shop section only.
+func test_a_legacy_expanded_lease_moves_to_the_site() -> void:
+	_start(true)
+	var path: String = SaveSystem.save_dir.path_join(SLOT + ".json")
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	document["data"]["owner"]["progress"]["property_tier"] = 2
+	document["data"]["shop"].erase("lease_expanded")
+	_write(path, document)
+	_close()
+	_start(true)
+	assert_true(_main.get("lease_expanded"), "the old owner field still opens the lease")
+	assert_eq(_progress().property_tier, 1, "and is consumed by the load")
+	var base: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
+	assert_eq(_editor().footprint().lot, ShopFootprint.from_layout(LEASE.layout_for(base, 2)).lot)
+	assert_false(_main.call("lease_buy"), "already expanded")
+	_main.call("_charge_closing_costs")
+	assert_eq(Economy.ledger.day_totals(Clock.sim.day)[Ledger.RENT], -LEASE.daily_rent)
+	var saved: Dictionary = SaveSystem.capture_sections(PackedStringArray(["owner", "shop"]))
+	assert_false(saved["owner"]["progress"].has("property_tier"))
+	assert_eq(saved["shop"]["lease_expanded"], true)
+
+
+func _write(path: String, document: Dictionary) -> void:
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(JSON.stringify(document))
 	file.close()
-	_close()
-	_start(true)
-	assert_eq(_progress().property_tier, 1)
-	var base: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
-	assert_eq(_editor().footprint().lot, ShopFootprint.from_layout(base).lot)
+	DirAccess.remove_absolute(path + ".bak")
 
 
 func test_reloading_before_next_morning_rolls_back_deposit_and_tier_together() -> void:
@@ -193,7 +225,7 @@ func test_reloading_before_next_morning_rolls_back_deposit_and_tier_together() -
 	assert_true(_main.call("lease_buy"))
 	_close()
 	_start(true)
-	assert_eq(_progress().property_tier, 1)
+	assert_false(_main.get("lease_expanded"))
 	assert_eq(Economy.cash, cash)
 	assert_eq(_editor().footprint().lot, lot)
 	assert_true(_main.call("lease_buy"), "the rolled-back purchase can be made once again")
@@ -214,7 +246,7 @@ func test_recipe_gate_follows_career_tier_not_the_lease() -> void:
 	assert_false(_main.call("menu_set_enabled", recipe.id, true))
 	_eligible()
 	_main.call("_refresh_menu_catalogue")
-	assert_eq(_progress().property_tier, 1)
+	assert_false(_main.get("lease_expanded"))
 	assert_true(menu.recipe(recipe.id) != null)
 	assert_false(menu.is_enabled(recipe.id), "new food remains a player choice")
 	assert_true(_main.call("menu_set_enabled", recipe.id, true))

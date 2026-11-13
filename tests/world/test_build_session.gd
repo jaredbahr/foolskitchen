@@ -857,6 +857,7 @@ func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_pain
 	var shop: Dictionary = _editor().to_dict()
 	var expected_shop_wire: Dictionary = shop.duplicate(true)
 	expected_shop_wire["tray_level"] = expected_tray_level
+	expected_shop_wire["lease_expanded"] = false
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
 	sim.spawner.min_gap = 100000
 	sim.spawner.max_gap = 100000

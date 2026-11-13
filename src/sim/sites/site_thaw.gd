@@ -61,6 +61,7 @@ const DECISIONS: Dictionary[String, String] = {
 	"rush_hour": "lapse: the frozen morning's rush is dropped; cooldown on the calendar",
 	"aquarium": "shift: tanks do not cloud while the site is frozen",
 	"pantry": "age slowly: stock past its shelf life spoils on the return morning",
+	"site_hours": "unchanged: no day stamps",
 }
 
 

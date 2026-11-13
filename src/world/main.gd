@@ -47,6 +47,8 @@ const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/type
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
 const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
 const HOURS_TUNING: OpeningHoursTuning = preload("res://data/balance/hours.tres")
+const SITE_HOURS_VERSION: int = 1
+const HOURS_RESET_NOTE: String = "Saved opening hours were outside the limits; reset to the default hours"
 const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 ## A Creative game's Goals panel (FK-141): collections and records only.
@@ -123,6 +125,10 @@ var milestone_catalogue: MilestoneSet = MILESTONES
 var weekly_challenge: WeeklyChallengeState = WeeklyChallengeState.new()
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
+## Whether the active site's lease is expanded (D30). Per site (FK-087): it is
+## saved in that site's "shop" section and swaps with it. Saves from before
+## #408 part 1 kept it as the owner's `property_tier`, read only on load.
+var lease_expanded: bool = false
 ## Per-ingredient morning auto-reorder choices, saved in the "reorder" section.
 var reorder_settings: ReorderSettings = ReorderSettings.new(TUNING)
 ## Auto-order premium. Tests that are not about reorder pricing may set 0.
@@ -164,6 +170,9 @@ var _loaded_regulars: RegularCast = null
 var _loaded_milestones: MilestoneTracker = null
 var _loaded_weekly_challenge: WeeklyChallengeState = null
 var _loaded_tray_level: int = 0
+var _loaded_lease_expanded: bool = false
+## The saved "site_hours" section (FK-087), staged; empty when the save has none.
+var _loaded_site_hours: Dictionary = {}
 var _loaded_reorder: ReorderSettings = null
 var _loaded_deliveries: DeliveryBook = null
 var _loaded_weather: WeatherState = null
@@ -706,6 +715,7 @@ func start() -> void:
 	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
 	SaveSystem.register("rush_hour", _capture_rush_hour, _restore_rush_hour)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
+	SaveSystem.register("site_hours", _capture_site_hours, _restore_site_hours)
 	SaveSystem.register("sites", _capture_sites, _restore_sites)
 	var loaded: bool = use_saves and _load_autosave()
 	_rooms_note = loaded and _loaded_layout != null and _loaded_layout.rooms_unmarked
@@ -2862,7 +2872,10 @@ func _new_game() -> void:
 	_loaded_reputation = null
 	reputation = ReputationBook.new()
 	_loaded_tray_level = 0
+	_loaded_lease_expanded = false
+	_loaded_site_hours = {}
 	tray_level = 0
+	lease_expanded = false
 	_loaded_reorder = null
 	reorder_settings = ReorderSettings.new(TUNING)
 	_loaded_deliveries = null
@@ -2930,6 +2943,8 @@ func _load_autosave_sections() -> bool:
 	_loaded_milestones = null
 	_loaded_weekly_challenge = null
 	_loaded_tray_level = 0
+	_loaded_lease_expanded = false
+	_loaded_site_hours = {}
 	_loaded_reorder = null
 	_loaded_deliveries = null
 	_loaded_weather = null
@@ -2963,6 +2978,14 @@ class StagedSite extends RefCounted:
 	var employees: StaffRoster
 	var demand: DemandState
 	var viral: ViralReview
+	var lease_expanded: bool = false
+	## The site's opening hours (FK-087 "site_hours"): x open minute, y close
+	## minute, z service ticks. hours_note says why they were reset, if so.
+	var hours: Vector3i
+	var hours_note: String = ""
+	## True when the hours went back to the default day: the rush plan is
+	## fitted to them at install rather than checked.
+	var hours_reset: bool = false
 	## Global parts, staged by a morning load only.
 	var weather: WeatherState
 	var career: MilestoneTracker
@@ -3008,14 +3031,16 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 		return _refuse_staged(with_globals, "Saved business history is ahead of this morning")
 	if _loaded_shop_records != null and not _loaded_shop_records.valid_before(Clock.sim.day):
 		return _refuse_staged(with_globals, "Saved records are ahead of this morning")
+	var clock_hours_reset: bool = false
 	if with_globals:
 		if _loaded_sites != null and not _loaded_sites.valid_before(Clock.sim.day):
 			world.log_event("Saved sites are ahead of this morning; starting a new game")
 			return null
 		if not OpeningHours.clock_valid(Clock.sim, HOURS_TUNING):
 			# Keep the game; only the hours go back to the default day.
+			# The note is logged once, at install, in the installed world.
 			OpeningHours.apply(Clock.sim, HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING)
-			world.log_event("Saved opening hours were outside the limits; reset to the default hours")
+			clock_hours_reset = true
 		if owner_progress.last_awarded_day >= Clock.sim.day:
 			world.log_event("Autosave owner progress is ahead of this morning; starting a new game")
 			return null
@@ -3040,9 +3065,19 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 	if base == null:
 		return _refuse_staged(false, "its shop layout is unknown")
 	staged.base = base
+	# A save without a shop section predates part 1: its lease is the owner's.
+	staged.lease_expanded = _loaded_lease_expanded if _loaded_layout != null \
+		else owner_progress.property_tier == 2
+	_stage_site_hours(staged, with_globals, clock_hours_reset)
+	# The rush plan is checked against the hours the site will open with (its
+	# own staged hours, not the departing site's clock). Hours that went back
+	# to the default day fit the plan to them at install instead.
+	if not _loaded_rush_hour.is_empty() and not staged.hours_reset \
+			and not RushHour.new(RUSH_TUNING).from_dict(_loaded_rush_hour, staged.hours.x, staged.hours.y):
+		return _refuse_staged(with_globals, "Saved rush hour does not fit its opening hours")
 	var layout: ShopLayout = _loaded_layout
 	if layout == null:
-		layout = LEASE.layout_for(base, owner_progress.property_tier)
+		layout = LEASE.layout_for(base, 2 if staged.lease_expanded else 1)
 		# The template's west table now stands turned for an aisle (#320); in
 		# this save's day it stood in a row of seats that shut the kitchen off.
 		layout.aisle_moved = 1
@@ -3077,6 +3112,35 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 		return _refuse_staged(false, "the owner could not be placed")
 	staged.candidate = candidate
 	return staged
+
+
+## The opening hours the staged site opens with (FK-087). Its own saved
+## "site_hours" when present and within the limits; otherwise the default day
+## (hours_reset), except that a morning load of a save from before the section
+## keeps the clock's hours (which the load has already checked, and reset when
+## `clock_reset`). Either reset sets the one note the install logs. Changes
+## nothing live.
+func _stage_site_hours(staged: StagedSite, with_globals: bool, clock_reset: bool) -> void:
+	var default_hours: Vector3i = Vector3i(HOURS_TUNING.default_open_minute,
+		HOURS_TUNING.default_close_minute, OpeningHours.open_ticks(
+		HOURS_TUNING.default_open_minute, HOURS_TUNING.default_close_minute, HOURS_TUNING))
+	if _loaded_site_hours.is_empty():
+		staged.hours = Vector3i(Clock.sim.display_open_minute, Clock.sim.display_close_minute,
+			Clock.sim.open_ticks) if with_globals else default_hours
+		staged.hours_reset = clock_reset if with_globals else true
+		if clock_reset:
+			staged.hours_note = HOURS_RESET_NOTE
+		return
+	var saved: Vector3i = Vector3i(int(_loaded_site_hours["open_minute"]),
+		int(_loaded_site_hours["close_minute"]), int(_loaded_site_hours["open_ticks"]))
+	if OpeningHours.allowed(saved.x, saved.y, HOURS_TUNING):
+		staged.hours = saved
+	else:
+		staged.hours = default_hours
+		staged.hours_reset = true
+		staged.hours_note = HOURS_RESET_NOTE
+	if clock_reset:
+		staged.hours_note = HOURS_RESET_NOTE
 
 
 ## Records why staged sections were refused; a load also logs the reason.
@@ -3130,6 +3194,17 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 	regulars = _loaded_regulars if _loaded_regulars != null else RegularCast.new()
 	tray_level = _loaded_tray_level
 	sim.carry_capacity = 1 << tray_level
+	lease_expanded = staged.lease_expanded
+	if with_globals:
+		# The legacy owner field has done its job; a later switch never reads it.
+		owner_progress.property_tier = 1
+	Clock.sim.display_open_minute = staged.hours.x
+	Clock.sim.display_close_minute = staged.hours.y
+	Clock.sim.open_ticks = staged.hours.z
+	if staged.hours_reset:
+		sim.rush_hour.fit_to_hours(staged.hours.x, staged.hours.y)
+	if not staged.hours_note.is_empty():
+		world.log_event(staged.hours_note)
 	menu_settings = staged.choices
 	daily_special = staged.special
 	_loaded_daily_special = null
@@ -3278,6 +3353,10 @@ func switch_site(target: StringName) -> bool:
 	_rooms_note = _loaded_layout.rooms_unmarked
 	$HUD.set_rooms_note(ROOMS_NOTE if _rooms_note else "")
 	_show_aisle_note(AisleRepair.note_for(_loaded_layout))
+	# The arriving site's own opening hours are on the clock now.
+	if _menu_panel != null:
+		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
+	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	if not _wire_session():
 		push_error("Cannot wire the switched site; the session is inconsistent")
 		return false
@@ -3305,6 +3384,8 @@ func _log_switch_refusal(target: StringName, reason: String) -> void:
 func _clear_site_staging() -> void:
 	_loaded_layout = null
 	_loaded_tray_level = 0
+	_loaded_lease_expanded = false
+	_loaded_site_hours = {}
 	_loaded_menu = null
 	_loaded_daily_special = null
 	_loaded_signature = null
@@ -3595,18 +3676,19 @@ func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void
 
 
 func _lease_layout() -> ShopLayout:
-	return LEASE.layout_for(_base_layout, owner_progress.property_tier)
+	return LEASE.layout_for(_base_layout, 2 if lease_expanded else 1)
 
 
 func lease_refusal() -> String:
-	return LEASE.refusal(owner_progress, Clock.sim.phase, Economy.spendable(), Economy.loan.principal)
+	return LEASE.refusal(owner_progress, lease_expanded, Clock.sim.phase, Economy.spendable(),
+		Economy.loan.principal)
 
 
 func _refresh_lease_offer() -> void:
 	_refresh_cat_offer()
 	if _menu_panel == null:
 		return
-	if not LEASE.offered(owner_progress, Clock.sim.phase):
+	if not LEASE.offered(owner_progress, lease_expanded, Clock.sim.phase):
 		_menu_panel.set_lease_offer(false, "", "", "")
 		return
 	_menu_panel.set_lease_offer(true,
@@ -3624,7 +3706,7 @@ func lease_buy() -> bool:
 	var layout: ShopLayout = LEASE.layout_for(_base_layout, 2)
 	if not shop_editor.grow_lot(layout):
 		return false
-	owner_progress.property_tier = 2
+	lease_expanded = true
 	var lot: Rect2i = shop_editor.footprint().lot
 	($ShopView as ShopView).set_lot(lot)
 	if sim.dock != null:
@@ -3711,6 +3793,33 @@ func _restore_aquarium(data: Dictionary) -> bool:
 		return false
 	_loaded_aquarium = data.duplicate(true)
 	return true
+
+
+## The active site's opening hours (FK-087). The clock section keeps its own
+## copy (the live SimClock), which older saves load from; this one wins.
+func _capture_site_hours() -> Dictionary:
+	return {"version": SITE_HOURS_VERSION, "open_minute": Clock.sim.display_open_minute,
+		"close_minute": Clock.sim.display_close_minute, "open_ticks": Clock.sim.open_ticks}
+
+
+## Strict shape; hours outside the limits are reset at install, as the
+## clock's are, rather than refusing the load.
+func _restore_site_hours(data: Dictionary) -> bool:
+	if data.size() != 4 or not _whole_in(data.get("version"), SITE_HOURS_VERSION, SITE_HOURS_VERSION) \
+			or not _whole_in(data.get("open_minute"), 0, 24 * 60) \
+			or not _whole_in(data.get("close_minute"), 0, 24 * 60) \
+			or not _whole_in(data.get("open_ticks"), 1, 2147483647):
+		return false
+	_loaded_site_hours = {"open_minute": int(data["open_minute"]),
+		"close_minute": int(data["close_minute"]), "open_ticks": int(data["open_ticks"])}
+	return true
+
+
+static func _whole_in(value: Variant, minimum: int, maximum: int) -> bool:
+	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+		return false
+	var number: float = float(value)
+	return is_finite(number) and number >= minimum and number <= maximum and floorf(number) == number
 
 
 func _capture_sites() -> Dictionary:
@@ -3852,9 +3961,11 @@ func _capture_rush_hour() -> Dictionary:
 
 
 ## Stage the strict morning plan until the new sim has completed its load.
+## Shape only here: the window is checked against the site's own staged
+## hours in _validate_staged_sections (a switch restores this before the
+## arriving site's hours reach the clock).
 func _restore_rush_hour(data: Dictionary) -> bool:
-	if not RushHour.new(RUSH_TUNING).from_dict(data, Clock.sim.display_open_minute,
-		Clock.sim.display_close_minute):
+	if not RushHour.new(RUSH_TUNING).from_dict(data):
 		return false
 	_loaded_rush_hour = data.duplicate(true)
 	return true
@@ -3976,6 +4087,7 @@ func _capture_shop() -> Dictionary:
 		return {}
 	var snapshot: Dictionary = shop_editor.to_dict()
 	snapshot["tray_level"] = tray_level
+	snapshot["lease_expanded"] = lease_expanded
 	return snapshot
 
 
@@ -4005,12 +4117,18 @@ func _restore_shop(data: Dictionary) -> bool:
 	var base: ShopLayout = _base_for_saved_shop(data)
 	if base == null:
 		return false
-	var template: ShopLayout = LEASE.layout_for(base, owner_progress.property_tier)
+	# The site's own lease (FK-087); older saves kept it on the owner, which
+	# restores first (a global section).
+	var expanded: Variant = data.get("lease_expanded", owner_progress.property_tier == 2)
+	if not expanded is bool:
+		return false
+	var template: ShopLayout = LEASE.layout_for(base, 2 if expanded else 1)
 	var layout: ShopLayout = ShopEditor.from_dict(data, template, content, errors)
 	if layout == null:
 		return false
 	_loaded_layout = layout
 	_loaded_tray_level = int(saved_level)
+	_loaded_lease_expanded = expanded
 	return true
 
 
@@ -6017,9 +6135,15 @@ func _charge_closing_costs() -> void:
 
 
 ## Today's rent rule for the home lease: expanded or not (D30). The home
-## lot's rent whether it is active or another site is (FK-087).
+## lot's rent whether it is active or another site is (FK-087): the home
+## site's own lease, live or in its frozen "shop" section.
 func _home_rent() -> int:
-	return LEASE.daily_rent if owner_progress.property_tier == 2 else TUNING.daily_rent
+	var expanded: bool = lease_expanded
+	for id: StringName in site_book.site_ids():
+		if site_book.lot_id(id) == SiteBook.HOME_LOT and site_book.is_frozen(id):
+			var shop: Variant = site_book.frozen_sections(id).get("shop", {})
+			expanded = shop is Dictionary and (shop as Dictionary).get("lease_expanded", false) == true
+	return LEASE.daily_rent if expanded else TUNING.daily_rent
 
 
 ## Settles every inactive site at the active site's close (FK-087,
