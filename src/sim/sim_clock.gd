@@ -21,12 +21,25 @@ var open_ticks: int = 3600
 var last_orders_max_ticks: int = 900
 var display_open_minute: int = 11 * 60
 var display_close_minute: int = 21 * 60
+## Why the shop cannot open this morning ("" when it can): the session sets
+## it for a site still renovating or still hiring (FK-087, #464). Not saved;
+## the session sets it again each morning.
+var opening_refusal: String = ""
 
 
 func start_service() -> bool:
-	if phase != Phase.MORNING:
+	if phase != Phase.MORNING or not opening_refusal.is_empty():
 		return false
 	_transition_to(Phase.OPEN)
+	return true
+
+
+## Ends a morning that cannot open (opening_refusal set) straight at closing:
+## the day still passes, with no service.
+func close_without_opening() -> bool:
+	if phase != Phase.MORNING or opening_refusal.is_empty():
+		return false
+	_transition_to(Phase.CLOSED)
 	return true
 
 

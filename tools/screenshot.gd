@@ -46,9 +46,12 @@ extends SceneTree
 ##             real Main collection progress and native Goals rows after the toast clears
 ##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
-##   --property-review --speed=0 --frames=12  the browse-only property market
+##   --site-card-review --speed=0 --frames=12,30  the morning site card with three
+##             sites (tools/site_card_review.gd): Tier 5, the fixer-upper bought;
+##             then the same-day "Work at your new place today?" question.
+##   --property-review --speed=0 --frames=12  the property market
 ##             (tools/property_review.gd): Tier 3 on the seed-1 morning, opened
-##             from the Menu's Property button (FK-087 part 2)
+##             from the Menu's Property button (FK-087), the fixer-upper buyable
 ##   --floors-review --speed=0 --frames=12,30  D25 floor types fixture (tools/floors_review.gd):
 ##             the laid floors (including hex tile and terracotta) with thresholds and both doors, then Build > Floors
 ##             holding a herringbone drag over the planks
@@ -84,6 +87,7 @@ const LEASE_REVIEW: Script = preload("res://tools/lease_review.gd")
 const DINER_REVIEW: Script = preload("res://tools/diner_review.gd")
 const FLOORS_REVIEW: Script = preload("res://tools/floors_review.gd")
 const PROPERTY_REVIEW: Script = preload("res://tools/property_review.gd")
+const SITE_CARD_REVIEW: Script = preload("res://tools/site_card_review.gd")
 const RESTROOM_REVIEW: Script = preload("res://tools/restroom_review.gd")
 const BLUEPRINT_REVIEW: Script = preload("res://tools/blueprint_review.gd")
 const WALLS_REVIEW: Script = preload("res://tools/walls_review.gd")
@@ -202,6 +206,8 @@ var _diner_fixture: Dictionary = {}
 var _floors_review: bool = false
 var _property_review: bool = false
 var _property_fixture: Dictionary = {}
+var _site_card_review: bool = false
+var _site_card_fixture: Dictionary = {}
 var _restroom_review: bool = false
 var _walls_review: bool = false
 var _walls_fixture: Dictionary = {}
@@ -399,6 +405,11 @@ func _initialize() -> void:
 				_fail_capture("--property-review does not accept a value")
 				return
 			_property_review = true
+		elif arg.begins_with("--site-card-review"):
+			if arg != "--site-card-review":
+				_fail_capture("--site-card-review does not accept a value")
+				return
+			_site_card_review = true
 		elif arg.begins_with("--floors-review"):
 			if arg != "--floors-review":
 				_fail_capture("--floors-review does not accept a value")
@@ -463,6 +474,13 @@ func _initialize() -> void:
 			or not _rooms.is_empty() or _menu or _staff or _stock or _settings or not _selection.is_empty() or _f3 \
 			or _report_requested or _floors_review or _walls_review or _quarter >= 0 or _shots.min() < 4):
 		_fail_capture("--property-review requires a paused fresh morning without other options, frames 4 or later")
+		return
+	if _site_card_review and (_scene_path != "res://src/world/main.tscn" or _open or _fast != 0 or _speed != 0 \
+			or not _build.is_empty() or _paint or not _walls.is_empty() or not _expand.is_empty() \
+			or not _rooms.is_empty() or _menu or _staff or _stock or _settings or not _selection.is_empty() or _f3 \
+			or _report_requested or _floors_review or _walls_review or _property_review or _quarter >= 0 \
+			or _shots.min() < 4):
+		_fail_capture("--site-card-review requires a paused fresh morning without other options, frames 4 or later")
 		return
 	if _restroom_review and (_scene_path != "res://src/world/main.tscn" or _speed != 0 or _open or _fast != 0
 			or _walls_review or _floors_review or _diner_review or not _rooms.is_empty() or not _walls.is_empty()
@@ -533,7 +551,7 @@ func _initialize() -> void:
 	if "use_saves" in _main:
 		_main.set("use_saves", false)
 	if (not _lease_mode.is_empty() or _report_requested or _milestone_review or _collections_review or _diner_review or _expand == "shop" or not _rooms.is_empty() \
-			or _floors_review or _property_review or _walls_review or _restroom_review or _street_front_review or _menu_boards_review or _signature_review != "" or _assign_owner or not _weather_mode.is_empty() or _joined_tables_review or not _neighbourhood_mode.is_empty()) \
+			or _floors_review or _property_review or _site_card_review or _walls_review or _restroom_review or _street_front_review or _menu_boards_review or _signature_review != "" or _assign_owner or not _weather_mode.is_empty() or _joined_tables_review or not _neighbourhood_mode.is_empty()) \
 			and "new_game_seed_override" in _main:
 		_main.set("new_game_seed_override", 1)
 	root.add_child(_main)
@@ -2378,6 +2396,11 @@ func _process(_delta: float) -> bool:
 			if not String(_property_fixture.get("error", "")).is_empty():
 				_fail_capture(String(_property_fixture["error"]))
 				return true
+		if _site_card_review:
+			_site_card_fixture = SITE_CARD_REVIEW.prepare(_main, root)
+			if not String(_site_card_fixture.get("error", "")).is_empty():
+				_fail_capture(String(_site_card_fixture["error"]))
+				return true
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
@@ -2517,6 +2540,11 @@ func _process(_delta: float) -> bool:
 		var rig: CameraRig = _main.get_node_or_null("CameraRig") as CameraRig
 		if rig != null and rig.grid_visible:
 			rig.toggle_grid()
+	if _site_card_review and _frames == SITE_CARD_REVIEW.PROMPT_FRAME:
+		var prompt: Dictionary = SITE_CARD_REVIEW.show_prompt(_main)
+		if not String(prompt.get("error", "")).is_empty():
+			_fail_capture(String(prompt["error"]))
+			return true
 	if _floors_review and _frames == FLOORS_DRAG_FRAME:
 		var drag: Dictionary = FLOORS_REVIEW.begin_drag(_main, root)
 		if not String(drag.get("error", "")).is_empty():
@@ -3941,7 +3969,11 @@ func _capture() -> void:
 		return
 	var property_state: Dictionary = PROPERTY_REVIEW.evidence(_main) if _property_review else {}
 	if _property_review and not PROPERTY_REVIEW.valid(property_state):
-		_fail_capture("property review did not show the browse-only market: " + JSON.stringify(property_state))
+		_fail_capture("property review did not show the market with a Buy button: " + JSON.stringify(property_state))
+		return
+	var site_card_state: Dictionary = SITE_CARD_REVIEW.evidence(_main) if _site_card_review else {}
+	if _site_card_review and not SITE_CARD_REVIEW.valid(site_card_state):
+		_fail_capture("site card review did not show three sites with their buttons: " + JSON.stringify(site_card_state))
 		return
 	var floors_state: Dictionary = FLOORS_REVIEW.evidence(_main) if _floors_review else {}
 	if _floors_review and not _floors_capture_valid(floors_state):
@@ -4087,6 +4119,9 @@ func _capture() -> void:
 	if _property_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("property review image did not match the usual 1600x900 dimensions")
 		return
+	if _site_card_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
+		_fail_capture("site card review image did not match the usual 1600x900 dimensions")
+		return
 	if _collections_review and (image == null or image.get_size() != SETTINGS_CAPTURE_SIZE):
 		_fail_capture("collections review image did not match the usual 1600x900 dimensions")
 		return
@@ -4208,6 +4243,8 @@ func _capture() -> void:
 		metadata["patio_review"] = {"state": patio_state}
 	if _property_review:
 		metadata["property_review"] = {"fixture": _property_fixture, "state": property_state}
+	if _site_card_review:
+		metadata["site_card_review"] = {"fixture": _site_card_fixture, "state": site_card_state}
 	if _floors_review:
 		metadata["floors_review"] = {"fixture": _floors_fixture, "state": floors_state}
 	if _restroom_review:

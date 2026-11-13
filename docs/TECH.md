@@ -3674,10 +3674,80 @@ foodies" from half the mix, else the top two). The Menu's header has a
 Property button from Tier 3 (`MenuPanel.set_property_available`, set by
 `set_menu_visible`); it opens `PropertyPanel` (`main.gd`
 `set_property_visible`, a morning view like Goals that closes back to the
-Menu and is dismissed wherever Goals is). Each card's Buy button is disabled
-and reads "Coming soon". Nothing is bought, moved, saved or simulated
-differently; `AwaySites.lot_rent` still charges nothing for a non-home lot.
-Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12`.
+Menu and is dismissed wherever Goals is). `AwaySites.lot_rent` still charges
+nothing for a non-home lot (#465).
+Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12` (Tier 3
+with $9,000 on the live owner: the fixer-upper's Buy button enabled).
+
+**Buying a lot (#464, part 1b).** `PropertyMarket.purchase_refusal(lot, tier,
+reputation, owned, site_count, limits, cash, loan)` gives the first reason,
+in order: `OWNED`, `LOCKED` (tier, stars, or below the market tier), `LIMIT`
+(`SiteLimitTuning`, `data/balance/sites.tres`: `sites_by_tier` = 1, 1, 2, 2,
+3, unlimited for Tiers 1 to 6), `LOAN` (an open loan, like the lease), `CASH`
+(less than `cost_to_open`); `NONE` when it can be bought.
+`purchase_charges(lot)` is the price as `LOT_PURCHASE`, or the fixer price as
+`LOT_PURCHASE` plus the renovation bill as `RENOVATION`, both booked to the
+active site (non-operating, so they show as "New premises" and "Renovation"
+on its report but never reach its profit, XP or history). `PropertyText`
+words the Buy button ("Buy for $8,500", "Owned", "Locked", "Buy") and the
+card's reason line ("Not enough cash: you need $500 more.", "Your tier allows
+2 restaurants. Reach Tier 5 to run more.", "Pay off your loan before buying a
+lot.", "You own this lot."). `main.gd` `buy_lot(lot_id)` (the panel's
+`buy_requested`) refuses with `lot_purchase_refusal` (also "Buy property in
+the morning."), builds the new site's sections (`_new_site_sections`: only a
+`shop` section, the lot's `base_layout` as a fresh `ShopEditor` saves it, no
+trays, lease not expanded, plus an empty `staff` section: a new site starts
+with nobody, Jared 2026-11-13; plus a copy of the active site's `menu`
+section, taken once at purchase (dishes, enabled flags and prices, with the name set to the lot's; not
+the daily special or signature), Jared 2026-11-13; every other per-site section takes its
+new-game default on the first switch, as a load does), and adds it with `SiteBook.add_site(lot.id, lot.id,
+lot.display_name, today, sections, renovation_days)`: the site id is the lot
+id. `_base_for_saved_shop` resolves a lot's `save_layout_id`
+(`lot_<id>`) to its `base_layout`. Nothing is saved at the purchase (code rule
+9); the next morning's autosave writes it. Bought from the panel, the site is
+offered at once (`offer_new_site`, Jared 2026-11-13): the card asks "Work at
+your new place today?" (a fixer-upper: "Design it today?"); "Go there now" /
+"Design it now" calls `switch_site`, "Stay here today" returns to the market.
+It marks the morning's site choice as made, so the card does not follow.
+The lease upgrade is the home lot's only until #465 (`_lease_at_home`: no
+offer on the Menu, and `lease_refusal` reads "Only your first restaurant can
+expand its lease for now"), since a bought lot's rent would not change.
+
+**Unstaffed sites (#464).** `StaffRoster.from_dict` and
+`RestaurantSim.set_staff_roster` accept a roster without a cook or a server
+(0 to 6 people); `StaffRoster.is_staffed()` says whether it can run a
+service. `can_let_go` still keeps an established roster's last cook and
+server. While a roster lacks either, `draw_candidates` gives the first
+candidates those roles (same draws, so a staffed roster's pool is unchanged).
+Locks read `main.gd` `closing_reputation()`: the active site's reputation once
+it has closed a day (its `business_history` has a row), the value `CareerTier`
+read at that close; NAN before the first close, so a first-morning lock line
+reads "Locked: needs 4.2 stars" instead of quoting the starting 3.0.
+
+**Morning site card (#464, Jared 2026-11-13).** `SiteCard`
+(`src/ui/site_card.tscn`, every line in `site_card.gd`) shows at the end of
+`_begin_morning` once a morning (`_site_card_day`) when the owner has two or
+more sites and the first-morning owner picker is not up; a dim backdrop
+blocks the world until a choice. One row per site (active first): its name,
+"Yesterday's takings: $412" (`SiteMorning.takings`: that site's own `SALE`,
+`TIP` and `AWAY_SITE_INCOME` ledger entries for yesterday) or "Renovating: 3
+days", "Manager: Ana" or "No manager" (the active roster, or the frozen
+`staff` section), and a button: "Stay here" on the current site (and
+Escape), "Work here" or, while renovating, "Design here" (calls
+`switch_site`), or, disabled, the real reason from `site_switch_refusal`
+("Close Build first", "Finish the haggle first", "Choose your owner first",
+"From tomorrow", "Mornings only"). A refused pick is logged
+(`_log_switch_refusal`). The status line is "Yesterday's takings: $X" (gross
+`SALE` and `TIP`) for the site the owner worked, "Yesterday's earnings
+(after the manager): $X" (`SiteMorning.away_earnings`, net) for a managed
+away site, "Closed yesterday" for an unmanaged one, or "Renovating: N days".
+While the card is up, `_unhandled_input` swallows every key but Escape (no
+Build, Paint or owner-mode keys under it). A switch marks the card shown for that day, so the
+arriving site's morning does not show it again. Opening the restaurant hides
+it, and it cannot be shown outside the morning. Capture:
+`tools/screenshot.sh --site-card-review --speed=0 --frames=12,30` (Tier 5, the
+fixer-upper bought, the seaside lot added as a ready site; frame 30 shows the
+same-day question for the seaside lot).
 
 **Lot-only content.** `ItemDef` and `IngredientDef` gain `lot_tags` (empty =
 everywhere). The catalogue, blueprint stamps and stock panel show a tagged
@@ -3750,9 +3820,8 @@ made): that morning's results stay with it. Steps:
    then autosave once.
 Owner is global and already installed, so its order before `shop` and `menu`
 still holds.
-Built so far (#408 C3): `main.gd` `switch_site(target)` (tests only, no UI
-yet; a plain morning site picker comes with buying a lot, since until then no
-game has a second site). Validation and install are `_validate_staged_sections` and
+Built so far (#408 C3): `main.gd` `switch_site(target)`, called by the
+morning site card since #464. Validation and install are `_validate_staged_sections` and
 `_install_staged_sections`, shared with the morning load (which also stages
 the global sections); the switch carries today's weather to the new world. A
 frozen copy without a `pantry` gets an empty one (the pantry restores in
@@ -3825,9 +3894,38 @@ business history or weekly challenge.
 
 **Limits and renovation.** `data/balance/sites.tres`: sites allowed by career
 tier (2 at Tier 3, 3 at Tier 5, unlimited at Tier 6). A fixer-upper's site
-stores `renovation_days_left`; while above 0 it can be active for designing but
-cannot open, and the days count down at each close of whichever site is
-active.
+stores `renovation_days_left`, and the days count down at each close of
+whichever site is active.
+Built (#464): the `sites` section is VERSION 2. A row may carry
+`"renovation_days_left"`: a whole number 1 to `LotDef.MAX_RENOVATION_DAYS`,
+written only while above 0 (0 or anything else present is refused). Version 1
+still loads (the migration: every site ready) and saves as version 2.
+`SiteBook.add_site(..., renovation_days)`, `renovation_days_left(id)`,
+`count_down_renovations()` (called at the top of `_close_away_sites`, so only
+with two or more sites; returns the ids that became ready) and `owns_lot`.
+While above 0 the site can be switched to and designed (D28; Jared
+2026-11-13), but cannot open to guests. `main.gd site_opening_refusal()`
+gives "Still renovating: 2 days left", else, for an unstaffed roster, "Hire a
+cook and a server before you open". `_refresh_opening_block` (after each
+menu-catalogue refresh, so every morning, switch and Build change, and after
+each hire or let-go) puts it on `SimClock.opening_refusal` (not saved; while
+set, `start_service` refuses) and the HUD: the Open shop button reads "Close
+for today" with the reason, and emits `close_day_requested`.
+A layout with no cookable dish (`_menu_access_error`, `MenuAccess.NO_DISH`)
+gets its own refusing notice back once the site's reason clears, so Open shop
+stays disabled (no "Close for today"); as before, it is not on the clock,
+since a legacy layout the access check flags can still serve.
+`close_for_today()` then ends the day without a service:
+`SimClock.close_without_opening()` (MORNING to CLOSED, only while a refusal
+is set), the dock's stock is put away, and `_on_service_closed` runs the
+ordinary close (wages, rent, away sites, the countdown, the report with no
+guests). It is not a business day (`_closed_day`): no `business_history` row
+(so `closing_reputation()` stays NAN at a site that never served, and
+manager averages skip it), no trending-post or demand close, no owner XP,
+goals, records or tier climb; the weekly goal is evaluated with nothing
+earned so its saved day still follows the calendar. The evening report's away line adds "; renovating, 2 days left",
+then "; renovation done, ready to open". A fixer-upper bought on day D with 3
+days can open on day D+3 once it has a cook and a server.
 
 **Bookings.** A group booking belongs to its site. If that site is not
 active on the booked day, the booking lapses at that day's close with the

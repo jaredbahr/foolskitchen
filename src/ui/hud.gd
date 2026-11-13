@@ -25,6 +25,9 @@ signal staff_pressed()
 signal stock_pressed()
 signal loan_repayment_requested(amount: int, repay_all: bool)
 signal settings_pressed()
+## A site that cannot open this morning (renovating or still hiring, #464)
+## ends the day without a service instead.
+signal close_day_requested()
 signal header_layout_changed()
 signal collection_toast_shown(collection_id: StringName)
 
@@ -91,6 +94,9 @@ var _settings_button: Button
 var _header_bottom: float = -1.0
 var _preferences: SettingsPreferences
 var _opening_refusal: String = ""
+## Why this site cannot open today; the context button then closes the day.
+var _closed_day_reason: String = ""
+const CLOSE_DAY_TEXT: String = "Close for today"
 var _haggle_active: bool = false
 var _demand_status: String = ""
 var _booking_status: Label
@@ -279,9 +285,12 @@ func refresh() -> void:
 			or Clock.sim.phase == SimClock.Phase.LAST_ORDERS)):
 		_render_sold_out()
 	_context.visible = Clock.sim.phase == SimClock.Phase.MORNING or Clock.sim.phase == SimClock.Phase.CLOSED
-	_context.text = "Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day"
-	_context.tooltip_text = "Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning"
-	_context.disabled = _haggle_active or (Clock.sim.phase == SimClock.Phase.MORNING and not _opening_refusal.is_empty())
+	var closed_day: bool = Clock.sim.phase == SimClock.Phase.MORNING and not _closed_day_reason.is_empty()
+	_context.text = CLOSE_DAY_TEXT if closed_day else ("Open shop" if Clock.sim.phase == SimClock.Phase.MORNING else "Next day")
+	_context.tooltip_text = (_closed_day_reason + ". End the day without opening.") if closed_day \
+		else ("Open for today's service" if Clock.sim.phase == SimClock.Phase.MORNING else "Begin the next morning")
+	_context.disabled = _haggle_active or (Clock.sim.phase == SimClock.Phase.MORNING and not closed_day
+		and not _opening_refusal.is_empty())
 	if _context.disabled:
 		_context.tooltip_text = "Finish or skip the haggle first" if _haggle_active else _opening_refusal
 	_on_speed_changed(Clock.speed)
@@ -635,6 +644,17 @@ func set_aisle_note(text: String) -> void:
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
+
+
+## A site that cannot open today (#464): the reason, or "" to open as usual.
+## The context button reads "Close for today" and asks main to end the day.
+func set_closed_day(reason: String) -> void:
+	_closed_day_reason = reason
+	refresh()
+
+
+func closed_day_reason() -> String:
+	return _closed_day_reason
 
 
 ## Layout advice at opening; a legacy empty catalogue also disables Open shop
@@ -1009,6 +1029,10 @@ func _on_context_pressed() -> void:
 	if _haggle_active:
 		return
 	if Clock.sim.phase == SimClock.Phase.MORNING:
+		if not _closed_day_reason.is_empty():
+			close_day_requested.emit()
+			refresh()
+			return
 		if not _opening_refusal.is_empty():
 			return
 		if Clock.sim.start_service():
