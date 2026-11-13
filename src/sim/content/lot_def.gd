@@ -11,6 +11,8 @@ extends Resource
 const KNOWN_TAGS: Array[StringName] = [&"seaside", &"rooftop"]
 const MIN_RENOVATION_DAYS: int = 2
 const MAX_RENOVATION_DAYS: int = 5
+## The most one expansion adds on a side (the home lease's own limit).
+const MAX_EXPANSION_CELLS: int = 32
 
 @export var id: StringName = &""
 @export var display_name: String = ""
@@ -25,10 +27,16 @@ const MAX_RENOVATION_DAYS: int = 5
 @export var renovation_bill: int = 0
 @export var renovation_days: int = 0
 @export var daily_rent: int = 0
-## Every lot can expand (Jared, 2026-11-13): the one-off cost and the daily
-## rent from then on. Not charged anywhere yet (#465).
+## Every lot can expand once (Jared, 2026-11-13): the one-off cost and the
+## daily rent from then on (#465).
 @export var expansion_price: int = 0
 @export var expanded_daily_rent: int = 0
+## How many cells the expansion adds to the lot's own margins on each side
+## (like the home lease's extra_west/east/north). 0 to MAX_EXPANSION_CELLS
+## each, at least one above 0. The street side never grows.
+@export var expansion_west: int = 0
+@export var expansion_east: int = 0
+@export var expansion_north: int = 0
 @export_range(1, 6, 1) var min_tier: int = 3
 ## Closing reputation in stars; 0 means none.
 @export_range(0.0, 5.0, 0.1) var min_reputation: float = 0.0
@@ -56,3 +64,23 @@ func size_cells() -> int:
 	for row: String in base_layout.rows:
 		cells += row.count(".")
 	return cells
+
+
+## The lot's expansion as lease terms, so the offer, refusal and layout share
+## the home lease's rules (D30): the price is the deposit, the expanded rent
+## the daily rent, and the lot's own margins grow. `home` gives the owner
+## level (unused since career tiers, kept for LeaseUpgrade.is_valid).
+func lease_upgrade(home: LeaseUpgrade) -> LeaseUpgrade:
+	var lease: LeaseUpgrade = LeaseUpgrade.new()
+	lease.owner_level = home.owner_level if home != null else lease.owner_level
+	lease.deposit = expansion_price
+	lease.daily_rent = expanded_daily_rent
+	lease.extra_west = expansion_west
+	lease.extra_east = expansion_east
+	lease.extra_north = expansion_north
+	return lease
+
+
+## The lot's daily rent with its lease expanded or not.
+func rent(expanded: bool) -> int:
+	return expanded_daily_rent if expanded else daily_rent
