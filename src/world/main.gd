@@ -5007,12 +5007,17 @@ func _new_site_sections(lot: LotDef) -> Dictionary:
 		return {}
 	var sections: Dictionary = {"shop": shop, "staff": staff}
 	# The new place starts with a copy of this site's menu (Jared, #464):
-	# dishes, what is on, prices and the name. Copied once, here; today's
-	# special and the signature dish are each site's own. A dish the lot
-	# cannot cook stays off its live menu, as after any layout change.
+	# dishes, what is on and prices, copied once, here; today's special and the
+	# signature dish are each site's own. It is named after its lot (Jared), not
+	# after the restaurant it was bought from. A dish the lot cannot cook stays
+	# off its live menu, as after any layout change.
 	var menu: Dictionary = _capture_menu()
 	if not menu.is_empty():
-		sections["menu"] = menu.duplicate(true)
+		var copy: Dictionary = menu.duplicate(true)
+		var lot_name: String = MenuSettings.normalized_restaurant_name(lot.display_name)
+		if copy.has("name") and not lot_name.is_empty():
+			copy["name"] = lot_name
+		sections["menu"] = copy
 	return sections
 
 

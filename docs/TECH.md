@@ -3698,7 +3698,7 @@ the morning."), builds the new site's sections (`_new_site_sections`: only a
 `shop` section, the lot's `base_layout` as a fresh `ShopEditor` saves it, no
 trays, lease not expanded, plus an empty `staff` section: a new site starts
 with nobody, Jared 2026-11-13; plus a copy of the active site's `menu`
-section, taken once at purchase (dishes, enabled flags, prices and name; not
+section, taken once at purchase (dishes, enabled flags and prices, with the name set to the lot's; not
 the daily special or signature), Jared 2026-11-13; every other per-site section takes its
 new-game default on the first switch, as a load does), and adds it with `SiteBook.add_site(lot.id, lot.id,
 lot.display_name, today, sections, renovation_days)`: the site id is the lot

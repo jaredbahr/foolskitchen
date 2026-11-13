@@ -463,12 +463,16 @@ func test_a_new_site_starts_with_a_copy_of_the_menu_it_was_bought_from() -> void
 	var dish: StringName = (_main.get("menu_settings") as MenuSettings).enabled_recipes()[0].id
 	var menu: MenuSettings = _main.get("menu_settings")
 	assert_true(_main.call("menu_set_price", dish, menu.price_of(menu.recipe(dish)) + 2))
-	var home_menu: String = JSON.stringify(_main.call("_capture_menu"))
+	var home_dict: Dictionary = (_main.call("_capture_menu") as Dictionary).duplicate(true)
+	var home_menu: String = JSON.stringify(home_dict)
 	assert_true(_main.call("buy_lot", FIXER))
 	assert_true(_main.call("switch_site", FIXER))
 	var copied: MenuSettings = _main.get("menu_settings")
 	assert_eq(copied.price_of(copied.recipe(dish)), menu.price_of(menu.recipe(dish)), "the same prices")
-	assert_eq(JSON.stringify(_main.call("_capture_menu")), home_menu, "the same dishes, flags and prices")
+	var expected: Dictionary = home_dict.duplicate(true)
+	expected["name"] = (_main.get("content") as ContentDB).lot(FIXER).display_name
+	assert_eq(copied.restaurant_name(), expected["name"], "named after its lot")
+	assert_eq(JSON.stringify(_main.call("_capture_menu")), JSON.stringify(expected), "the same dishes, flags and prices")
 	assert_true(_main.call("menu_set_price", dish, copied.price_of(copied.recipe(dish)) + 5))
 	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
 	assert_eq(JSON.stringify(_main.call("_capture_menu")), home_menu, "home's menu is unchanged")
