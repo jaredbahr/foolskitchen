@@ -209,7 +209,9 @@ static func _needs_absent_station(recipe: RecipeDef, built: SimWorld) -> bool:
 ## A manager (FK-087) does no floor work: they are checked like everyone but
 ## get no worker in the world (the session pays their wage from the roster).
 func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = StaffRoster.CATALOGUE) -> bool:
-	if world == null or world.clock.phase != SimClock.Phase.MORNING or people.size() < 2 or people.size() > StaffRoster.CAPACITY:
+	# Fewer than a cook and a server is allowed (a new site still hiring,
+	# #464): such a site cannot open, so nobody is missing at service.
+	if world == null or world.clock.phase != SimClock.Phase.MORNING or people.size() > StaffRoster.CAPACITY:
 		return false
 	var by_id: Dictionary[StringName, StaffMember] = {}
 	var seen: Dictionary[StringName, bool] = {}
@@ -226,8 +228,6 @@ func set_staff_roster(people: Array[StaffMember], catalogue: StaffCatalogue = St
 		if member.role != StaffMember.MANAGER:
 			by_id[member.id] = member
 			floor_people.append(member)
-	if not roles.has(&"cook") or not roles.has(&"server"):
-		return false
 	var retained: Dictionary[StringName, bool] = {}
 	for agent: SimAgent in world.all_agents():
 		if not agent is StaffAgent or agent is OwnerAgent:

@@ -13,6 +13,7 @@ on:
       - 'tools/daily_special_review.gd'
       - 'tools/daily_special_review.tscn'
       - 'tools/property_review.gd'
+      - 'tools/site_card_review.gd'
       - 'src/world/**'
       - 'src/ui/**'
       - 'data/layouts/**'
@@ -112,6 +113,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/lease-expand --lease-review=expand --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/property --property-review --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/site-card --site-card-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/haggle --scene=res://tools/haggle_review.tscn --speed=0 --frames=30,90
           bash tools/screenshot.sh --out=screens/visual-review/first-day-guide --scene=res://tools/hints_review.tscn --speed=0 --frames=30
           bash tools/screenshot.sh --scene=res://tools/food_review.tscn --out=screens/visual-review/food-service --speed=0 --frames=12,90
