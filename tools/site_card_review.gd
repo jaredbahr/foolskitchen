@@ -9,7 +9,8 @@ extends RefCounted
 ## and the fixer-upper's disabled "Renovating" button.
 
 const TIER: int = 5
-const CASH: int = 40000
+## Enough for the fixer-upper; the seaside site is added, not bought.
+const CASH: int = 9000
 
 
 static func prepare(main: Node, _root: Window) -> Dictionary:
@@ -18,7 +19,11 @@ static func prepare(main: Node, _root: Window) -> Dictionary:
 	if owner == null or book == null or not main.has_method("buy_lot") or not bool(main.call("can_edit_menu")):
 		return {"error": "site card review needs Main's morning"}
 	owner.career_tier = TIER
-	Economy.add_cash(CASH - Economy.cash, Ledger.OTHER, "Site card review fixture")
+	# Autoloads are looked up at run time: screenshot.gd preloads this file
+	# before they exist.
+	var economy: Node = main.get_node("/root/Economy")
+	economy.call("add_cash", CASH - int(economy.get("cash")), Ledger.OTHER, "Site card review fixture")
+	var today: int = ((main.get_node("/root/Clock").get("sim")) as SimClock).day
 	if not bool(main.call("buy_lot", &"town_fixer_upper")):
 		return {"error": "the fixer-upper could not be bought: " + str(main.call("lot_purchase_refusal", &"town_fixer_upper"))}
 	var seaside: LotDef = null
@@ -27,7 +32,7 @@ static func prepare(main: Node, _root: Window) -> Dictionary:
 			seaside = lot
 	var sections: Dictionary = main.call("_new_site_sections", seaside) if seaside != null else {}
 	if sections.is_empty() or not book.add_site(&"seaside_cliff", &"seaside_cliff", seaside.display_name,
-			Clock.sim.day, sections):
+			today, sections):
 		return {"error": "the seaside site could not be added"}
 	if not bool(main.call("set_site_card_visible", true)):
 		return {"error": "the site card did not open"}

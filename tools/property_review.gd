@@ -17,7 +17,10 @@ static func prepare(main: Node, _root: Window) -> Dictionary:
 	if owner == null or not main.has_method("set_property_visible") or not bool(main.call("can_edit_menu")):
 		return {"error": "property review needs Main's morning Menu"}
 	owner.career_tier = TIER
-	Economy.add_cash(CASH - Economy.cash, Ledger.OTHER, "Property review fixture")
+	# Autoloads are looked up at run time: screenshot.gd preloads this file
+	# before they exist.
+	var economy: Node = main.get_node("/root/Economy")
+	economy.call("add_cash", CASH - int(economy.get("cash")), Ledger.OTHER, "Property review fixture")
 	if not bool(main.call("set_menu_visible", true)):
 		return {"error": "the morning Menu did not open"}
 	var menu: MenuPanel = main.get_node("Overlay/MenuPanel") as MenuPanel
