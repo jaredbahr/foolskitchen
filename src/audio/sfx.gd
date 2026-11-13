@@ -279,7 +279,7 @@ func _apply_music_player(track: AudioStream, level: float, target: float) -> voi
 		player = AudioStreamPlayer.new()
 		player.name = "Music_" + track.resource_path.get_file().get_basename()
 		player.bus = MUSIC_BUS
-		player.stream = track.duplicate() if MusicTracks.in_playlist(track) else _looping(track)
+		player.stream = music_stream_for(track)
 		player.finished.connect(_on_music_finished.bind(track))
 		add_child(player)
 		_music_players[track] = player
@@ -327,6 +327,22 @@ func _free_clink_player() -> AudioStreamPlayer3D:
 	var oldest: AudioStreamPlayer3D = _clink_players[_next_clink % _clink_players.size()]
 	_next_clink += 1
 	return oldest
+
+
+## The stream a music player gets: a playlist track plays once so it can end
+## and hand over to the next (its import loops, which would never end); any
+## other track loops.
+static func music_stream_for(track: AudioStream) -> AudioStream:
+	return _once(track) if MusicTracks.in_playlist(track) else _looping(track)
+
+
+static func _once(stream: AudioStream) -> AudioStream:
+	var copy: AudioStream = stream.duplicate()
+	if copy is AudioStreamOggVorbis:
+		(copy as AudioStreamOggVorbis).loop = false
+	elif copy is AudioStreamWAV:
+		(copy as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+	return copy
 
 
 static func _looping(stream: AudioStream) -> AudioStream:

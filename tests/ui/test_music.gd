@@ -135,3 +135,15 @@ func test_context_change_crossfades_and_a_jukebox_ducks() -> void:
 	Sfx.set_music_context(&"")
 	Sfx._step_music(Sfx.MUSIC_FADE_SECONDS)
 	assert_almost_eq(Sfx.music_level(), 0.0, 0.0001, "closed is silent")
+
+## A playlist track must be able to end, or the day never reaches its second
+## song: the imported oggs loop, so the player gets a copy that does not.
+func test_playlist_tracks_play_once_and_others_loop() -> void:
+	var day: Array = MusicTracks.BY_CONTEXT[MusicTracks.SERVICE_DAY]
+	assert_eq(day.size(), 2)
+	for track: AudioStream in day:
+		var stream: AudioStreamOggVorbis = Sfx.music_stream_for(track) as AudioStreamOggVorbis
+		assert_false(stream.loop, "%s plays once" % track.resource_path.get_file())
+		assert_true((track as AudioStreamOggVorbis).loop, "the shared import is untouched")
+	var title: AudioStreamOggVorbis = Sfx.music_stream_for(MusicTracks.track_for(MusicTracks.TITLE)) as AudioStreamOggVorbis
+	assert_true(title.loop, "the title loops")
