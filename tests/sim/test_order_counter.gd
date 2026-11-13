@@ -295,7 +295,7 @@ func test_a_cafe_without_a_counter_keeps_its_table_service_exactly() -> void:
 			row.get("gone", -1), _left.get(guest.id)])
 		assert_false(guest.counter_visit)
 		assert_false(guest.takeaway)
-	assert_eq("|".join(parts), GOLDEN_NO_COUNTER, "recorded before the order counter existed (timing re-recorded for #306)")
+	assert_eq("|".join(parts), GOLDEN_NO_COUNTER, "recorded before the order counter existed (timing re-recorded for #306 and #459)")
 	assert_eq(_sim.served_today, 7)
 	assert_eq(_sim.takeaways_today, 0)
 
@@ -330,7 +330,10 @@ func test_takeaway_tuning_is_data_and_validated() -> void:
 ## guest between tries (its path is dropped whenever a step is blocked), so
 ## guests 11, 13 and 17 order, get served and leave two ticks later than
 ## before the backstop. Who is served and why each guest leaves are unchanged.
-const GOLDEN_NO_COUNTER: String = "4:0:104:368:478:happy|5:30:161:548:658:happy|6:60:214:433:543:happy|7:90:261:662:772:happy|8:120:-1:-1:421:no_table|9:150:-1:-1:451:no_table|10:180:-1:-1:481:no_table|11:210:735:928:1038:happy|12:240:-1:-1:541:no_table|13:270:778:1001:1111:happy|14:300:-1:-1:601:no_table|15:330:-1:-1:631:no_table|16:360:-1:-1:661:no_table|17:390:831:1084:1194:happy"
+## #459: at the café door a leaver now squeezes past waiting guests early
+## (the counterflow rules apply at any door), so guests 5, 7, 11, 13 and 17
+## leave up to 19 ticks earlier. The same guests are served, for the same reasons.
+const GOLDEN_NO_COUNTER: String = "4:0:104:368:478:happy|5:30:161:546:656:happy|6:60:214:433:543:happy|7:90:261:647:757:happy|8:120:-1:-1:421:no_table|9:150:-1:-1:451:no_table|10:180:-1:-1:481:no_table|11:210:716:909:1019:happy|12:240:-1:-1:541:no_table|13:270:759:982:1092:happy|14:300:-1:-1:601:no_table|15:330:-1:-1:631:no_table|16:360:-1:-1:661:no_table|17:390:812:1065:1175:happy"
 
 var _paid_orders: Array[Order] = []
 
