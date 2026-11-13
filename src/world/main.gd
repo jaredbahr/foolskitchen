@@ -946,6 +946,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var photo: PhotoMode = $PhotoMode
 	var key: InputEventKey = event as InputEventKey
 	if photo.held or photo.capture_pending():
+		# Shift still tracks while the UI is hidden, so a release made during
+		# a photo is not lost to the build and paint pointers (#475 review).
+		if key != null and not key.echo:
+			_on_shift_changed(key)
 		if key != null and key.pressed and not key.echo:
 			var photo_code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 			if photo_code == KEY_ESCAPE:
