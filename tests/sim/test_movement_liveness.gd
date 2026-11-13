@@ -621,6 +621,51 @@ func test_a_worker_is_not_turned_back_for_good_by_someone_standing_in_the_way() 
 	assert_true(world.now < 450, "well before the staff limit (tick %d)" % world.now)
 
 
+## #458: a worker about to use their station (standing on their leased work
+## cell before the work starts, or waiting there in a WAIT_UNTIL step) is busy
+## like one already working: the backstop leaves them be until
+## squeeze_after_ticks, whether they block the first step or stand further
+## along the way. Clearing them earlier only sent them straight back, to be
+## cleared again on the next retry.
+func test_a_worker_about_to_use_their_station_is_not_cleared_before_the_squeeze_limit() -> void:
+	for ahead: bool in [false, true]:
+		for waiting: bool in [false, true]:
+			var world: SimWorld = _service_world(["....", "...."])
+			var tuning: MovementTuning = world.movement_tuning
+			var walker: Walker = _walker(world, Vector2i(0, 0), Vector2i(3, 0))
+			var worker: StaffWalker = _station_user(world, Vector2i(2 if ahead else 1, 0), waiting)
+			var case: String = "%s, %s" % ["further along" if ahead else "in the first step",
+				"in WAIT_UNTIL" if waiting else "on its leased cell"]
+			world.movement._escape(world, walker, tuning.escape_after_ticks)
+			assert_false(world.movement.is_yielding(worker.id), "not cleared at the escape limit (%s)" % case)
+			assert_eq(worker.cell, Vector2i(2 if ahead else 1, 0))
+			world.movement._escape(world, walker, tuning.squeeze_after_ticks - 1)
+			assert_false(world.movement.is_yielding(worker.id), "nor just before the squeeze limit (%s)" % case)
+			world.movement._right_of_way.clear()
+			world.movement._way_holder = -1
+			world.movement._escape(world, walker, tuning.squeeze_after_ticks)
+			assert_true(world.movement.is_yielding(worker.id), "cleared from the squeeze limit (%s)" % case)
+
+
+## #458: pushing a boxed blocker through to free space never moves a worker
+## busy at their station on the way before the squeeze limit either.
+func test_a_push_through_waits_for_the_squeeze_limit_to_move_a_busy_worker() -> void:
+	var world: SimWorld = _service_world(["...", "#.#", "#.#", "#.#"])
+	var tuning: MovementTuning = world.movement_tuning
+	var walker: Walker = _walker(world, Vector2i(0, 0), Vector2i(2, 0))
+	var blocker: SimAgent = _standing(world, Vector2i(1, 0))
+	var worker: StaffWalker = _station_user(world, Vector2i(1, 1), false)
+	world.movement._escape(world, walker, tuning.squeeze_after_ticks - 1)
+	assert_false(world.movement.is_yielding(worker.id), "the busy worker stays at its station")
+	assert_false(world.movement.is_yielding(blocker.id), "so the blocker cannot get out yet")
+	world.movement._right_of_way.clear()
+	world.movement._way_holder = -1
+	world.movement._escape(world, walker, tuning.squeeze_after_ticks)
+	assert_true(world.movement.is_yielding(worker.id), "from the squeeze limit the line is pushed through")
+	assert_true(world.movement.is_yielding(blocker.id))
+	assert_eq(int(world.movement.escape_counts.get(&"line", 0)), 1, "through the push-through")
+
+
 func _service_world(rows: Array[String], open: bool = true) -> SimWorld:
 	var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(rows)))
 	if open:
@@ -683,4 +728,25 @@ func _station_waiter(world: SimWorld, at: Vector2i) -> StaffWalker:
 	assert_true(world.board.claim(job, staff.id, world.now))
 	staff.task = job
 	staff._waiting_for = "walking to the coffee machine"
+	return staff
+
+
+## A worker at their station before the work starts: a lease on the cell it
+## stands on and the WORK step next, or a WAIT_UNTIL step that is not ready.
+func _station_user(world: SimWorld, at: Vector2i, waiting: bool) -> StaffWalker:
+	var staff: StaffWalker = StaffWalker.new(&"cook", 3)
+	staff.cell = at
+	world.add_agent(staff)
+	var job: SimTask = SimTask.new(&"brew", &"cook")
+	job.steps.append(TaskStep.go_to_item(1, "walking to the coffee machine"))
+	if waiting:
+		job.steps.append(TaskStep.wait_until(func(_agent: StaffAgent) -> bool: return false, "waiting for the cup"))
+	job.steps.append(TaskStep.work(60, "brewing"))
+	world.board.post(job, world.now)
+	assert_true(world.board.claim(job, staff.id, world.now))
+	staff.task = job
+	staff.step_index = 1
+	if not waiting:
+		staff._held_item_id = 1
+		staff._held_cell = at
 	return staff
