@@ -23,6 +23,7 @@ signal paint_toggled()
 signal menu_pressed()
 signal staff_pressed()
 signal stock_pressed()
+signal loan_repayment_requested(amount: int, repay_all: bool)
 signal settings_pressed()
 signal header_layout_changed()
 signal collection_toast_shown(collection_id: StringName)
@@ -36,6 +37,12 @@ var _time_label: Label
 var _phase_label: Label
 var _cash_label: Label
 var _loan_label: Label
+var _loan_trigger: Button
+var _loan_panel: PanelContainer
+var _loan_owed: Label
+var _repay_affordable: Button
+var _repay_all: Button
+var _close_loan: Button
 ## The Creative game's tag (FK-141), in place of the cash and owner level.
 var _creative_tag: Label
 var _loan_principal: int = 0
@@ -197,6 +204,18 @@ func refresh() -> void:
 		_phase_label = get_node("Top/Row/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
 		_loan_label = get_node("Top/Row/Loan") as Label
+		_loan_trigger = _loan_label.get_node("OpenRepayment") as Button
+		_loan_panel = get_node("LoanPopover/Panel") as PanelContainer
+		_loan_owed = _loan_panel.get_node("Content/Owed") as Label
+		_repay_affordable = _loan_panel.get_node("Content/Actions/RepayAffordable") as Button
+		_repay_all = _loan_panel.get_node("Content/Actions/RepayAll") as Button
+		_close_loan = _loan_panel.get_node("Content/Actions/Close") as Button
+		_loan_trigger.pressed.connect(_toggle_loan_repayment)
+		visibility_changed.connect(dismiss_loan_repayment)
+		_loan_label.item_rect_changed.connect(_layout_loan_repayment)
+		_repay_affordable.pressed.connect(_request_loan_repayment.bind(false))
+		_repay_all.pressed.connect(_request_loan_repayment.bind(true))
+		_close_loan.pressed.connect(dismiss_loan_repayment.bind(true))
 		_creative_tag = get_node("Top/Row/Creative") as Label
 		_reputation_label = get_node("Top/Row/Reputation") as Label
 		_owner_level_label = get_node("Top/Row/OwnerProgress/OwnerLevel") as Label
@@ -397,13 +416,79 @@ func set_loan_state(principal: int, repay_share: float, daily_interest: float) -
 
 
 func _render_loan() -> void:
-	_loan_label.text = "Loan %s" % Fmt.money(_loan_principal)
+	var balance: String = Fmt.money(_loan_principal)
+	_loan_label.text = "Loan %s" % balance
 	_loan_label.tooltip_text = "The bank takes up to %s of positive daily profit to repay this loan. Interest is %s a day. Big furniture purchases and upgrades wait until it's paid back." % [
 		_percentage_text(_loan_repay_share), _percentage_text(_loan_daily_interest)]
 	_loan_label.visible = _loan_principal > 0 and not GameMode.is_creative()
+	var available: bool = _can_repay_loan()
+	_loan_trigger.visible = available
+	_loan_trigger.accessibility_name = "Repay loan, %s owed" % balance
+	_loan_trigger.tooltip_text = _loan_label.tooltip_text + "\nRepay some or all of this loan."
+	if not available:
+		dismiss_loan_repayment()
+	if _loan_panel.visible:
+		_render_loan_repayment()
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
+
+
+func _can_repay_loan() -> bool:
+	var phase: SimClock.Phase = Clock.sim.phase
+	return _loan_label.visible and not _haggle_active \
+		and (phase == SimClock.Phase.MORNING or phase == SimClock.Phase.CLOSED)
+
+
+func _toggle_loan_repayment() -> void:
+	if not _can_repay_loan():
+		return
+	if dismiss_loan_repayment(true):
+		return
+	_loan_panel.show()
+	_render_loan_repayment()
+	if _close_loan.is_visible_in_tree():
+		_close_loan.grab_focus()
+
+
+func dismiss_loan_repayment(restore_focus: bool = false) -> bool:
+	if _loan_panel == null or not _loan_panel.visible:
+		return false
+	_loan_panel.hide()
+	if restore_focus and _loan_trigger.is_visible_in_tree():
+		_loan_trigger.grab_focus()
+	return true
+
+
+func _affordable_repayment() -> int:
+	return mini(_loan_principal, maxi(0, _cash))
+
+
+func _render_loan_repayment() -> void:
+	var affordable: int = _affordable_repayment()
+	_loan_owed.text = "Owed %s" % Fmt.money(_loan_principal)
+	_repay_affordable.text = "Repay %s" % Fmt.money(affordable)
+	_repay_affordable.disabled = affordable == 0
+	_repay_all.disabled = affordable < _loan_principal
+	_layout_loan_repayment()
+
+
+func _layout_loan_repayment() -> void:
+	if _loan_panel == null or not _loan_panel.visible or not is_inside_tree():
+		return
+	var width: float = _loan_panel.get_combined_minimum_size().x
+	var right: float = get_viewport().get_visible_rect().size.x - width - 12.0
+	_loan_panel.reset_size()
+	_loan_panel.position = Vector2(clampf(_loan_label.get_global_rect().position.x, 12.0, maxf(12.0, right)),
+		panel_top())
+
+
+func _request_loan_repayment(repay_all: bool) -> void:
+	if not _loan_panel.visible or not _can_repay_loan():
+		return
+	var affordable: int = _affordable_repayment()
+	if affordable > 0 and (not repay_all or affordable == _loan_principal):
+		loan_repayment_requested.emit(affordable, repay_all)
 
 
 func _percentage_text(rate: float) -> String:
@@ -483,6 +568,7 @@ func _on_header_resized() -> void:
 	_layout_menu_notice()
 	_layout_build_hints()
 	_layout_booking_status()
+	_layout_loan_repayment()
 	var bottom: float = _notices_bottom()
 	if not is_equal_approx(bottom, _header_bottom):
 		_header_bottom = bottom
@@ -932,6 +1018,8 @@ func _on_context_pressed() -> void:
 func _on_cash_changed(new_cash: int, delta: int, _reason: StringName) -> void:
 	_cash = new_cash
 	_cash_label.text = Fmt.money(new_cash)
+	if _loan_panel.visible:
+		_render_loan_repayment()
 	if delta == 0:
 		return
 	# Several same-sign changes in one frame (the morning restock buys each

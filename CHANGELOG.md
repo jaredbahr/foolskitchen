@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Click the loan amount in the top bar to repay some or all of your debt before opening or after closing.
 - Seasons change every 28 days and move some ingredient prices, mostly seafood: cheaper in season, pricier out of it. The date names the season, Stock tags an ingredient whose price the season moved today, and dish details point out ingredients that are cheaper in season. (#395)
 - A cook no longer walks round and round the counter when a server waiting for the same coffee machine stands in the way: the server now steps aside. A guest stepping in at a jammed narrow door also finishes the step instead of freezing in the doorway. (#457)
 - A table's seat or a serving spot can no longer be placed in the doorway; the editor now says so. (#456)

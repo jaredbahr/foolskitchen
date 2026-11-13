@@ -476,6 +476,84 @@ func test_loan_refuses_large_furniture_and_all_trays_without_mutation_but_allows
 	assert_eq(_saved_text(), original)
 
 
+func test_hud_full_repayment_unlocks_trays_and_rejects_stale_full_payment() -> void:
+	var main: Node = await _start()
+	_fresh_books(1000, 150)
+	var original: String = _saved_text()
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var trays: Button = panel.get_node("Panel/Content/Scroll/List/TraysRow/TraysBuy") as Button
+	assert_true(main.call("set_staff_visible", true))
+	assert_true(trays.disabled)
+	assert_eq(trays.tooltip_text, LOAN_HINT)
+	Economy.ledger.cash = 149
+	hud.loan_repayment_requested.emit(150, true)
+	assert_eq(Economy.loan.principal, 150)
+	assert_eq(Economy.cash, 149)
+	assert_true(Economy.ledger.entries_for_day(Clock.day).is_empty())
+	Economy.ledger.cash = 1000
+	hud.loan_repayment_requested.emit(150, true)
+	assert_eq(Economy.loan.principal, 0)
+	assert_eq(Economy.cash, 850)
+	assert_false(trays.disabled, "the already-visible tray control refreshes from the cash event")
+	assert_true(Economy.can_buy_discretionary(Economy.LOAN_TERMS.large_purchase_limit + 1))
+	assert_false((hud.get_node("Top/Row/Loan") as Label).visible)
+	assert_eq(_saved_text(), original, "repayment uses the existing save timing")
+
+
+func test_early_payment_keeps_closing_basis_and_the_closed_report_updates() -> void:
+	var main: Node = await _start(false)
+	_fresh_books(60, 200)
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	hud.loan_repayment_requested.emit(60, false)
+	assert_eq(Economy.cash, 0)
+	assert_eq(Economy.loan.principal, 140)
+	Economy.add_cash(_closing_cost(main) + 100, Ledger.SALE)
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	var books: Dictionary = Economy.ledger.to_dict()
+	hud.loan_repayment_requested.emit(40, false)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.loan.principal, 140)
+	Clock.sim.advance()
+	assert_eq(Clock.sim.phase, SimClock.Phase.LAST_ORDERS)
+	hud.loan_repayment_requested.emit(40, false)
+	assert_eq(Economy.ledger.to_dict(), books)
+	assert_eq(Economy.loan.principal, 140)
+	main.call("run_ticks", 2)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var report: DayReport = main.get("shown_report") as DayReport
+	var expected_owner: OwnerProgress = OwnerProgress.new(PROGRESSION)
+	var award: Dictionary = expected_owner.award_day(1, 0, 100)
+	assert_eq(report.owner_xp_breakdown["profit_xp"], award["profit_xp"])
+	assert_eq(report.operating_profit(), 100)
+	assert_eq(report.costs.get(Ledger.EARLY_LOAN_REPAYMENT), 60)
+	assert_eq(report.costs.get(Ledger.LOAN_INTEREST), roundi(140.0 * TERMS.daily_interest))
+	assert_eq(report.costs.get(Ledger.LOAN_REPAYMENT), floori(100.0 * TERMS.repay_share))
+	var principal: int = Economy.loan.principal
+	var cash: int = Economy.cash
+	assert_true(principal > 0 and cash > 0)
+	hud.loan_repayment_requested.emit(10, false)
+	assert_eq(Economy.cash, cash - 10)
+	assert_eq(Economy.loan.principal, principal - 10)
+	var updated: DayReport = main.get("shown_report") as DayReport
+	assert_eq(updated.operating_profit(), 100)
+	assert_eq(updated.profit(), report.profit() - 10)
+	assert_eq(updated.costs.get(Ledger.EARLY_LOAN_REPAYMENT), 70)
+	var cost_labels: PackedStringArray = []
+	for row: Node in main.get_node("Overlay/EveningReport").get_node("%CostRows").get_children():
+		var label: Label = row as Label
+		if label != null:
+			cost_labels.append(label.text)
+	assert_true(cost_labels.has("Loan repaid early"))
+	assert_eq(Economy.loan.last_settled_day, 1)
+
+
 func test_optional_tray_lock_reason_preserves_legacy_three_argument_binding() -> void:
 	var main: Node = await _start(false)
 	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
