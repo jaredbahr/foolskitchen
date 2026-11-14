@@ -462,7 +462,7 @@ func _editor() -> ShopEditor:
 
 
 func _forecast() -> String:
-	return (_main.get_node("Overlay/MenuPanel/Panel/Content/WeatherForecast") as Label).text
+	return (_main.get_node("Overlay/MenuPanel").get_node("%WeatherForecast") as Label).text
 
 
 func _checkpoint() -> String:

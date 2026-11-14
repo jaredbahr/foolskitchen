@@ -82,13 +82,16 @@ func test_every_panel_wheel_moves_one_step_from_header_body_and_footer() -> void
 		await _wheel(main, view["body"], MOUSE_BUTTON_WHEEL_UP)
 		assert_eq(top - scroll.scroll_vertical, PanelScroll.WHEEL_STEP, "%s: wheel up is the same step" % panel_name)
 		assert_eq(_values(host), before, "%s: no slider, choice, toggle or text changed" % panel_name)
-		for extra: ScrollContainer in view.get("extra", []) as Array[ScrollContainer]:
-			await _make_room(extra)
-			extra.scroll_vertical = 0
-			var main_at: int = scroll.scroll_vertical
-			await _wheel(main, extra.get_global_rect().get_center(), MOUSE_BUTTON_WHEEL_DOWN)
-			assert_eq(extra.scroll_vertical, PanelScroll.WHEEL_STEP, "%s: its second list keeps the same step" % panel_name)
-			assert_eq(scroll.scroll_vertical, main_at, "%s: only the list under the pointer moves" % panel_name)
+		if panel_name == "menu":
+			var detail: Control = host.get_node("%Detail") as Control
+			# Bring the selected dish back into view before wheeling over it.
+			scroll.scroll_vertical = 0
+			await _frames()
+			var y: float = detail.global_position.y
+			var visible: Rect2 = scroll.get_global_rect().intersection(detail.get_global_rect())
+			await _wheel(main, visible.get_center(), MOUSE_BUTTON_WHEEL_DOWN)
+			assert_eq(scroll.scroll_vertical, PanelScroll.WHEEL_STEP, "the detail sends its wheel to the shared scroll")
+			assert_almost_eq(detail.global_position.y, y - PanelScroll.WHEEL_STEP, 1.0, "the detail moves with the list")
 		await _close(main, panel_name, view)
 		assert_false(host.is_visible_in_tree(), "%s closes from its header" % panel_name)
 	assert_eq(steps.size(), PANELS.size() * 3)
@@ -264,8 +267,7 @@ func _open(main: Node, panel_name: String) -> Dictionary:
 			assert_true(main.call("set_menu_visible", true))
 			var menu: Control = main.get_node("Overlay/MenuPanel") as Control
 			view = {"host": menu, "frame": menu.get_node("Panel"), "header": menu.get_node("Panel/Content/Header/Close"),
-				"body": menu.get_node("Panel/Content/Body/Scroll"), "footer": &"bottom",
-				"extra": [menu.get_node("Panel/Content/Body/DetailScroll")] as Array[ScrollContainer]}
+				"body": menu.get_node("Panel/Content/Body/Scroll"), "footer": &"bottom"}
 		"stock":
 			assert_true(main.call("set_stock_visible", true))
 			var stock: Control = main.get_node("Overlay/StockPanel") as Control
