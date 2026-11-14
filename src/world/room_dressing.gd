@@ -46,6 +46,9 @@ var _lowered_walls: Array[Vector2i] = []
 var _wall_details: Array[Node3D] = []
 var _name_signs: Array[Label3D] = []
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
+## The street's own pavement colour (GroundSkin.pavement), so the shop's entrance
+## pads match the street outside. Fully transparent keeps the shared grey.
+var street_pavement: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 
 func rebuild(world: SimWorld, lowered_wall_cells: Array[Vector2i] = []) -> void:
@@ -283,6 +286,8 @@ func _add_entry_dressing(entries: Array[Vector2i], normal: Vector2i, entrance_in
 		var paving: PropView = _asset(PAVEMENT, tile_name, false, true)
 		if paving == null:
 			continue
+		if street_pavement.a > 0.0:
+			paving.set_body_tint(street_pavement)
 		var bounds: AABB = paving.get_combined_aabb()
 		paving.rotation.y = atan2(-outward.x, -outward.z)
 		paving.position = center + tangent * ((float(index) - float(entries.size() - 1) * 0.5) * bounds.size.x) \
