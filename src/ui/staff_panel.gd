@@ -10,6 +10,8 @@ signal tray_requested(level: int)
 signal close_requested()
 signal job_priority_requested(id: StringName, job: StringName, value: int)
 signal owner_look_requested()
+## Send an employee to another of the owner's restaurants (#473).
+signal transfer_requested(id: StringName, site: StringName)
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
@@ -19,6 +21,17 @@ const PRIORITY_CYCLE: Array[int] = [StaffJobPriorities.Level.HIGH, StaffJobPrior
 ## Jobs a role can't do sit flat on the panel: a faint outline and a faded dash.
 const LOCKED_BORDER_ALPHA: float = 0.35
 const LOCKED_TEXT_ALPHA: float = 0.45
+const SEND_TO: String = "Send to…"
+const SEND_TO_HINT: String = "Move this person to another of your restaurants. No fee; they keep their skills and pay."
+
+
+## One of the owner's other restaurants, for "Send to…" (main supplies them).
+class TransferSite:
+	extends RefCounted
+	var id: StringName = &""
+	var name: String = ""
+	## That site's roster, detached: read for the refusal only.
+	var roster: StaffRoster = null
 
 var _roster: StaffRoster
 var _phase: int = SimClock.Phase.MORNING
@@ -41,6 +54,7 @@ var _priority_names: Dictionary[StringName, Label] = {}
 var _priority_buttons: Dictionary[StringName, Dictionary] = {}
 var _owner_name: String = OwnerAppearance.DEFAULT_NAME
 var _team_activity: Dictionary = {}
+var _transfer_sites: Array[TransferSite] = []
 
 
 func _ready() -> void:
@@ -101,6 +115,27 @@ func set_morning(day: int, notices: Array[Dictionary]) -> void:
 		if notice.get("message") is String:
 			_morning_notices.append({"message": String(notice["message"])})
 	refresh()
+
+
+## The owner's other sites; none hides "Send to…". Main refreshes it when the
+## panel opens, each morning and after a transfer.
+func set_transfer_sites(sites: Array[TransferSite]) -> void:
+	_transfer_sites = sites.duplicate()
+	refresh()
+
+
+## Player words for a refused transfer (the one place they live).
+static func transfer_refusal_text(refusal: StaffTransfer.Refusal) -> String:
+	match refusal:
+		StaffTransfer.Refusal.NONE:
+			return ""
+		StaffTransfer.Refusal.LAST_OF_ROLE:
+			return "Keep at least one cook and one server here."
+		StaffTransfer.Refusal.HAS_MANAGER:
+			return "already has a manager"
+		StaffTransfer.Refusal.FULL:
+			return "team is full"
+	return "can't take them"
 
 
 func set_trays(level: int, prices: PackedInt32Array, cash: int, loan_lock_reason: String = "") -> void:
@@ -185,6 +220,7 @@ func refresh() -> void:
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_let_go(member.id)
 		button.tooltip_text = MORNING_HINT if not editable else ("Keep at least one cook and one server." if button.disabled else "Let this person go before today's service.")
+		_refresh_transfer(_rows[member.id].get_node("Top/Transfer") as MenuButton, member.id, editable)
 	for member: StaffMember in _roster.candidates():
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_hire(member.id)
@@ -448,6 +484,18 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.pressed.connect(_on_request.bind(member.id, candidate))
 	top.add_child(button)
+	if not candidate:
+		var transfer: MenuButton = MenuButton.new()
+		transfer.name = "Transfer"
+		transfer.text = SEND_TO
+		transfer.flat = false
+		transfer.theme = SHARED_THEME
+		transfer.focus_mode = Control.FOCUS_NONE
+		transfer.mouse_filter = Control.MOUSE_FILTER_STOP
+		transfer.visible = false
+		transfer.get_popup().theme = SHARED_THEME
+		transfer.get_popup().id_pressed.connect(_on_transfer_picked.bind(member.id))
+		top.add_child(transfer)
 	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
 	var detail: Label = Label.new()
 	detail.name = "Trait"
@@ -608,6 +656,31 @@ func _on_request(id: StringName, hiring: bool) -> void:
 		hire_requested.emit(id)
 	elif not hiring and _roster.can_let_go(id):
 		let_go_requested.emit(id)
+	refresh()
+
+
+## One item per other site: its name, or "Name: why not" and disabled. A
+## last cook or server disables the whole button, as Let go does.
+func _refresh_transfer(transfer: MenuButton, id: StringName, editable: bool) -> void:
+	transfer.visible = not _transfer_sites.is_empty()
+	var stays: String = transfer_refusal_text(StaffTransfer.Refusal.LAST_OF_ROLE)
+	transfer.disabled = not editable or not _roster.can_let_go(id)
+	transfer.tooltip_text = MORNING_HINT if not editable else (stays if transfer.disabled else SEND_TO_HINT)
+	var popup: PopupMenu = transfer.get_popup()
+	popup.clear()
+	for index: int in range(_transfer_sites.size()):
+		var site: TransferSite = _transfer_sites[index]
+		var reason: String = transfer_refusal_text(StaffTransfer.refusal(_roster, id, site.roster))
+		popup.add_item(site.name if reason.is_empty() else "%s (%s)" % [site.name, reason], index)
+		popup.set_item_disabled(popup.get_item_index(index), not reason.is_empty())
+
+
+func _on_transfer_picked(index: int, id: StringName) -> void:
+	if _phase != SimClock.Phase.MORNING or _roster == null or index < 0 or index >= _transfer_sites.size():
+		return
+	var site: TransferSite = _transfer_sites[index]
+	if StaffTransfer.refusal(_roster, id, site.roster) == StaffTransfer.Refusal.NONE:
+		transfer_requested.emit(id, site.id)
 	refresh()
 
 
