@@ -168,30 +168,69 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 	# An armed Throw out ("Click again") must not widen the panel either.
 	(_panel.row_for(&"beef_patty")["throw"] as Button).pressed.emit()
 	assert_eq((_panel.row_for(&"beef_patty")["throw"] as Button).text, "Click again")
-	for scale: float in [1.0, 1.5]:
-		window.content_scale_factor = scale
+	for dimensions: Vector2i in [Vector2i(1600, 900), Vector2i(1067, 600), Vector2i(853, 480)]:
+		window.size = dimensions
+		window.content_scale_size = dimensions
 		for frame: int in range(4):
 			await tree.process_frame
 		var visible: Rect2 = window.get_visible_rect()
-		var panel: Control = _panel.get_node("Panel") as Control
+		var panel: ScrollContainer = _panel.get_node("Panel") as ScrollContainer
 		var rect: Rect2 = panel.get_global_rect()
-		assert_almost_eq(rect.size.x, 720.0, 0.5, "content never widens the panel at %d%%" % roundi(scale * 100))
-		assert_true(visible.grow(0.5).encloses(rect), "the panel stays on screen at %d%%: %s in %s" % [roundi(scale * 100), rect, visible])
+		assert_almost_eq(rect.size.x, minf(visible.size.x - 2.0 * StockPanel.PANEL_SIDE_MARGIN,
+			StockPanel.PANEL_MAX_WIDTH), 0.5, "content never widens the panel at %s" % dimensions)
+		assert_true(visible.grow(0.5).encloses(rect), "the panel stays on screen at %s: %s in %s" % [dimensions, rect, visible])
 		for path: String in ["%Close", "%Order", "%Cancel", "%Clear", "%Haggle", "%HaggleResult", "%DeliveryBar"]:
 			var control: Control = _panel.get_node(path) as Control
-			assert_true(rect.grow(0.5).encloses(control.get_global_rect()), "%s stays reachable" % path)
+			panel.ensure_control_visible(control)
+			await tree.process_frame
+			assert_true(rect.grow(0.5).encloses(control.get_global_rect()), "%s stays reachable at %s" % [path, dimensions])
 		var scroll: Control = _panel.get_node("Panel/Content/Scroll") as Control
-		assert_true(scroll.size.y > 100.0, "rows keep a scrolling area at %d%%" % roundi(scale * 100))
+		assert_true(scroll.size.y >= 100.0, "rows keep a scrolling area at %s" % dimensions)
+		var bar_end: float = (_panel.get_node("%DeliveryBar") as Control).get_global_rect().end.x
+		var rows_end: float = (_panel.get_node("%Rows") as Control).get_global_rect().end.x
+		assert_almost_eq(bar_end, rows_end, 1.0, "the delivery bar ends with the ingredient rows at %s" % dimensions)
 		for data: Dictionary in _rows():
 			var row: Dictionary = _panel.row_for(data["id"])
+			var line: Rect2 = (row["root"] as Control).get_node("Line").get_global_rect()
+			panel.scroll_vertical = 0
 			for key: String in ["identity", "name", "season", "count", "price", "cart-1", "cart", "cart+1", "cart+5", "throw", "auto", "minus", "target", "plus"]:
 				var control: Control = row[key]
 				assert_true(control.size.x >= control.get_combined_minimum_size().x - 0.5,
 					"%s %s keeps its full content" % [data["id"], key])
 				var inside: Rect2 = control.get_global_rect()
-				assert_true(inside.position.x >= rect.position.x - 0.5 and inside.end.x <= rect.end.x + 0.5,
-					"%s %s stays inside the panel width" % [data["id"], key])
+				assert_true(inside.position.x >= scroll.global_position.x - 0.5 and inside.end.x <= scroll.get_global_rect().end.x + 0.5,
+					"%s %s stays inside the list width at %s" % [data["id"], key, dimensions])
+				if control.visible:
+					assert_true(line.grow(0.5).encloses(inside), "%s %s stays in its ingredient line" % [data["id"], key])
 
+
+
+func test_all_authored_ingredients_take_less_than_ten_wheel_notches() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	_host = SubViewport.new()
+	_host.size = Vector2i(1600, 900)
+	tree.root.add_child(_host)
+	_host.add_child(_panel)
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var view: Dictionary = _view(300, true)
+	var rows: Array[Dictionary] = []
+	for ingredient: IngredientDef in content.ingredients():
+		rows.append({"id": ingredient.id, "name": ingredient.display_name, "count": 10,
+			"unit_cost": ingredient.unit_cost, "enabled": true, "target": 20, "kind": ingredient.storage,
+			"in_use": true, "expiring": 3, "on_order": 5, "season_tag": "Pricey this season"})
+	view["rows"] = rows
+	view["groups"].append({"kind": StorageSpace.FREEZER, "label": "Freezer", "capacity": 100})
+	_panel.set_view(view)
+	_panel.show()
+	for frame: int in range(4):
+		await tree.process_frame
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	var bar: VScrollBar = scroll.get_v_scroll_bar()
+	var travel: float = bar.max_value - bar.page
+	assert_true(travel > 0.0, "the catalogue requires scrolling")
+	assert_true(ceili(travel / PanelScroll.WHEEL_STEP) < 10,
+		"all %d ingredients fit in %d notches" % [rows.size(), ceili(travel / PanelScroll.WHEEL_STEP)])
 
 func _on_cart(id: StringName, qty: int) -> void:
 	_requests.append(["cart", id, qty])
