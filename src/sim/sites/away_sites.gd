@@ -13,10 +13,10 @@ extends RefCounted
 ##   min() then takes the whole mean (a manager never does better than the
 ##   owner did in person, on a bad run as on a good one).
 ## - A managed site with no recorded day yet has nothing to go on: it stays
-##   closed and pays its rent (away days never build history, so it would
-##   otherwise never pay any).
-## - A site without one stays closed and pays only its rent: its lot's
-##   `daily_rent`, or `expanded_daily_rent` once its own lease is expanded
+##   closed and pays its rent and wages. Away days never build history.
+## - A site without a manager also stays closed and pays both: the saved
+##   roster's daily wages and its lot's `daily_rent`, or
+##   `expanded_daily_rent` once its own lease is expanded
 ##   (#465). Rent runs from the day a lot is bought (Jared, 2026-11-13), so a
 ##   site still renovating pays it too and cannot be managed (it cannot open).
 ##   A lot missing from the game's data is charged nothing, with a warning.
@@ -30,6 +30,7 @@ const CLOSED: StringName = &"closed"
 const UNKNOWN_RENT: int = -1
 const INCOME_NOTE: String = "Earned by the manager while you were away"
 const RENT_NOTE: String = "Rent while the restaurant was closed"
+const WAGES_NOTE: String = "Wages while the restaurant was closed"
 
 
 ## The away earnings for one site: min(rate * mean, mean) of its last
@@ -88,6 +89,15 @@ static func manager_skill(staff: Dictionary, member_id: StringName) -> int:
 	return 0
 
 
+## Old saves without a staff section owe nothing until they have a roster
+## on file. A valid roster supplies the wages of hired staff on full-day terms.
+static func _closed_wages(staff: Dictionary) -> int:
+	if staff.is_empty():
+		return 0
+	var roster: StaffRoster = StaffRoster.new()
+	return roster.total_wages() if roster.from_dict(staff) else 0
+
+
 ## The Manager on a saved staff section who should run that site: the
 ## highest skill, ties broken by the smaller id; &"" when there is none
 ## (FK-087, #473). Deterministic, no RNG.
@@ -144,6 +154,7 @@ static func lapse_booking(section: Dictionary, day: int, tuning: BookingTuning) 
 ## One entry per inactive site, in SiteBook order:
 ## {"site": StringName, "status": MANAGED or CLOSED, "amount": int (signed
 ## earnings, or minus the rent; 0 for an unknown rent), "rent_known": bool,
+## "wages": int (whole-day wages for a closed site, otherwise 0),
 ## "refund": int (a lapsed booking's deposit, else 0), "bookings": Dictionary
 ## (the rewritten section; only when a booking lapsed), "movements":
 ## Array[Dictionary] of {"amount", "category", "note"} for Economy}.
@@ -160,7 +171,7 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 			continue
 		var sections: Dictionary = book.frozen_sections(id)
 		var plan: Dictionary = {"site": id, "status": CLOSED, "amount": 0, "rent_known": true,
-			"refund": 0, "movements": [] as Array[Dictionary]}
+			"refund": 0, "wages": 0, "movements": [] as Array[Dictionary]}
 		var movements: Array[Dictionary] = plan["movements"]
 		var staff: Dictionary = sections.get("staff", {}) if sections.get("staff") is Dictionary else {}
 		var skill: int = manager_skill(staff, book.manager(id)) \
@@ -168,7 +179,7 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 		var history: Dictionary = sections.get("business_history", {}) \
 			if sections.get("business_history") is Dictionary else {}
 		if skill > 0 and recorded_days(history) == 0:
-			# Nothing to go on: the manager keeps it closed, and it pays rent.
+			# Nothing to go on: the manager keeps it closed.
 			plan["no_history"] = true
 			skill = 0
 		if skill > 0:
@@ -186,6 +197,10 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 				plan["amount"] = -rent
 				if rent > 0:
 					movements.append({"amount": -rent, "category": Ledger.AWAY_SITE_RENT, "note": RENT_NOTE})
+			var wages: int = _closed_wages(staff)
+			plan["wages"] = wages
+			if wages > 0:
+				movements.append({"amount": -wages, "category": Ledger.AWAY_SITE_WAGES, "note": WAGES_NOTE})
 		if sections.get("bookings") is Dictionary:
 			var lapsed: Dictionary = lapse_booking(sections["bookings"], day, booking_tuning)
 			if not lapsed.is_empty():
@@ -220,7 +235,7 @@ static func display_name(book: SiteBook, id: StringName) -> String:
 
 
 ## One evening report line for a plan: "Pier Shack (managed): +$84",
-## "Pier Shack (closed): rent -$40".
+## "Pier Shack (closed): rent -$40; wages -$55".
 static func report_line(name: String, plan: Dictionary) -> String:
 	var amount: int = int(plan.get("amount", 0))
 	var line: String
@@ -232,6 +247,9 @@ static func report_line(name: String, plan: Dictionary) -> String:
 		var closed: String = "closed until you run it for a day" \
 			if bool(plan.get("no_history", false)) else "closed"
 		line = "%s (%s): rent %s" % [name, closed, _signed_money(amount) if amount != 0 else "$0"]
+	var wages: int = int(plan.get("wages", 0))
+	if wages > 0:
+		line += "; wages %s" % _signed_money(-wages)
 	var refund: int = int(plan.get("refund", 0))
 	if refund > 0:
 		line += "; a group booking there was refunded (%s)" % _signed_money(-refund)
