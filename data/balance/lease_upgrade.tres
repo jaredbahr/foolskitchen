@@ -4,7 +4,6 @@
 
 [resource]
 script = ExtResource("1")
-owner_level = 3
 deposit = 300
 daily_rent = 60
 extra_west = 0

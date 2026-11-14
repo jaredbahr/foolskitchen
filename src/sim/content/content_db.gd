@@ -363,7 +363,7 @@ static func validate_lots(definitions: Array[LotDef], item_defs: Array[ItemDef],
 				or definition.expansion_west + definition.expansion_east + definition.expansion_north <= 0:
 			errors.append("%s: the expansion must add 0 to %d cells on each side, and some on one" \
 				% [who, LotDef.MAX_EXPANSION_CELLS])
-		elif not definition.lease_upgrade(null).is_valid():
+		elif not definition.lease_upgrade().is_valid():
 			errors.append("%s: the expansion is not a valid lease" % who)
 		if definition.min_tier < 1 or definition.min_tier > CareerTierTuning.TOP_TIER:
 			errors.append("%s: min_tier must be 1 to %d" % [who, CareerTierTuning.TOP_TIER])

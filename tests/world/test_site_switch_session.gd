@@ -461,7 +461,7 @@ func _default_hours() -> Vector3i:
 func test_each_site_keeps_its_own_hours_and_lease() -> void:
 	_start()
 	var progress: OwnerProgress = _main.get("owner_progress")
-	progress.award_bonus(progress.threshold_for(LEASE.owner_level))
+	progress.award_bonus(progress.threshold_for(CAREER.rung_for(2).min_level))
 	assert_eq(progress.raise_career_tier(CAREER, 3.0), 2)
 	# A morning at the new level first, so each morning's plans (critic,
 	# bookings) are already made when the sites are compared.
