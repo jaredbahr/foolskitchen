@@ -3931,6 +3931,41 @@ saved in the report only when present): "Pier Shack (managed): +$84",
 "Pier Shack (closed): rent -$40". A one-site game adds no save field and
 books nothing here.
 
+**Staff transfer (#473, part 5).** In the morning (`can_edit_staff`, so
+never mid-service), the Staff panel's "Send to…" `MenuButton` on an
+employee lists the owner's other sites (renovating ones included: a crew can
+be ready for the opening day). `StaffTransfer` (`src/sim/staff`, pure) has
+the rules, in order: an unknown person (`UNKNOWN`), the departing site's last
+cook or server (`LAST_OF_ROLE`, `StaffRoster.can_let_go`, the same rule as
+letting go), a Manager to a site that already has a running manager
+(`HAS_MANAGER`: its book row names a Manager on its own staff,
+`AwaySites.manager_skill > 0`, the same test `plan_close` uses; a Manager
+on the staff whom the row does not name does not block one), a full
+destination (`FULL`,
+`StaffRoster.CAPACITY`). `StaffTransfer.move` takes the person out with
+`let_go` and into the destination with `StaffRoster.accept_transfer`, as they
+are: skill, trait, wage, growth (mood, XP, raise history, quit day), job
+priorities and lifetime work. Ids are unique only within one roster, so an id
+already used at the destination (by an employee or a candidate) becomes
+`<id>_2`, `<id>_3`... `main.gd` `staff_transfer(id, target)` reads the
+target's frozen `staff` section (or the starter team a copy without one would
+load), moves the person, reinstalls the live roster (the agent leaves at
+once) and writes the destination back with `SiteBook.set_frozen_section`
+(frozen day kept). A Manager who moves becomes the destination's manager on
+its book row, so it earns while the owner is away; the departing site's row
+clears through `_prune_site_manager`. A Manager hired at a site runs it once the
+owner leaves: `switch_site`, past its last refusal, calls
+`_adopt_site_manager` on the departing site, which, when its row names no
+valid manager, sets the row to `AwaySites.best_manager` of its staff
+(highest skill, ties to the smaller id; deterministic). The morning site card
+then shows them. A refused transfer is logged ("Could not send them to …"). No ledger entry (no fee, no
+severance), no RNG and no save: the next morning autosave, or the switch's,
+writes both sites. Wages are unchanged: the person is paid at a site's close
+only while that site is active, as for any frozen roster. The panel words
+the refusals in `StaffPanel.transfer_refusal_text` ("Second (already has a
+manager)", "Second (team is full)" on a disabled item; a last cook or server
+disables the button with "Keep at least one cook and one server here.").
+
 **Ledger.** Each ledger entry records the site that made it (an id; entries
 from saves before part 1 belong to the home site). The day report, business
 history, records and XP read only the active site's entries for the day, so a
@@ -3991,5 +4026,5 @@ pool table, neon). Staff that add prestige (sommelier, pianist) come later.
 Golden Ladles (0 to 3) come from data thresholds and are awarded only on a
 good critic review, kept per site in `critic`.
 
-**Later parts.** Staff transfer and moving furniture between sites (part 5),
+**Later parts.** Moving furniture between sites (part 5; staff transfer is built, #473),
 bar gambling income (part 7), upstairs (part 8).
