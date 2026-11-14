@@ -157,3 +157,6 @@ tank's swim box). Deterministic: no random draws. No textures, light nodes or ba
   `colormap.png` swatch (neon blue, red and white; orange; yellow; purple with
   a pink tail). The GLBs reference that file by relative path; nothing is copied.
   Origin at the centre of the whole fish, facing -Z.
+
+## UI control icons (#498)
+`ui/*.png` (switch on/off, slider handle, dropdown arrow, menu radio dots) are drawn by `tools/make_ui_controls.py` in the theme palette: rounded, outlined in the ink colour, no gradients. Re-run the script to regenerate.
