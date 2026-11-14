@@ -146,7 +146,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-codes --blueprints=ghost --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/report-slowest --report-slowest --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/daily-special --scene=res://tools/daily_special_review.tscn --speed=0 --frames=30,120
-          bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --report --open --fast=1 --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/profit-review --scene=res://tools/profit_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/demand-report --scene=res://tools/demand_report_review.tscn --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/staff-activity-report --scene=res://tools/staff_activity_review.tscn --speed=0 --frames=60
           SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/business-trend --scene=res://tools/business_trend_review.tscn --speed=0 --frames=60
