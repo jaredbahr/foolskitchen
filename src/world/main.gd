@@ -2965,22 +2965,32 @@ func build_report(day: int) -> DayReport:
 	return report
 
 
+## Runs once, from start(), on a Main the scene has just built: New game and
+## F10 reload the scene, so every field of Main and of the new sim already has
+## its declared value (#526, tests/world/test_new_game_clean.gd). It therefore
+## resets only:
+##   - what outlives the scene: GameMode, Clock, GameState and Economy;
+##   - what a refused load left behind: the staged `_loaded_*` sections, and
+##     the owner and hints, which a load restores straight onto the session;
+##   - what a new game sets differently from the declared value, or builds
+##     from something a fixture may have replaced (the starter layout, the
+##     viral tuning, the goal chains, the service events, the first roster).
+## A new system does not need a line here unless it is one of those.
+##
+## Three session tests (haggle, shop records, menu access) call this on a Main
+## that has already played, to stand in for a new game. The haggle reset, the
+## fresh ShopRecords and the three `_menu_access_*` lines are here only for
+## them; they can go when those tests start a new game by the real route.
 func _new_game() -> void:
 	# Career or Creative, as the title asked (FK-141). Creative later also
 	# needs: choosing any lot and neighbourhood (TODO #405), and saving a
 	# design as a blueprint to place in career (TODO #432).
 	GameMode.begin_new_game()
-	_shown_collection_toast_ids.clear()
-	_pending_collection_toast_ids.clear()
 	_loaded_collection_toast_ids.clear()
 	_has_loaded_collection_toast_section = false
 	$HUD.clear_collection_toasts()
 	_reset_haggle()
 	_base_layout = _starter_layout()
-	group_booking = GroupBooking.new(BOOKING_TUNING)
-	_booking_paid_total = 0
-	if sim != null:
-		sim.configure_booking(group_booking)
 	_loaded_cat = {}
 	_loaded_inspection = {}
 	_loaded_critic = {}
@@ -2988,25 +2998,14 @@ func _new_game() -> void:
 	sim.rush_hour = RushHour.new(RUSH_TUNING)
 	_loaded_rush_hour = {}
 	_loaded_aquarium = {}
-	site_book = SiteBook.new()
 	_loaded_sites = null
-	business_history = BusinessHistory.new()
 	_loaded_business_history = null
 	shop_records = ShopRecords.new()
 	_loaded_shop_records = null
-	_record_notice_day = 0
-	_record_notices.clear()
-	curb_appeal_score = 0.0
-	curb_appeal_factor = 1.0
-	_last_team_activity.clear()
 	hints.restart()
-	demand_state = DemandState.new()
 	_loaded_demand = null
 	viral_review = ViralReview.new(viral_tuning)
 	_loaded_viral = null
-	_demand_breakdown = null
-	_demand_day = 0
-	regulars = RegularCast.new()
 	_loaded_regulars = null
 	owner_appearance = OwnerAppearance.new()
 	_sync_owner_appearance()
@@ -3014,7 +3013,6 @@ func _new_game() -> void:
 	_menu_access_day = 0
 	_menu_access_error = ""
 	$HUD.set_menu_notice("")
-	blueprint_library = BlueprintLibrary.new()
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
 	# A fresh clock and seed too, so a half-loaded save can't leave its day
@@ -3022,66 +3020,32 @@ func _new_game() -> void:
 	Clock.sim = SimClock.new()
 	GameState.new_run(new_game_seed_override if new_game_seed_override != 0
 		else int(Time.get_unix_time_from_system()))
-	world.weather = WeatherState.new()
 	Economy.reset(TUNING.starting_cash)
 	_loaded_layout = null
 	_owner_preferences.reset()
 	owner_progress = OwnerProgress.new(PROGRESSION_TUNING)
-	milestones = MilestoneTracker.new()
 	_loaded_milestones = null
-	weekly_challenge = WeeklyChallengeState.new()
 	_loaded_weekly_challenge = null
 	service_events = _new_service_events()
 	_loaded_service_events = null
 	# Every new career game gets the goal chains; Creative has no money goals.
 	opening_week = OpeningWeek.ended() if GameMode.is_creative() else OpeningWeek.starting(goal_chains)
 	_loaded_opening_week = null
-	_opening_baseline.clear()
-	_last_open_counts.clear()
-	_milestones_reached_today.clear()
-	_milestone_award_day = 0
-	_milestone_xp_today = 0
-	_weekly_challenge_reward_day = 0
-	_weekly_challenge_report_line = ""
 	_dismiss_goals()
 	_dismiss_property()
-	_owner_award_today.clear()
-	_owner_unlocks_today.clear()
-	_owner_tips_today.clear()
-	_owner_award_day = 0
-	_career_tier_day = 0
-	_career_tier_reached = 0
-	_away_site_day = 0
-	_away_site_lines.clear()
-	_closed_report_day = 0
-	_loan_notice_day = 0
 	sim.assign_owner(&"rest")
 	_loaded_menu = null
 	_loaded_daily_special = null
-	daily_special = DailySpecial.new()
 	_loaded_signature = null
-	if signature_state != null:
-		signature_state.clear()
-	sim.effective_signature_recipe_id = &""
 	_loaded_staff = null
 	_loaded_reputation = null
-	reputation = ReputationBook.new()
 	_loaded_tray_level = 0
 	_loaded_lease_expanded = false
 	_loaded_site_hours = {}
-	tray_level = 0
-	lease_expanded = false
 	_loaded_reorder = null
-	reorder_settings = ReorderSettings.new(TUNING)
 	_loaded_deliveries = null
 	_loaded_weather = null
-	deliveries = DeliveryBook.new()
-	stock_cart.clear()
-	_last_delivery.clear()
-	sim.carry_capacity = 1
 	staff_roster = StaffRoster.new(TUNING)
-	_staff_notice_day = 0
-	_staff_notices.clear()
 	if not sim.set_staff_roster(staff_roster.members()):
 		push_error("Cannot install the new game's starting staff roster")
 	_staff_panel.bind_roster(staff_roster)
