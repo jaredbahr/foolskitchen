@@ -370,7 +370,7 @@ func test_room_readout_shows_vibe_and_theme() -> void:
 	result.active_theme = &""
 	_catalogue.set_vibe(result)
 	assert_eq(_catalogue.theme_label.text, "No theme yet")
-	assert_eq(_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter"), _catalogue.vibe_meter)
+	assert_eq(_catalogue.get_node("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter"), _catalogue.vibe_meter)
 
 
 func _on_mode(mode: StringName) -> void:

@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Keep large cash balances on one HUD row and show the full amount on hover. (#522)
+- In the Build and Buy catalogue, the top rows stay put: Build/Buy, the tools, the room tabs, the vibe readout and the filters no longer scroll away. Only the item cards scroll, and only up and down. (#524)
 - Service events have sharper choices. "Double or nothing" bets a guest's bill on your kitchen's speed, "Flyers for hire" costs money today for more guests over the next days, "A guest with opinions" makes you pick between the guest and your worker, and seating the food blogger brings their review back a few days later. "Can I leave early?" is back, and "Off you go" really sends the worker home: they finish what they're carrying, walk out, are still paid, and are back (happier) the next morning. It only asks about someone a teammate can cover for. (#523)
 - Weekly challenges now use your shop’s recent service results. Serving targets fit your seating, and shops still turning guests away at the door get other goals to work toward. (#509)
 - Guests who leave before getting a table no longer leave a review. Their walkouts still appear in the evening report. (#508)
@@ -31,6 +32,7 @@ Each line ends with its PR number.
 - Staff at your other restaurants still draw their wages when those restaurants stay closed. Their wages appear next to their rent in the evening report. (#512)
 - Click the loan amount in the top bar to repay some or all of your debt before opening or after closing. (#462)
 - On desktop, press F12 to save a photo of your shop without the interface, or Shift+F12 to hide the interface while you frame a shot. (#475)
+- Settings can pause service when a dish sells out, the health inspector arrives or a guest leaves angry. (#478)
 - Menu shows the price estimate only after a dish unlocks. (#469)
 - From Tier 3, a Property button in the morning Menu opens the property market: three lots for a second restaurant (a big fixer-upper in town, a seaside cliff with fresh catch and a skyscraper rooftop bar), cheapest first, each with its price, size, rent, what expanding it would cost, its usual guests and perks, and what it still needs if it is locked. It is for browsing and saving up: the Buy button says "Coming soon". (#470)
 - Desktop photo shortcuts wait until you've answered the morning restaurant choice or the prompt after buying a lot. (#483)
