@@ -4314,7 +4314,9 @@ func _report_capture_valid(world: SimWorld) -> bool:
 	if rows == null or rows.get_child_count() < 2 or scroll == null or scroll.scroll_vertical != 0:
 		return false
 	var viewport: Rect2 = scroll.get_global_rect()
-	for index: int in range(mini(report.review_cards.size(), 3)):
+	# The report's title bar with Close stays fixed above the scroll (#497),
+	# so the unscrolled view is shorter: the first two cards must show in it.
+	for index: int in range(mini(report.review_cards.size(), 2)):
 		var card: Dictionary = report.review_cards[index]
 		var native: Label = rows.get_child(index) as Label
 		if native == null or String(card.get("quote", "")).is_empty() \
