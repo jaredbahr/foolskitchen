@@ -58,9 +58,32 @@ func test_paid_departure_uses_actual_waits_and_price_then_records_once() -> void
 	assert_eq(_book.scores().size(), 6)
 
 
-func test_unserved_departure_scores_one_but_closing_never_draws() -> void:
-	var unserved: CustomerAgent = _guest()
-	unserved.leave_reason = &"no_table"
+func test_pre_seating_walkouts_count_as_losses_without_reviews_or_draws() -> void:
+	var state: int = _review_rng.state
+	for reason: StringName in [&"no_table", &"waited_too_long", &"no_way_through"]:
+		var guest: CustomerAgent = _guest()
+		guest.leave_reason = reason
+		_sim.record_departure(guest)
+		assert_eq(_sim.leave_reasons_today.get(reason), 1)
+	assert_eq(_sim.lost_today, 3)
+	assert_eq(_book.scores(), [3, 3, 3, 3, 3])
+	assert_eq(_sim.reviews_today.size(), 0)
+	assert_eq(_events.size(), 0)
+	assert_eq(_review_rng.state, state)
+
+
+func test_a_reserved_seat_is_not_a_completed_seating() -> void:
+	var guest: CustomerAgent = _guest()
+	assert_true(guest._try_seat(_sim.world))
+	assert_ne(guest.seat_cell, SimGrid.NO_CELL)
+	guest.leave_reason = &"no_way_through"
+	_sim.record_departure(guest)
+	assert_eq(_sim.lost_today, 1)
+	assert_eq(_sim.reviews_today.size(), 0)
+
+
+func test_seated_timeout_scores_one_but_closing_never_draws() -> void:
+	var unserved: CustomerAgent = _seated_timeout(_sim)
 	_sim.record_departure(unserved)
 	assert_eq(_sim.reviews_today.size(), 1)
 	assert_eq(_sim.reviews_today[0]["stars"], 1)
@@ -133,7 +156,7 @@ func test_reviews_use_each_guests_arrival_dirt_after_the_floor_changes() -> void
 func test_review_rng_does_not_advance_arrival_or_guest_streams() -> void:
 	var guest_random: RandomNumberGenerator = _random(86013)
 	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], guest_random)
-	guest.leave_reason = &"no_table"
+	_seat_for_timeout(guest, _sim)
 	var arrival_state: int = _sim.rng.state
 	var guest_state: int = guest_random.state
 	var review_state: int = _review_rng.state
@@ -144,8 +167,7 @@ func test_review_rng_does_not_advance_arrival_or_guest_streams() -> void:
 
 
 func test_same_named_seed_replays_the_departure_row() -> void:
-	var first: CustomerAgent = _guest()
-	first.leave_reason = &"no_table"
+	var first: CustomerAgent = _seated_timeout(_sim)
 	_sim.record_departure(first)
 	var expected: Dictionary = _sim.reviews_today[0].duplicate()
 	var content: ContentDB = ContentDB.new()
@@ -157,14 +179,13 @@ func test_same_named_seed_replays_the_departure_row() -> void:
 	certain.review_chance = 1.0
 	replay.configure_reviews(ReputationBook.new(), certain, QUOTES, _random(86012))
 	var repeated: CustomerAgent = replay.add_customer(replay.world.grid.entries()[0], _random(86016))
-	repeated.leave_reason = &"no_table"
+	_seat_for_timeout(repeated, replay)
 	replay.record_departure(repeated)
 	assert_eq(replay.reviews_today, [expected] as Array[Dictionary])
 
 
 func test_start_day_resets_rows_and_snapshots_persistent_reputation() -> void:
-	var guest: CustomerAgent = _guest()
-	guest.leave_reason = &"no_table"
+	var guest: CustomerAgent = _seated_timeout(_sim)
 	_sim.record_departure(guest)
 	var first_quote: String = _sim.reviews_today[0]["quote"]
 	assert_almost_eq(_book.average(), 16.0 / 6.0)
@@ -174,8 +195,7 @@ func test_start_day_resets_rows_and_snapshots_persistent_reputation() -> void:
 	assert_eq(_book.scores().size(), 6)
 	assert_eq(_events.size(), 1)
 	_review_rng.seed = 86012
-	var next_guest: CustomerAgent = _guest()
-	next_guest.leave_reason = &"no_table"
+	var next_guest: CustomerAgent = _seated_timeout(_sim)
 	_sim.record_departure(next_guest)
 	assert_eq(_sim.reviews_today[0]["quote"], first_quote,
 		"the new day can draw the same quote from its fresh group")
@@ -197,6 +217,21 @@ func test_unconfigured_sim_keeps_departure_counts_without_review_draws() -> void
 
 func _guest() -> CustomerAgent:
 	return _sim.add_customer(_sim.world.grid.entries()[0], _random(86016))
+
+
+func _seated_timeout(sim: RestaurantSim) -> CustomerAgent:
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _random(86016))
+	_seat_for_timeout(guest, sim)
+	return guest
+
+
+func _seat_for_timeout(guest: CustomerAgent, sim: RestaurantSim) -> void:
+	assert_true(guest._try_seat(sim.world))
+	var entry: Vector2i = guest.cell
+	guest.cell = guest.seat_cell
+	guest.sit_down(sim.world, sim)
+	guest.cell = entry
+	guest._leave(sim.world, sim, &"waited_too_long")
 
 
 func _random(seed: int) -> RandomNumberGenerator:

@@ -363,6 +363,9 @@ func test_only_a_critic_who_sat_and_ordered_writes_the_review() -> void:
 	for reason: StringName in [&"waited_too_long", &"kitchen_failed"]:
 		var sim2: RestaurantSim = _sim(62)
 		var waited: CustomerAgent = _seated_critic(sim2)
+		assert_true(waited._try_seat(sim2.world))
+		waited.cell = waited.seat_cell
+		waited.sit_down(sim2.world, sim2)
 		_ordered(waited, sim2)
 		waited.leave_reason = reason
 		sim2.record_departure(waited)
