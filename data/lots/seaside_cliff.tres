@@ -9,6 +9,7 @@ id = &"seaside_cliff"
 display_name = "Seaside Cliff"
 blurb = "A white cottage on the cliff path. Holiday crowds stroll past, and the catch comes in fresh each morning."
 base_layout = ExtResource("2_layout")
+street_preset = "res://data/streets/seaside.tres"
 price = 18000
 daily_rent = 140
 expansion_price = 9000

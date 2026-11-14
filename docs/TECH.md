@@ -2335,6 +2335,17 @@ follows from the active site's lot. `tests/world/test_street_presets.gd` checks 
 builds a test-only second street (`tests/fixtures/streets/test_alt.tres`) to show that data alone changes the
 building set, palette, props and ground, both directly and after a site switch.
 
+The seaside street (`data/streets/seaside.tres`, the Seaside Cliff lot) is the second real preset and needed three
+small additions, all inert for the starter street. `GroundSkin.pavement` tints the near and far pavement and the
+shop's own entrance pads (`RoomDressing.street_pavement`); it is a tint under the warm key light, so a pale greige
+lights up as sandy timber, and a transparent colour (the default) keeps the grey paving. `GroundSkin.plank_seam`
+draws one thin seam every 0.32 m across the pavement (`NeighbourhoodDressing._build_planks`, one flat mesh), and
+`StreetPropSpec.Kind` gained `ROPE_BOLLARD`, `LIFEBUOY`, `CATCH_CRATES` and `BUNTING`, drawn and shadowed by
+`NeighbourhoodFurniture` like the others. Gulls are the existing `birds` with white and grey colours.
+`tools/seaside_street_review.tscn` shows the seaside street on an unsaved first morning
+(`bash tools/screenshot.sh --scene=res://tools/seaside_street_review.tscn --speed=0 --frames=60 [--quarter=N]`;
+`SEASIDE_STREET_ZOOM` and `SEASIDE_STREET_U` give a close-up along the pavement).
+
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
 the other sides and initial focus, yaw, pitch and zoom are unchanged. Frame-time

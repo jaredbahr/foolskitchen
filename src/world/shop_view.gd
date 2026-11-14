@@ -307,6 +307,8 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	room_dressing.name = "RoomDressing"
 	room_dressing.set_restaurant_name(_restaurant_name)
 	room_dressing.set_meta("shop_geometry", true)
+	if street_preset != null and street_preset.ground != null:
+		room_dressing.street_pavement = street_preset.ground.pavement
 	add_child(room_dressing)
 	neighbourhood_dressing = NeighbourhoodDressing.new()
 	neighbourhood_dressing.name = "NeighbourhoodDressing"
