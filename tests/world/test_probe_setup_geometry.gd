@@ -143,8 +143,9 @@ func test_roomier_all_setups_apply_before_service() -> void:
 
 func _assert_all_setups(original: bool) -> void:
 	var profiles: Array[String] = ProbeSetups.names()
-	assert_eq(profiles.size(), 21)
+	assert_eq(profiles.size(), 22)
 	assert_true(profiles.has("opening_week"))
+	assert_true(profiles.has("week_two"))
 	assert_true(profiles.has("coffee_counter"))
 	assert_true(profiles.has("patio"))
 	assert_true(profiles.has("expanded_staffed"))
