@@ -217,7 +217,7 @@ Each line ends with its PR number.
 
 ### Under the hood
 
-- Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#516)
+- Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#517)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - Run visual review captures in two parallel jobs and verify every requested frame. (#479)
 - The screenshot check in CI now has 60 minutes instead of 45: runs were taking up to 44 minutes, so a slow runner cancelled PRs that changed nothing visual. Splitting the job is tracked in #477. (#485)
