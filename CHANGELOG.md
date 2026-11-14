@@ -222,6 +222,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - Run visual review captures in two parallel jobs and verify every requested frame. (#479)
 - The profit review capture no longer fails when its third day closes with level-up and milestone callouts above the reviews, the order-counter capture gets 180 seconds instead of 120 on slow runners, and the staff advice capture stops at the first day from day 2 that recommends a cook instead of needing exactly day 10. (#517)
