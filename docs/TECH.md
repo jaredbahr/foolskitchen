@@ -3184,13 +3184,14 @@ for the single first-morning capture in the existing visual-review job.
 `_observe_opening(condition, value)` and pays each newly met goal at once with
 `Ledger.OPENING_WEEK_BONUS` (non-operating; subtracted from the close's profit
 basis like booking advances). Hooks: `menu_set_price` (a real change),
-`shop_buy`/`shop_hang` of a DECOR item, `_after_edit` and `menu_set_enabled`
-(drinks on the menu), `_on_customer_paid` and owner assignment (served today,
-owner on the floor, only while open or in last orders), opening (Grow together:
-TABLE-category items and hired servers both above the counts `_begin_morning`
-noted, same day and site) and the career business-day close (closing rating,
-then the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
-in the report). The `opening_week` save section (version 1: status, completed
+`_on_customer_paid` and owner assignment (drinks on the menu, served today,
+owner on the floor, only while open or in last orders), and opening: Grow
+together (TABLE-category items and hired servers both above the counts
+`_begin_morning` noted, same day and site), decor (DECOR items plus hung wall
+decor above the count at the last opening, same site) and drinks. Checking
+these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks the closing rating,
+then adds the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
+in the report. The `opening_week` save section (version 1: status, completed
 ids, pending XP) joins only the morning autosave; a missing section means a
 save from before the chain, which joins only on day 7 or earlier.
 `_begin_morning` ends a finished or overdue chain before the autosave. Tests of

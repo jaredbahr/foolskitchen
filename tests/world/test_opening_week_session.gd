@@ -73,29 +73,48 @@ func test_price_change_pays_once_as_its_own_ledger_movement() -> void:
 	assert_true(_logged(main, OpeningWeekText.met_line(CHAIN.by_id(&"change_price"))), "a log line names the goal")
 
 
-func test_decor_pays_but_other_furniture_does_not() -> void:
+func test_decor_pays_at_opening_but_other_furniture_does_not() -> void:
 	var main: Node = await _start(false)
-	var cash: int = Economy.cash
 	assert_true(_buy_anywhere(main, &"chair"), "a chair is placed")
-	assert_eq(_bonus_entries(), [] as Array[int], "a chair is not decor")
-	var before: int = Economy.cash
 	assert_true(_buy_anywhere(main, &"lamp_floor_round"), "a floor lamp is placed")
-	var lamp: int = (main.get("content") as ContentDB).item(&"lamp_floor_round").price
-	assert_eq(Economy.cash, before - lamp + CHAIN.by_id(&"place_decor").reward_cash)
-	assert_true(_state(main).is_completed(&"place_decor"))
-	assert_true(Economy.cash != cash)
+	assert_eq(_bonus_entries(), [] as Array[int], "nothing pays before opening")
+	var cash: int = Economy.cash
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_true(_state(main).is_completed(&"place_decor"), "the lamp is still there at opening")
+	assert_eq(_bonus_entries(), [CHAIN.by_id(&"place_decor").reward_cash] as Array[int])
+	assert_eq(Economy.cash, cash + CHAIN.by_id(&"place_decor").reward_cash)
 
 
-func test_a_drinks_shelf_puts_beer_on_the_menu_and_pays() -> void:
+func test_buy_then_undo_before_opening_pays_nothing() -> void:
+	var main: Node = await _start(false)
+	assert_true(main.call("set_build_active", true))
+	assert_true(_buy_anywhere(main, &"lamp_floor_round"))
+	assert_true(main.call("undo_edit"), "undo the lamp")
+	assert_true(_buy_anywhere(main, &"drinks_shelf", true))
+	assert_true(main.call("undo_edit"), "undo the drinks shelf")
+	assert_true(main.call("set_build_active", false))
+	var cash: int = Economy.cash
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_false(_state(main).is_completed(&"place_decor"), "an undone lamp pays nothing")
+	assert_false(_state(main).is_completed(&"drink_on_menu"), "an undone shelf pays nothing")
+	assert_eq(_bonus_entries(), [] as Array[int])
+	assert_eq(Economy.cash, cash)
+
+
+func test_a_drinks_shelf_puts_beer_on_the_menu_and_pays_at_opening() -> void:
 	var main: Node = await _start(false)
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
-	assert_false(_state(main).is_completed(&"drink_on_menu"))
 	assert_true(_buy_anywhere(main, &"drinks_shelf", true), "a reachable drinks shelf is placed")
 	var drinks: int = 0
 	for recipe: RecipeDef in settings.enabled_recipes():
 		if recipe.is_drink():
 			drinks += 1
 	assert_true(drinks > 0, "beer goes on the menu by itself")
+	assert_false(_state(main).is_completed(&"drink_on_menu"), "not before opening")
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
 	assert_true(_state(main).is_completed(&"drink_on_menu"))
 	assert_eq(_bonus_entries(), [CHAIN.by_id(&"drink_on_menu").reward_cash] as Array[int])
 
@@ -251,6 +270,9 @@ func test_finishing_every_goal_ends_the_chain_at_once() -> void:
 			state.observe(goal.condition, goal.target, CHAIN)
 	assert_true(state.is_active())
 	assert_true(_buy_anywhere(main, &"lamp_floor_round"))
+	assert_true(state.is_active(), "the lamp counts at opening")
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
 	assert_false(_state(main).is_active(), "the last goal ends the chain")
 	assert_true(_logged(main, OpeningWeekText.COMPLETE_LINE))
 

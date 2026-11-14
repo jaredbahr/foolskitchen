@@ -180,6 +180,12 @@ var _loaded_opening_week: OpeningWeek = null
 ## This morning's tables and servers, for "Grow together" (#494). Never saved:
 ## each morning (and a site switch) takes it again before any edit.
 var _opening_baseline: Dictionary = {}
+## Decor pieces (floor and wall) at the last opening, or at the session's
+## first morning; -1 until taken. "Place a decor item" pays at an opening
+## with more, so a buy undone or sold first pays nothing (#494).
+var _decor_at_open: int = -1
+## The site _decor_at_open was counted at: a switch counts afresh.
+var _decor_site: StringName = &""
 var _loaded_tray_level: int = 0
 var _loaded_lease_expanded: bool = false
 ## The saved "site_hours" section (FK-087), staged; empty when the save has none.
@@ -2944,6 +2950,7 @@ func _new_game() -> void:
 	opening_week = OpeningWeek.ended() if GameMode.is_creative() else OpeningWeek.new()
 	_loaded_opening_week = null
 	_opening_baseline.clear()
+	_decor_at_open = -1
 	_milestones_reached_today.clear()
 	_milestone_award_day = 0
 	_milestone_xp_today = 0
@@ -3044,6 +3051,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_milestones = null
 	_loaded_weekly_challenge = null
 	_loaded_opening_week = null
+	_decor_at_open = -1
 	_loaded_tray_level = 0
 	_loaded_lease_expanded = false
 	_loaded_site_hours = {}
@@ -4806,7 +4814,6 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 		_recompute_vibe()
 		_refresh_stock_panel()
 	_refresh_menu_details()
-	_observe_opening_state()
 	return true
 
 
@@ -5509,8 +5516,6 @@ func shop_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, swat
 	if accepted and (not swatch_id.is_empty() or look != null):
 		($ShopView as ShopView).set_paint(content, shop_editor.wall_swatch_id, shop_editor.floor_swatch_id)
 	_after_edit(accepted)
-	if accepted:
-		_observe_decor_bought(def_id)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
@@ -5597,8 +5602,6 @@ func shop_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish]) -> 
 func shop_hang(def_id: StringName, anchor: Vector3i, swatch_id: StringName = &"") -> bool:
 	var accepted: bool = shop_editor != null and edit_history.hang(def_id, anchor, swatch_id)
 	_after_edit(accepted)
-	if accepted:
-		_observe_decor_bought(def_id)
 	if _build_ready:
 		build_mode.refresh()
 	return accepted
@@ -5634,14 +5637,6 @@ func _after_edit(accepted: bool) -> void:
 	if accepted:
 		_edit_notice = ""
 		_refresh_menu_catalogue()
-		# A new drinks station puts its drinks on the menu by itself.
-		_observe_opening_state()
-
-
-func _observe_decor_bought(def_id: StringName) -> void:
-	var definition: ItemDef = content.item(def_id) if content != null else null
-	if definition != null and definition.category == ItemDef.Category.DECOR:
-		_observe_opening(OpeningGoal.Condition.DECOR_PLACED, 1.0)
 
 
 ## Undoes the newest edit of this session (Ctrl+Z or the Undo button). A held
@@ -7034,6 +7029,9 @@ func _begin_opening_week_morning() -> void:
 	if opening_week.end_if_due(Clock.sim.day, opening_week_catalogue):
 		world.log_event("The opening week is over: the usual goals carry on in Goals")
 	_opening_baseline = _opening_counts()
+	if _decor_at_open < 0 or _decor_site != _opening_baseline["site"]:
+		_decor_at_open = int(_opening_baseline["decor"])
+		_decor_site = _opening_baseline["site"]
 	_refresh_opening_tracker()
 
 
@@ -7046,13 +7044,19 @@ func _opening_counts() -> Dictionary:
 			var definition: ItemDef = placed.def as ItemDef
 			if definition != null and definition.category == ItemDef.Category.TABLE:
 				tables += 1
+	var decor: int = shop_editor.decor.count() if shop_editor != null else 0
+	if world != null:
+		for placed: PlacedItem in world.grid.items():
+			var item_def: ItemDef = placed.def as ItemDef
+			if item_def != null and item_def.category == ItemDef.Category.DECOR:
+				decor += 1
 	var servers: int = 0
 	if staff_roster != null:
 		for member: StaffMember in staff_roster.members():
 			if member.role == &"server":
 				servers += 1
 	return {"day": Clock.sim.day if Clock.sim != null else 0,
-		"site": site_book.active_id if site_book != null else &"", "tables": tables, "servers": servers}
+		"site": site_book.active_id if site_book != null else &"", "tables": tables, "servers": servers, "decor": decor}
 
 
 ## Reports one observation to the chain and pays every goal it newly meets.
@@ -7078,17 +7082,18 @@ func _observe_opening(condition: int, value: float) -> void:
 	_refresh_goals(true)
 
 
-## The goals that follow the shop's live state: drinks on the menu, and while
-## open, guests served and the owner on the floor.
+## The goals that follow the shop's live state while it is open: drinks on
+## the menu, guests served and the owner on the floor. Nothing counts in the
+## morning, so a purchase undone before opening never pays.
 func _observe_opening_state() -> void:
 	if opening_week == null or not opening_week.is_active() or sim == null or menu_settings == null:
 		return
-	var drinks: int = 0
-	for recipe: RecipeDef in menu_settings.enabled_recipes():
-		if recipe.is_drink():
-			drinks += 1
-	_observe_opening(OpeningGoal.Condition.DRINK_ON_MENU, float(drinks))
 	if Clock.sim.phase == SimClock.Phase.OPEN or Clock.sim.phase == SimClock.Phase.LAST_ORDERS:
+		var drinks: int = 0
+		for recipe: RecipeDef in menu_settings.enabled_recipes():
+			if recipe.is_drink():
+				drinks += 1
+		_observe_opening(OpeningGoal.Condition.DRINK_ON_MENU, float(drinks))
 		_observe_opening(OpeningGoal.Condition.SERVED_TODAY, float(sim.served_today))
 		var owner: OwnerAgent = sim.owner_agent()
 		if owner != null and owner.current_mode() == &"floor":
@@ -7096,11 +7101,16 @@ func _observe_opening_state() -> void:
 
 
 ## At opening, "Grow together" holds when this morning added both a table
-## and a server that are still there: removing either first undoes it.
+## and a server that are still there: removing either first undoes it. Decor
+## counts against the last opening the same way; drinks by the live menu.
 func _observe_opening_at_open() -> void:
 	if opening_week == null or not opening_week.is_active():
 		return
 	var now: Dictionary = _opening_counts()
+	if _decor_at_open >= 0 and _decor_site == now["site"] and int(now["decor"]) > _decor_at_open:
+		_observe_opening(OpeningGoal.Condition.DECOR_PLACED, 1.0)
+	_decor_at_open = int(now["decor"])
+	_decor_site = now["site"]
 	if not _opening_baseline.is_empty() and _opening_baseline["day"] == now["day"] \
 			and _opening_baseline["site"] == now["site"] \
 			and int(now["tables"]) > int(_opening_baseline["tables"]) \
