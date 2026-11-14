@@ -19,13 +19,14 @@ extends Node
 const WHEEL_STEP: int = 110
 const KEY_PAGE_SHARE: float = 0.85
 const NODE_NAME: StringName = &"PanelScroll"
+## Marks a control already hooked; it is freed with the control.
+const HOOKED_META: StringName = &"_panel_scroll_hooked"
 
 var _host: Control
 var _frame: Control
 var _main: ScrollContainer
 var _scrolls: Array[ScrollContainer] = []
 var _overflow: ScrollContainer
-var _hooked: Dictionary[int, bool] = {}
 
 
 ## Adds the helper under `host` (the panel root whose visibility opens it).
@@ -87,7 +88,7 @@ func is_open() -> bool:
 ## Rows built later (stock lines, staff cards, catalogue items) are hooked as
 ## they arrive.
 func _on_node_added(node: Node) -> void:
-	if _frame != null and _frame.is_ancestor_of(node):
+	if node is Control and _frame != null and _frame.is_ancestor_of(node):
 		_hook(node as Control)
 
 
@@ -100,13 +101,13 @@ func _hook_tree(node: Node) -> void:
 ## The card, the scroll areas and every control that would use the wheel
 ## itself. Plain buttons and labels pass the wheel up to one of these.
 func _hook(control: Control) -> void:
-	if control == null or _hooked.has(control.get_instance_id()):
+	if control == null or control.has_meta(HOOKED_META):
 		return
 	if not (control == _frame or control is ScrollContainer or control is Range \
 			or control is OptionButton or control is Tree or control is ItemList \
 			or control is TextEdit or control is TabBar):
 		return
-	_hooked[control.get_instance_id()] = true
+	control.set_meta(HOOKED_META, true)
 	control.gui_input.connect(_on_gui_input.bind(control))
 
 
