@@ -221,7 +221,7 @@ Each line ends with its PR number.
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - Run visual review captures in two parallel jobs and verify every requested frame. (#479)
 - The profit review capture no longer fails when its third day closes with level-up and milestone callouts above the reviews, the order-counter capture gets 180 seconds instead of 120 on slow runners, and the staff advice capture stops at the first day from day 2 that recommends a cook instead of needing exactly day 10. (#517)
-- Verify review cards in the profit-report capture even when extra milestone rows require scrolling. (#516)
+- Verify review cards when extra milestones require scrolling, and avoid HUD redraws during the Business trend fast-forward before frame 60. (#516)
 - The screenshot check in CI now has 60 minutes instead of 45: runs were taking up to 44 minutes, so a slow runner cancelled PRs that changed nothing visual. Splitting the job is tracked in #477. (#485)
 - Each restaurant now keeps its own opening hours and its own bigger lease, so switching restaurants (once you can own two) never carries one shop's hours or lease to the other. Older saves keep their hours and lease. (#463)
 - Design doc: how every street outside the restaurant should look, and how each new site gets its own street from the same parts. (#441)

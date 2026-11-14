@@ -5,6 +5,7 @@ extends "res://src/world/main.gd"
 
 const REVIEW_SCENE: String = "res://tools/business_trend_review.tscn"
 const REVIEW_FRAME: int = 60
+const ReviewHUD = preload("res://tools/business_trend_review_hud.gd")
 
 var _review_ready: bool = false
 var _review_days: int = 14
@@ -41,33 +42,16 @@ func _ready() -> void:
 		_review_fail("the ordinary seed-one morning did not start with empty history")
 		return
 	_review_initial_state = BalanceProbe._control_snapshot(self, sim)
-	# Main already prepared paid stock and the ordinary morning RNG state.
-	for day_index: int in range(_review_days):
-		if not Clock.sim.start_service():
-			_review_fail("the ordinary service did not open")
-			return
-		var batches: int = 0
-		while Clock.sim.phase != SimClock.Phase.CLOSED and batches < 30:
-			run_ticks(1000)
-			batches += 1
-		if Clock.sim.phase != SimClock.Phase.CLOSED or shown_report == null \
-				or shown_report.day != day_index + 1 or shown_report.customers_served <= 0 \
-				or not shown_report.operating_profit_recorded():
-			_review_fail("the ordinary paid service did not produce its recorded closing report")
-			return
-		var history: Array[Dictionary] = business_history.summaries()
-		var actual: Dictionary = {"day": shown_report.day, "served": shown_report.customers_served,
-			"lost": shown_report.customers_lost, "dish_profit": shown_report.operating_profit(),
-			"dish_profit_recorded": true, "cash_change": shown_report.profit(),
-			"reputation": shown_report.reputation_after}
-		if history.size() != day_index + 1 or history[-1] != actual:
-			_review_fail("stored history differs from an actual closing report")
-			return
-		_review_daily.append({"day": shown_report.day, "cash": Economy.cash,
-			"world_tick": world.now, "report": shown_report.to_dict(), "history_row": actual})
-		if day_index + 1 < _review_days and not Clock.sim.next_day():
-			_review_fail("the next ordinary morning did not start")
-			return
+	var hud: ReviewHUD = $HUD as ReviewHUD
+	if hud == null:
+		_review_fail("the capture HUD is missing")
+		return
+	hud.skip_tick_refresh = true
+	var completed: bool = _review_run_services()
+	hud.skip_tick_refresh = false
+	hud.refresh()
+	if not completed:
+		return
 	Clock.set_speed(0)
 	_review_state = BalanceProbe._control_snapshot(self, sim)
 	_review_report = shown_report.to_dict().duplicate(true)
@@ -84,6 +68,37 @@ func _ready() -> void:
 		"days": _review_days, "initial_state": _review_initial_state,
 		"daily": _review_daily, "history": _review_history, "report": _review_report}))
 	_review_ready = true
+
+
+func _review_run_services() -> bool:
+	# Main already prepared paid stock and the ordinary morning RNG state.
+	for day_index: int in range(_review_days):
+		if not Clock.sim.start_service():
+			_review_fail("the ordinary service did not open")
+			return false
+		var batches: int = 0
+		while Clock.sim.phase != SimClock.Phase.CLOSED and batches < 30:
+			run_ticks(1000)
+			batches += 1
+		if Clock.sim.phase != SimClock.Phase.CLOSED or shown_report == null \
+				or shown_report.day != day_index + 1 or shown_report.customers_served <= 0 \
+				or not shown_report.operating_profit_recorded():
+			_review_fail("the ordinary paid service did not produce its recorded closing report")
+			return false
+		var history: Array[Dictionary] = business_history.summaries()
+		var actual: Dictionary = {"day": shown_report.day, "served": shown_report.customers_served,
+			"lost": shown_report.customers_lost, "dish_profit": shown_report.operating_profit(),
+			"dish_profit_recorded": true, "cash_change": shown_report.profit(),
+			"reputation": shown_report.reputation_after}
+		if history.size() != day_index + 1 or history[-1] != actual:
+			_review_fail("stored history differs from an actual closing report")
+			return false
+		_review_daily.append({"day": shown_report.day, "cash": Economy.cash,
+			"world_tick": world.now, "report": shown_report.to_dict(), "history_row": actual})
+		if day_index + 1 < _review_days and not Clock.sim.next_day():
+			_review_fail("the next ordinary morning did not start")
+			return false
+	return true
 
 
 func _process(_delta: float) -> void:
@@ -166,7 +181,8 @@ func _review_validate() -> void:
 		_review_fail("the saved frame60 PNG identity differs from this unchanged native service")
 		return
 	var source_hashes: Dictionary = {}
-	for path: String in ["tools/business_trend_review.gd", "src/world/main.gd", "src/sim/business_history.gd",
+	for path: String in ["tools/business_trend_review.gd", "tools/business_trend_review.tscn",
+		"tools/business_trend_review_hud.gd", "src/world/main.gd", "src/sim/business_history.gd",
 			"src/ui/business_trend_chart.gd", "src/ui/business_trend_text.gd", "src/ui/evening_report.gd",
 			"src/ui/evening_report.tscn", "tools/screenshot.gd"]:
 		source_hashes[path] = FileAccess.get_sha256("res://" + path)

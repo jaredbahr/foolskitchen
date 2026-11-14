@@ -6,11 +6,13 @@ on:
     paths:
       - '.github/workflows/visual-review.yml'
       - 'tools/verify_visual_review.py'
+      - 'tools/business_trend_review*'
   pull_request:
     paths:
       - 'tools/verify_visual_review.py'
       - '.github/workflows/visual-review.yml'
       - 'tools/screenshot.*'
+      - 'tools/business_trend_review*'
       - 'tools/menu_boards_review.gd'
       - 'tools/records_review.*'
       - 'tools/jukebox_review.gd'
