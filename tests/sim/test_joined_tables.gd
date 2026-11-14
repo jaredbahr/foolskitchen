@@ -34,6 +34,8 @@ func test_three_joined_two_seat_surfaces_have_six_usable_outside_seats() -> void
 		return
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid, Vector2i.ZERO), 6,
 		"three joined two-seat tables form one six-seat table")
+	assert_eq(DiningSeats.booking_capacity(_sim.world.grid, 6), 6,
+		"the minimum booking fits even when it fills the whole shop")
 
 
 func test_actual_six_person_party_books_the_joined_surface_without_splitting() -> void:
@@ -272,6 +274,8 @@ func test_capacity_is_not_capped_to_party_limit_and_explicit_seven_is_rejected_w
 	assert_not_null(grid.place_def(CHAIR, Vector2i(9, 3), 2))
 	assert_not_null(grid.place_def(CHAIR, Vector2i(9, 5), 0))
 	assert_eq(DiningSeats.largest_usable_capacity(grid, Vector2i.ZERO), 8)
+	assert_eq(DiningSeats.booking_capacity(grid, 6), 6,
+		"a six-person booking leaves room for two walk-ins")
 	var randoms: Array[RandomNumberGenerator] = []
 	var states: Array[int] = []
 	for index: int in 7:

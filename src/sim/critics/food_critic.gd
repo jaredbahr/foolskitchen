@@ -5,7 +5,7 @@ extends RefCounted
 ## review weighs as several ordinary ones.
 ##
 ## All choices come from the named stream GameState.rng(&"critic"), handed in
-## as a provider and called only once a critic can appear (shop level reached
+## as a provider and called only once a critic can appear (career tier reached
 ## and out of cooldown). Shops that cannot have one never create the stream, so
 ## their saved streams are unchanged. The plan for the day is drawn in the
 ## morning and saved with it, so a reload neither redraws nor forgets the
@@ -35,23 +35,33 @@ func _init(config: CriticTuning = null) -> void:
 	tuning = config if config != null else CriticTuning.new()
 
 
-## Whether a critic could be due on `day` at this shop level (no draw).
-func can_visit(day: int, shop_level: int) -> bool:
-	return tuning.is_valid() and shop_level >= tuning.unlock_level \
+## Whether a critic could be due on `day` at this career tier (no draw).
+func can_visit(day: int, career_tier: int) -> bool:
+	return tuning.is_valid() and career_tier >= tuning.unlock_tier \
 		and (last_visit_day == 0 or day - last_visit_day >= tuning.cooldown_days)
 
 
 ## Rolls the day once, in the morning. `random_provider` returns the named
 ## stream and is called only when a critic can appear. Idempotent per day.
-func plan_day(day: int, shop_level: int, random_provider: Callable) -> void:
+func plan_day(day: int, career_tier: int, random_provider: Callable) -> void:
+	# A morning save from before the tier gate may contain a pending visit.
+	# Discard that plan below the gate while keeping the existing cooldown.
+	if career_tier < tuning.unlock_tier:
+		pending = false
+		arrived = false
+		tells.clear()
+		arrival_permille = 0
+		if rolled_day == day:
+			rolled_day = 0
+		return
 	if rolled_day == day:
 		return
 	pending = false
 	arrived = false
 	tells = []
 	# Nothing is marked rolled unless the stream was really used, so an early
-	# call (before the session installed it, or below the level) changes nothing.
-	if not can_visit(day, shop_level) or not random_provider.is_valid():
+	# call (before the session installed the provider) does not mark it rolled.
+	if not can_visit(day, career_tier) or not random_provider.is_valid():
 		return
 	var random: RandomNumberGenerator = random_provider.call() as RandomNumberGenerator
 	if random == null:

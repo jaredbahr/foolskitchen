@@ -4,8 +4,8 @@ extends Resource
 ## How often one visits, how heavily their review counts and how their
 ## disguise looks are authored here; nothing about the critic is hard-coded.
 
-## Shop (owner) level from which a critic can visit.
-@export var unlock_level: int = 2
+## Career tier from which a critic can visit.
+@export var unlock_tier: int = 5
 ## At least this many days between two critic visits (5 = at most one in 5 days).
 @export var cooldown_days: int = 5
 ## Chance that a critic comes on an open day that is not in the cooldown.
@@ -34,7 +34,7 @@ extends Resource
 func is_valid() -> bool:
 	if not is_finite(daily_chance) or daily_chance < 0.0 or daily_chance > 1.0:
 		return false
-	if unlock_level < 1 or cooldown_days < 1 or review_weight < 1 or review_weight > 15:
+	if unlock_tier < 1 or cooldown_days < 1 or review_weight < 1 or review_weight > 15:
 		return false
 	if tell_count < 1 or tell_count > 4 or not is_finite(linger_multiplier) or linger_multiplier < 1.0:
 		return false
