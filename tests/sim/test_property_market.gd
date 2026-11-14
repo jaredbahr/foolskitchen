@@ -30,6 +30,7 @@ func _good_lot(id: StringName = &"test_lot") -> LotDef:
 	lot.daily_rent = 50
 	lot.expansion_price = 500
 	lot.expanded_daily_rent = 60
+	lot.expansion_east = 2
 	lot.guest_mix = {&"foodie": 1.0}
 	return lot
 
@@ -82,6 +83,46 @@ func test_each_lot_layout_builds_a_shop_with_its_kitchen() -> void:
 			items.append(placement.item_id)
 		for station: StringName in [&"fridge", &"prep_counter", &"stove", &"sink", &"pass_counter"]:
 			assert_true(items.has(station), "%s has the starter's %s" % [lot.id, station])
+
+
+func test_each_lot_expands_its_own_layout_into_a_valid_shop() -> void:
+	var db: ContentDB = _db()
+	var home: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+	for lot: LotDef in db.lots():
+		var lease: LeaseUpgrade = lot.lease_upgrade(home)
+		assert_true(lease.is_valid(), "%s: its expansion is a valid lease" % lot.id)
+		assert_eq(lease.deposit, lot.expansion_price)
+		assert_eq(lease.daily_rent, lot.expanded_daily_rent)
+		assert_eq(lot.rent(false), lot.daily_rent)
+		assert_eq(lot.rent(true), lot.expanded_daily_rent)
+		var expanded: ShopLayout = lease.layout_for(lot.base_layout, 2)
+		assert_false(expanded == lot.base_layout, "a copy, never the authored base")
+		assert_eq(lot.base_layout.lot_east, (load(lot.base_layout.resource_path) as ShopLayout).lot_east,
+			"the authored base is unchanged")
+		var base_lot: Rect2i = ShopFootprint.from_layout(lot.base_layout).lot
+		var grown: ShopFootprint = ShopFootprint.from_layout(expanded)
+		assert_true(grown.lot.encloses(base_lot) and grown.lot != base_lot, "%s: the lot grows" % lot.id)
+		assert_eq(grown.lot.size - base_lot.size, Vector2i(lot.expansion_west + lot.expansion_east,
+			lot.expansion_north))
+		assert_eq(grown.building, ShopFootprint.from_layout(lot.base_layout).building, "the building stays")
+		var errors: Array[String] = []
+		var sim: RestaurantSim = RestaurantSim.create(expanded, db, 1, errors)
+		assert_eq(errors, [] as Array[String], "%s: the expanded lot builds" % lot.id)
+		assert_not_null(sim)
+		var base_errors: Array[String] = []
+		var base_sim: RestaurantSim = RestaurantSim.create(lot.base_layout, db, 1, base_errors)
+		var editor: ShopEditor = ShopEditor.new(base_sim, db, ShopEditBooks.new(_any_spend, _no_cash),
+			lot.base_layout)
+		assert_true(editor.grow_lot(expanded), "%s: a fresh shop on the lot can grow into it" % lot.id)
+		assert_eq(editor.footprint().lot, grown.lot)
+
+
+func _any_spend(_amount: int) -> bool:
+	return true
+
+
+func _no_cash(_amount: int, _category: StringName, _note: String) -> void:
+	pass
 
 
 func test_a_good_lot_passes_validation() -> void:
@@ -146,6 +187,18 @@ func test_bad_lots_are_reported() -> void:
 	cases.append([odd_tag, "unknown tag 'volcano'"])
 	var home: LotDef = _good_lot(&"home")
 	cases.append([home, "home lot is never listed"])
+	var no_growth: LotDef = _good_lot()
+	no_growth.expansion_east = 0
+	cases.append([no_growth, "the expansion must add 0 to 32 cells"])
+	var shrinking: LotDef = _good_lot()
+	shrinking.expansion_west = -1
+	cases.append([shrinking, "the expansion must add 0 to 32 cells"])
+	var sprawling: LotDef = _good_lot()
+	sprawling.expansion_north = 33
+	cases.append([sprawling, "the expansion must add 0 to 32 cells"])
+	var dear: LotDef = _good_lot()
+	dear.expansion_price = 2000000
+	cases.append([dear, "the expansion is not a valid lease"])
 	for case: Array in cases:
 		var errors: PackedStringArray = _errors([case[0] as LotDef])
 		assert_true(_has_error(errors, case[1]), "expected '%s' in %s" % [case[1], errors])

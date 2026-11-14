@@ -18,8 +18,6 @@ const NOT_LISTED_LINE: String = "That lot is not on the market yet."
 const MORNING_LINE: String = "Buy property in the morning."
 ## A new site starts with nobody (#464): it cannot open until it has both.
 const UNSTAFFED_LINE: String = "Hire a cook and a server before you open"
-## Lot leases expand from #465; until then only the first restaurant can.
-const LEASE_HOME_ONLY_LINE: String = "Only your first restaurant can expand its lease for now"
 const EMPTY: String = "No lots are on the market."
 ## Lot tags as perks (LotDef.KNOWN_TAGS); a tag missing here shows nothing.
 const TAG_PERKS: Dictionary[StringName, String] = {

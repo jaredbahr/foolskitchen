@@ -3652,7 +3652,8 @@ implicit home lot and is never listed. `_base_for_saved_shop` gains a lookup
 by lot id.
 Built (#405, part 2, browse only): `LotDef` (`src/sim/content/lot_def.gd`)
 has the fields above plus `expansion_price` and `expanded_daily_rent` (every
-lot can expand, Jared 2026-11-13; nothing charges them yet, that is #465).
+lot can expand, Jared 2026-11-13; charged since #465, see "Lot rent and
+expansion").
 `ContentDB.validate_lots` refuses a missing or unbuildable-looking layout
 (no floor, uneven rows, no street entry, an unknown starting item), anything
 but exactly one way to pay (a price, or a fixer price with a renovation bill
@@ -3674,8 +3675,7 @@ foodies" from half the mix, else the top two). The Menu's header has a
 Property button from Tier 3 (`MenuPanel.set_property_available`, set by
 `set_menu_visible`); it opens `PropertyPanel` (`main.gd`
 `set_property_visible`, a morning view like Goals that closes back to the
-Menu and is dismissed wherever Goals is). `AwaySites.lot_rent` still charges
-nothing for a non-home lot (#465).
+Menu and is dismissed wherever Goals is).
 Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12` (Tier 3
 with $9,000 on the live owner: the fixer-upper's Buy button enabled).
 
@@ -3709,9 +3709,32 @@ offered at once (`offer_new_site`, Jared 2026-11-13): the card asks "Work at
 your new place today?" (a fixer-upper: "Design it today?"); "Go there now" /
 "Design it now" calls `switch_site`, "Stay here today" returns to the market.
 It marks the morning's site choice as made, so the card does not follow.
-The lease upgrade is the home lot's only until #465 (`_lease_at_home`: no
-offer on the Menu, and `lease_refusal` reads "Only your first restaurant can
-expand its lease for now"), since a bought lot's rent would not change.
+
+**Lot rent and expansion (#465, Jared 2026-11-13).** A bought lot's site pays
+its `LotDef.daily_rent`, or `expanded_daily_rent` once its own
+`lease_expanded` is set, whether it is active (`_charge_closing_costs`, as
+`RENT`) or away and unmanaged (`AwaySites.plan_close`, as `AWAY_SITE_RENT`).
+`AwaySites.lot_rent(lot, home_rent, definition, expanded)` is the one rule:
+the home lot keeps `_home_rent()` exactly, any other lot reads its
+`LotDef.rent(expanded)`; only a lot missing from the data is still unknown
+(charged nothing, with a warning). Rent runs from the day a lot is bought:
+its first close is that day's, and a renovating site pays on every close
+(away, or active and closed with "Close for today"). A site with renovation
+days left is always closed for `plan_close`, even with a manager (it cannot
+open), and `_close_away_sites` plans before the renovation countdown so the
+last renovation day still counts as one.
+Every lot can expand once. `LotDef` has its own margins, `expansion_west`,
+`expansion_east` and `expansion_north` (0 to `MAX_EXPANSION_CELLS` = 32 each,
+at least one above 0; the street side never grows), checked by
+`validate_lots` with the expansion as a lease (`LotDef.lease_upgrade(home)`
+must be a valid `LeaseUpgrade`: its price is the deposit, its expanded rent
+the daily rent). Placeholders: the fixer-upper 0/4/3, the seaside cliff
+0/4/2, the rooftop 1/2/1 (west/east/north). `main.gd` `_lease_for(base)`
+picks the terms by the authored base layout (a lot's own, else the home
+`LEASE`), and the offer, its refusal, `lease_buy`, `_lease_layout`, the shop
+restore and the scenery reserve all read it, so the Menu offers "Deposit
+$4,000 · Daily rent $95" at the fixer-upper and the purchase grows that
+lot's own `base_layout`. Home is unchanged.
 
 **Unstaffed sites (#464).** `StaffRoster.from_dict` and
 `RestaurantSim.set_staff_roster` accept a roster without a cook or a server
@@ -3870,10 +3893,13 @@ site's report, history, records and XP never see it:
   formula is applied as written, and min() takes the whole mean, since a
   manager never does better than the owner did (and the mean already
   includes the wages and rent that would otherwise make the loss).
-- **No valid manager**: rent only, as `AWAY_SITE_RENT`. `AwaySites.lot_rent`
-  knows the home lot (today's rule: the lease rent when `property_tier` is 2,
-  else `daily_rent`); any other lot is unknown until `LotDef.daily_rent`
-  (#405) and is charged nothing, with a warning.
+- **No valid manager** (or still renovating, or a manager with no recorded
+  day to go on yet: away days never build history, so such a site would
+  otherwise never pay; its line reads "Pier Shack (closed: your manager
+  needs a day you ran there first): rent -$70", #465): rent only, as
+  `AWAY_SITE_RENT`. `AwaySites.lot_rent` gives the home lot's lease rule and
+  any other lot's own rent, expanded or not (#465, "Lot rent and
+  expansion").
 - **Bookings**: an accepted booking whose service day is today or earlier
   lapses, managed or not: `BOOKING_REFUND` of the deposit to that site, and
   its frozen `bookings` section is rewritten in place
