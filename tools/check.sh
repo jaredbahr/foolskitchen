@@ -8,7 +8,7 @@
 # paths exercised by tests must not push_error() on purpose (test the return value instead).
 # Each step has a timeout so a hung script fails instead of blocking CI: 5
 # minutes for import and parse, 25 for each test shard (the CI job itself stops
-# at 15; two shards run in parallel, see below).
+# at 25). TEST_SHARDS test shards run in parallel: 2 by default, 4 in CI (#529).
 # Godot binary: $GODOT, else .tools/ (from tools/get_godot.sh), else `godot` on PATH.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -54,8 +54,9 @@ code=$?
 if [[ $code -ne 0 ]] || has_errors "$log"; then cat "$log"; echo "FAIL: parse"; fail=1; else tail -1 "$log"; fi
 
 echo "== tests"
-# Two shards run side by side, each with its own user:// (XDG_DATA_HOME), so
-# no two processes share save slots or settings. TEST_SHARDS=1 runs one process.
+# TEST_SHARDS shards (default 2; CI uses 4) run side by side, each with its own
+# user:// (XDG_DATA_HOME), so no two processes share save slots or settings.
+# TEST_SHARDS=1 runs one process.
 shards="${TEST_SHARDS:-2}"
 pids=()
 logs=()
