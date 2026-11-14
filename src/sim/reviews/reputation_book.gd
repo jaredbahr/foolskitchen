@@ -76,6 +76,18 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 		"before": before, "after": average()}
 
 
+## One review from a service event card (#495): a plain score in the window,
+## with no quote and no draw. Returns the before/after averages.
+func record_event_review(stars: int) -> Dictionary:
+	if stars < 1 or stars > 5:
+		return {}
+	var before: float = average()
+	_scores.append(stars)
+	while _scores.size() > WINDOW:
+		_scores.pop_front()
+	return {"stars": stars, "before": before, "after": average()}
+
+
 ## One booking-level review uses the average measured guest score. Only a
 ## complete, well-served party receives its authored weight; no member writes
 ## a separate solo review.

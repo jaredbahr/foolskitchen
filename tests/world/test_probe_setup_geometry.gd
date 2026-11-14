@@ -131,7 +131,7 @@ func _close() -> void:
 	_main = null
 
 
-## Thirty-four cheap real setup applications, with no service tick. These report
+## Forty cheap real setup applications, with no service tick. These report
 ## actual actors and claims, never treating an unused authored post as a person.
 func test_original_all_setups_apply_before_service() -> void:
 	_assert_all_setups(true)
@@ -143,7 +143,7 @@ func test_roomier_all_setups_apply_before_service() -> void:
 
 func _assert_all_setups(original: bool) -> void:
 	var profiles: Array[String] = ProbeSetups.names()
-	assert_eq(profiles.size(), 20)
+	assert_eq(profiles.size(), 21)
 	assert_true(profiles.has("opening_week"))
 	assert_true(profiles.has("coffee_counter"))
 	assert_true(profiles.has("patio"))
