@@ -4,9 +4,9 @@
 
 [resource]
 script = ExtResource("1")
-min_day = 6
+min_day = 4
 min_stars = 2.5
-min_vibe = 1.0
+min_vibe = 0.5
 min_satisfied_visits = 2
 cast_cap = 8
 visit_days_min = 2

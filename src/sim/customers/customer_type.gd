@@ -13,6 +13,9 @@ extends Resource
 ## Below this owner level the type always arrives alone and draws exactly what
 ## a single guest draws, so play below the unlock matches single-guest main.
 @export var party_unlock_level: int = 1
+## Optional earlier unlock for the authored solo/pair range. Demand may
+## introduce larger sizes only at the original party unlock.
+@export var pair_unlock_level: int = 0
 ## Short player-facing tip for the level-up report when groups start visiting.
 @export var party_tip: String = ""
 @export var review_chance_multiplier: float = 1.0
@@ -42,7 +45,8 @@ func is_valid() -> bool:
 		return false
 	if party_size_min < 1 or party_size_max < party_size_min or party_size_max > Party.MAX_SIZE:
 		return false
-	if party_unlock_level < 1:
+	if party_unlock_level < 1 or pair_unlock_level < 0 or pair_unlock_level > party_unlock_level \
+			or (pair_unlock_level > 0 and party_size_max != 2):
 		return false
 	for value: float in [budget_multiplier, patience_multiplier,
 			review_chance_multiplier]:
@@ -90,7 +94,8 @@ func draw_party_size(random: RandomNumberGenerator) -> int:
 func draw_party_size_at(random: RandomNumberGenerator, owner_level: int) -> int:
 	if not is_valid() or random == null:
 		return 0
-	return draw_party_size(random) if owner_level >= party_unlock_level else 1
+	return draw_party_size(random) if owner_level >= party_unlock_level \
+		or (pair_unlock_level > 0 and owner_level >= pair_unlock_level) else 1
 
 
 ## Growth blends the authored uniform range with the demand weights, extending
@@ -143,7 +148,8 @@ func draw_party_size_for_demand(random: RandomNumberGenerator, owner_level: int,
 
 ## The owner level at which this type first arrives as a group (0 if never).
 func group_level() -> int:
-	return maxi(unlock_level, party_unlock_level) if party_size_max > 1 else 0
+	var size_unlock: int = pair_unlock_level if pair_unlock_level > 0 else party_unlock_level
+	return maxi(unlock_level, size_unlock) if party_size_max > 1 else 0
 
 
 ## Reputation below one star uses the one-star weight; above five uses five.

@@ -98,6 +98,54 @@ func test_report_preserves_player_facing_regular_notes_and_menu_marks_favourite(
 	assert_true(cast.favourite_on_menu(profile.favourite_dish))
 
 
+func test_two_day_one_rugs_can_bring_a_named_regular_back_by_day_eight() -> void:
+	var main: Node = _start(false, 1)
+	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_eq(owner.level, 1)
+	var starting_vibe: float = (main.get("vibe_result") as VibeModel.Result).score
+	var opening_demand_before: Dictionary = main.call("current_demand_snapshot")
+	var next_day_demand_before: Dictionary = main.call("forecast_next_demand")
+	var cash: int = Economy.cash
+	assert_true(main.call("set_build_active", true))
+	var mode: BuildMode = main.get("build_mode") as BuildMode
+	for cell: Vector2i in [Vector2i(1, 11), Vector2i(12, 11)]:
+		assert_true(mode.begin_buy(&"rug_round", cell))
+		assert_true(mode.commit())
+	assert_eq(cash - Economy.cash, 60, "two catalogue purchases at $30 each")
+	assert_true(main.call("set_build_active", false))
+	var score: float = (main.get("vibe_result") as VibeModel.Result).score
+	var opening_demand_after: Dictionary = main.call("current_demand_snapshot")
+	var next_day_demand_after: Dictionary = main.call("forecast_next_demand")
+	var cast: RegularCast = main.get("regulars") as RegularCast
+	assert_true(starting_vibe < cast.tuning.min_vibe)
+	assert_true(score >= cast.tuning.min_vibe)
+	assert_eq(opening_demand_before["vibe"], opening_demand_after["vibe"], "the day-one floor still applies")
+	assert_true(float(next_day_demand_after["vibe"]) > float(next_day_demand_before["vibe"]))
+	var first_promotion: int = 0
+	var first_return: int = 0
+	for day: int in range(1, 9):
+		assert_eq(Clock.sim.day, day)
+		assert_true(Clock.sim.start_service())
+		var batches: int = 0
+		while Clock.sim.phase != SimClock.Phase.CLOSED and batches < 30:
+			main.call("run_ticks", 1000)
+			batches += 1
+		assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+		if first_promotion == 0 and not cast.new_today.is_empty():
+			first_promotion = day
+		if not cast.visited_today.is_empty():
+			first_return = day
+			break
+		if day < 8:
+			assert_true(Clock.sim.next_day())
+	print("EARLY REGULARS ", JSON.stringify({"vibe_before": starting_vibe, "vibe_after": score,
+		"day_one_before": opening_demand_before["vibe"], "day_one_after": opening_demand_after["vibe"],
+		"day_two_before": next_day_demand_before["vibe"], "day_two_after": next_day_demand_after["vibe"],
+		"first_promotion": first_promotion, "first_return": first_return}))
+	assert_true(first_promotion >= cast.tuning.min_day, "actual paid visits promote a named regular")
+	assert_true(first_return >= 6 and first_return <= 8, "the named regular returns during service by day eight")
+
+
 func _promote(main: Node) -> RegularProfile:
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var cast: RegularCast = main.get("regulars") as RegularCast
@@ -110,12 +158,12 @@ func _promote(main: Node) -> RegularProfile:
 	return profile
 
 
-func _start(saves: bool) -> Node:
+func _start(saves: bool, seed_value: int = 166) -> Node:
 	var scene: PackedScene = load("res://src/world/main.tscn") as PackedScene
 	var main: Node = scene.instantiate()
 	main.set("use_saves", saves)
 	main.set("save_slot", SLOT)
-	main.set("new_game_seed_override", 166)
+	main.set("new_game_seed_override", seed_value)
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")
