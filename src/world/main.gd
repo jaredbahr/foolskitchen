@@ -4315,6 +4315,10 @@ func service_event_pick(index: int) -> bool:
 		return false
 	var outcome: Dictionary = service_events.pick(index, GameState.master_seed, String(Economy.active_site))
 	if outcome.is_empty() or not _apply_service_event(outcome):
+		# pick() has already cleared the pending card, so never leave it up
+		# and paused with nothing left to choose.
+		_close_service_event_card(true)
+		refresh_presentation()
 		return false
 	world.log_event("Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]])
 	_close_service_event_card(true)
