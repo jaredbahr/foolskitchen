@@ -539,6 +539,13 @@ func _bind_world_presentation() -> void:
 		_site_card.prompt_answered.connect(_on_site_prompt_answered)
 	if not $HUD.is_connected(&"menu_pressed", toggle_menu):
 		$HUD.connect(&"menu_pressed", toggle_menu)
+	if not $HUD.is_connected(&"next_day_requested", _on_next_day_pressed):
+		$HUD.connect(&"next_day_requested", _on_next_day_pressed)
+	if not $HUD.is_connected(&"report_requested", show_closed_report):
+		$HUD.connect(&"report_requested", show_closed_report)
+	if not _report.visibility_changed.is_connected(_sync_report_button):
+		_report.visibility_changed.connect(_sync_report_button)
+	_sync_report_button()
 	if not $HUD.is_connected(&"close_day_requested", close_for_today):
 		$HUD.connect(&"close_day_requested", close_for_today)
 	_settings_panel = $Overlay/SettingsPanel
@@ -4565,10 +4572,38 @@ func _on_menu_close_requested() -> void:
 
 
 ## The report's Close and Esc only hide it (#497). Next day stays on the top
-## bar, and closing Staff, Stock or Goals in the evening brings it back.
+## bar, and the top bar's Report button (or closing Staff, Stock or Goals in
+## the evening) brings it back.
 func _on_report_close_requested() -> void:
 	_report.hide()
 	refresh_hints()
+
+
+## The top bar's Report button: the closed day's report, rebuilt so evening
+## purchases show, over whatever panel or tool was open.
+func show_closed_report() -> bool:
+	if Clock.sim.phase != SimClock.Phase.CLOSED or shown_report == null or is_haggle_active():
+		return false
+	if is_settings_visible() and not set_settings_visible(false):
+		return false
+	if _paint_active:
+		set_paint_active(false)
+	if is_build_active():
+		set_build_active(false)
+	_dismiss_goals()
+	_dismiss_property()
+	if is_staff_visible():
+		set_staff_visible(false)
+	if is_stock_visible():
+		set_stock_visible(false)
+	clear_selection()
+	_show_evening_report(build_report(Clock.sim.day))
+	refresh_hints()
+	return true
+
+
+func _sync_report_button() -> void:
+	$HUD.call("set_report_hidden", _report != null and not _report.visible and shown_report != null)
 
 
 ## Station definitions decide availability; temporary path/stock problems do not

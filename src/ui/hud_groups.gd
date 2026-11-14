@@ -12,7 +12,7 @@ const TITLE_GAP: float = 2.0
 const GROUPS: Array[Array] = [
 	["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
 	["Creative", "Cash", "Loan", "Reputation", "OwnerProgress", "Plates", "SoldOut"],
-	["Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"],
+	["Walls", "Build", "Paint", "Context", "Report", "Menu", "Stock", "Staff", "Settings"],
 ]
 
 

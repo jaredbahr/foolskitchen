@@ -103,6 +103,9 @@ func _hook_tree(node: Node) -> void:
 func _hook(control: Control) -> void:
 	if control == null or control.has_meta(HOOKED_META):
 		return
+	# A dropdown's list lives in its own popup window: it keeps its own wheel.
+	if control.get_viewport() != _frame.get_viewport():
+		return
 	if not (control == _frame or control is ScrollContainer or control is Range \
 			or control is OptionButton or control is Tree or control is ItemList \
 			or control is TextEdit or control is TabBar):
@@ -180,8 +183,44 @@ func _input(event: InputEvent) -> void:
 	var focused: Control = get_viewport().gui_get_focus_owner()
 	if focused is LineEdit or focused is TextEdit:
 		return
+	if is_covered():
+		return
 	if scroll_key(code):
 		get_viewport().set_input_as_handled()
+
+
+## True while a dialog, or a panel drawn later (What's new over Settings,
+## Shortcuts over the Menu), sits over the middle of this card: the keys
+## then belong to that, not to the panel underneath.
+func is_covered() -> bool:
+	var viewport: Viewport = _frame.get_viewport()
+	for window: Window in viewport.get_embedded_subwindows():
+		if window.visible and window.exclusive:
+			return true
+	var center: Vector2 = _frame.get_global_rect().get_center()
+	var node: Node = _frame
+	while node != null and not (node is CanvasLayer) and node != viewport:
+		var parent: Node = node.get_parent()
+		if parent == null:
+			break
+		for index: int in range(node.get_index() + 1, parent.get_child_count()):
+			if _blocks(parent.get_child(index), center):
+				return true
+		node = parent
+	return false
+
+
+func _blocks(node: Node, center: Vector2) -> bool:
+	if node is Window or (node is CanvasItem and not (node as CanvasItem).visible):
+		return false
+	var control: Control = node as Control
+	if control != null and control.mouse_filter == Control.MOUSE_FILTER_STOP \
+			and control.get_global_rect().has_point(center):
+		return true
+	for child: Node in node.get_children():
+		if _blocks(child, center):
+			return true
+	return false
 
 
 ## Scrolls the main area for one of PgUp, PgDn, Home or End.

@@ -140,6 +140,64 @@ func test_page_keys_scroll_every_open_panel() -> void:
 		await _close(main, panel_name, view)
 
 
+func test_an_open_dropdown_keeps_its_own_wheel() -> void:
+	var main: Node = await _main()
+	var view: Dictionary = await _open(main, "menu")
+	var menu: Control = view["host"]
+	var scroll: ScrollContainer = _helper(menu).main_scroll()
+	await _make_room(scroll)
+	scroll.scroll_vertical = 0
+	var special: OptionButton = menu.get("_special_option") as OptionButton
+	assert_not_null(special)
+	if special == null:
+		return
+	# Presentation fixture: a list long enough to scroll inside the popup.
+	for index: int in range(40):
+		special.add_item("Fixture dish %d" % index)
+	var selected: int = special.selected
+	special.show_popup()
+	await _frames()
+	var popup: PopupMenu = special.get_popup()
+	assert_true(popup.visible)
+	var inner: ScrollContainer = _first_scroll(popup)
+	assert_not_null(inner, "the popup has its own scroll list")
+	if inner == null:
+		return
+	var popup_rect: Rect2 = Rect2(Vector2(popup.position), Vector2(popup.size))
+	await _wheel(main, popup_rect.get_center(), MOUSE_BUTTON_WHEEL_DOWN)
+	assert_true(inner.scroll_vertical > 0, "the wheel scrolls the open list")
+	assert_eq(scroll.scroll_vertical, 0, "the dish list behind it stays put")
+	assert_eq(special.selected, selected)
+	popup.hide()
+
+
+func test_page_keys_leave_a_panel_covered_by_another() -> void:
+	var main: Node = await _main()
+	var view: Dictionary = await _open(main, "menu")
+	var scroll: ScrollContainer = _helper(view["host"] as Control).main_scroll()
+	await _make_room(scroll)
+	scroll.scroll_vertical = 0
+	assert_true(main.call("set_shortcuts_visible", true))
+	await _frames()
+	await _key(main, KEY_PAGEDOWN)
+	await _key(main, KEY_END)
+	assert_eq(scroll.scroll_vertical, 0, "Shortcuts over the Menu keeps the keys")
+	assert_true(main.call("set_shortcuts_visible", false))
+	await _frames()
+	await _key(main, KEY_PAGEDOWN)
+	assert_true(scroll.scroll_vertical > 0, "the Menu scrolls again once uncovered")
+	main.call("set_menu_visible", false)
+	view = await _open(main, "settings")
+	var settings: Control = view["host"]
+	var settings_scroll: ScrollContainer = _helper(settings).main_scroll()
+	await _make_room(settings_scroll)
+	settings_scroll.scroll_vertical = 0
+	(settings.get_node("%WhatsNewButton") as Button).pressed.emit()
+	await _frames()
+	await _key(main, KEY_PAGEDOWN)
+	assert_eq(settings_scroll.scroll_vertical, 0, "What's new over Settings keeps the keys")
+
+
 func test_report_close_and_esc_hide_it_without_starting_the_next_day() -> void:
 	var main: Node = await _main()
 	var day: int = Clock.sim.day
@@ -155,6 +213,7 @@ func test_report_close_and_esc_hide_it_without_starting_the_next_day() -> void:
 		assert_false(report.visible, "the report hides on %s" % how)
 		assert_false(main.call("is_settings_visible"), "%s does not open Settings over the report" % how)
 		assert_eq(Clock.sim.day, day, "%s does not start the next day" % how)
+		assert_false(main.call("show_closed_report"), "only a closed day's report can be reopened")
 
 
 func test_menu_close_matches_esc() -> void:
@@ -277,6 +336,16 @@ func _close(main: Node, panel_name: String, view: Dictionary) -> void:
 	if main.call("is_menu_visible"):
 		main.call("set_menu_visible", false)
 	await _frames()
+
+
+func _first_scroll(node: Node) -> ScrollContainer:
+	for child: Node in node.get_children(true):
+		if child is ScrollContainer:
+			return child as ScrollContainer
+		var found: ScrollContainer = _first_scroll(child)
+		if found != null:
+			return found
+	return null
 
 
 func _helper(host: Control) -> PanelScroll:

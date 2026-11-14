@@ -28,6 +28,11 @@ signal settings_pressed()
 ## A site that cannot open this morning (renovating or still hiring, #464)
 ## ends the day without a service instead.
 signal close_day_requested()
+## Next day at closing. Main finalizes the day's books first (#497); without a
+## listener (a standalone HUD) the clock is advanced directly.
+signal next_day_requested()
+## Shows the evening report again after its Close or Esc hid it (#497).
+signal report_requested()
 signal header_layout_changed()
 signal collection_toast_shown(collection_id: StringName)
 
@@ -86,6 +91,8 @@ var _build_warning: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _build_tool: int = BuildMode.Tool.HAND
 var _menu_button: Button
+var _report_button: Button
+var _report_hidden: bool = false
 var _staff_button: Button
 var _stock_button: Button
 var _sold_out_label: Label
@@ -252,6 +259,8 @@ func refresh() -> void:
 		_paint_button.pressed.connect(_on_paint_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
+		_report_button = get_node("Top/Row/Report") as Button
+		_report_button.pressed.connect(_on_report_pressed)
 		_staff_button = get_node("Top/Row/Staff") as Button
 		_staff_button.pressed.connect(_on_staff_pressed)
 		_stock_button = get_node("Top/Row/Stock") as Button
@@ -302,6 +311,8 @@ func refresh() -> void:
 		_hint_viewport.size_changed.connect(_layout_build_hints)
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_report_button.visible = _report_hidden and Clock.sim.phase == SimClock.Phase.CLOSED
+	_report_button.disabled = _haggle_active
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
 	_stock_button.disabled = false
 	_stock_button.tooltip_text = "Check your storage, order ingredients and set auto-reorder"
@@ -733,7 +744,7 @@ func _on_settings_pressed() -> void:
 func _style_header() -> void:
 	var roles: Dictionary[String, StringName] = {"Speed0": &"pause", "Speed1": &"speed_1",
 		"Speed2": &"speed_2", "Speed4": &"speed_4", "Build": &"build", "Menu": &"menu",
-		"Staff": &"chef", "Paint": &"paint", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
+		"Staff": &"chef", "Paint": &"paint", "Context": &"open_shop", "Report": &"report", "Settings": &"settings", "Stock": &"stock"}
 	for child: Node in (get_node("Top/Row") as Container).get_children():
 		var button: Button = child as Button
 		if button == null:
@@ -1038,8 +1049,23 @@ func _on_context_pressed() -> void:
 		if Clock.sim.start_service():
 			Clock.set_speed(_preferences.default_open_speed if _preferences != null else 1)
 	elif Clock.sim.phase == SimClock.Phase.CLOSED:
-		Clock.sim.next_day()
+		if next_day_requested.get_connections().is_empty():
+			Clock.sim.next_day()
+		else:
+			next_day_requested.emit()
 	refresh()
+
+
+## Main says whether a closed day's report exists but is hidden.
+func set_report_hidden(value: bool) -> void:
+	if _report_hidden == value:
+		return
+	_report_hidden = value
+	refresh()
+
+
+func _on_report_pressed() -> void:
+	report_requested.emit()
 
 
 func _on_cash_changed(new_cash: int, delta: int, _reason: StringName) -> void:

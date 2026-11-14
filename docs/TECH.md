@@ -66,7 +66,12 @@ Stock keep their card-wide ScrollContainer only as a fallback for very short
 windows (150% UI on 1280x720 with HUD notices); it takes the wheel only while
 it really overflows. Every panel but the Build catalogue (closed by leaving
 Build) has Close at the top right of its header;
-the report's Close (and Esc) only hide it, Next day stays on the top bar.
+the report's Close (and Esc) only hide it; the top bar then shows a Report
+button (`HUD.report_requested` -> `Main.show_closed_report`), and the top bar's
+Next day goes through `HUD.next_day_requested` -> `Main._on_next_day_pressed`
+so the day's history row records the final books. Dropdown popups keep their
+own wheel, and page keys are ignored while a dialog or a later panel covers
+the card's centre (`PanelScroll.is_covered`).
 
 **Build version and What's new (#433):** `tools/export.sh` stamps every export
 before it runs Godot: `build_info/version.txt` (the tag from
