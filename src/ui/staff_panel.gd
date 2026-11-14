@@ -32,6 +32,8 @@ class TransferSite:
 	var name: String = ""
 	## That site's roster, detached: read for the refusal only.
 	var roster: StaffRoster = null
+	## True when a manager already runs it (its book row names a Manager).
+	var managed: bool = false
 
 var _roster: StaffRoster
 var _phase: int = SimClock.Phase.MORNING
@@ -670,7 +672,7 @@ func _refresh_transfer(transfer: MenuButton, id: StringName, editable: bool) -> 
 	popup.clear()
 	for index: int in range(_transfer_sites.size()):
 		var site: TransferSite = _transfer_sites[index]
-		var reason: String = transfer_refusal_text(StaffTransfer.refusal(_roster, id, site.roster))
+		var reason: String = transfer_refusal_text(StaffTransfer.refusal(_roster, id, site.roster, site.managed))
 		popup.add_item(site.name if reason.is_empty() else "%s (%s)" % [site.name, reason], index)
 		popup.set_item_disabled(popup.get_item_index(index), not reason.is_empty())
 
@@ -679,7 +681,7 @@ func _on_transfer_picked(index: int, id: StringName) -> void:
 	if _phase != SimClock.Phase.MORNING or _roster == null or index < 0 or index >= _transfer_sites.size():
 		return
 	var site: TransferSite = _transfer_sites[index]
-	if StaffTransfer.refusal(_roster, id, site.roster) == StaffTransfer.Refusal.NONE:
+	if StaffTransfer.refusal(_roster, id, site.roster, site.managed) == StaffTransfer.Refusal.NONE:
 		transfer_requested.emit(id, site.id)
 	refresh()
 

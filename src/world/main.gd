@@ -3414,6 +3414,7 @@ func switch_site(target: StringName) -> bool:
 		return false
 	# Record the swap while it can still be undone: pure bookkeeping, and
 	# can_swap was checked, so it is not expected to refuse.
+	var leaving: StringName = site_book.active_id
 	if not site_book.swap_active(target, day, departing):
 		SaveSystem.restore_sections(departing, SiteSections.PER_SITE)
 		_clear_site_staging()
@@ -3421,6 +3422,9 @@ func switch_site(target: StringName) -> bool:
 		_log_switch_refusal(target, "the site list could not record it")
 		return false
 	# From here the switch cannot be refused.
+	# A Manager hired at the site being left runs it while the owner is away
+	# (#473): its row takes the best Manager on its staff if it has no valid one.
+	_adopt_site_manager(leaving)
 	_disconnect_session()
 	Clock.attach_world(null)
 	# Notes kept from the departing site's morning belong to it and are saved
@@ -4396,14 +4400,15 @@ func staff_transfer(id: StringName, target: StringName) -> bool:
 	for member: StaffMember in choices.members():
 		if member.id == id:
 			moving = member
-	var arrived: StringName = StaffTransfer.move(choices, id, destination)
+	var arrived: StringName = StaffTransfer.move(choices, id, destination, _site_managed(target))
 	if arrived.is_empty() or not sim.set_staff_roster(choices.members()):
 		return false
 	# Checked above (a frozen site, a per-site key): this cannot refuse.
-	site_book.set_frozen_section(target, "staff", destination.to_dict())
-	# A manager runs the site they move to (it had none: StaffTransfer).
-	if moving.role == StaffMember.MANAGER:
-		site_book.set_manager(target, arrived)
+	if not site_book.set_frozen_section(target, "staff", destination.to_dict()):
+		push_error("A staff transfer could not write the other site's team")
+	# A manager runs the site they move to (it had no running manager).
+	if moving.role == StaffMember.MANAGER and not site_book.set_manager(target, arrived):
+		push_error("A transferred manager could not be made the site's manager")
 	staff_roster = choices
 	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
@@ -4419,7 +4424,14 @@ func staff_transfer(id: StringName, target: StringName) -> bool:
 func staff_transfer_refusal(id: StringName, target: StringName) -> StaffTransfer.Refusal:
 	if not can_edit_staff() or target == site_book.active_id or not site_book.is_frozen(target):
 		return StaffTransfer.Refusal.UNKNOWN
-	return StaffTransfer.refusal(staff_roster, id, _frozen_roster(target))
+	return StaffTransfer.refusal(staff_roster, id, _frozen_roster(target), _site_managed(target))
+
+
+## True when a frozen site's row names a Manager on its own staff, so it
+## runs while the owner is away (the same test as AwaySites.plan_close).
+func _site_managed(site: StringName) -> bool:
+	var staff: Variant = site_book.frozen_sections(site).get("staff", null)
+	return staff is Dictionary and AwaySites.manager_skill(staff, site_book.manager(site)) > 0
 
 
 ## A frozen site's roster as it would load: its saved staff section, or the
@@ -4447,12 +4459,16 @@ func _refresh_staff_transfer_sites() -> void:
 		entry.id = site
 		entry.name = AwaySites.display_name(site_book, site)
 		entry.roster = roster
+		entry.managed = _site_managed(site)
 		sites.append(entry)
 	_staff_panel.set_transfer_sites(sites)
 
 
 func _on_staff_transfer_requested(id: StringName, target: StringName) -> void:
-	staff_transfer(id, target)
+	if not staff_transfer(id, target) and world != null:
+		var reason: String = StaffPanel.transfer_refusal_text(staff_transfer_refusal(id, target))
+		world.log_event("Could not send them to %s: %s" % [AwaySites.display_name(site_book, target),
+			reason.trim_suffix(".")])
 	_staff_panel.refresh()
 
 
@@ -6789,6 +6805,18 @@ func _is_roster_manager(member_id: StringName) -> bool:
 		if member.id == member_id:
 			return member.role == StaffMember.MANAGER
 	return false
+
+
+## A frozen site whose row names no valid manager takes the best Manager on
+## its own staff (AwaySites.best_manager: highest skill, then smallest id).
+## Called for the site the owner leaves (switch_site, FK-087, #473).
+func _adopt_site_manager(site: StringName) -> void:
+	var staff: Variant = site_book.frozen_sections(site).get("staff", null)
+	if not staff is Dictionary or _site_managed(site):
+		return
+	var best: StringName = AwaySites.best_manager(staff)
+	if not best.is_empty() and not site_book.set_manager(site, best):
+		push_error("The site's manager could not be recorded")
 
 
 ## Clears the active site's manager once that person has left the roster.

@@ -186,6 +186,7 @@ func test_a_manager_runs_the_site_they_move_to_and_only_one_without_a_manager() 
 	_add_people([_person("mo", StaffMember.MANAGER, 3)])
 	assert_true(_main.call("assign_site_manager", &"mo"))
 	_second_site([_person("di", StaffMember.MANAGER), _person("starter_cook", &"cook")])
+	assert_true(_book().set_manager(&"second", &"di"), "Di runs the second site")
 	assert_true(_book().add_site(&"third", &"third_lot", "Third", Clock.sim.day,
 		{"staff": {"version": 1, "candidate_day": 0, "members": [], "candidates": []}}))
 	assert_eq(_main.call("staff_transfer_refusal", &"mo", &"second"), StaffTransfer.Refusal.HAS_MANAGER)
@@ -210,6 +211,7 @@ func test_the_staff_panel_lists_the_other_sites_with_reasons() -> void:
 	assert_true(_main.call("set_staff_visible", false))
 	_add_people([_person("ana", &"cook"), _person("mo", StaffMember.MANAGER, 3)])
 	_second_site([_person("di", StaffMember.MANAGER)])
+	assert_true(_book().set_manager(&"second", &"di"))
 	assert_true(_main.call("set_staff_visible", true))
 	var send: MenuButton = panel.row_for(&"ana").get_node("Top/Transfer") as MenuButton
 	assert_true(send.visible)
@@ -236,3 +238,37 @@ func test_the_staff_panel_lists_the_other_sites_with_reasons() -> void:
 	assert_true((panel.row_for(&"starter_cook").get_node("Top/Transfer") as MenuButton).disabled)
 	assert_eq((panel.row_for(&"starter_cook").get_node("Top/Transfer") as MenuButton).tooltip_text,
 		StaffPanel.MORNING_HINT)
+
+
+func test_a_manager_may_join_a_site_whose_manager_does_not_run_it() -> void:
+	_start()
+	_add_people([_person("mo", StaffMember.MANAGER, 3)])
+	# Di was hired at the second site but its row names nobody (or a leaver).
+	_second_site([_person("di", StaffMember.MANAGER)])
+	assert_true(_book().set_manager(&"second", &"gone"))
+	assert_eq(_main.call("staff_transfer_refusal", &"mo", &"second"), StaffTransfer.Refusal.NONE)
+	assert_true(_main.call("staff_transfer", &"mo", &"second"))
+	assert_eq(_book().manager(&"second"), &"mo", "the arriving manager takes over")
+	assert_eq(_frozen_ids(&"second"), [&"di", &"mo"])
+
+
+func test_a_manager_hired_at_a_site_runs_it_once_you_leave() -> void:
+	_start()
+	_add_people([_person("zed", StaffMember.MANAGER, 4), _person("bea", StaffMember.MANAGER, 4),
+		_person("al", StaffMember.MANAGER, 2)])
+	_second_site()
+	assert_eq(_book().manager(SiteBook.HOME_ID), &"", "nobody assigned while you are there")
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_book().manager(SiteBook.HOME_ID), &"bea", "highest skill, then smallest id")
+	var rows: Array[SiteCard.Row] = _main.call("_site_card_rows")
+	for row: SiteCard.Row in rows:
+		if row.id == SiteBook.HOME_ID:
+			assert_eq(row.manager, "Bea", "the morning card names them")
+			assert_true(row.managed)
+	# A valid manager already on the row is kept.
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_true(_main.call("assign_site_manager", &"zed"))
+	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_book().manager(SiteBook.HOME_ID), &"zed")
+	# The second site, with no Manager on its staff, still has none.
+	assert_eq(_book().manager(&"second"), &"")

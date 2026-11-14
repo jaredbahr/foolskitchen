@@ -3916,8 +3916,11 @@ employee lists the owner's other sites (renovating ones included: a crew can
 be ready for the opening day). `StaffTransfer` (`src/sim/staff`, pure) has
 the rules, in order: an unknown person (`UNKNOWN`), the departing site's last
 cook or server (`LAST_OF_ROLE`, `StaffRoster.can_let_go`, the same rule as
-letting go), a Manager to a site that already has someone in the Manager role
-(`HAS_MANAGER`: one manager per site), a full destination (`FULL`,
+letting go), a Manager to a site that already has a running manager
+(`HAS_MANAGER`: its book row names a Manager on its own staff,
+`AwaySites.manager_skill > 0`, the same test `plan_close` uses; a Manager
+on the staff whom the row does not name does not block one), a full
+destination (`FULL`,
 `StaffRoster.CAPACITY`). `StaffTransfer.move` takes the person out with
 `let_go` and into the destination with `StaffRoster.accept_transfer`, as they
 are: skill, trait, wage, growth (mood, XP, raise history, quit day), job
@@ -3929,7 +3932,12 @@ load), moves the person, reinstalls the live roster (the agent leaves at
 once) and writes the destination back with `SiteBook.set_frozen_section`
 (frozen day kept). A Manager who moves becomes the destination's manager on
 its book row, so it earns while the owner is away; the departing site's row
-clears through `_prune_site_manager`. No ledger entry (no fee, no
+clears through `_prune_site_manager`. A Manager hired at a site runs it once the
+owner leaves: `switch_site`, past its last refusal, calls
+`_adopt_site_manager` on the departing site, which, when its row names no
+valid manager, sets the row to `AwaySites.best_manager` of its staff
+(highest skill, ties to the smaller id; deterministic). The morning site card
+then shows them. A refused transfer is logged ("Could not send them to …"). No ledger entry (no fee, no
 severance), no RNG and no save: the next morning autosave, or the switch's,
 writes both sites. Wages are unchanged: the person is paid at a site's close
 only while that site is active, as for any frozen roster. The panel words

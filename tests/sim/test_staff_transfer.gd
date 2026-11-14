@@ -86,21 +86,34 @@ func test_the_last_cook_or_server_cannot_leave() -> void:
 	assert_eq(StaffTransfer.refusal(two, &"bo", away), StaffTransfer.Refusal.LAST_OF_ROLE)
 
 
-func test_a_manager_moves_only_to_a_site_without_one() -> void:
+func test_a_manager_moves_only_to_a_site_without_a_running_manager() -> void:
 	var home: StaffRoster = _roster([_person("mo", StaffMember.MANAGER)])
 	var managed: StaffRoster = _roster([_person("di", StaffMember.MANAGER)])
-	var unmanaged: StaffRoster = _roster()
 	var before: Dictionary = home.to_dict()
-	assert_eq(StaffTransfer.refusal(home, &"mo", managed), StaffTransfer.Refusal.HAS_MANAGER)
-	assert_eq(StaffTransfer.move(home, &"mo", managed), &"")
+	# Whether a site runs is its book row's manager, which the caller passes.
+	assert_eq(StaffTransfer.refusal(home, &"mo", managed, true), StaffTransfer.Refusal.HAS_MANAGER)
+	assert_eq(StaffTransfer.move(home, &"mo", managed, true), &"")
 	assert_eq(home.to_dict(), before)
 	assert_eq(_ids(managed), [&"starter_cook", &"starter_server", &"di"])
+	# A Manager on the staff who does not run the site does not block one.
+	assert_eq(StaffTransfer.refusal(home, &"mo", managed, false), StaffTransfer.Refusal.NONE)
+	var unmanaged: StaffRoster = _roster()
 	assert_eq(StaffTransfer.move(home, &"mo", unmanaged), &"mo")
 	assert_true(StaffTransfer.has_manager(unmanaged))
 	assert_false(StaffTransfer.has_manager(home))
-	# Floor staff may join a site that has a manager.
+	# Floor staff may join a site that has a running manager.
 	var cook: StaffRoster = _roster([_person("cy", &"cook")])
-	assert_eq(StaffTransfer.refusal(cook, &"cy", managed), StaffTransfer.Refusal.NONE)
+	assert_eq(StaffTransfer.refusal(cook, &"cy", managed, true), StaffTransfer.Refusal.NONE)
+
+
+func test_the_best_manager_on_a_staff_is_the_highest_skill_then_smallest_id() -> void:
+	assert_eq(AwaySites.best_manager({}), &"")
+	assert_eq(AwaySites.best_manager(_roster([_person("cy", &"cook")]).to_dict()), &"")
+	var staff: Dictionary = _roster([_person("zed", StaffMember.MANAGER, 4),
+		_person("bea", StaffMember.MANAGER, 4), _person("al", StaffMember.MANAGER, 2),
+		_person("top_cook", &"cook", 5)]).to_dict()
+	assert_eq(AwaySites.best_manager(staff), &"bea")
+	assert_eq(AwaySites.best_manager(JSON.parse_string(JSON.stringify(staff))), &"bea", "JSON shape too")
 
 
 func test_a_full_site_takes_nobody() -> void:
