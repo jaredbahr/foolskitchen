@@ -7415,7 +7415,8 @@ func _on_service_closed(day: int) -> void:
 	# (test_loan_session). A new non-operating category that can be booked
 	# before the close must be added here as well as to DayReport.
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
-			Ledger.OPENING_WEEK_BONUS, Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
+			Ledger.OPENING_WEEK_BONUS, Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.AWAY_SITE_WAGES,
+			Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 			Ledger.EARLY_LOAN_REPAYMENT]:
 		operating_profit -= int(day_movements.get(category, 0))
 	# A closed day still evaluates the weekly goal (its saved day must follow
