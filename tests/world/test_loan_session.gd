@@ -202,7 +202,7 @@ func test_booking_deposit_is_excluded_at_close_and_full_bill_enters_operating_pr
 	assert_eq(Economy.ledger.to_dict(), settled_books, "repeat close cannot post a second sale")
 
 
-func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close() -> void:
+func test_unfulfilled_booking_refunds_once_without_a_review_at_service_close() -> void:
 	var main: Node = await _start(false)
 	_fresh_books(10000)
 	var booking: GroupBooking = _accepted_booking()
@@ -220,8 +220,8 @@ func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close(
 	var report: DayReport = main.get("shown_report") as DayReport
 	assert_eq(report.booking_lines.size(), 1)
 	assert_eq(report.booking_lines[0], "Booking: the birthday group couldn't be seated. Deposit refunded.")
-	assert_eq(report.review_cards.size(), 1)
-	assert_eq(report.review_cards[0]["stars"], 1)
+	assert_eq(report.review_cards.size(), 0)
+	assert_eq(report.reputation_before, report.reputation_after)
 	var ledger_after_close: Dictionary = Economy.ledger.to_dict()
 	main.call("_on_service_closed", 2)
 	assert_eq(Economy.ledger.to_dict(), ledger_after_close)
@@ -362,12 +362,11 @@ func test_unseatable_scheduled_party_expires_patience_then_refunds_through_real_
 	assert_true(booking.booking["effects"].has(String(GroupBooking.EFFECT_NO_SEAT)))
 	var result: Dictionary = sim.booking_review_results.get(booking_id, {})
 	assert_true(result.get("no_seat", false))
-	assert_eq(result.get("stars", 0), 1)
-	assert_eq(result.get("weight", 0), 1)
+	assert_false(result.has("stars"))
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.BOOKING_REFUND, 0), -deposit)
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.SALE, 0), 0)
 	assert_eq(sim.booking_report_lines.size(), 1)
-	assert_eq(sim.reviews_today.size(), 1)
+	assert_eq(sim.reviews_today.size(), 0)
 	_close(main)
 
 
