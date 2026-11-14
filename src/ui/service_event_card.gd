@@ -13,6 +13,8 @@ const MUTED_COLOR: Color = Color("766b60")
 const PAUSED: String = "Paused"
 const LABEL_FONT_SIZE: int = 18
 const PREVIEW_FONT_SIZE: int = 14
+const MIN_CHOICE_HEIGHT: float = 58.0
+const CHOICE_PADDING: float = 8.0
 
 var _event_id: StringName = &""
 
@@ -71,12 +73,12 @@ func _make_choice(index: int, label: String, preview: String) -> Button:
 	button.name = "Choice%d" % index
 	button.focus_mode = Control.FOCUS_NONE
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.custom_minimum_size = Vector2(0.0, 58.0)
+	button.custom_minimum_size = Vector2(0.0, MIN_CHOICE_HEIGHT)
 	button.tooltip_text = preview
 	var lines: VBoxContainer = VBoxContainer.new()
 	lines.name = "Lines"
 	lines.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lines.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 10)
+	lines.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, int(CHOICE_PADDING))
 	lines.alignment = BoxContainer.ALIGNMENT_CENTER
 	lines.add_theme_constant_override(&"separation", 0)
 	button.add_child(lines)
@@ -87,7 +89,14 @@ func _make_choice(index: int, label: String, preview: String) -> Button:
 	detail.add_theme_color_override(&"font_color", MUTED_COLOR)
 	lines.add_child(detail)
 	button.pressed.connect(_on_choice_pressed.bind(index))
+	lines.minimum_size_changed.connect(_fit_choice.bind(button, lines))
 	return button
+
+
+## The button grows to its wrapped label and preview.
+func _fit_choice(button: Button, lines: VBoxContainer) -> void:
+	if is_instance_valid(button) and is_instance_valid(lines):
+		button.custom_minimum_size.y = maxf(MIN_CHOICE_HEIGHT, lines.get_combined_minimum_size().y + 2.0 * CHOICE_PADDING)
 
 
 func _label(node_name: String, text: String, font_size: int) -> Label:

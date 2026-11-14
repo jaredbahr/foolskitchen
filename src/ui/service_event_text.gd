@@ -30,10 +30,10 @@ static func preview(choice: ServiceEventChoice, names: Dictionary = {}, unit_cos
 	if choice.cash != 0:
 		parts.append(signed_money(choice.cash))
 	if choice.stock_units > 0:
-		parts.append("buy %d %s for %s" % [choice.stock_units, ingredient,
+		parts.append("buy %s x%d for %s" % [ingredient, choice.stock_units,
 			Fmt.money(stock_cost(choice.stock_units, unit_cost, choice.stock_price_percent))])
 	elif choice.stock_units < 0:
-		parts.append("uses %d %s" % [-choice.stock_units, ingredient])
+		parts.append("uses %s x%d" % [ingredient, -choice.stock_units])
 	if choice.review_stars > 0:
 		parts.append("a %d-star review" % choice.review_stars)
 	if choice.guest_patience_seconds > 0:

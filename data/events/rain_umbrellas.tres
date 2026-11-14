@@ -8,7 +8,7 @@ script = ExtResource("2_choice")
 label = "Towels and umbrellas"
 result = "Towels by the door, umbrellas by the coats. Guests dripped politely."
 cash = -8
-day_patience_percent = 10
+day_patience_percent = 5
 clean_spots = true
 
 [sub_resource type="Resource" id="Choice_2"]

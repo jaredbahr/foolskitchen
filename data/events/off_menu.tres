@@ -7,8 +7,8 @@
 script = ExtResource("2_choice")
 label = "Improvise something"
 result = "The kitchen improvised with {ingredient}. The guest called it \"brave\" and tipped like it."
-cash = 12
-review_stars = 5
+cash = 8
+review_stars = 4
 stock_units = -2
 
 [sub_resource type="Resource" id="Choice_2"]

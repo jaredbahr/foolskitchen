@@ -264,7 +264,7 @@ func test_every_choice_has_a_plain_preview() -> void:
 			assert_false(text.contains("_") or text.contains("{"), "no raw names: %s" % text)
 	var van: ServiceEventChoice = _model().definition(&"supplier_van").choices[0]
 	assert_eq(ServiceEventText.preview(van, {"ingredient": "tomato"}, 1),
-		"Buy 20 tomato for $12, might be a bad batch")
+		"Buy tomato x20 for $12, might be a bad batch")
 	var busker: ServiceEventChoice = _model().definition(&"busker").choices[0]
-	assert_eq(ServiceEventText.preview(busker), "-$10, guests here wait 20 s longer, guests more patient today, more walk-ins today")
+	assert_eq(ServiceEventText.preview(busker), "-$15, guests more patient today, more walk-ins today")
 	assert_eq(ServiceEventText.preview(_model().definition(&"busker").choices[1]), ServiceEventText.NOTHING)

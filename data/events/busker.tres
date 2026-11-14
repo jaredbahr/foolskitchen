@@ -7,9 +7,8 @@
 script = ExtResource("2_choice")
 label = "Tip him to stay"
 result = "Guests tapped along, mostly in time. A few passers-by followed the music in."
-cash = -10
-guest_patience_seconds = 20
-day_patience_percent = 10
+cash = -15
+day_patience_percent = 5
 day_arrivals_percent = 5
 
 [sub_resource type="Resource" id="Choice_2"]
