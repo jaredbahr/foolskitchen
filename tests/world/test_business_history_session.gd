@@ -218,6 +218,31 @@ func test_late_whole_load_rejection_and_missing_slot_clear_live_and_staged_rows(
 	assert_null(_main.get("_loaded_business_history"))
 
 
+func test_hidden_report_reopens_and_hud_next_day_records_the_final_books() -> void:
+	_start_main()
+	if _finish_service() == null:
+		return
+	var report_view: Control = _main.get_node("Overlay/EveningReport") as Control
+	var report_button: Button = _main.get_node("HUD/Top/Row/Report") as Button
+	assert_true(report_view.visible)
+	assert_false(report_button.visible, "no Report button while the report is showing")
+	(report_view.get_node("%Close") as Button).pressed.emit()
+	assert_false(report_view.visible)
+	assert_true(report_button.visible, "the top bar offers the hidden report back")
+	report_button.pressed.emit()
+	assert_true(report_view.visible, "the Report button shows it again")
+	assert_false(report_button.visible)
+	(report_view.get_node("%Close") as Button).pressed.emit()
+	# Bookkeeping fixture while the report is hidden, like a top-bar loan repayment.
+	Economy.add_cash(-5, Ledger.UPGRADES)
+	var closing: DayReport = _main.call("build_report", Clock.sim.day) as DayReport
+	(_main.get_node("HUD/Top/Row/Context") as Button).pressed.emit()
+	assert_eq(Clock.sim.day, 2, "the top bar's Next day starts the next morning")
+	assert_eq(_history().summaries().size(), 1)
+	assert_eq(_history().summaries()[0]["cash_change"], closing.profit(),
+		"the top bar's Next day records the books as they closed, including the hidden-report change")
+
+
 func _start_main(staged_before_start: Dictionary = {}) -> void:
 	_main = MAIN.instantiate()
 	_main.set("use_saves", true)

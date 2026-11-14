@@ -82,7 +82,7 @@ func test_real_close_covers_wages_and_rent_before_report_once_without_bank_xp_or
 	assert_eq(report.owner_xp_breakdown["profit_xp"], 0, "the rounded bank advance earns no owner XP")
 	assert_true(report.loan_first_advance, "both close-time report builds retain the first introduction")
 	assert_true((main.call("build_report", 1) as DayReport).loan_first_advance)
-	var notice: Label = main.get_node("Overlay/EveningReport/Panel/Scroll/Content/LoanNotice") as Label
+	var notice: Label = main.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content/LoanNotice") as Label
 	assert_true(notice.visible)
 	assert_eq(notice.text, "The bank covered your shortfall. It'll take a share of your profits until it's paid back.")
 	var chip: Label = main.get_node("HUD/Top/Row/Loan") as Label
@@ -202,7 +202,7 @@ func test_booking_deposit_is_excluded_at_close_and_full_bill_enters_operating_pr
 	assert_eq(Economy.ledger.to_dict(), settled_books, "repeat close cannot post a second sale")
 
 
-func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close() -> void:
+func test_unfulfilled_booking_refunds_once_without_a_review_at_service_close() -> void:
 	var main: Node = await _start(false)
 	_fresh_books(10000)
 	var booking: GroupBooking = _accepted_booking()
@@ -220,8 +220,8 @@ func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close(
 	var report: DayReport = main.get("shown_report") as DayReport
 	assert_eq(report.booking_lines.size(), 1)
 	assert_eq(report.booking_lines[0], "Booking: the birthday group couldn't be seated. Deposit refunded.")
-	assert_eq(report.review_cards.size(), 1)
-	assert_eq(report.review_cards[0]["stars"], 1)
+	assert_eq(report.review_cards.size(), 0)
+	assert_eq(report.reputation_before, report.reputation_after)
 	var ledger_after_close: Dictionary = Economy.ledger.to_dict()
 	main.call("_on_service_closed", 2)
 	assert_eq(Economy.ledger.to_dict(), ledger_after_close)
@@ -362,12 +362,11 @@ func test_unseatable_scheduled_party_expires_patience_then_refunds_through_real_
 	assert_true(booking.booking["effects"].has(String(GroupBooking.EFFECT_NO_SEAT)))
 	var result: Dictionary = sim.booking_review_results.get(booking_id, {})
 	assert_true(result.get("no_seat", false))
-	assert_eq(result.get("stars", 0), 1)
-	assert_eq(result.get("weight", 0), 1)
+	assert_false(result.has("stars"))
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.BOOKING_REFUND, 0), -deposit)
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.SALE, 0), 0)
 	assert_eq(sim.booking_report_lines.size(), 1)
-	assert_eq(sim.reviews_today.size(), 1)
+	assert_eq(sim.reviews_today.size(), 0)
 	_close(main)
 
 
@@ -403,7 +402,7 @@ func test_next_morning_saves_loan_inside_economy_and_reload_preserves_guard_and_
 	_close_service(second)
 	assert_false((second.get("shown_report") as DayReport).loan_first_advance,
 		"a later close after morning reload does not repeat the introduction")
-	assert_false((second.get_node("Overlay/EveningReport/Panel/Scroll/Content/LoanNotice") as Label).visible)
+	assert_false((second.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content/LoanNotice") as Label).visible)
 
 
 func test_old_economy_save_without_loan_loads_debt_free_and_new_game_resets_debt() -> void:

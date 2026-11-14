@@ -48,12 +48,13 @@ func arrival_multiplier(tuning: ReviewTuning) -> float:
 		clampf((average() - 1.0) / 4.0, 0.0, 1.0))
 
 
-## A closing-time departure produces no review and consumes no random draw.
+## Leaving at closing or before receiving any service produces no review or draw.
 ## Otherwise one draw decides whether this guest reviews, then quote selection
 ## uses the same injected, seeded stream. Returns a detached report row.
 func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes,
 		random: RandomNumberGenerator, vibe_tuning: VibeTuning = VIBE_TUNING) -> Dictionary:
-	if visit == null or visit.closing or tuning == null or not tuning.is_valid() \
+	if visit == null or visit.closing or (not visit.was_seated and not visit.served) \
+			or tuning == null or not tuning.is_valid() \
 			or quotes == null or random == null:
 		return {}
 	if not is_finite(visit.review_chance_multiplier) or visit.review_chance_multiplier < 0.0:
@@ -74,6 +75,18 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 		_scores.pop_front()
 	return {"stars": stars, "cause": cause, "quote": quote,
 		"before": before, "after": average()}
+
+
+## One review from a service event card (#495): a plain score in the window,
+## with no quote and no draw. Returns the before/after averages.
+func record_event_review(stars: int) -> Dictionary:
+	if stars < 1 or stars > 5:
+		return {}
+	var before: float = average()
+	_scores.append(stars)
+	while _scores.size() > WINDOW:
+		_scores.pop_front()
+	return {"stars": stars, "before": before, "after": average()}
 
 
 ## One booking-level review uses the average measured guest score. Only a

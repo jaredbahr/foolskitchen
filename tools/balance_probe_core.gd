@@ -139,6 +139,9 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 	var main: Node = scene.instantiate()
 	main.set("use_saves", false)
 	main.set("new_game_seed_override", seed_value)
+	# Service event cards (#495) stay off, so every set-up but "service_events"
+	# matches the probe from before they existed.
+	main.set("service_events_for_tools", false)
 	tree.root.add_child(main)
 	main.call("start")
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim

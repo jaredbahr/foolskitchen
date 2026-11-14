@@ -353,7 +353,7 @@ func test_menu_settings_entry_opens_and_returns_without_changing_dishes() -> voi
 	assert_false(menu.visible)
 	assert_true(settings.visible)
 	assert_eq(settings.theme, preload("res://src/ui/theme/main_theme.tres"))
-	(settings.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	(settings.get_node("Panel/Column/TitleBar/CloseButton") as Button).pressed.emit()
 	assert_false(settings.visible)
 	assert_true(menu.visible)
 	assert_eq((main.get("menu_settings") as MenuSettings).to_dict(), before)
@@ -408,7 +408,7 @@ func test_settings_gear_and_escape_pause_service_and_restore_the_previous_speed(
 	assert_eq(world.now, before, "service stays still while Settings is open")
 	_native_settings_key(KEY_4)
 	assert_eq(Clock.speed, 0, "modal keyboard input cannot change the remembered speed")
-	(settings.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	(settings.get_node("Panel/Column/TitleBar/CloseButton") as Button).pressed.emit()
 	assert_false(settings.visible)
 	assert_eq(Clock.speed, 2)
 	assert_eq(Clock.sim.phase, SimClock.Phase.OPEN)
@@ -420,7 +420,7 @@ func test_settings_gear_and_escape_pause_service_and_restore_the_previous_speed(
 	assert_eq(Clock.speed, 2)
 	Clock.set_speed(0)
 	gear.pressed.emit()
-	(settings.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	(settings.get_node("Panel/Column/TitleBar/CloseButton") as Button).pressed.emit()
 	assert_eq(Clock.speed, 0, "a previously paused service remains paused")
 
 
@@ -465,11 +465,11 @@ func test_wrapped_header_keeps_top_panels_and_settings_below_its_actual_bounds()
 			path + " starts below the rendered wrapped header")
 	var settings: SettingsPanel = main.get_node("Overlay/SettingsPanel") as SettingsPanel
 	var card: Control = settings.get_node("Panel") as Control
-	var close: Button = settings.get_node("Panel/Column/CloseButton") as Button
+	var close: Button = settings.get_node("Panel/Column/TitleBar/CloseButton") as Button
 	assert_true(card.get_global_rect().position.y >= header.get_global_rect().end.y + 11.0)
 	assert_true(viewport.get_visible_rect().grow(1.0).encloses(card.get_global_rect()))
 	assert_true(close.is_visible_in_tree())
-	assert_true(card.get_global_rect().encloses(close.get_global_rect()), "Close stays in the pinned footer")
+	assert_true(card.get_global_rect().encloses(close.get_global_rect()), "Close stays in the pinned title bar")
 	_close(main)
 	viewport.free()
 
@@ -678,6 +678,8 @@ func _start(with_saves: bool = true, host: Node = null, manual_stock: bool = fal
 		host = (Engine.get_main_loop() as SceneTree).root
 	host.add_child(main)
 	main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(main)
 	return main
 
 

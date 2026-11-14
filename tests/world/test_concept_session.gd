@@ -46,6 +46,8 @@ func _start(with_saves: bool) -> Node:
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(main)
 	return main
 
 

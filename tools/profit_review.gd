@@ -80,14 +80,14 @@ func _process(_delta: float) -> void:
 	if _review_small and _review_frames == 30:
 		var next_day: Button = _report.get_node("%NextDay") as Button
 		next_day.grab_focus()
-		(_report.get_node("Panel/Scroll") as ScrollContainer).ensure_control_visible(next_day)
+		(_report.get_node("Panel/Column/Scroll") as ScrollContainer).ensure_control_visible(next_day)
 	if _review_frames in [10, 50]:
 		_record_native_report()
 
 
 func _record_native_report() -> void:
 	await RenderingServer.frame_post_draw
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var viewport: Rect2 = scroll.get_global_rect()
 	var rows: Array[Dictionary] = []
 	var valid: bool = world.now == _review_tick and Clock.sim.phase == SimClock.Phase.CLOSED \

@@ -38,6 +38,8 @@ func _start(manual_stock: bool = false) -> void:
 	_main.set("new_game_seed_override", 23)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_main.set_process(false)
 
 func test_floor_budget_warning_is_visible_read_only_and_does_not_refuse_purchase() -> void:

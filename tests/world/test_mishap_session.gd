@@ -32,10 +32,10 @@ func test_breakage_uses_existing_ledger_and_plain_live_report_without_saved_fiel
 	assert_false(report.to_dict().has("mishaps_text"))
 	var view: Control = _main.get_node("Overlay/EveningReport")
 	view.call("show_report", report)
-	var label: Label = view.get_node("Panel/Scroll/Content/Mishaps") as Label
+	var label: Label = view.get_node("Panel/Column/Scroll/Content/Mishaps") as Label
 	assert_eq(label.text, report.mishaps_text)
 	assert_true(label.visible)
-	var rows: GridContainer = view.get_node("Panel/Scroll/Content/Finances/Costs/CostRows") as GridContainer
+	var rows: GridContainer = view.get_node("Panel/Column/Scroll/Content/Finances/Costs/CostRows") as GridContainer
 	var found: bool = false
 	for child: Node in rows.get_children():
 		if child is Label and (child as Label).text == "Breakages":

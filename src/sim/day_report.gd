@@ -4,7 +4,7 @@ extends RefCounted
 
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.EARLY_LOAN_REPAYMENT,
-	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS,
+	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS, Ledger.OPENING_WEEK_BONUS,
 	Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 	Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 ]
@@ -80,6 +80,9 @@ var booking_lines: Array[String] = []
 var critic_lines: Array[String] = []
 ## Optional event cohort summary; absent on ordinary days to preserve old saves.
 var rush_hour_lines: Array[String] = []
+## Today's answered service event cards (#495), already player-facing; absent
+## on days without one, so older saved reports read the same.
+var service_event_lines: Array[String] = []
 ## Detached record notices for this close; old reports omit them.
 var record_lines: Array[String] = []
 ## The owner's other sites at this close (FK-087), already player-facing:
@@ -290,6 +293,8 @@ func to_dict() -> Dictionary:
 		result["critic_lines"] = critic_lines.duplicate()
 	if not rush_hour_lines.is_empty():
 		result["rush_hour_lines"] = rush_hour_lines.duplicate()
+	if not service_event_lines.is_empty():
+		result["service_event_lines"] = service_event_lines.duplicate()
 	if not record_lines.is_empty():
 		result["record_lines"] = record_lines.duplicate()
 	if not away_site_lines.is_empty():
@@ -388,6 +393,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_rush:
 			if line is String:
 				report.rush_hour_lines.append(line)
+	var saved_events: Variant = data.get("service_event_lines", [])
+	if saved_events is Array:
+		for line: Variant in saved_events:
+			if line is String and String(line).length() <= 400:
+				report.service_event_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
 	var saved_record_lines: Variant = data.get("record_lines", [])
 	if saved_record_lines is Array:
@@ -544,9 +554,9 @@ static func _owner_xp(value: Variant) -> Dictionary:
 	if not value is Dictionary:
 		return result
 	var amounts: Dictionary = value
-	for key: String in ["happy_xp", "profit_xp", "review_xp", "milestone_xp", "total_xp"]:
+	for key: String in ["happy_xp", "profit_xp", "review_xp", "milestone_xp", "opening_week_xp", "total_xp"]:
 		if amounts.has(key):
-			if key == "milestone_xp":
+			if key == "milestone_xp" or key == "opening_week_xp":
 				var xp: int = milestone_xp(amounts[key])
 				if xp < 0:
 					continue

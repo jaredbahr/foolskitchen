@@ -318,7 +318,7 @@ func test_slider_without_drag_saves_after_debounce_and_close_flushes() -> void:
 	assert_true(restored.load_from_disk())
 	assert_eq(restored.master_volume_percent, 60)
 	master.value = 35
-	(panel.get_node("Panel/Column/CloseButton") as Button).pressed.emit()
+	(panel.get_node("Panel/Column/TitleBar/CloseButton") as Button).pressed.emit()
 	assert_true(restored.load_from_disk())
 	assert_eq(restored.master_volume_percent, 35)
 	restored.free()

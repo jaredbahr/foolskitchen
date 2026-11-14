@@ -317,7 +317,7 @@ func test_hired_or_stale_candidate_is_not_requested_again() -> void:
 
 
 func test_close_requests_no_arguments_without_hiding_or_changing_the_roster() -> void:
-	var close: Button = _panel.get_node("Panel/Content/Close") as Button
+	var close: Button = _panel.get_node("Panel/Content/Title/Owner/Close") as Button
 	var candidate: StaffMember = _roster.candidates()[0]
 	var held_button: Button = _panel.row_for(candidate.id).get_node("Top/Action") as Button
 	var before: Dictionary = _roster.to_dict()
@@ -325,8 +325,9 @@ func test_close_requests_no_arguments_without_hiding_or_changing_the_roster() ->
 	assert_eq(close.text, "Close")
 	assert_false(close.disabled)
 	assert_eq(close.mouse_filter, Control.MOUSE_FILTER_STOP)
-	assert_true(close.get_parent() == _panel.get_node("Panel/Content"), "Close stays outside the bounded scroll area")
-	assert_eq(close.size_flags_horizontal, Control.SIZE_SHRINK_END)
+	assert_false((_panel.get_node("Panel/Content/Scroll") as Control).is_ancestor_of(close),
+		"Close stays in the header, outside the scroll area")
+	assert_true(_panel.get_node("Panel/Content/Title").is_ancestor_of(close), "Close sits in the header row (#497)")
 	close.pressed.emit()
 	assert_eq(_close_requests, 1)
 	assert_true(_panel.visible, "Main handles the primitive request")

@@ -431,6 +431,8 @@ func _start() -> void:
 	_main.set("use_saves", false)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	Clock.set_speed(0)
 	_main.set_process(false)
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig

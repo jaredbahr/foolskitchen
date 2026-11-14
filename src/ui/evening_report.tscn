@@ -23,31 +23,58 @@ offset_top = 112.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Scroll" type="ScrollContainer" parent="Panel"]
+[node name="Column" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
-horizontal_scroll_mode = 0
-
-[node name="Content" type="VBoxContainer" parent="Panel/Scroll"]
-layout_mode = 2
-size_flags_horizontal = 3
+mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="RestaurantName" type="Label" parent="Panel/Scroll/Content"]
+[node name="TitleBar" type="HBoxContainer" parent="Panel/Column"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Balance" type="Control" parent="Panel/Column/TitleBar"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="RestaurantName" type="Label" parent="Panel/Column/TitleBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 24
 text = "Fool's Kitchen"
 horizontal_alignment = 1
-autowrap_mode = 3
-[node name="Header" type="Label" parent="Panel/Scroll/Content"]
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="Close" type="Button" parent="Panel/Column/TitleBar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+mouse_filter = 0
+focus_mode = 0
+text = "Close"
+tooltip_text = "Hide the report (Esc). Next day is also on the top bar."
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Column"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="Panel/Column/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Header" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Day 1: Closed"
 horizontal_alignment = 1
 
-[node name="Profit" type="Label" parent="Panel/Scroll/Content"]
+[node name="Profit" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
@@ -56,304 +83,306 @@ horizontal_alignment = 1
 autowrap_mode = 3
 tooltip_text = "Uses the purchase cost of food served. Stock bought or spoiled, loans and milestone bonuses are outside operating profit."
 
-[node name="LevelUpCallout" type="HBoxContainer" parent="Panel/Scroll/Content"]
+[node name="LevelUpCallout" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="OwnerLevelUp" type="Label" parent="Panel/Scroll/Content/LevelUpCallout"]
+[node name="OwnerLevelUp" type="Label" parent="Panel/Column/Scroll/Content/LevelUpCallout"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Level up!"
 
-[node name="OwnerUnlocks" type="Label" parent="Panel/Scroll/Content/LevelUpCallout"]
+[node name="OwnerUnlocks" type="Label" parent="Panel/Column/Scroll/Content/LevelUpCallout"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 
-[node name="CareerTierUp" type="Label" parent="Panel/Scroll/Content"]
+[node name="CareerTierUp" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Your restaurant reached Tier 2!"
 
-[node name="Finances" type="HBoxContainer" parent="Panel/Scroll/Content"]
+[node name="Finances" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 
-[node name="Income" type="VBoxContainer" parent="Panel/Scroll/Content/Finances"]
+[node name="Income" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Finances"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Heading" type="Label" parent="Panel/Scroll/Content/Finances/Income"]
+[node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Finances/Income"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Income"
 
-[node name="IncomeRows" type="GridContainer" parent="Panel/Scroll/Content/Finances/Income"]
+[node name="IncomeRows" type="GridContainer" parent="Panel/Column/Scroll/Content/Finances/Income"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="Costs" type="VBoxContainer" parent="Panel/Scroll/Content/Finances"]
+[node name="Costs" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Finances"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Heading" type="Label" parent="Panel/Scroll/Content/Finances/Costs"]
+[node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Finances/Costs"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Costs"
 
-[node name="CostRows" type="GridContainer" parent="Panel/Scroll/Content/Finances/Costs"]
+[node name="CostRows" type="GridContainer" parent="Panel/Column/Scroll/Content/Finances/Costs"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="StockSummary" type="VBoxContainer" parent="Panel/Scroll/Content/Finances"]
+[node name="StockSummary" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Finances"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.6
 
-[node name="Heading" type="Label" parent="Panel/Scroll/Content/Finances/StockSummary"]
+[node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Finances/StockSummary"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Stock"
 
-[node name="StockRows" type="GridContainer" parent="Panel/Scroll/Content/Finances/StockSummary"]
+[node name="StockRows" type="GridContainer" parent="Panel/Column/Scroll/Content/Finances/StockSummary"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="LoanNotice" type="Label" parent="Panel/Scroll/Content"]
+[node name="LoanNotice" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 
-[node name="MilestoneHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="MilestoneHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Milestone reached!"
 
-[node name="MilestoneRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
+[node name="MilestoneRows" type="VBoxContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="WeeklyChallengeLine" type="Label" parent="Panel/Scroll/Content"]
+[node name="WeeklyChallengeLine" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 
-[node name="CashChange" type="Label" parent="Panel/Scroll/Content"]
+[node name="CashChange" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Cash change today: $0"
 autowrap_mode = 3
 
-[node name="ReviewHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="ReviewHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 theme_override_font_sizes/font_size = 22
 text = "What guests said"
 
-[node name="ReviewStats" type="Label" parent="Panel/Scroll/Content"]
+[node name="ReviewStats" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Today's reviews: none"
 
-[node name="Reputation" type="Label" parent="Panel/Scroll/Content"]
+[node name="Reputation" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Reputation: 3.0 to 3.0 stars"
 
-[node name="ReviewRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
+[node name="ReviewRows" type="VBoxContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="ViralReviewLine" type="Label" parent="Panel/Scroll/Content"]
+[node name="ViralReviewLine" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 autowrap_mode = 3
 
-[node name="RecordNotices" type="Label" parent="Panel/Scroll/Content"]
+[node name="RecordNotices" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 
-[node name="DishHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="DishHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Dishes sold"
 
-[node name="DishRows" type="GridContainer" parent="Panel/Scroll/Content"]
+[node name="DishRows" type="GridContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="SlowestSeller" type="Label" parent="Panel/Scroll/Content"]
+[node name="SlowestSeller" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 autowrap_mode = 3
 
-[node name="GuestHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="GuestHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Guests"
 
-[node name="Guests" type="Label" parent="Panel/Scroll/Content"]
+[node name="Guests" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "No guests visited today"
 
-[node name="Cleanliness" type="Label" parent="Panel/Scroll/Content"]
+[node name="Cleanliness" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 
-[node name="FoodQuality" type="Label" parent="Panel/Scroll/Content"]
+[node name="FoodQuality" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 autowrap_mode = 3
 
-[node name="GuestBar" type="ProgressBar" parent="Panel/Scroll/Content"]
+[node name="GuestBar" type="ProgressBar" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
 show_percentage = false
 
-[node name="ReasonHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="ReasonHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Why guests left"
 
-[node name="ReasonRows" type="GridContainer" parent="Panel/Scroll/Content"]
+[node name="ReasonRows" type="GridContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="TeamSection" type="VBoxContainer" parent="Panel/Scroll/Content"]
+[node name="TeamSection" type="VBoxContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="TeamHeading" type="Label" parent="Panel/Scroll/Content/TeamSection"]
+[node name="TeamHeading" type="Label" parent="Panel/Column/Scroll/Content/TeamSection"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 22
 autowrap_mode = 3
 
-[node name="TeamActivityRows" type="VBoxContainer" parent="Panel/Scroll/Content/TeamSection"]
+[node name="TeamActivityRows" type="VBoxContainer" parent="Panel/Column/Scroll/Content/TeamSection"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="CookActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+[node name="CookActivity" type="Label" parent="Panel/Column/Scroll/Content/TeamSection/TeamActivityRows"]
 visible = false
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="ServerActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+[node name="ServerActivity" type="Label" parent="Panel/Column/Scroll/Content/TeamSection/TeamActivityRows"]
 visible = false
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="CleanerActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+[node name="CleanerActivity" type="Label" parent="Panel/Column/Scroll/Content/TeamSection/TeamActivityRows"]
 visible = false
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="OwnerActivity" type="Label" parent="Panel/Scroll/Content/TeamSection/TeamActivityRows"]
+[node name="OwnerActivity" type="Label" parent="Panel/Column/Scroll/Content/TeamSection/TeamActivityRows"]
 visible = false
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="TeamAdvice" type="Label" parent="Panel/Scroll/Content/TeamSection"]
+[node name="TeamAdvice" type="Label" parent="Panel/Column/Scroll/Content/TeamSection"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="BusinessTrendSection" type="VBoxContainer" parent="Panel/Scroll/Content"]
+[node name="BusinessTrendSection" type="VBoxContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="BusinessTrendHeading" type="Label" parent="Panel/Scroll/Content/BusinessTrendSection"]
+[node name="BusinessTrendHeading" type="Label" parent="Panel/Column/Scroll/Content/BusinessTrendSection"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 22
 autowrap_mode = 3
 
-[node name="BusinessTrendSummary" type="Label" parent="Panel/Scroll/Content/BusinessTrendSection"]
+[node name="BusinessTrendSummary" type="Label" parent="Panel/Column/Scroll/Content/BusinessTrendSection"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="BusinessTrendChart" type="Control" parent="Panel/Scroll/Content/BusinessTrendSection"]
+[node name="BusinessTrendChart" type="Control" parent="Panel/Column/Scroll/Content/BusinessTrendSection"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 script = ExtResource("3_trend")
 
-[node name="LowStockHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="LowStockHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Low stock"
 
-[node name="LowStockRows" type="VBoxContainer" parent="Panel/Scroll/Content"]
+[node name="LowStockRows" type="VBoxContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="OwnerHeading" type="Label" parent="Panel/Scroll/Content"]
+[node name="OwnerHeading" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Owner progress"
 
-[node name="OwnerLevel" type="Label" parent="Panel/Scroll/Content"]
+[node name="OwnerLevel" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Owner level 1"
 
-[node name="OwnerXPRows" type="GridContainer" parent="Panel/Scroll/Content"]
+[node name="OwnerXPRows" type="GridContainer" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="NextDay" type="Button" parent="Panel/Scroll/Content"]
+[node name="NextDay" type="Button" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 text = "Next day"
+
+[connection signal="pressed" from="Panel/Column/TitleBar/Close" to="." method="_on_close_pressed"]

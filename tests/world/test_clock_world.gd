@@ -83,3 +83,32 @@ func test_attached_world_keeps_driving_after_clock_replacement_and_restore() -> 
 	# The new clock retains the phase forwarding connection exactly once.
 	assert_true(world.clock.phase_changed.is_connected(Callable(Clock, "_on_phase_changed")))
 	assert_false(replacement.phase_changed.is_connected(Callable(Clock, "_on_phase_changed")))
+
+
+var _pausing_world: SimWorld
+var _pause_at: int = -1
+
+
+## A tick driver that pauses the game on one tick, as a service event card does.
+func _advance_and_pause() -> void:
+	_pausing_world.advance()
+	if _pausing_world.now == _pause_at:
+		Clock.set_speed(0)
+
+
+func test_a_tick_that_pauses_stops_the_frame_on_that_tick() -> void:
+	var world: SimWorld = SimWorld.new(SimGrid.new())
+	Clock.attach_world(world)
+	var driver: Callable = Clock.tick_driver
+	_pausing_world = world
+	_pause_at = 3
+	Clock.tick_driver = _advance_and_pause
+	world.clock.start_service()
+	Clock.set_speed(4)
+	Clock._process(1.0)
+	Clock.tick_driver = driver
+	assert_eq(world.now, 3, "no tick runs after the one that paused (#495)")
+	assert_eq(Clock.speed, 0)
+	assert_true(Clock.tick_fraction() < 1.0, "only the sub-tick fraction is kept")
+	Clock._process(1.0)
+	assert_eq(world.now, 3, "paused stays paused")
