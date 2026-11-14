@@ -53,6 +53,9 @@ var _old_save_dir: String
 var _save_dir: String
 var _old_scene: Node
 var _clock_processed: bool
+var _old_sim: SimClock
+var _old_attached_world: SimWorld
+var _old_tick_driver: Callable
 var _providers: Dictionary
 var _next_seed: int = SEED
 var _dirt: Dictionary[String, bool] = {}
@@ -66,6 +69,9 @@ func before_each() -> void:
 	SaveSystem.delete_slot(SLOT)
 	_old_scene = _tree().current_scene
 	_clock_processed = Clock.is_processing()
+	_old_sim = Clock.sim
+	_old_attached_world = Clock.attached_world
+	_old_tick_driver = Clock.tick_driver
 	Clock.set_process(false)
 	Clock.set_speed(0)
 	_tree().node_added.connect(_seed_next_main)
@@ -81,6 +87,10 @@ func after_each() -> void:
 	SaveSystem.save_dir = _old_save_dir
 	SaveSystem._providers = _providers
 	_reset_shared_state()
+	# A closed Main only hands the clock back while its own world is attached,
+	# so with two Mains in one test a played game's clock can be left behind.
+	Clock.attach_world(_old_attached_world, _old_tick_driver)
+	Clock.sim = _old_sim
 	Clock.set_process(_clock_processed)
 
 
@@ -163,6 +173,9 @@ func test_new_game_after_a_refused_save_matches_a_fresh_boot() -> void:
 	_assert_played(SAVED_DIRT)
 	var path: String = _save_dir.path_join(SLOT + ".json")
 	var saved: String = FileAccess.get_file_as_string(path)
+	assert_false(saved.is_empty(), "the played game's morning autosave exists")
+	if saved.is_empty():
+		return
 	# Each new game autosaves on its second morning, so the played game's save
 	# is written back before the next damage.
 	for damage: String in ["staff_ahead", "last_section_broken"]:
@@ -224,9 +237,12 @@ func _reset_shared_state() -> void:
 
 func _boot(seed_value: int) -> Node:
 	var main: Node = (load(MAIN_SCENE) as PackedScene).instantiate()
-	main.set("new_game_seed_override", seed_value)
+	# The node_added hook seeds every Main as it enters the tree: this one gets
+	# its own seed, and the new game that follows gets the reference seed.
+	_next_seed = seed_value
 	_nodes.append(main)
 	_tree().root.add_child(main)
+	_next_seed = SEED
 	_tree().current_scene = main
 	main.call("start")
 	return main
@@ -310,13 +326,13 @@ func _unsaved(main: Node, without: PackedStringArray = [], without_log_lines: Pa
 			var count: int = autoload.get_signal_connection_list(entry["name"]).size()
 			if count > 0:
 				listeners["%s.%s" % [autoload.name, entry["name"]]] = count
-	var log: Array[String] = []
+	var log_lines: Array[String] = []
 	for line: String in world.event_log:
 		var skipped: bool = false
 		for part: String in without_log_lines:
 			skipped = skipped or line.contains(part)
 		if not skipped:
-			log.append(line)
+			log_lines.append(line)
 	var state: Dictionary = {
 		"cash": Economy.cash, "loan_owed": Economy.loan.principal, "has_borrowed": Economy.loan.has_borrowed,
 		"ledger_entries": Economy.ledger._entries.size(), "active_site": String(Economy.active_site),
@@ -329,7 +345,7 @@ func _unsaved(main: Node, without: PackedStringArray = [], without_log_lines: Pa
 		"carry_capacity": sim.carry_capacity, "tray_level": main.get("tray_level"),
 		"lease_expanded": main.get("lease_expanded"),
 		"owner_level": (main.get("owner_progress") as OwnerProgress).effective_level(),
-		"music": String(Sfx.music_context()), "autoload_listeners": listeners, "event_log": log,
+		"music": String(Sfx.music_context()), "autoload_listeners": listeners, "event_log": log_lines,
 	}
 	for key: String in without:
 		state.erase(key)
