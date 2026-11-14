@@ -56,8 +56,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
 
 **Panel scrolling (#497):** every panel (Menu, Staff, Stock, Goals, Property,
 the evening report, Settings, the Build catalogue) attaches `PanelScroll`
-(`src/ui/panel_scroll.gd`) with its card, its one main scroll area and any
-extra area (Menu's dish detail). A wheel notch is always `WHEEL_STEP` (110 px);
+(`src/ui/panel_scroll.gd`) with its card and its main scroll area. The Menu scrolls the dish list
+and detail together. A wheel notch is always `WHEEL_STEP` (110 px);
 a wheel anywhere over the card scrolls the area under it, else the main one;
 the helper takes the wheel from each control's `gui_input` before the control
 sees it, so sliders and choices never change while scrolling. PgUp/PgDn/

@@ -63,8 +63,7 @@ var _viral_notice: Label
 var _viral_notice_text: String = ""
 var _empty: Label
 var _rows_node: VBoxContainer
-## The name and hours sit above two columns. Left: the unlock tree and the
-## Drinks hints. Right: the selected dish's detail, always beside the tree.
+## Both columns share a scroll area so the dish detail can use its full height.
 var _list: VBoxContainer
 var _detail: VBoxContainer
 var _settings_button: Button
@@ -92,7 +91,7 @@ func _ready() -> void:
 	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
 	# One wheel step everywhere, and the wheel works over the whole card.
 	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Body/Scroll as ScrollContainer,
-		[$Panel/Content/Body/DetailScroll as ScrollContainer] as Array[ScrollContainer], $Panel as ScrollContainer)
+		[] as Array[ScrollContainer], $Panel as ScrollContainer)
 	refresh()
 	_fit_width()
 
@@ -218,7 +217,7 @@ func _on_booking_decline_pressed() -> void:
 
 
 func _refresh_forecast() -> void:
-	var forecast: Label = get_node("Panel/Content/WeatherForecast") as Label
+	var forecast: Label = %WeatherForecast
 	forecast.visible = _phase == SimClock.Phase.MORNING
 	if _forecast_rendered_kind != _weather_kind or _forecast_rendered_patio != _has_patio:
 		_forecast_rendered_kind = _weather_kind
@@ -461,8 +460,8 @@ func _bind_nodes() -> void:
 	_viral_notice = %ViralNotice
 	_empty = %Empty
 	_rows_node = %Rows
-	_list = get_node("Panel/Content/Body/Scroll/Pad/List") as VBoxContainer
-	_detail = get_node("Panel/Content/Body/DetailScroll/Pad/Detail") as VBoxContainer
+	_list = %List
+	_detail = %Detail
 	_name_edit = %RestaurantName
 	_name_apply = %ApplyName
 	_name_feedback = %NameFeedback
@@ -488,12 +487,9 @@ func _bind_nodes() -> void:
 	_property_button.pressed.connect(_on_property_pressed)
 
 
-## Opening hours with the restaurant name (#181), above both columns, and the
-## wage note under them; the Drinks hints close the left column under their
-## own heading, apart from the dish detail.
+## Keep name and hours together, with forecast and the wage note beneath them.
 func _build_sections() -> void:
 	var list: VBoxContainer = _list
-	var identity: VBoxContainer = _name_feedback.get_parent() as VBoxContainer
 	# Name [Apply name]   [−] Opens 11:00 [+]  [−] Closes 21:00 [+]
 	_hours_box = _add_line(_name_edit.get_parent(), "Hours")
 	_hours_box.add_theme_constant_override("separation", 4)
@@ -512,10 +508,11 @@ func _build_sections() -> void:
 		_hours_controls[side] = label
 		_hours_controls[side + "_minus"] = minus
 		_hours_controls[side + "_plus"] = plus
-	var note: Label = _add_label(identity, "HoursNote",
+	var note: Label = _add_label((%WeatherForecast as Label).get_parent(), "HoursNote",
 		"Staff are paid for the hours you open. Coffee drinkers come early; evening drinkers come late.")
 	note.add_theme_color_override("font_color", LOCKED_COLOR)
-	identity.move_child(note, _name_feedback.get_index())
+	note.add_theme_font_size_override("font_size", 16)
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_hours_controls["note"] = note
 	# Under the dish count, inside the scroll, so short screens keep the list usable.
 	var special_line: HBoxContainer = _add_line(list, "DailySpecial")
@@ -545,7 +542,6 @@ func _build_sections() -> void:
 	list.move_child(_theme_label, _menu_count.get_index() + 1)
 	list.move_child(special_line, _menu_count.get_index() + 1)
 	list.move_child(bulk_line, _menu_count.get_index() + 1)
-	_add_separator(identity)
 	_drinks_title = _add_label(list, "DrinksTitle", "Drinks")
 	_drinks_title.add_theme_font_size_override("font_size", 20)
 	_hints_box = VBoxContainer.new()
@@ -561,14 +557,6 @@ func _build_sections() -> void:
 	_detail.move_child(_drink_rows, _rows_node.get_index() + 1)
 
 
-func _add_separator(parent: Node) -> void:
-	var separator: HSeparator = HSeparator.new()
-	separator.theme = SHARED_THEME
-	separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(separator)
-
-
-## Main owns the accepted choice; this setter only updates the request control.
 func set_special(recipe_id: StringName) -> void:
 	_special_id = recipe_id
 	_bind_nodes()
@@ -929,6 +917,11 @@ func _on_recipe_selected() -> void:
 	var selected: TreeItem = _recipe_tree.get_selected()
 	if selected != null and selected.get_metadata(0) != null:
 		select_recipe(StringName(selected.get_metadata(0)))
+		# A dish chosen near the bottom of the list may be below the detail
+		# heading. Bring the selected dish back into view in the shared scroll.
+		var scroll: ScrollContainer = $Panel/Content/Body/Scroll
+		if _detail_heading.get_global_rect().position.y < scroll.get_global_rect().position.y:
+			scroll.ensure_control_visible.call_deferred(_detail_heading)
 
 
 func _build_recipe_tree() -> void:

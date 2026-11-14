@@ -116,7 +116,7 @@ func test_daily_special_picker_is_request_only_enabled_menu_and_morning_gated() 
 	assert_true(_menu.set_enabled(&"grilled_cheese", false))
 	_panel.refresh()
 	var picker: OptionButton = _panel.get_node(
-		"Panel/Content/Body/Scroll/Pad/List/DailySpecial/Choice") as OptionButton
+		"%List/DailySpecial/Choice") as OptionButton
 	assert_eq(picker.item_count, 3, "None plus the two enabled recipes")
 	assert_eq(picker.get_item_text(0), "None")
 	assert_eq(picker.get_item_metadata(picker.selected), &"", "None is the default selection")
@@ -173,7 +173,7 @@ func test_theme_readout_tracks_accepted_enabled_dishes_without_editing_menu() ->
 	var plain: RecipeDef = _recipe(&"plain", "Plain dish", 6)
 	var settings: MenuSettings = MenuSettings.new([diner, cafe, plain])
 	_panel.bind_menu(settings)
-	var readout: Label = _panel.get_node("Panel/Content/Body/Scroll/Pad/List/MenuTheme") as Label
+	var readout: Label = _panel.get_node("%List/MenuTheme") as Label
 	assert_eq(readout.theme, MenuPanel.SHARED_THEME)
 	assert_eq(readout.text, "Menu leans: Diner 50%, Café 50%")
 	var before: Dictionary = settings.to_dict()
@@ -506,15 +506,15 @@ func test_selected_signature_labels_fit_the_visible_menu_at_1600_by_900() -> voi
 	await tree.process_frame
 	await tree.process_frame
 	var panel: ScrollContainer = _panel.get_node("Panel") as ScrollContainer
-	var detail_scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/DetailScroll") as ScrollContainer
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	var row: Control = _panel.row_for(&"burger")
-	detail_scroll.ensure_control_visible(row)
-	panel.ensure_control_visible(detail_scroll)
+	scroll.ensure_control_visible(row)
+	panel.ensure_control_visible(scroll)
 	await tree.process_frame
 	await tree.process_frame
 	var row_rect: Rect2 = row.get_global_rect()
-	assert_true(detail_scroll.get_global_rect().grow(1.0).encloses(row_rect),
-		"the selected dish row fits in the native detail scroller")
+	assert_true(scroll.get_global_rect().grow(1.0).encloses(row_rect),
+		"the selected dish row fits in the shared dish scroll area")
 	assert_true(panel.get_global_rect().grow(1.0).encloses(row_rect),
 		"the selected dish row stays inside the Menu panel")
 	for path: String in ["Signature/Status", "Signature/Sales"]:
@@ -530,8 +530,8 @@ func test_selected_signature_labels_fit_the_visible_menu_at_1600_by_900() -> voi
 		assert_true(rect.size.y > 0.0 and rect.size.y <= font.get_height(font_size) * 2.0,
 			"%s stays near one text line: %s" % [path, rect])
 		assert_true(row_rect.encloses(rect), "%s stays inside its dish row" % path)
-		assert_true(detail_scroll.get_global_rect().grow(1.0).encloses(rect),
-			"%s stays inside the native detail scroller" % path)
+		assert_true(scroll.get_global_rect().grow(1.0).encloses(rect),
+			"%s stays inside the shared dish scroll area" % path)
 		assert_true(host.get_visible_rect().grow(1.0).encloses(rect),
 			"%s stays inside the 1600 by 900 canvas" % path)
 	host.remove_child(_panel)
@@ -551,7 +551,7 @@ func _button(id: StringName, path: String) -> Button:
 
 
 func _bulk_button(action: String) -> Button:
-	return _panel.get_node("Panel/Content/Body/Scroll/Pad/List/BulkPrices/" + action) as Button
+	return _panel.get_node("%List/BulkPrices/" + action) as Button
 
 
 func _label(id: StringName, path: String) -> Label:
@@ -683,9 +683,10 @@ func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
 		assert_true(apply.global_position.x >= edit.get_global_rect().end.x)
 		var scroll: Control = _panel.get_node("Panel/Content/Body/Scroll") as Control
 		assert_true(scroll.size.y > 40.0, "new content must leave a usable scroll viewport")
-		var detail: Control = _panel.get_node("Panel/Content/Body/DetailScroll") as Control
-		assert_true(detail.global_position.x >= scroll.get_global_rect().end.x, "the dish detail sits beside the tree")
-		assert_true(bounds.encloses(detail.get_global_rect()))
+		var detail: Control = _panel.get_node("%Detail") as Control
+		var list: Control = _panel.get_node("%List") as Control
+		assert_true(detail.global_position.x >= list.get_global_rect().end.x, "the dish detail sits beside the tree")
+		assert_true(detail.get_global_rect().end.x <= scroll.get_global_rect().end.x, "the detail fits the scroll width")
 	viewport.remove_child(_panel)
 	viewport.free()
 
@@ -863,11 +864,10 @@ func test_tree_sizes_to_its_rows_without_trapping_the_wheel() -> void:
 	assert_true(tree.get_combined_minimum_size().y >= 4 * 30.0, "every row has room")
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	assert_true(scroll.is_ancestor_of(tree))
-	assert_false((_panel.get_node("Panel/Content/Body/DetailScroll") as Node).is_ancestor_of(tree))
-	assert_true((_panel.get_node("Panel/Content/Body/DetailScroll") as Node).is_ancestor_of(_panel.row_for(&"burger")))
+	assert_true(scroll.is_ancestor_of(_panel.row_for(&"burger")), "list and detail share one scroll area")
 
 
-func test_the_mouse_wheel_over_the_tree_scrolls_its_column() -> void:
+func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 	var recipes: Array[RecipeDef] = []
 	for index: int in 14:
 		recipes.append(_recipe(StringName("dish%02d" % index), "Dish %d" % index, 6))
@@ -897,5 +897,18 @@ func test_the_mouse_wheel_over_the_tree_scrolls_its_column() -> void:
 	viewport.push_input(release)
 	await scene.process_frame
 	assert_true(scroll.scroll_vertical > 0, "the tree passes the wheel to the column")
+	# A late dish still opens with its details in view on the same scroll.
+	var late: TreeItem = _panel.tree_item_for(&"dish13")
+	var previously_selected: TreeItem = tree.get_selected()
+	if previously_selected != null:
+		previously_selected.deselect(0)
+	late.select(0)
+	tree.item_selected.emit()
+	for frame: int in 3:
+		await scene.process_frame
+	assert_eq(_panel.get("_selected_recipe"), &"dish13")
+	var heading: Control = _panel.get("_detail_heading") as Control
+	assert_true(scroll.get_global_rect().encloses(heading.get_global_rect()),
+		"the shared area brings the selected dish's detail back into view")
 	viewport.remove_child(_panel)
 	viewport.free()
