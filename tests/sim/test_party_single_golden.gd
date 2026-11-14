@@ -22,8 +22,8 @@ func test_party_size_one_matches_exact_main_seed_42() -> void:
 	_compare(42)
 
 
-## The authored catalogue below the pairs' party unlock (level 5) and before
-## Families (level 4) must equal exact single-guest main, draw for draw.
+## At level 1 the authored catalogue must equal the exact-main
+## single-guest fixture, draw for draw.
 func test_authored_types_below_party_unlock_match_exact_main_seed_1() -> void:
 	_compare(1, true)
 
@@ -80,14 +80,14 @@ func _sim(seed_value: int, frozen: bool, authored: bool = false) -> RestaurantSi
 	var singles: CustomerTypeCatalogue = TYPES.duplicate(true) as CustomerTypeCatalogue
 	var level: int = 4
 	if authored:
-		# Level 3: every authored pair is locked and Families are not unlocked yet.
-		level = 3
+		level = 1
 		for kind: CustomerType in singles.types:
-			assert_true(kind.party_unlock_level > level or kind.unlock_level > level or kind.party_size_max == 1)
+			assert_true(kind.group_level() == 0 or kind.group_level() > level)
 	else:
 		for kind: CustomerType in singles.types:
 			kind.party_size_min = 1
 			kind.party_size_max = 1
+			kind.pair_unlock_level = 0
 	assert_true(sim.configure_customer_types(singles, level))
 	if seed_value != 42:
 		for ingredient: IngredientDef in content.ingredients():

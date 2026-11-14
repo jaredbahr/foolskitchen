@@ -23,8 +23,7 @@ func test_neutral_demand_delegates_the_original_exact_range_fixed_and_locked_pat
 
 
 func test_full_and_partial_growth_match_independent_literal_weight_bins() -> void:
-	var kind: CustomerType = TYPES.find_type(&"regular").duplicate(true) as CustomerType
-	kind.party_unlock_level = 1
+	var kind: CustomerType = TYPES.find_type(&"regular")
 	var seen: Dictionary = {}
 	for factor: float in [2.0, 3.0, 100.0]:
 		for seed_value: int in range(1, 257):
@@ -35,7 +34,7 @@ func test_full_and_partial_growth_match_independent_literal_weight_bins() -> voi
 			# The full authored distribution sums to 3.35. At factor 2,
 			# half remains the original uniform 1..2, half is the six bins.
 			var expected: int = _literal_bin(ticket, blend)
-			var size: int = kind.draw_party_size_for_demand(actual, 1, factor, AUTHORED)
+			var size: int = kind.draw_party_size_for_demand(actual, 5, factor, AUTHORED)
 			assert_eq(size, expected, "literal CDF seed %d factor %.1f" % [seed_value, factor])
 			assert_eq(actual.state, oracle.state, "growth draws one ticket")
 			seen[size] = true

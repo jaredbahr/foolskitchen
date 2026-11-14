@@ -168,7 +168,9 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var unlocks: Label = panel.get_node("Panel/Column/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	assert_true(banner.visible)
 	assert_eq(banner.text, "Level up! Level 2 reached")
-	assert_eq(unlocks.text, "Unlocked: A-frame sign, Bar fries recipe, Corner cabinet, Fish & chips recipe, Four-seat table, Freezer, Fries recipe, Fryer, Mountain print, Potted plant, Rectangular rug, Round table, Rounded chair, Shop name sign, Side table, Side table with a square lamp, Small tiles floor, Square floor lamp, Square rug, Standing coat rack, Subway tiles walls, Tomato melt recipe, Two-seat bench, Wine recipe")
+	var pair_tip: String = "Groups of two now visit: bigger tables, more floor and more staff help."
+	assert_eq(report.owner_tips, [pair_tip] as Array[String])
+	assert_eq(unlocks.text, "Unlocked: %s\n%s" % [", ".join(report.owner_unlocks), pair_tip])
 	var xp_rows: GridContainer = panel.get_node("Panel/Column/Scroll/Content/OwnerXPRows") as GridContainer
 	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])
