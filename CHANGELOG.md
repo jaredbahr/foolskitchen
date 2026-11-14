@@ -216,7 +216,7 @@ Each line ends with its PR number.
 
 ### Under the hood
 
-- Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#515)
+- Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#516)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - The screenshot check in CI now has 60 minutes instead of 45: runs were taking up to 44 minutes, so a slow runner cancelled PRs that changed nothing visual. Splitting the job is tracked in #477. (#485)
 - Each restaurant now keeps its own opening hours and its own bigger lease, so switching restaurants (once you can own two) never carries one shop's hours or lease to the other. Older saves keep their hours and lease. (#463)
