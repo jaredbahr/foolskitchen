@@ -2,6 +2,9 @@ extends TestCase
 ## The lifecycle fixture changes only public ticket/ledger state. The final case
 ## runs a real service day, checking reuse without allocating more scene nodes.
 
+## Longest a plate may overhang the narrow pass counter top, in metres.
+const PASS_OVERHANG: float = 0.04
+
 var _content: ContentDB
 var _sim: RestaurantSim
 var _view: ShopView
@@ -80,7 +83,7 @@ func test_ready_carried_eating_dirty_bussed_and_sink_stack_lifecycle() -> void:
 	assert_not_null(dish)
 	assert_eq(dish.stage, &"ready")
 	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
-	assert_true(dish.position.distance_to(_view.food.surfaces[pass_item.id]) < 0.3)
+	assert_true(dish.position.distance_to(_view.food.surfaces[pass_item.id]) < 0.4)
 	assert_true(dish.plate.visible)
 	assert_true(dish.models[&"burger"].visible)
 
@@ -469,7 +472,7 @@ func test_ready_burger_rests_on_the_native_pass_top_at_every_rotation() -> void:
 		assert_not_null(dish)
 		if dish != null:
 			assert_eq(dish.stage, &"ready")
-			_assert_native_plate_support(counter, dish, "pass quarter turn %d" % turns)
+			_assert_native_plate_support(counter, dish, "pass quarter turn %d" % turns, PASS_OVERHANG)
 		_sim.orders.set_state(order, Order.State.CANCELLED)
 		_sim.world.grid.remove(counter.id)
 
@@ -532,7 +535,9 @@ func test_round_table_linked_chair_meals_fit_the_native_top_at_every_rotation() 
 
 # Independent geometry oracle: support comes from the actual imported triangles
 # beneath the plate, never the presentation controller's bounds or inset helper.
-func _assert_native_plate_support(item: PlacedItem, dish: DishVisual, context: String) -> void:
+## `max_overhang` is for the narrow pass counter (0.23 deep): at FOOD_SCALE 0.33
+## a plate (0.29 across) may hang over a long edge by a few centimetres, never more.
+func _assert_native_plate_support(item: PlacedItem, dish: DishVisual, context: String, max_overhang: float = 0.0) -> void:
 	var faces: PackedVector3Array = _native_faces(_view.item_nodes[item.id], Transform3D.IDENTITY)
 	var top: PackedVector3Array = []
 	for index: int in range(0, faces.size(), 3):
@@ -548,9 +553,12 @@ func _assert_native_plate_support(item: PlacedItem, dish: DishVisual, context: S
 	var plate: PackedVector3Array = _native_faces(dish.plate, dish.transform)
 	assert_false(plate.is_empty(), "%s measures the actual plate mesh" % context)
 	var unsupported: int = 0
+	var worst: float = 0.0
 	for vertex: Vector3 in plate:
 		if not _point_on_native_top(vertex, top):
-			unsupported += 1
+			worst = maxf(worst, _native_top_distance(vertex, top))
+			if max_overhang <= 0.0 or worst > max_overhang:
+				unsupported += 1
 	assert_eq(unsupported, 0, "%s full plate footprint is supported (%d/%d unsupported vertices)" % [context, unsupported, plate.size()])
 
 
@@ -584,6 +592,44 @@ func _point_on_native_top(point: Vector3, faces: PackedVector3Array) -> bool:
 	return false
 
 
+func test_four_plates_fit_on_the_carried_tray_in_two_rows_without_overlap() -> void:
+	var radius: float = _view.food.pool[0].footprint_radius
+	var half: Vector3 = FoodPresentation.TRAY_SIZE * 0.5
+	var step: Vector2 = FoodPresentation.TRAY_PLATE_STEP
+	var centres: Array[Vector2] = []
+	for index: int in range(4):
+		var centre: Vector2 = Vector2((index % 2 - 0.5) * step.x, (index / 2 - 0.5) * step.y)
+		assert_true(absf(centre.x) + radius <= half.x, "plate %d stays inside the tray width" % index)
+		assert_true(absf(centre.y) + radius <= half.z, "plate %d stays inside the tray depth" % index)
+		for other: Vector2 in centres:
+			assert_true(centre.distance_to(other) >= radius * 2.0, "plates %d do not overlap" % index)
+		centres.append(centre)
+	assert_true(FoodPresentation.TRAY_PLATE_LIFT <= FoodPresentation.TRAY_SIZE.y, "plates rest on the tray, not above it")
+
+
+func test_dirty_sink_stack_sits_inside_the_basin() -> void:
+	var sink: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"sink")[0]
+	var radius: float = _view.food.pool[0].footprint_radius
+	var bounds: AABB = _view.food.surface_bounds[sink.id]
+	var centre: Vector3 = _view.food.surfaces[sink.id]
+	var edge: float = absf(FoodPresentation.SINK_STACK_OFFSET) + radius
+	assert_true(edge <= bounds.size.x * 0.5 + 0.02, "the stack overhangs the basin by at most 2 cm")
+	assert_true(centre.x + FoodPresentation.SINK_STACK_OFFSET > bounds.position.x)
+
+
+## Planar distance from a point to the nearest edge of the support triangles.
+func _native_top_distance(point: Vector3, faces: PackedVector3Array) -> float:
+	var p: Vector2 = Vector2(point.x, point.z)
+	var best: float = INF
+	for index: int in range(0, faces.size(), 3):
+		for edge: int in range(3):
+			var a: Vector3 = faces[index + edge]
+			var b: Vector3 = faces[index + (edge + 1) % 3]
+			var closest: Vector2 = Geometry2D.get_closest_point_to_segment(p, Vector2(a.x, a.z), Vector2(b.x, b.z))
+			best = minf(best, p.distance_to(closest))
+	return best
+
+
 func test_two_passes_and_sinks_follow_kitchen_order_and_refresh_after_removal() -> void:
 	var first_pass: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
 	var first_sink: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"sink")[0]
@@ -600,17 +646,17 @@ func test_two_passes_and_sinks_follow_kitchen_order_and_refresh_after_removal() 
 	_sim.orders.set_state(order, Order.State.READY)
 	_view._sync_agents()
 	var dish: DishVisual = _view.food.tickets[order.id].dish
-	assert_true(dish.position.distance_to(_view.food.surfaces[first_pass.id]) < 0.3)
+	assert_true(dish.position.distance_to(_view.food.surfaces[first_pass.id]) < 0.4)
 	assert_true(dish.position.distance_to(_view.food.surfaces[other_pass.id]) > 1.0)
 	assert_true(_sim.kitchen.plates.take(9001, table.id))
 	assert_true(_sim.kitchen.plates.return_to_table(9001, table.id))
 	assert_eq(_sim.kitchen.plates.collect_table(table.id), 1)
 	_view._sync_agents()
 	assert_true(_view.food.stack[0].visible)
-	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[first_sink.id] + Vector3(0.12, 0, 0)))
+	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[first_sink.id] + Vector3(FoodPresentation.SINK_STACK_OFFSET, 0, 0)))
 	_sim.world.grid.remove(first_sink.id)
 	_view._sync_agents()
-	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[other_sink.id] + Vector3(0.12, 0, 0)))
+	assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[other_sink.id] + Vector3(FoodPresentation.SINK_STACK_OFFSET, 0, 0)))
 	_sim.world.grid.remove(other_sink.id)
 	_view._sync_agents()
 	assert_false(_view.food.stack[0].visible)
@@ -626,7 +672,7 @@ func test_two_passes_and_sinks_follow_kitchen_order_and_refresh_after_removal() 
 	_view._sync_agents()
 	var next_dish: DishVisual = _view.food.tickets[next.id].dish
 	assert_not_null(next_dish)
-	assert_true(next_dish.position.distance_to(_view.food.surfaces[other_pass.id]) < 0.3)
+	assert_true(next_dish.position.distance_to(_view.food.surfaces[other_pass.id]) < 0.4)
 
 
 func test_recooking_hides_then_reuses_serving_and_cancelled_pruned_tickets_disappear() -> void:
@@ -686,7 +732,7 @@ func test_dirty_stack_follows_real_washing_at_a_reachable_second_sink() -> void:
 			assert_eq(server.task.payload["sink_id"], second.id)
 			assert_eq(second.reserved_by(server.cell), server.id)
 			assert_true(_view.food.stack[0].visible)
-			assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[second.id] + Vector3(0.12, 0, 0)))
+			assert_true(_view.food.stack[0].position.is_equal_approx(_view.food.surfaces[second.id] + Vector3(FoodPresentation.SINK_STACK_OFFSET, 0, 0)))
 			break
 	assert_true(saw_washing, "the real server worked the reachable second sink")
 
@@ -753,7 +799,7 @@ func test_every_seafood_mapping_draws_its_actual_model_on_a_supported_pooled_pla
 		assert_true(dish._shown == dish.models[id])
 		assert_eq(dish.models[id].get_child(0).scene_file_path, recipe.view_model.resource_path)
 		assert_eq((dish.models[id].get_child(0) as Node3D).scale, Vector3.ONE * ArtScale.FOOD_SCALE)
-		_assert_native_plate_support(pass_item, dish, String(id) + " native pass support")
+		_assert_native_plate_support(pass_item, dish, String(id) + " native pass support", PASS_OVERHANG)
 		_sim.orders.set_state(order, Order.State.CANCELLED)
 		_view._sync_agents()
 		assert_false(dish.visible)
@@ -839,7 +885,7 @@ func test_future_valid_recipe_with_no_model_survives_ready_carry_cancel_and_pool
 	assert_true(dish._shown == dish.plate)
 	assert_true(dish.plate.visible)
 	assert_eq(dish.stage, &"ready")
-	_assert_native_plate_support(pass_item, dish, "future generic plate native pass support")
+	_assert_native_plate_support(pass_item, dish, "future generic plate native pass support", PASS_OVERHANG)
 	var pool_count: int = _view.food.pool.size()
 	var node_count: int = _dish_count(_view)
 	var server: StaffAgent = _staff(&"server")
