@@ -135,6 +135,15 @@ Later candidates: critic visit (Tier 5), rush-hour expedite, cooking contest, re
 ### 4.7 Events (Phase 5)
 Rush hour, health inspector, critic, broken equipment, a viral review, a power cut.
 
+### 4.7b Service events (#495)
+Small choice cards during service, from day 1 (Jared, 2026-11-14), so a day is never seven minutes of watching.
+- **Rate:** one or two cards every open service day, at shop-clock times spread through service: none in the first 45 or last 60 minutes, none within 20 minutes of a rush, a booked party or the critic's arrival, and two cards on one day come at least 90 minutes apart. A closed day has none.
+- **The card pauses the game** until the player picks (Escape does not dismiss it), then the clock returns to its earlier speed. Each card has a title, one line of dry, cheeky humour (adults, D15) and two or three choices, each with a short preview of what it does.
+- **Small, clear, never ruinous.** Every effect goes through a system the shop already has: cash (its own "Service events" ledger line, at most $60), one review in the rolling window, the patience of guests in the shop now (a cut never sends anyone away on the spot), today's later guests' patience or arrivals (at most 20%), tomorrow's arrivals, a discounted stock purchase or a little stock used, a worker's mood (kept between 1 and 3, so nobody quits over a card), the owner's job, or a quick clean of the floor. A "risk" is a seeded roll, so the same run always gets the same outcome.
+- **Variety:** a card does not come back within its cooldown (3 to 8 days) and some need something: staff, a named regular, rain, a menu with bought ingredients, or Tier 2.
+- **Starter pool (12):** off-menu request, a van with no name (supplier), busker, spilled drink, food blogger, the lights flicker, a regular's birthday, the neighbour's complaint, a kid's drawing, rain at the door, "can I leave early?" and a critic rumour. Each card and choice is in the Today log and the evening report.
+- **Settings:** "Service events" (on by default). Tools, tests and the balance probe run without them unless they opt in; Creative mode has none.
+
 ## 5. Out of scope (for now)
 Multiplayer, a story or campaign, scenario mode (career milestones replace it), character creation beyond basic choices, mod support, consoles, AI running inside the game (no API calls at runtime), and toilet humour beyond the restroom need.
 
