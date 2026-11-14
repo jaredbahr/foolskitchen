@@ -45,7 +45,7 @@ theme_override_font_sizes/font_size = 24
 text = "Fool's Kitchen"
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 3
+text_overrun_behavior = 3
 
 [node name="Close" type="Button" parent="Panel/Column/TitleBar"]
 unique_name_in_owner = true
