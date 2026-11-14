@@ -568,6 +568,9 @@ func _bind_world_presentation() -> void:
 		_property_panel.buy_requested.connect(_on_property_buy_requested)
 	_site_card = $Overlay/SiteCard
 	_site_card.hide()
+	_on_site_card_visibility_changed()
+	if not _site_card.visibility_changed.is_connected(_on_site_card_visibility_changed):
+		_site_card.visibility_changed.connect(_on_site_card_visibility_changed)
 	_service_event_card = $Overlay/ServiceEventCard
 	_service_event_card.close()
 	if not _service_event_card.choice_picked.is_connected(_on_service_event_choice):
@@ -5751,6 +5754,10 @@ func set_site_card_visible(value: bool) -> bool:
 	return true
 
 
+func _on_site_card_visibility_changed() -> void:
+	$HUD.set_site_card_blocks_repayment(is_site_card_visible())
+
+
 func is_site_card_visible() -> bool:
 	return _site_card != null and _site_card.visible
 
@@ -6220,6 +6227,7 @@ func _on_loan_repayment_requested(amount: int, repay_all: bool) -> void:
 	var phase: SimClock.Phase = Clock.sim.phase
 	if not _started or display_only or world == null or Clock.attached_world != world \
 			or is_haggle_active() or is_owner_picker_visible() or is_settings_visible() or is_shortcuts_visible() \
+			or is_site_card_visible() \
 			or (phase != SimClock.Phase.MORNING and phase != SimClock.Phase.CLOSED):
 		return
 	if repay_all:
