@@ -48,7 +48,7 @@ func _process(_delta: float) -> void:
 		return
 	_review_frame += 1
 	if _review_frame == 10:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		scroll.ensure_control_visible(_report.get_node("%ViralReviewLine") as Control)
 	elif _review_frame == 50:
 		if not Clock.sim.next_day() or not set_menu_visible(true):
@@ -70,8 +70,8 @@ func _review_validate() -> void:
 	var extra: Label
 	if _review_phase == "evening":
 		line = _report.get_node("%ViralReviewLine") as Label
-		clip = _report.get_node("Panel/Scroll") as Control
-		extra = _report.get_node("Panel/Scroll/Content/DemandForecast/Factors") as Label
+		clip = _report.get_node("Panel/Column/Scroll") as Control
+		extra = _report.get_node("Panel/Column/Scroll/Content/DemandForecast/Factors") as Label
 		if not _report.is_visible_in_tree() or line.text != shown_report.viral_line \
 				or not extra.text.contains("Trending online: +35%"):
 			_review_fail("native report announcement or separate demand factor is absent")

@@ -445,6 +445,8 @@ func hover_card_lines(id: StringName) -> Array[String]:
 func _ready() -> void:
 	_prepare_layout()
 	_fit_panel()
+	# The shared wheel step and whole-card wheel (#497); its toolbars are #499.
+	PanelScroll.attach(self, $Panel as Control, $Panel/Margin/Rows/Scroll as ScrollContainer)
 
 
 func _notification(what: int) -> void:

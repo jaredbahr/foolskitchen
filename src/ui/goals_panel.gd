@@ -25,6 +25,8 @@ var _opening_values: Dictionary[int, float] = {}
 
 
 func _ready() -> void:
+	# One wheel step everywhere, and the wheel works over the whole card (#497).
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer)
 	_render()
 	_render_records()
 
