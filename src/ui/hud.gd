@@ -108,7 +108,8 @@ var _collection_toast_timer: Timer
 ## The small opening-week tracker (#494), built on first use.
 var _opening_panel: PanelContainer
 var _opening_rows: VBoxContainer
-const OPENING_WIDTH: float = 300.0
+## Narrow enough to clear the Goals panel's right edge at 1600 px.
+const OPENING_WIDTH: float = 260.0
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -163,6 +164,7 @@ func set_opening_week(lines: Array[String]) -> void:
 		_opening_panel = PanelContainer.new()
 		_opening_panel.name = "OpeningWeek"
 		_opening_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		_opening_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		_opening_panel.offset_left = -OPENING_WIDTH - 12.0
 		_opening_panel.offset_right = -12.0
 		_opening_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
