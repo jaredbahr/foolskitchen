@@ -143,6 +143,15 @@ Later candidates: critic visit (Tier 5), rush-hour expedite, cooking contest, re
 ### 4.7 Events (Phase 5)
 Rush hour, health inspector, critic, broken equipment, a viral review, a power cut.
 
+### 4.7b Service events (#495)
+Small choice cards during service, from day 1 (Jared, 2026-11-14), so a day is never seven minutes of watching.
+- **Rate:** one or two cards every open service day, at shop-clock times spread through service: none in the first 45 or last 60 minutes, none within 20 minutes of a rush, a booked party or the critic's arrival, and two cards on one day come at least 90 minutes apart. A closed day has none.
+- **The card pauses the game** until the player picks (a click or the 1, 2 or 3 key; Escape does not dismiss it), then the clock returns to its earlier speed. A card due in photo mode leaves photo mode first. Each card has a title, one line of dry, cheeky humour (adults, D15) and two or three choices, each with a short preview of what it does. A choice that costs more cash than the till holds (never a loan), whose stock would not fit its storage, or whose stock is not on the shelves is greyed out with the reason; every card keeps a choice that costs nothing, so the player can always pick.
+- **Small, clear, never ruinous.** Every effect goes through a system the shop already has: cash (its own "Service events" ledger line, at most $60), one review in the rolling window, the patience of guests in the shop now (a cut never sends anyone away on the spot), today's later guests' patience or arrivals (at most 20%), tomorrow's arrivals at that shop (the food blogger's buzz: its own nudge, named in the Today log, never curb appeal), a discounted stock purchase (one crate at its real price; a bad batch goes straight in the bin) or a little stock used (counted as food cost), a worker's mood (kept between 1 and 3, so nobody quits over a card), or a quick clean of the floor. A card's review counts with the day's reviews. A "risk" is a seeded roll, so the same run always gets the same outcome.
+- **Variety:** a card does not come back within its cooldown (3 to 8 days) and some need something: staff, a named regular, rain, a menu with bought ingredients, or Tier 2.
+- **Starter pool (11):** off-menu request, a van with no name (supplier), busker, spilled drink, food blogger, the lights flicker, a regular's birthday, the neighbour's complaint, a kid's drawing (a four-star nudge), rain at the door and a critic rumour. "Can I leave early?" comes back once a worker can really be sent home mid-service (#506). Each card and choice is in the Today log and the evening report.
+- **Settings:** "Service events" (on by default). Tools, tests and the balance probe run without them unless they opt in; Creative mode has none.
+
 ## 5. Out of scope (for now)
 Multiplayer, a story or campaign, scenario mode (career milestones replace it), character creation beyond basic choices, mod support, consoles, AI running inside the game (no API calls at runtime), and toilet humour beyond the restroom need.
 

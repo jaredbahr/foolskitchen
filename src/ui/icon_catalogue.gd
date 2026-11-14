@@ -15,6 +15,8 @@ const ICON_ROLES: Array[StringName] = [
 	&"reputation", &"open_shop", &"next_day", &"catalogue", &"report", &"settings",
 	&"stock", &"sell", &"chef", &"paint",
 	&"weather_sunny", &"weather_cloudy", &"weather_rain",
+	# Service event cards (#495), from the same Kenney set.
+	&"music", &"warning", &"power", &"information",
 ]
 
 
@@ -57,6 +59,14 @@ static func path_for(role: StringName) -> String:
 			return WEATHER_ROOT + "weather_cloudy.png"
 		&"weather_rain":
 			return WEATHER_ROOT + "weather_rain.png"
+		&"music":
+			return ROOT + "musicOn.png"
+		&"warning":
+			return ROOT + "warning.png"
+		&"power":
+			return ROOT + "power.png"
+		&"information":
+			return ROOT + "information.png"
 	return ""
 
 

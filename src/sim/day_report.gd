@@ -80,6 +80,9 @@ var booking_lines: Array[String] = []
 var critic_lines: Array[String] = []
 ## Optional event cohort summary; absent on ordinary days to preserve old saves.
 var rush_hour_lines: Array[String] = []
+## Today's answered service event cards (#495), already player-facing; absent
+## on days without one, so older saved reports read the same.
+var service_event_lines: Array[String] = []
 ## Detached record notices for this close; old reports omit them.
 var record_lines: Array[String] = []
 ## The owner's other sites at this close (FK-087), already player-facing:
@@ -290,6 +293,8 @@ func to_dict() -> Dictionary:
 		result["critic_lines"] = critic_lines.duplicate()
 	if not rush_hour_lines.is_empty():
 		result["rush_hour_lines"] = rush_hour_lines.duplicate()
+	if not service_event_lines.is_empty():
+		result["service_event_lines"] = service_event_lines.duplicate()
 	if not record_lines.is_empty():
 		result["record_lines"] = record_lines.duplicate()
 	if not away_site_lines.is_empty():
@@ -388,6 +393,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		for line: Variant in saved_rush:
 			if line is String:
 				report.rush_hour_lines.append(line)
+	var saved_events: Variant = data.get("service_event_lines", [])
+	if saved_events is Array:
+		for line: Variant in saved_events:
+			if line is String and String(line).length() <= 400:
+				report.service_event_lines.append(line)
 	var recorded: Variant = data.get("stock_values_recorded", false)
 	var saved_record_lines: Variant = data.get("record_lines", [])
 	if saved_record_lines is Array:

@@ -3193,7 +3193,8 @@ static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dicti
 	var build: CheckButton = panel.get_node("%BuildGridToggle") as CheckButton
 	var close: Button = panel.get_node("%CloseButton") as Button
 	var replay: Button = panel.get_node("%ShowGuideButton") as Button
-	var targets: Array[Control] = [play, build]
+	# The Service events toggle (#495) sits with the other toggles, after the grids.
+	var targets: Array[Control] = [play, build, panel.get_node("%ServiceEventsToggle") as CheckButton]
 	if replay.is_visible_in_tree():
 		targets.append(replay)
 	targets.append(panel.get_node("%WhatsNewButton") as Button)

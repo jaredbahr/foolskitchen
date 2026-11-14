@@ -7,7 +7,8 @@ extends RefCounted
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
-		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter", "patio", "opening_week"]
+		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter", "patio", "opening_week",
+		"service_events"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -55,6 +56,12 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _curb_appeal(main)
 		"patio":
 			return _patio(main)
+		"service_events":
+			# #495: the starter shop with service event cards on, each answered
+			# at once with its first choice.
+			main.set("service_events_for_tools", true)
+			main.set("service_event_auto_pick", 0)
+			return true
 		"opening_week":
 			return _opening_week(main)
 		"expanded_staffed":

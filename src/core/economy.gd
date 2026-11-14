@@ -241,6 +241,22 @@ func buy_ingredient(id: StringName, qty: int, unit_cost: int) -> bool:
 	return true
 
 
+## Buys one lot of `qty` units for `total_cost` in all (a bargain whose price
+## is not a whole number per unit, #495): one batch carrying the real cost
+## and one ledger line, atomically, or false without changes. Never borrows.
+func buy_ingredient_lot(id: StringName, qty: int, total_cost: int) -> bool:
+	if id.is_empty() or qty <= 0 or total_cost < 0 or qty > Stock.MAX_QUANTITY - stock.count(id):
+		return false
+	if not can_spend_without_loan(total_cost):
+		return false
+	stock.add(id, qty, Clock.day, total_cost)
+	if is_free():
+		return true
+	ledger.record(Clock.day, -total_cost, Ledger.INGREDIENTS, String(id), active_site)
+	EventBus.cash_changed.emit(cash, -total_cost, Ledger.INGREDIENTS)
+	return true
+
+
 ## Buys a planned morning auto-order atomically, or returns false without
 ## changes. Each line is recorded at list price; the order's premium (the
 ## planned cost above its list total) is one extra ingredients entry.

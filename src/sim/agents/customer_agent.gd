@@ -464,6 +464,16 @@ func is_waiting_in_shop() -> bool:
 	return (state == State.QUEUED or state == State.ORDERING or state == State.WAITING_FOOD) and not away()
 
 
+## A service event's nudge (#495): `ticks` more (or fewer) patience for both
+## waits. A cut never leaves less than `floor_ticks` of the current wait, so
+## no guest walks out on the spot.
+func nudge_patience(ticks: int, floor_ticks: int) -> void:
+	if ticks == 0 or state == State.LEAVING or state == State.LEFT:
+		return
+	queue_patience = maxi(queue_patience + ticks, mini(queue_patience, _queue_wait + floor_ticks))
+	food_patience = maxi(food_patience + ticks, mini(food_patience, _food_wait + floor_ticks))
+
+
 ## One waiting tick handed back (so patience lasts a little longer) now and
 ## then while this guest is near the shop cat; 0 otherwise.
 func cat_relief(sim: RestaurantSim) -> int:

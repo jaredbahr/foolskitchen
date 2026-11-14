@@ -50,6 +50,20 @@ func candidates() -> Array[StaffMember]:
 	return _copies(_candidates)
 
 
+## A service event's mood nudge (#495). Mood stays between 1 and 3, so an
+## event never makes anyone quit; a worker already leaving is left alone.
+## Returns the new mood, or -1 when nobody changed.
+func adjust_mood(member_id: StringName, delta: int) -> int:
+	var index: int = _find(_members, member_id)
+	if index < 0 or delta == 0:
+		return -1
+	var growth: StaffGrowth = _members[index].growth_state()
+	if growth.mood <= 0:
+		return -1
+	growth.mood = clampi(growth.mood + delta, 1, 3)
+	return growth.mood
+
+
 ## Changes selection at the next pick, in any phase. The session also copies
 ## these choices onto the existing live employee without reinstalling staff.
 func set_job_priority(member_id: StringName, job: StringName, value: int) -> bool:
