@@ -195,8 +195,8 @@ func _layout_card() -> void:
 		maxf(0.0, available.y - padding.y - footer_height))
 	var bar_width: float = _scroll.get_v_scroll_bar().get_combined_minimum_size().x \
 		if content_height < natural.y else 0.0
-	var content_width: float = minf(maxf(COMFORTABLE_CONTENT_WIDTH, natural.x + bar_width,
-		_title_bar.get_combined_minimum_size().x),
+	var content_width: float = minf(maxf(COMFORTABLE_CONTENT_WIDTH,
+		maxf(natural.x + bar_width, _title_bar.get_combined_minimum_size().x)),
 		maxf(0.0, available.x - padding.x))
 	_scroll.custom_minimum_size = Vector2(content_width, content_height)
 	var card_size: Vector2 = Vector2(content_width + padding.x,

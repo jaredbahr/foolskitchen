@@ -225,6 +225,7 @@ func _make_weekly_card() -> Control:
 	var summary: HBoxContainer = _goal_line(body, "Summary")
 	var title: Label = _add_label(summary, "Title", challenge.text)
 	title.add_theme_font_size_override(&"font_size", 18)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var current: int = challenge.projected_progress(_observation)
 	var unit: String = ""
@@ -346,6 +347,7 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 	var summary: HBoxContainer = _goal_line(body, "Summary")
 	var title: Label = _add_label(summary, "Title", goal.title)
 	title.add_theme_font_size_override(&"font_size", 18)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var progress: Label = _add_label(summary, "ProgressText",
 		"Completed" if completed else _progress_text(goal))

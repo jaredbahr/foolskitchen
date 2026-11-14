@@ -190,3 +190,42 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")
 	viewport.remove_child(_report)
 	viewport.free()
+
+
+func test_report_headline_and_next_day_stay_fixed_when_body_scrolls() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	tree.root.add_child(viewport)
+	viewport.add_child(_report)
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var content: Control = scroll.get_node("Content") as Control
+	content.custom_minimum_size.y = 1600.0
+	var day: DayReport = DayReport.new()
+	day.day = 4
+	_report.call("show_report", day)
+	for frame: int in 3:
+		await tree.process_frame
+	var header: Label = _report.get_node("%Header") as Label
+	var profit: Label = _report.get_node("%Profit") as Label
+	var footer: Button = _report.get_node("%NextDay") as Button
+	var header_bounds: Rect2 = header.get_global_rect()
+	var profit_bounds: Rect2 = profit.get_global_rect()
+	var footer_bounds: Rect2 = footer.get_global_rect()
+	assert_eq(header.text, "Day 4: Closed")
+	assert_true(header_bounds.end.y <= scroll.get_global_rect().position.y)
+	assert_true(profit_bounds.end.y <= scroll.get_global_rect().position.y)
+	assert_true(footer_bounds.position.y >= scroll.get_global_rect().end.y)
+	assert_true(viewport.get_visible_rect().encloses(footer_bounds))
+	scroll.scroll_vertical = 500
+	await tree.process_frame
+	assert_eq(scroll.scroll_vertical, 500)
+	assert_eq(header.get_global_rect(), header_bounds)
+	assert_eq(profit.get_global_rect(), profit_bounds)
+	assert_eq(footer.get_global_rect(), footer_bounds)
+	var requests: Array[bool] = []
+	_report.connect("next_day_pressed", func() -> void: requests.append(true))
+	footer.pressed.emit()
+	assert_eq(requests, [true] as Array[bool], "the pinned button emits the original request")
+	viewport.remove_child(_report)
+	viewport.free()
