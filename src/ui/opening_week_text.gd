@@ -17,6 +17,11 @@ static func met_line(chain: OpeningWeekSet, goal: OpeningGoal) -> String:
 	return "%s: %s  +$%d" % [chain.title, goal.title, goal.reward_cash]
 
 
+## The morning log line when a chain retires.
+static func ended_line(chain: OpeningWeekSet) -> String:
+	return "%s is over" % chain.title
+
+
 ## The morning log line when a chain starts.
 static func started_line(chain: OpeningWeekSet) -> String:
 	return "%s starts: new paid goals in Goals" % chain.title

@@ -7538,7 +7538,7 @@ func _award_weekly_challenge(observation: MilestoneDay) -> void:
 func _begin_opening_week_morning() -> void:
 	var ending: OpeningWeekSet = _chain_set()
 	if opening_week.end_if_due(Clock.sim.day, ending) and ending != null:
-		world.log_event("%s is over" % ending.title)
+		world.log_event(OpeningWeekText.ended_line(ending))
 	if GameMode.is_creative():
 		opening_week = OpeningWeek.ended()
 	if opening_week.advance(Clock.sim.day, goal_chains):

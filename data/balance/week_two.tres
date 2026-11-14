@@ -26,7 +26,7 @@ reward_xp = 5
 [sub_resource type="Resource" id="goal_3"]
 script = ExtResource("2_goal")
 id = &"big_table"
-title = "Place a four-seat or round table"
+title = "Place a 4-seat or round table"
 description = "In Buy, place a four-seat table or a round table. It counts once it is still there at opening."
 condition = 9
 target = 1.0
