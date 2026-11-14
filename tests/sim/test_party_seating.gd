@@ -21,6 +21,7 @@ func test_authored_ranges_and_fixed_singletons_keep_the_random_stream() -> void:
 		var one: CustomerType = kind.duplicate() as CustomerType
 		one.party_size_min = 1
 		one.party_size_max = 1
+		one.pair_unlock_level = 0
 		var random: RandomNumberGenerator = _rng(7)
 		var before: int = random.state
 		assert_eq(one.draw_party_size(random), 1)
