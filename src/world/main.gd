@@ -37,6 +37,7 @@ const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_ap
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
+const SERVICE_EVENT_TUNING: ServiceEventTuning = preload("res://data/balance/service_events.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
@@ -68,6 +69,20 @@ var hints: Hints = Hints.new()
 var _hints_bubble: HintsBubble
 ## Test/capture override only; zero keeps the normal wall-clock new-game seed.
 var new_game_seed_override: int = 0
+## Service event cards (#495) come in the saved game, with the player's
+## Settings toggle on. Like the guide, tools and tests that run without saves
+## opt in explicitly, so every existing probe, capture and fixture is unchanged.
+var service_events_for_tools: bool = false
+## Tools only: answer every service event card at once with this choice
+## (0 = the first) instead of showing it. -1 shows the card and pauses.
+var service_event_auto_pick: int = -1
+## Today's service event cards, their cooldowns and tomorrow's nudge.
+var service_events: ServiceEvents = ServiceEvents.new(SERVICE_EVENT_TUNING)
+var _service_event_definitions: Array[ServiceEventDef] = []
+var _loaded_service_events: ServiceEvents = null
+var _service_event_card: ServiceEventCard
+## The speed to return to once a card is answered.
+var _service_event_resume_speed: int = 1
 ## Tools that boot Main directly retain the old default appearance and flow.
 var skip_owner_picker: bool = false
 ## An explicit fresh-run UI request also works in headless integration tests.
@@ -531,6 +546,10 @@ func _bind_world_presentation() -> void:
 		_property_panel.buy_requested.connect(_on_property_buy_requested)
 	_site_card = $Overlay/SiteCard
 	_site_card.hide()
+	_service_event_card = $Overlay/ServiceEventCard
+	_service_event_card.close()
+	if not _service_event_card.choice_picked.is_connected(_on_service_event_choice):
+		_service_event_card.choice_picked.connect(_on_service_event_choice)
 	if not _site_card.site_chosen.is_connected(_on_site_card_chosen):
 		_site_card.site_chosen.connect(_on_site_card_chosen)
 	if not _site_card.prompt_answered.is_connected(_on_site_prompt_answered):
@@ -749,6 +768,7 @@ func start() -> void:
 	SaveSystem.register("critic", _capture_critic, _restore_critic)
 	SaveSystem.register("bookings", _capture_bookings, _restore_bookings)
 	SaveSystem.register("rush_hour", _capture_rush_hour, _restore_rush_hour)
+	SaveSystem.register("service_events", _capture_service_events, _restore_service_events)
 	SaveSystem.register("aquarium", _capture_aquarium, _restore_aquarium)
 	SaveSystem.register("site_hours", _capture_site_hours, _restore_site_hours)
 	SaveSystem.register("sites", _capture_sites, _restore_sites)
@@ -964,6 +984,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_take_photo_key(photo, key)
 		return
 	if is_haggle_active():
+		_mark_input_handled()
+		return
+	if is_service_event_visible():
+		# A choice is required (#495): Escape, speed and owner keys do nothing.
 		_mark_input_handled()
 		return
 	if is_owner_picker_visible():
@@ -1673,7 +1697,10 @@ func _refresh_demand() -> void:
 ## What the street sees on `day`: the frontage's curb appeal and the health
 ## inspection grade in the window (#302), which nudges arrivals for a week.
 func _street_factor(day: int) -> float:
-	return curb_appeal_factor * sim.inspection.arrival_factor(day)
+	var factor: float = curb_appeal_factor * sim.inspection.arrival_factor(day)
+	# A service event's nudge to this day (#495); 1.0 changes nothing.
+	var nudge: float = service_events.arrival_factor(day) if service_events != null else 1.0
+	return factor * nudge if nudge != 1.0 else factor
 
 
 func _demand_enabled_dishes() -> int:
@@ -2683,6 +2710,7 @@ func refresh_presentation() -> void:
 
 
 func _on_inspection_tick(_tick: int) -> void:
+	_check_service_event()
 	# Text follows every tick; geometry follows the drawn agents once per frame.
 	_refresh_sold_out_hud()
 	if group_booking != null and group_booking.has_active_booking():
@@ -2840,6 +2868,8 @@ func build_report(day: int) -> DayReport:
 	if sim.inspection.last_day == day:
 		report.inspection_lines = InspectionText.report_lines(sim.inspection.last_result, sim.inspection.tuning)
 	report.rush_hour_lines = sim.rush_hour.report_lines()
+	if service_events != null and service_events.day == day:
+		report.service_event_lines = service_events.report_lines()
 	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
 	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
@@ -2927,6 +2957,8 @@ func _new_game() -> void:
 	_loaded_milestones = null
 	weekly_challenge = WeeklyChallengeState.new()
 	_loaded_weekly_challenge = null
+	service_events = _new_service_events()
+	_loaded_service_events = null
 	_milestones_reached_today.clear()
 	_milestone_award_day = 0
 	_milestone_xp_today = 0
@@ -3026,6 +3058,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_reputation = null
 	_loaded_milestones = null
 	_loaded_weekly_challenge = null
+	_loaded_service_events = null
 	_loaded_tray_level = 0
 	_loaded_lease_expanded = false
 	_loaded_site_hours = {}
@@ -3308,6 +3341,10 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 		weekly_challenge = _loaded_weekly_challenge if _loaded_weekly_challenge != null \
 			else WeeklyChallengeState.new()
 		_loaded_weekly_challenge = null
+		# Saves from before service events (#495) start with no cooldowns.
+		service_events = _loaded_service_events if _loaded_service_events != null \
+			else _new_service_events()
+		_loaded_service_events = null
 	# Saves from before the Stock panel have no section: today's defaults.
 	reorder_settings = _loaded_reorder if _loaded_reorder != null else ReorderSettings.new(TUNING)
 	# Saves from before deliveries have nothing on order.
@@ -4076,6 +4113,219 @@ func _restore_rush_hour(data: Dictionary) -> bool:
 	return true
 
 
+# --- Service events (#495) ---------------------------------------------------
+
+func _new_service_events() -> ServiceEvents:
+	if _service_event_definitions.is_empty():
+		var errors: PackedStringArray = []
+		_service_event_definitions = ServiceEvents.load_definitions(errors)
+		for error: String in errors:
+			push_error("Service events: %s" % error)
+	return ServiceEvents.new(SERVICE_EVENT_TUNING, _service_event_definitions)
+
+
+## Cards come only in a Career game with the Settings toggle on. A run
+## without saves (tools, tests, the balance probe) has none unless it opts in
+## with service_events_for_tools.
+func service_events_active() -> bool:
+	return (use_saves or service_events_for_tools) and _started and not display_only \
+		and not GameMode.is_creative() and service_events != null and Preferences.service_events_enabled
+
+
+func _capture_service_events() -> Dictionary:
+	return service_events.to_dict() if service_events != null else _new_service_events().to_dict()
+
+
+## Validate now; install with the other global sections once the load passes.
+func _restore_service_events(data: Dictionary) -> bool:
+	var candidate: ServiceEvents = _new_service_events()
+	if not candidate.from_dict(data):
+		return false
+	_loaded_service_events = candidate
+	return true
+
+
+## The facts a card's conditions read, in a fixed order so the draw is stable.
+func _service_event_context() -> Dictionary:
+	var staff: Array = []
+	if staff_roster != null:
+		for member: StaffMember in staff_roster.members():
+			if member.role != StaffMember.MANAGER:
+				staff.append({"id": String(member.id), "name": member.display_name, "role": String(member.role)})
+	staff.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
+	var regular_names: Array = []
+	if regulars != null:
+		for profile: RegularProfile in regulars.profiles:
+			if profile.active and not profile.display_name.is_empty():
+				regular_names.append(profile.display_name)
+	regular_names.sort()
+	var ingredients: Array = []
+	var seen: Dictionary[StringName, bool] = {}
+	if sim != null:
+		for recipe: RecipeDef in sim.menu:
+			for ingredient: IngredientDef in recipe.ingredients:
+				if ingredient != null and ingredient.unit_cost > 0 and not seen.has(ingredient.id):
+					seen[ingredient.id] = true
+					ingredients.append({"id": String(ingredient.id), "name": ingredient.display_name})
+	ingredients.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
+	return {"level": owner_progress.effective_level(), "tier": owner_progress.effective_tier(),
+		"staff": staff, "regulars": regular_names,
+		"rain": world != null and world.weather != null and world.weather.kind == WeatherState.Kind.RAIN,
+		"ingredients": ingredients}
+
+
+## Shop-clock windows a card keeps clear of: today's rush, a booked party's
+## slot and the critic's planned arrival.
+func _service_event_blocked_minutes() -> Array[Vector2i]:
+	var blocked: Array[Vector2i] = []
+	var open_minute: int = Clock.sim.display_open_minute
+	var close_minute: int = Clock.sim.display_close_minute
+	if sim.rush_hour.has_event():
+		blocked.append(Vector2i(sim.rush_hour.start_minute,
+			sim.rush_hour.start_minute + sim.rush_hour.duration_minutes))
+	if group_booking != null and group_booking.has_active_booking() \
+			and int(group_booking.booking.get("service_day", -1)) == Clock.sim.day:
+		var slot: int = int(group_booking.booking.get("slot_minute", 0))
+		blocked.append(Vector2i(slot - 15, slot + 45))
+	if sim.critic.pending:
+		var minute: int = open_minute + sim.critic.arrival_permille * (close_minute - open_minute) / 1000
+		blocked.append(Vector2i(minute, minute + 30))
+	return blocked
+
+
+## Draws today's cards once, as the doors open.
+func _plan_service_events() -> void:
+	if sim == null or service_events == null or not service_events_active():
+		return
+	service_events.plan_day(Clock.sim.day, GameState.master_seed, _service_event_context(),
+		Clock.sim.display_open_minute, Clock.sim.display_close_minute, _service_event_blocked_minutes())
+
+
+func _check_service_event() -> void:
+	if sim == null or service_events == null or Clock.sim.phase != SimClock.Phase.OPEN \
+			or service_events.day != Clock.sim.day or not service_events_active():
+		return
+	var entry: Dictionary = service_events.due(Clock.sim.display_minutes())
+	if entry.is_empty():
+		return
+	if service_event_auto_pick >= 0:
+		service_event_pick(service_event_auto_pick)
+		return
+	_show_service_event_card(entry)
+
+
+func _show_service_event_card(entry: Dictionary) -> void:
+	var card: Dictionary = service_events.card_text(entry)
+	var event: ServiceEventDef = service_events.definition(StringName(entry.get("id", "")))
+	if card.is_empty() or event == null or _service_event_card == null:
+		service_events.end_service()
+		return
+	var names: Dictionary = entry.get("names", {})
+	var unit_cost: int = _service_event_unit_cost(entry)
+	var previews: Array[String] = []
+	for choice: ServiceEventChoice in event.choices:
+		previews.append(ServiceEventText.preview(choice, names, unit_cost))
+	var labels: Array[String] = []
+	labels.assign(card["labels"])
+	if Clock.speed > 0:
+		_service_event_resume_speed = Clock.speed
+	Clock.set_speed(0)
+	$HUD.set_event_card_active(true)
+	_service_event_card.show_card(event.id, String(card["title"]), String(card["text"]),
+		StringName(card["icon"]), labels, previews)
+
+
+func is_service_event_visible() -> bool:
+	return _service_event_card != null and _service_event_card.visible
+
+
+## Answers the card on screen (or the auto-picked one): applies the effects,
+## logs them and puts the clock back at its earlier speed.
+func service_event_pick(index: int) -> bool:
+	var outcome: Dictionary = service_events.pick(index, GameState.master_seed) if service_events != null else {}
+	if outcome.is_empty():
+		return false
+	_apply_service_event(outcome)
+	world.log_event("Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]])
+	_close_service_event_card(true)
+	refresh_presentation()
+	return true
+
+
+func _on_service_event_choice(index: int) -> void:
+	service_event_pick(index)
+
+
+## Closing time (or a tool driving ticks) drops an unanswered card unused.
+func _end_service_event_card() -> void:
+	if service_events != null and not service_events.pending.is_empty():
+		service_events.end_service()
+	if is_service_event_visible():
+		_close_service_event_card(true)
+
+
+func _close_service_event_card(resume: bool) -> void:
+	if _service_event_card == null or not _service_event_card.visible:
+		return
+	_service_event_card.close()
+	$HUD.set_event_card_active(false)
+	if resume and (Clock.sim.phase == SimClock.Phase.OPEN or Clock.sim.phase == SimClock.Phase.LAST_ORDERS):
+		Clock.set_speed(maxi(1, _service_event_resume_speed))
+
+
+func _service_event_unit_cost(entry: Dictionary) -> int:
+	var id: StringName = StringName(entry.get("ingredient_id", ""))
+	var ingredient: IngredientDef = content.ingredient(id) if not id.is_empty() and content != null else null
+	return ingredient.unit_cost if ingredient != null else 0
+
+
+## Each effect goes through the system that already owns it: the ledger, the
+## review window, the guests' patience, today's arrivals and patience, tomorrow's
+## demand (via ServiceEvents.arrival_factor), stock, staff mood, the owner's job
+## and the floor's dirty spots.
+func _apply_service_event(outcome: Dictionary) -> void:
+	var choice: ServiceEventChoice = outcome["choice"] as ServiceEventChoice
+	var entry: Dictionary = outcome["entry"]
+	var risk: bool = bool(outcome["risk"])
+	var note: String = String(outcome["title"])
+	var cash: int = choice.cash + (choice.risk_cash if risk else 0)
+	if cash != 0:
+		Economy.add_cash(cash, Ledger.SERVICE_EVENT, note)
+	var ingredient_id: StringName = StringName(entry.get("ingredient_id", ""))
+	if choice.stock_units > 0 and not ingredient_id.is_empty():
+		var unit_cost: int = _service_event_unit_cost(entry)
+		var total: int = ServiceEventText.stock_cost(choice.stock_units, unit_cost, choice.stock_price_percent)
+		# One discounted batch through the ordinary purchase path.
+		var each: int = total / choice.stock_units
+		var bought: bool = total > 0 and Economy.buy_ingredient(ingredient_id, choice.stock_units, each)
+		var remainder: int = total - each * choice.stock_units
+		if bought and remainder > 0:
+			Economy.add_cash(-remainder, Ledger.INGREDIENTS, String(ingredient_id))
+		if bought and risk and choice.risk_stock_lost_percent > 0:
+			var lost: int = choice.stock_units * choice.risk_stock_lost_percent / 100
+			Economy.stock.take(ingredient_id, mini(lost, Economy.stock.count(ingredient_id)))
+		sim.refresh_sold_out()
+	elif choice.stock_units < 0 and not ingredient_id.is_empty():
+		Economy.stock.take(ingredient_id, mini(-choice.stock_units, Economy.stock.count(ingredient_id)))
+		sim.refresh_sold_out()
+	var stars: int = choice.risk_review_stars if risk and choice.risk_review_stars > 0 else choice.review_stars
+	if stars > 0:
+		sim.review_book.record_event_review(stars)
+		$HUD.set_reputation(reputation.average(), reputation.scores().size())
+	if choice.guest_patience_seconds != 0:
+		sim.nudge_guest_patience(choice.guest_patience_seconds)
+	if choice.day_patience_percent != 0:
+		sim.event_patience_multiplier *= 1.0 + float(choice.day_patience_percent) / 100.0
+	if choice.day_arrivals_percent != 0:
+		sim.event_arrival_factor *= 1.0 + float(choice.day_arrivals_percent) / 100.0
+	if choice.staff_mood != 0 and staff_roster != null:
+		staff_roster.adjust_mood(StringName(entry.get("staff_id", "")), choice.staff_mood)
+	if not choice.owner_mode.is_empty() and sim.assign_owner(choice.owner_mode):
+		_owner_preferences.assign_mode(choice.owner_mode)
+	if choice.clean_spots:
+		sim.clean_all_spots()
+
+
 func _capture_owner() -> Dictionary:
 	return {"mode": String(_owner_preferences.current_mode()),
 		"progress": owner_progress.to_dict(), "appearance": owner_appearance.to_dict()}
@@ -4494,6 +4744,8 @@ func toggle_staff() -> void:
 
 
 func set_staff_visible(value: bool) -> bool:
+	if value and is_service_event_visible():
+		return false
 	if _staff_panel == null or (value and not can_view_staff()):
 		return false
 	if value:
@@ -4788,6 +5040,8 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 	sim.rush_hour.fit_to_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute)
 	if _menu_panel != null:
 		_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
+	if service_events != null:
+		service_events.begin_morning(Clock.sim.day)
 	if _menu_panel != null:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	$HUD.refresh()
@@ -4918,7 +5172,7 @@ func toggle_menu() -> void:
 
 ## Idempotent production path for the HUD and genuine review captures.
 func set_menu_visible(value: bool) -> bool:
-	if value and is_haggle_active():
+	if value and (is_haggle_active() or is_service_event_visible()):
 		return false
 	_refresh_lease_offer()
 	if _menu_panel == null or (value and not can_edit_menu()):
@@ -4951,7 +5205,7 @@ func is_menu_visible() -> bool:
 
 ## A view-only panel: opening it neither completes goals nor changes the clock.
 func set_goals_visible(value: bool) -> bool:
-	if value and is_haggle_active():
+	if value and (is_haggle_active() or is_service_event_visible()):
 		return false
 	if _goals_panel == null or (value and (not _started or sim == null)):
 		return false
@@ -5439,7 +5693,7 @@ func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[Stri
 
 
 func set_settings_visible(value: bool) -> bool:
-	if value and is_haggle_active():
+	if value and (is_haggle_active() or is_service_event_visible()):
 		return false
 	if _settings_panel == null:
 		return false
@@ -6392,6 +6646,8 @@ func toggle_stock() -> void:
 
 ## Idempotent production path for the HUD and real captures, in any phase.
 func set_stock_visible(value: bool) -> bool:
+	if value and is_service_event_visible():
+		return false
 	if is_haggle_active() and not value:
 		_haggle_game.call("_on_skip_pressed")
 	if _stock_panel == null or (value and not can_edit_stock()):
@@ -7145,7 +7401,9 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		# report keeps this menu and its prices even if tomorrow's menu changes.
 		if sim != null:
 			sim.begin_service_menu_snapshot()
+		_plan_service_events()
 	else:
+		_end_service_event_card()
 		$HUD.set_menu_notice("")
 		# A delivery slot never falls after opening hours; anything overdue lands now.
 		_deliver_due()

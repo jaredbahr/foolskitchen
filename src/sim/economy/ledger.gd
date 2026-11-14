@@ -20,6 +20,8 @@ const CAT_FOOD: StringName = &"cat_food"
 ## Customer advances are cash movements, never earned operating income.
 const BOOKING_DEPOSIT: StringName = &"booking_deposit"
 const BOOKING_REFUND: StringName = &"booking_refund"
+## Small service event choices (#495): a tip, a comped drink, a busker.
+const SERVICE_EVENT: StringName = &"service_event"
 const OTHER: StringName = &"other"
 ## Multi-site money (FK-087). All four are non-operating (DayReport): they move
 ## the owner's cash but never the active site's operating profit.

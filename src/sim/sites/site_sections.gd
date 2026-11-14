@@ -14,6 +14,8 @@ const GLOBAL: PackedStringArray = [
 	"collection_toasts", "sites",
 	# Career or Creative (FK-141) belongs to the whole game, not one site.
 	"game_mode",
+	# Service event cooldowns (#495) follow the owner, wherever he works.
+	"service_events",
 ]
 
 const PER_SITE: PackedStringArray = [

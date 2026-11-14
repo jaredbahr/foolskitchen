@@ -100,6 +100,7 @@ const CLOSE_DAY_TEXT: String = "Close for today"
 var _haggle_active: bool = false
 var _demand_status: String = ""
 var _booking_status: Label
+var _event_card_active: bool = false
 var _special_name: String = ""
 var _collection_toast_queue: Array[Dictionary] = []
 var _collection_toast_panel: PanelContainer
@@ -978,7 +979,7 @@ func _disconnect_events() -> void:
 
 
 func _set_speed(speed: int) -> void:
-	if _haggle_active:
+	if _haggle_active or _event_card_active:
 		return
 	Clock.set_speed(speed)
 
@@ -988,6 +989,12 @@ func _set_speed(speed: int) -> void:
 func set_haggle_active(value: bool) -> void:
 	_haggle_active = value
 	refresh()
+
+
+## A service event card (#495) holds the clock until a choice: the speed
+## buttons do nothing while it shows.
+func set_event_card_active(value: bool) -> void:
+	_event_card_active = value
 
 
 func _on_speed_changed(speed: int) -> void:

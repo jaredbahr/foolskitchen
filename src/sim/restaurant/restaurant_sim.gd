@@ -98,6 +98,10 @@ var critic: FoodCritic = FoodCritic.new()
 var critic_rng_provider: Callable
 ## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
 var critic_result: Dictionary = {}
+## Service event nudges for the rest of today (#495); 1.0 leaves every
+## arrival and patience exactly as before. start_day resets both.
+var event_arrival_factor: float = 1.0
+var event_patience_multiplier: float = 1.0
 var served_today: int = 0
 ## Optional morning offer; absent callers keep their original prices and picks.
 var daily_special: DailySpecial = null
@@ -304,6 +308,8 @@ func start_day() -> void:
 	booking_report_lines.clear()
 	_booking_visits_today.clear()
 	_booking_party_sizes.clear()
+	event_arrival_factor = 1.0
+	event_patience_multiplier = 1.0
 	critic_result = {}
 	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
 	sold_out_today.clear()
@@ -467,6 +473,29 @@ func _record_inspection(facts: Dictionary) -> void:
 	inspection.record(world.clock.day, result)
 	world.log_event("Health inspection: grade %s" % String(result["grade"]))
 	inspection_done.emit(result.duplicate(true))
+
+
+## A service event's patience nudge for every guest in the shop now (#495).
+## A cut keeps at least 10 s of each guest's current wait.
+func nudge_guest_patience(seconds: int) -> int:
+	var nudged: int = 0
+	for customer: CustomerAgent in customers():
+		customer.nudge_patience(seconds * SimClock.TICKS_PER_SECOND, 10 * SimClock.TICKS_PER_SECOND)
+		nudged += 1
+	return nudged
+
+
+## A service event's clean sweep (#495): every dirty spot on the floor goes.
+func clean_all_spots() -> int:
+	if cleanliness == null:
+		return 0
+	var cleaned: int = 0
+	for cell: Vector2i in cleanliness.spots():
+		if cleanliness.clear_spot(cell):
+			cleaned += 1
+	if clean_tasks != null:
+		clean_tasks.sync_spots()
+	return cleaned
 
 
 ## Uses `random` for arrivals (the spawner and future guests). The game session
@@ -775,7 +804,8 @@ func arrival_rate() -> float:
 	var base: float = 1.0
 	if visit_tuning != null and visit_tuning.is_valid() and world != null:
 		base = visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
-	return base * demand_factor
+	var rate: float = base * demand_factor
+	return rate * event_arrival_factor if event_arrival_factor != 1.0 else rate
 
 
 ## Event multiplier is sampled from the authoritative simulation clock each
@@ -1023,6 +1053,9 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		customer.queue_patience = _vibe_patience(customer.queue_patience, _vibe_result.patience_multiplier)
 		customer.food_patience = _vibe_patience(customer.food_patience, _vibe_result.patience_multiplier)
 		customer.vibe_review_bonus = _vibe_result.raw_review_bonus
+		if event_patience_multiplier != 1.0:
+			customer.queue_patience = maxi(1, roundi(customer.queue_patience * event_patience_multiplier))
+			customer.food_patience = maxi(1, roundi(customer.food_patience * event_patience_multiplier))
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
 	if publish:

@@ -7,6 +7,7 @@ const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a
 const MONEY_LABELS: Dictionary = {
 	Ledger.BREAKAGES: "Breakages",
 	Ledger.CAT_FOOD: "Cat food",
+	Ledger.SERVICE_EVENT: "Service events",
 	Ledger.BANK_LOAN: "Bank loan",
 	Ledger.LOAN_INTEREST: "Loan interest",
 	Ledger.LOAN_REPAYMENT: "Loan repayment",
@@ -197,6 +198,16 @@ func show_report(report: DayReport) -> void:
 	rush_hour.visible = not report.rush_hour_lines.is_empty()
 	if bookings != null:
 		inspection.get_parent().move_child(bookings, rush_hour.get_index() + 1)
+	var events: Label = get_node_or_null("Panel/Scroll/Content/ServiceEvents") as Label
+	if events == null and not report.service_event_lines.is_empty():
+		events = Label.new()
+		events.name = "ServiceEvents"
+		events.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rush_hour.get_parent().add_child(events)
+	if events != null:
+		rush_hour.get_parent().move_child(events, rush_hour.get_index() + 1)
+		events.text = "\n".join(PackedStringArray(report.service_event_lines))
+		events.visible = not report.service_event_lines.is_empty()
 	regulars_summary.text = "Regulars: " + "; ".join(PackedStringArray(report.regulars_lines))
 	regulars_summary.visible = not report.regulars_lines.is_empty()
 	critic_heading.text = report.critic_lines[0] if not report.critic_lines.is_empty() else ""
