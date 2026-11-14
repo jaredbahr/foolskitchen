@@ -50,7 +50,13 @@ signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 980.0
+## The tallest the bottom panel may grow, as a share of the view. It keeps the
+## top of the panel below the screen centre, where Build centres the tile you
+## are working on (world clicks there must not land on the panel).
 const PANEL_HEIGHT_SHARE: float = 0.45
+## The most card rows the scroll shows before it scrolls, when the height cap
+## leaves room for them.
+const VISIBLE_ROWS: int = 3
 ## A catalogue tile: the picture on top, the price (or unlock level) under it.
 const CARD_MINIMUM: Vector2 = Vector2(96.0, 104.0)
 const THUMBNAIL_WIDTH: int = 64
@@ -211,7 +217,7 @@ var _material_icons: Dictionary[StringName, ImageTexture] = {}
 var copied_look: String = ""
 ## Main armed "Copy look": the next piece clicked is copied.
 var copy_armed: bool = false
-## Stable capture path: Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter.
+## Stable capture path: Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter.
 var vibe_meter: VibeMeter
 var curb_appeal_meter: CurbAppealMeter
 var _curb_score: float = NAN
@@ -1098,7 +1104,7 @@ func _apply_category() -> void:
 		theme_buttons[tag].set_pressed_no_signal(theme_filters.has(tag))
 	sort_button.visible = buying
 	sort_button.text = SORT_LABELS[sort]
-	(_content_node().get_node("Filters") as Control).visible = buying and not blueprints_shown
+	(_toolbars().get_node("Filters") as Control).visible = buying and not blueprints_shown
 	(_content_node().get_node("Items") as Control).visible = not _paint_visible and not blueprints_shown
 	(_content_node().get_node("PaintArea") as Control).visible = _paint_visible
 	if _paint_variant_rows != null:
@@ -1186,7 +1192,7 @@ func _first_category(side: StringName) -> StringName:
 
 
 func _refresh_groups() -> void:
-	var filters: HBoxContainer = _content_node().get_node("Filters") as HBoxContainer
+	var filters: HBoxContainer = _toolbars().get_node("Filters") as HBoxContainer
 	if group_buttons.is_empty():
 		var groups: Array[StringName] = [ALL_GROUPS]
 		groups.append_array(CatalogueText.GROUP_IDS)
@@ -1406,7 +1412,7 @@ func _refresh_swatch_styles() -> void:
 
 
 func _refresh_title() -> void:
-	var title: Label = _content_node().get_node("Title") as Label
+	var title: Label = _toolbars().get_node("Title") as Label
 	title.visible = _paint_visible
 	if _paint_visible and _content != null and not paint_variant_item.is_empty():
 		var definition: ItemDef = _content.item(paint_variant_item)
@@ -1649,7 +1655,9 @@ func _prepare_layout() -> void:
 	card.add_theme_stylebox_override("panel", card_style)
 	var content: Control = _content_node()
 	content.minimum_size_changed.connect(_fit_panel)
-	var bar: HBoxContainer = content.get_node("Bar") as HBoxContainer
+	var toolbars: Control = _toolbars()
+	toolbars.minimum_size_changed.connect(_fit_panel)
+	var bar: HBoxContainer = toolbars.get_node("Bar") as HBoxContainer
 	for side: StringName in [BUILD, BUY]:
 		var button: Button = _chip("Mode_%s" % side, "Build" if side == BUILD else "Buy", 18)
 		button.tooltip_text = "Build: walls, doorways, windows, wall finishes, floors, rooms, more floor space and paint" if side == BUILD \
@@ -1681,7 +1689,7 @@ func _prepare_layout() -> void:
 	grid_button.button_pressed = true
 	grid_button.pressed.connect(_on_grid_pressed)
 	bar.add_child(grid_button)
-	var categories: HFlowContainer = content.get_node("Categories") as HFlowContainer
+	var categories: HFlowContainer = toolbars.get_node("Categories") as HFlowContainer
 	for category: StringName in CATEGORY_IDS:
 		var button: Button = Button.new()
 		button.name = String(category).capitalize()
@@ -1723,15 +1731,15 @@ func _prepare_layout() -> void:
 	hygiene_panel.name = "HygieneOverview"
 	hygiene_panel.visible = false
 	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(hygiene_panel)
-	content.move_child(hygiene_panel, categories.get_index() + 1)
+	toolbars.add_child(hygiene_panel)
+	toolbars.move_child(hygiene_panel, categories.get_index() + 1)
 	hygiene_summary = Label.new()
 	hygiene_summary.name = "Summary"
 	hygiene_summary.add_theme_font_size_override("font_size", 18)
 	hygiene_summary.tooltip_text = HygieneOverview.TODAY_TIP
 	hygiene_summary.mouse_filter = Control.MOUSE_FILTER_PASS
 	hygiene_panel.add_child(hygiene_summary)
-	var filters: HBoxContainer = content.get_node("Filters") as HBoxContainer
+	var filters: HBoxContainer = toolbars.get_node("Filters") as HBoxContainer
 	_refresh_groups()
 	filters.add_child(_divider())
 	for tag: StringName in CatalogueText.theme_ids():
@@ -1793,19 +1801,29 @@ func _content_node() -> Control:
 	return get_node("Panel/Margin/Rows/Scroll/Content") as Control
 
 
+## The mode, tool, room-tab, readout and filter rows: pinned above the scroll
+## so the wheel only ever moves the cards (#499).
+func _toolbars() -> Control:
+	return get_node("Panel/Margin/Rows/Toolbars") as Control
+
+
 func _items() -> GridContainer:
 	return get_node("Panel/Margin/Rows/Scroll/Content/Items") as GridContainer
 
 
-## Content-sized when it fits. Scrollbars handle both axes when it does not;
-## resizing never hides, disables or replaces an in-flight native button.
+## Content-sized when it fits. The toolbars stay pinned above the scroll and
+## only the cards scroll, vertically (#499). The scroll shows VISIBLE_ROWS card
+## rows when the view is tall enough; resizing never hides, disables or replaces
+## an in-flight native button.
 func _fit_panel() -> void:
 	if not _layout_ready or _fitting:
 		return
 	var panel: PanelContainer = get_node_or_null("Panel") as PanelContainer
+	var rows: VBoxContainer = get_node_or_null("Panel/Margin/Rows") as VBoxContainer
+	var toolbars: Control = get_node_or_null("Panel/Margin/Rows/Toolbars") as Control
 	var scroll: ScrollContainer = get_node_or_null("Panel/Margin/Rows/Scroll") as ScrollContainer
 	var content: Control = get_node_or_null("Panel/Margin/Rows/Scroll/Content") as Control
-	if panel == null or scroll == null or content == null:
+	if panel == null or rows == null or toolbars == null or scroll == null or content == null:
 		return
 	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
 	var available: Vector2 = size - Vector2.ONE * EDGE_MARGIN * 2.0 - padding
@@ -1820,41 +1838,41 @@ func _fit_panel() -> void:
 		return
 	_fitting = true
 	var row: GridContainer = content.get_node("Items") as GridContainer
-	var card_width: float = CARD_MINIMUM.x
+	var card_size: Vector2 = CARD_MINIMUM
 	for button: Button in _visible_cards():
-		card_width = maxf(card_width, button.get_combined_minimum_size().x)
+		card_size = card_size.max(button.get_combined_minimum_size())
 	var bar_width: float = scroll.get_v_scroll_bar().get_combined_minimum_size().x
-	# The tiles fill the width of the tab rows (at least MIN_COLUMNS tiles), so
+	# The tiles fill the width of the toolbars (at least MIN_COLUMNS tiles), so
 	# the panel stays narrow enough to leave the shop in view; more tiles scroll.
 	var rows_width: float = 0.0
-	for child: Node in content.get_children():
-		if child != row and child is Control and (child as Control).visible:
-			rows_width = maxf(rows_width, (child as Control).get_combined_minimum_size().x)
-			if child is HFlowContainer:
-				# Flow's minimum is only its widest child. Keep the catalogue's
-				# usual card capacity when a complete room/readout row can fit;
-				# its controls may still wrap inside the bounded native panel.
-				var ideal: float = 0.0
-				for control: Node in child.get_children():
-					if control is Control and (control as Control).visible:
-						ideal += (control as Control).get_combined_minimum_size().x \
-							+ (child as HFlowContainer).get_theme_constant("h_separation")
-				rows_width = maxf(rows_width, ideal)
-	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_width + CARD_GAP) - CARD_GAP)
+	for parent: Control in [toolbars, content]:
+		for child: Node in parent.get_children():
+			if child != row and child is Control and (child as Control).visible:
+				rows_width = maxf(rows_width, (child as Control).get_combined_minimum_size().x)
+				if child is HFlowContainer:
+					# Flow's minimum is only its widest child. Keep the catalogue's
+					# usual card capacity when a complete room/readout row can fit;
+					# its controls may still wrap inside the bounded native panel.
+					var ideal: float = 0.0
+					for control: Node in child.get_children():
+						if control is Control and (control as Control).visible:
+							ideal += (control as Control).get_combined_minimum_size().x \
+								+ (child as HFlowContainer).get_theme_constant("h_separation")
+					rows_width = maxf(rows_width, ideal)
+	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_size.x + CARD_GAP) - CARD_GAP)
 	var grid_width: float = minf(wanted, limit.x - bar_width)
-	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_width + CARD_GAP)), 1, MAX_COLUMNS)
+	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_size.x + CARD_GAP)), 1, MAX_COLUMNS)
 	if row.columns != columns:
 		row.columns = columns
 	var natural: Vector2 = content.get_combined_minimum_size()
-	var bar_height: float = scroll.get_h_scroll_bar().get_combined_minimum_size().y
-	var horizontal: bool = false
-	var vertical: bool = false
-	for _pass: int in range(2):
-		horizontal = horizontal or natural.x + (bar_width if vertical else 0.0) > limit.x
-		vertical = vertical or natural.y + (bar_height if horizontal else 0.0) > limit.y
-	var desired: Vector2 = natural + Vector2(bar_width if vertical else 0.0, bar_height if horizontal else 0.0)
-	scroll.custom_minimum_size = Vector2(minf(desired.x, limit.x), minf(desired.y, limit.y))
-	panel.size = scroll.custom_minimum_size + padding
+	var pinned: float = toolbars.get_combined_minimum_size().y + rows.get_theme_constant("separation")
+	var scroll_limit: float = maxf(0.0, minf(limit.y - pinned,
+		VISIBLE_ROWS * (card_size.y + CARD_GAP) - CARD_GAP))
+	var vertical: bool = natural.y > scroll_limit
+	var width: float = minf(maxf(natural.x + (bar_width if vertical else 0.0), rows_width), limit.x)
+	var height: float = minf(natural.y, scroll_limit)
+	scroll.custom_minimum_size = Vector2(width, height)
+	panel.size = Vector2(width, pinned + height) + padding
 	panel.position = Vector2(EDGE_MARGIN, size.y - EDGE_MARGIN - panel.size.y)
 	_fitting = false
 	_place_hover_card()

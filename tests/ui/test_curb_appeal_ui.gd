@@ -115,7 +115,7 @@ func test_camera_visibility_updates_reuse_catalogue_controls_at_native_and_scale
 	var tool_id: int = catalogue.tool_buttons[0].get_instance_id()
 	var category_id: int = catalogue.category_buttons[&"walls"].get_instance_id()
 	var panel: Control = catalogue.get_node("Panel") as Control
-	var scroll: ScrollContainer = catalogue.get_node("Panel/Margin/Rows/Scroll") as ScrollContainer
+	var toolbars: Control = catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
 	for scale_factor: float in [1.0, 1.25]:
 		for bounds: Vector2 in [Vector2(1280.0, 720.0), Vector2(1600.0, 900.0)]:
 			host.size = bounds / scale_factor
@@ -126,7 +126,7 @@ func test_camera_visibility_updates_reuse_catalogue_controls_at_native_and_scale
 			assert_true(meter.is_visible_in_tree())
 			assert_true(panel.get_global_rect().end.x <= bounds.x)
 			assert_true(panel.get_global_rect().end.y <= bounds.y)
-			assert_true(scroll.get_global_rect().encloses(meter.get_global_rect()))
+			assert_true(toolbars.get_global_rect().encloses(meter.get_global_rect()), "the pinned readout shows the meter")
 			assert_true(meter.get_global_rect().encloses(meter.caption_label.get_global_rect()))
 			assert_true(meter.get_global_rect().encloses(meter.bonus_label.get_global_rect()))
 			assert_false(catalogue.vibe_meter.get_global_rect().intersects(meter.get_global_rect()))

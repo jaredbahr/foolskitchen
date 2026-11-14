@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- In the Build and Buy catalogue, the top rows stay put: Build/Buy, the tools, the room tabs, the vibe readout and the filters no longer scroll away. Only the item cards scroll, and only up and down. (#524)
 - Service events have sharper choices. "Double or nothing" bets a guest's bill on your kitchen's speed, "Flyers for hire" costs money today for more guests over the next days, "A guest with opinions" makes you pick between the guest and your worker, and seating the food blogger brings their review back a few days later. "Can I leave early?" is back, and "Off you go" really sends the worker home: they finish what they're carrying, walk out, are still paid, and are back (happier) the next morning. It only asks about someone a teammate can cover for. (#523)
 - Weekly challenges now use your shop’s recent service results. Serving targets fit your seating, and shops still turning guests away at the door get other goals to work toward. (#509)
 - Guests who leave before getting a table no longer leave a review. Their walkouts still appear in the evening report. (#508)
