@@ -42,7 +42,7 @@ var _whats_new: WhatsNewPanel
 @onready var _play_grid: CheckButton = %PlayGridToggle
 @onready var _build_grid: CheckButton = %BuildGridToggle
 @onready var _service_events: CheckButton = %ServiceEventsToggle
-@onready var _auto_pause_toggles: Dictionary[StringName, CheckBox] = {
+@onready var _auto_pause_toggles: Dictionary[StringName, CheckButton] = {
 	SettingsPreferences.PAUSE_ON_SOLD_OUT: %PauseOnSoldOut,
 	SettingsPreferences.PAUSE_ON_INSPECTOR: %PauseOnInspector,
 	SettingsPreferences.PAUSE_ON_ANGRY_GUEST: %PauseOnAngryGuest,

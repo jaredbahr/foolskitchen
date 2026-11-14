@@ -233,9 +233,9 @@ func test_panel_exposes_all_choices_and_writes_through_the_model() -> void:
 	assert_eq(scale.item_count, 3)
 	assert_eq(speed.item_count, 2)
 	assert_eq(fullscreen_row.visible, not OS.has_feature("web"))
-	var sold_out: CheckBox = panel.get_node("%PauseOnSoldOut") as CheckBox
-	var inspector: CheckBox = panel.get_node("%PauseOnInspector") as CheckBox
-	var angry_guest: CheckBox = panel.get_node("%PauseOnAngryGuest") as CheckBox
+	var sold_out: CheckButton = panel.get_node("%PauseOnSoldOut") as CheckButton
+	var inspector: CheckButton = panel.get_node("%PauseOnInspector") as CheckButton
+	var angry_guest: CheckButton = panel.get_node("%PauseOnAngryGuest") as CheckButton
 	assert_true(sold_out.button_pressed)
 	assert_true(inspector.button_pressed)
 	assert_false(angry_guest.button_pressed)
