@@ -139,7 +139,7 @@ func _operating(day: int, site: StringName) -> int:
 
 
 func _assert_report_excludes_away(report: DayReport, msg: String) -> void:
-	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.BOOKING_REFUND]:
+	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.AWAY_SITE_WAGES, Ledger.BOOKING_REFUND]:
 		assert_false(report.income.has(category) or report.costs.has(category), "%s: no %s" % [msg, category])
 
 
@@ -161,7 +161,8 @@ func test_a_managed_home_site_earns_at_the_second_sites_close() -> void:
 	assert_eq(income.size(), 1, "one away payment")
 	assert_eq(int(income[0]["amount"]), expected)
 	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_RENT).size(), 0, "a managed site pays no rent")
-	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.WAGES).size(), 0, "nor wages: the mean is net")
+	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.WAGES).size(), 0, "no active wages at the away site")
+	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_WAGES).size(), 0, "managed profit is already net")
 	assert_eq(Economy.cash - cash_before, Economy.ledger.day_profit(day, &"second") + expected,
 		"the owner's cash is the second site's day plus the away income")
 	_assert_report_excludes_away(report, "the active report")
@@ -180,25 +181,42 @@ func test_a_managed_home_site_earns_at_the_second_sites_close() -> void:
 	assert_eq((home_history["days"] as Array).size(), 2, "away days are never written into history")
 
 
-func test_an_unmanaged_home_site_pays_only_its_rent() -> void:
+func test_an_unmanaged_home_site_pays_rent_and_wages_after_reload() -> void:
 	var day: int = _two_sites()
+	assert_eq(_roster().members().size(), 2)
+	var wages: int = _roster().total_wages()
+	assert_true(wages > 0)
 	# No Manager on the home staff: the home site stays closed. (A Manager
 	# hired there would take its row on leaving, #488:
 	# test_staff_transfer_session.)
 	assert_true(_main.call("switch_site", &"second"))
+	_close()
+	_start()
+	assert_eq(_book().active_id, &"second", "the switch persisted before the reload")
 	assert_eq(_book().manager(SiteBook.HOME_ID), &"")
 	var rent: int = _main.call("_home_rent")
 	assert_true(rent > 0)
+	var before: int = Economy.cash
 	var report: DayReport = _play_to_close(day)
 	var charged: Array[Dictionary] = _entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_RENT)
 	assert_eq(charged.size(), 1)
 	assert_eq(int(charged[0]["amount"]), -rent)
+	var wage_entries: Array[Dictionary] = _entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_WAGES)
+	assert_eq(wage_entries.size(), 1, "one wage bill for both frozen employees")
+	assert_eq(int(wage_entries[0]["amount"]), -wages)
+	assert_eq(Economy.cash - before, Economy.ledger.day_profit(day, &"second") - rent - wages)
 	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_INCOME).size(), 0)
 	assert_eq(_entries(day, &"second", Ledger.RENT).size(), 0,
 		"the second site does not pay the home lot's rent as well")
 	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.RENT).size(), 0, "home rent is charged once, as away rent")
 	_assert_report_excludes_away(report, "the active report")
-	assert_eq(report.away_site_lines, ["Fool's Kitchen (closed): rent -$%d" % rent] as Array[String])
+	assert_eq(report.away_site_lines,
+		["Fool's Kitchen (closed): rent -$%d; wages -$%d" % [rent, wages]] as Array[String])
+	_main.call("_on_next_day_pressed")
+	_close()
+	_start()
+	assert_eq(_entries(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_WAGES), wage_entries,
+		"the next morning save keeps exactly one posted wage movement")
 
 
 func test_an_away_booking_lapses_at_the_close_with_its_deposit() -> void:
@@ -247,7 +265,7 @@ func test_one_site_has_no_away_lines() -> void:
 	var report: DayReport = _play_to_close(day)
 	assert_true(report.away_site_lines.is_empty())
 	assert_false(report.to_dict().has("away_site_lines"), "a one-site report keeps its shape")
-	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT]:
+	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.AWAY_SITE_WAGES]:
 		assert_eq(Economy.ledger.day_totals(day).get(category, 0), 0)
 
 

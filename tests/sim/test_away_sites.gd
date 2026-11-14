@@ -1,6 +1,6 @@
 extends TestCase
 ## Away sites at the active site's close (FK-087, #408 D2): a managed site's
-## earnings formula, a closed site's rent and a lapsing away booking. Pure.
+## earnings formula, closed-site costs and a lapsing away booking. Pure.
 
 const TUNING: SiteManagerTuning = preload("res://data/balance/site_managers.tres")
 const BOOKINGS: BookingTuning = preload("res://data/balance/bookings.tres")
@@ -149,6 +149,7 @@ func test_an_away_lot_site_pays_its_lots_rent_normal_and_expanded() -> void:
 	assert_eq(plans.size(), 2)
 	assert_true(bool(plans[0]["rent_known"]))
 	assert_eq(int(plans[0]["amount"]), -70)
+	assert_eq(int(plans[0]["wages"]), 0, "a legacy site has no staff section to charge")
 	assert_eq(JSON.stringify(plans[0]["movements"]), JSON.stringify([{"amount": -70,
 		"category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE}]))
 	assert_eq(AwaySites.report_line("Pier Shack", plans[0]), "Pier Shack (closed): rent -$70")
@@ -156,7 +157,7 @@ func test_an_away_lot_site_pays_its_lots_rent_normal_and_expanded() -> void:
 	assert_eq(AwaySites.report_line("Sky Bar", plans[1]), "Sky Bar (closed): rent -$160")
 
 
-func test_a_renovating_site_pays_rent_even_with_a_manager() -> void:
+func test_a_renovating_site_pays_rent_and_wages_even_with_a_manager() -> void:
 	var lots: Array[LotDef] = [_lot(&"pier_lot", 70, 95)]
 	var book: SiteBook = SiteBook.new()
 	var sections: Dictionary = {"staff": _staff_with_manager(5), "business_history": _history([60, 80])}
@@ -165,13 +166,16 @@ func test_a_renovating_site_pays_rent_even_with_a_manager() -> void:
 	var plan: Dictionary = AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS, lots)[0]
 	assert_eq(plan["status"], AwaySites.CLOSED, "it cannot open, so no manager runs it")
 	assert_eq(int(plan["amount"]), -70)
+	assert_eq(int(plan["wages"]), StaffRoster.new().total_wages() + 45)
 	assert_eq(book.count_down_renovations(), [] as Array[StringName])
-	assert_eq(AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, lots)[0]["status"], AwaySites.CLOSED,
-		"its last renovation day is still closed (planned before the countdown)")
+	var last_day: Dictionary = AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, lots)[0]
+	assert_eq(last_day["status"], AwaySites.CLOSED, "its last renovation day is still closed")
+	assert_eq(last_day["wages"], plan["wages"], "the last renovation day charges the same wages")
 	assert_eq(book.count_down_renovations(), [&"harbour"] as Array[StringName])
 	var ready: Dictionary = AwaySites.plan_close(book, 5, 40, TUNING, BOOKINGS, lots)[0]
 	assert_eq(ready["status"], AwaySites.MANAGED, "once ready, its manager runs it")
 	assert_eq(int(ready["amount"]), 70)
+	assert_eq(int(ready["wages"]), 0, "wages are baked into the running site's profit")
 
 
 func test_a_booking_lapses_on_its_day_with_the_deposit() -> void:
@@ -216,7 +220,7 @@ func test_a_close_plans_each_inactive_site() -> void:
 		"planning changes nothing and repeats exactly")
 
 
-func test_an_unmanaged_home_site_pays_its_rent() -> void:
+func test_an_unmanaged_home_site_pays_its_rent_and_wages() -> void:
 	var book: SiteBook = SiteBook.new()
 	assert_true(book.add_site(&"harbour", &"pier_lot", "Pier Shack", 3, {}))
 	assert_true(book.swap_active(&"harbour", 3, {"staff": _staff_with_manager(3),
@@ -227,7 +231,10 @@ func test_an_unmanaged_home_site_pays_its_rent() -> void:
 	assert_eq(plans[0]["status"], AwaySites.CLOSED, "a manager on the roster but not assigned")
 	assert_eq(int(plans[0]["amount"]), -40)
 	assert_eq(AwaySites.display_name(book, SiteBook.HOME_ID), "Fool's Kitchen", "named from its menu")
-	assert_eq(AwaySites.report_line("Fool's Kitchen", plans[0]), "Fool's Kitchen (closed): rent -$40")
+	var wages: int = StaffRoster.new().total_wages() + 45
+	assert_eq(int(plans[0]["wages"]), wages)
+	assert_eq(AwaySites.report_line("Fool's Kitchen", plans[0]),
+		"Fool's Kitchen (closed): rent -$40; wages -$%d" % wages)
 	# A manager id that is not a Manager in that roster does not run it.
 	assert_true(book.set_manager(SiteBook.HOME_ID, &"starter_cook"))
 	assert_eq(AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS)[0]["status"], AwaySites.CLOSED)
@@ -235,10 +242,13 @@ func test_an_unmanaged_home_site_pays_its_rent() -> void:
 	var managed: Dictionary = AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS)[0]
 	assert_eq(managed["status"], AwaySites.CLOSED, "no history: nothing to go on, so it stays closed")
 	assert_eq(int(managed["amount"]), -40, "and pays its rent")
-	assert_eq(JSON.stringify(managed["movements"]), JSON.stringify([{"amount": -40,
-		"category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE}]))
+	assert_eq(int(managed["wages"]), wages)
+	assert_eq(JSON.stringify(managed["movements"]), JSON.stringify([
+		{"amount": -40, "category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE},
+		{"amount": -wages, "category": Ledger.AWAY_SITE_WAGES, "note": AwaySites.WAGES_NOTE},
+	]))
 	assert_eq(AwaySites.report_line("Fool's Kitchen", managed),
-		"Fool's Kitchen (closed until you run it for a day): rent -$40")
+		"Fool's Kitchen (closed until you run it for a day): rent -$40; wages -$%d" % wages)
 
 
 func test_a_managed_lot_needs_a_recorded_day_before_its_manager_runs_it() -> void:
@@ -257,6 +267,26 @@ func test_a_managed_lot_needs_a_recorded_day_before_its_manager_runs_it() -> voi
 	assert_eq(int(plan["amount"]), -70)
 	assert_true(bool(plan.get("no_history", false)))
 	assert_eq(AwaySites.recorded_days(_history([60, 80])), 2)
+
+
+func test_a_saved_roster_without_staff_does_not_charge_hiring_candidates() -> void:
+	var staff: Dictionary = StaffRoster.new().to_dict()
+	staff["members"] = []
+	staff["candidate_day"] = 4
+	var candidate: StaffMember = StaffMember.new()
+	candidate.id = &"candidate"
+	candidate.display_name = "Morgan"
+	candidate.role = StaffMember.MANAGER
+	candidate.skill = 3
+	candidate.wage = 45
+	staff["candidates"] = [candidate.to_dict()]
+	var lot: LotDef = _lot(&"pier_lot", 70, 95)
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.add_site(&"harbour", lot.id, "Pier Shack", 4, {"staff": staff}))
+	var plan: Dictionary = AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, [lot])[0]
+	assert_eq(int(plan["wages"]), 0)
+	assert_eq((plan["movements"] as Array).size(), 1, "only rent")
+	assert_eq(AwaySites.report_line("Pier Shack", plan), "Pier Shack (closed): rent -$70")
 
 
 func test_set_frozen_section_keeps_the_frozen_day() -> void:
