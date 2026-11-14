@@ -88,15 +88,18 @@ Morning (closed): plan menu and prices, buy stock, hire, rebuild
 - **Theme score:** the share of placed items tagged with a theme. Above the threshold, the restaurant counts as that theme (Diner, Italian, Sushi, Fine Dining, and more later).
 - **Theme effects:** which customer types come, how much price they accept, and a bonus for on-theme dishes.
 
-### 4.4b The outside look (D32)
-Every street is a "cutesy but fun" frame around the shop. Not playable yet (patio and rivals come later, #168, #173).
+### 4.4b Outside look (D32)
+Every street is a "cutesy but fun" frame around the shop (Jared, 2026-11-11): it should make you smile, like a toy town, never a realistic city. Not playable yet (patio and rivals come later, #168, #173).
 - **Grounded, never floating:** everything sits on real ground (meadow, lawns, verges, kerbs), and every building and prop stands on a baked shadow. The world ends in a deliberate edge (a tree line), and the camera can never see past it.
 - **Chunky and warm:** rounded, low-poly shapes at person scale; warm, soft palette from the shared swatches (gentle pastel roofs, so the player's shop is the strongest colour); playful details (awnings, flower boxes, birds, swaying signs, cosy back gardens, a toy shop and a pet shop) over realism. Lively, never cluttered: props stay off walking lanes, doors and the lot.
 - **Day and night:** street lamps glow at night and so do the neighbours' windows, a few going dark late (#440).
-- **One recipe per street:** a street is built from swappable parts, so each new site gets the same polish with its own character:
-  - `GroundSkin`: ground colours and planting.
-  - `StreetSet`: the building set (neighbour businesses, houses), palette and street furniture.
-  - A lot chooses its street (downtown, seaside, suburb). The second site is a seaside seafood shack (Jared, 2026-11-11): boardwalk, blues, rope, shells.
+- **One recipe per street:** every street is one street preset (`data/streets/<id>.tres`, #425), built by the same code, so each new site gets the same polish with its own character. A new street is new data, never new code:
+  - the ground: colours and planting (meadow, sand, verges, trees);
+  - the building set: neighbour businesses and houses, their roof shapes, heights and fences;
+  - the palette: walls, roofs, doors, awnings, hedges, flowers, night window glow;
+  - the props: which street furniture stands on the pavement, and how much small life.
+  - Each lot names its preset (downtown, seaside, suburb); the home lot and a lot without one stand on the starter street. The second street is the seaside seafood shack (Jared, 2026-11-11): boardwalk, blues, rope, shells.
+  - A preset keeps the shared rules above: same person scale, chunky shapes, everything grounded, and the player's shop always the strongest colour on the street, even on a bright street (Jared). It builds on the shared base swatches and may add a few accent colours of its own, such as seaside blues and rope tan (Jared).
 - **Cheap to draw:** batched, view-only meshes. A new street must keep the visual capture within about 15% of the starter street.
 
 ### 4.5 Economy and progression
