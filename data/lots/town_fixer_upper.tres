@@ -26,3 +26,4 @@ guest_mix = Dictionary[StringName, float]({
 })
 upstairs_allowed = true
 tags = Array[StringName]([])
+street_preset = "res://data/streets/starter.tres"
