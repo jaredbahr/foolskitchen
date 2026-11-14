@@ -4,7 +4,7 @@ extends RefCounted
 
 const NON_OPERATING_CATEGORIES: Array[StringName] = [
 	Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.EARLY_LOAN_REPAYMENT,
-	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS,
+	Ledger.MILESTONE_BONUS, Ledger.WEEKLY_CHALLENGE_BONUS, Ledger.OPENING_WEEK_BONUS,
 	Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
 	Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 ]
@@ -544,9 +544,9 @@ static func _owner_xp(value: Variant) -> Dictionary:
 	if not value is Dictionary:
 		return result
 	var amounts: Dictionary = value
-	for key: String in ["happy_xp", "profit_xp", "review_xp", "milestone_xp", "total_xp"]:
+	for key: String in ["happy_xp", "profit_xp", "review_xp", "milestone_xp", "opening_week_xp", "total_xp"]:
 		if amounts.has(key):
-			if key == "milestone_xp":
+			if key == "milestone_xp" or key == "opening_week_xp":
 				var xp: int = milestone_xp(amounts[key])
 				if xp < 0:
 					continue

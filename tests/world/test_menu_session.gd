@@ -678,6 +678,8 @@ func _start(with_saves: bool = true, host: Node = null, manual_stock: bool = fal
 		host = (Engine.get_main_loop() as SceneTree).root
 	host.add_child(main)
 	main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(main)
 	return main
 
 
