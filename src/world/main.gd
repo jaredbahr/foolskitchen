@@ -7242,8 +7242,6 @@ func _observe_opening_at_open() -> void:
 	_observe_opening_state()
 
 
-## The close checks the rating goal, then adds the chain's waiting XP to
-## tonight's owner award (career business days only, like career goals).
 ## Five-star reviews written so far today (owner XP and the opening week).
 func _five_star_reviews_today() -> int:
 	var count: int = 0
@@ -7253,6 +7251,8 @@ func _five_star_reviews_today() -> int:
 	return count
 
 
+## The close checks the served and five-star goals, then adds the chain's
+## waiting XP to tonight's owner award (career business days only, like career goals).
 func _close_opening_week(day: int) -> void:
 	# A guest who pays on the closing tick pays after the phase turned CLOSED,
 	# so the live check missed them: count today's guests once more here.

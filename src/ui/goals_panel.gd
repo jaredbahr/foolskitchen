@@ -295,7 +295,10 @@ func _make_opening_card() -> Control:
 	body.add_child(header)
 	var title: Label = _add_label(header, "Title", OpeningWeekText.TITLE)
 	title.add_theme_font_size_override(&"font_size", 20)
-	var done: int = _opening_week.completed_ids().size()
+	var done: int = 0
+	for goal: OpeningGoal in _opening_catalogue.goals:
+		if _opening_week.is_completed(goal.id):
+			done += 1
 	var status: Label = _add_label(header, "Status", "%d / %d done   %s" % [done,
 		_opening_catalogue.goals.size(), OpeningWeekText.days_left(_day, _opening_catalogue.last_day)])
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

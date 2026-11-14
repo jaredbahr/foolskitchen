@@ -3189,7 +3189,7 @@ owner on the floor, only while open or in last orders), and opening: Grow
 together (TABLE-category items and hired servers both above the counts
 `_begin_morning` noted, same day and site), decor (DECOR items plus hung wall
 decor above the count at the last opening, same site) and drinks. Checking
-these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks the closing rating,
+these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks today's guests served and five-star reviews,
 then adds the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
 in the report. The `opening_week` save section (version 1: status, completed
 ids, pending XP) joins only the morning autosave; a missing section means a
