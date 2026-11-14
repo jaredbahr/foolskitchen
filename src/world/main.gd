@@ -83,6 +83,8 @@ var _loaded_service_events: ServiceEvents = null
 var _service_event_card: ServiceEventCard
 ## The speed to return to once a card is answered.
 var _service_event_resume_speed: int = 1
+## True when a card moved the owner to another job for the rest of today.
+var _service_event_owner_borrowed: bool = false
 ## Tools that boot Main directly retain the old default appearance and flow.
 var skip_owner_picker: bool = false
 ## An explicit fresh-run UI request also works in headless integration tests.
@@ -4227,8 +4229,7 @@ func _show_service_event_card(entry: Dictionary) -> void:
 		previews.append(ServiceEventText.preview(choice, names, unit_cost))
 	var labels: Array[String] = []
 	labels.assign(card["labels"])
-	if Clock.speed > 0:
-		_service_event_resume_speed = Clock.speed
+	_service_event_resume_speed = Clock.speed
 	Clock.set_speed(0)
 	$HUD.set_event_card_active(true)
 	_service_event_card.show_card(event.id, String(card["title"]), String(card["text"]),
@@ -4270,7 +4271,7 @@ func _close_service_event_card(resume: bool) -> void:
 	_service_event_card.close()
 	$HUD.set_event_card_active(false)
 	if resume and (Clock.sim.phase == SimClock.Phase.OPEN or Clock.sim.phase == SimClock.Phase.LAST_ORDERS):
-		Clock.set_speed(maxi(1, _service_event_resume_speed))
+		Clock.set_speed(_service_event_resume_speed)
 
 
 func _service_event_unit_cost(entry: Dictionary) -> int:
@@ -4320,8 +4321,10 @@ func _apply_service_event(outcome: Dictionary) -> void:
 		sim.event_arrival_factor *= 1.0 + float(choice.day_arrivals_percent) / 100.0
 	if choice.staff_mood != 0 and staff_roster != null:
 		staff_roster.adjust_mood(StringName(entry.get("staff_id", "")), choice.staff_mood)
+	# The owner covers until close; the next morning puts him back on the job
+	# the player chose (which is also the one saved).
 	if not choice.owner_mode.is_empty() and sim.assign_owner(choice.owner_mode):
-		_owner_preferences.assign_mode(choice.owner_mode)
+		_service_event_owner_borrowed = true
 	if choice.clean_spots:
 		sim.clean_all_spots()
 
@@ -5040,8 +5043,6 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 	sim.rush_hour.fit_to_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute)
 	if _menu_panel != null:
 		_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
-	if service_events != null:
-		service_events.begin_morning(Clock.sim.day)
 	if _menu_panel != null:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	$HUD.refresh()
@@ -6123,6 +6124,11 @@ func _begin_morning() -> void:
 		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
 		GameState.rng.bind(&"rush"))
 	_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
+	if service_events != null:
+		service_events.begin_morning(Clock.sim.day)
+	if _service_event_owner_borrowed:
+		_service_event_owner_borrowed = false
+		sim.assign_owner(_owner_preferences.current_mode())
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()

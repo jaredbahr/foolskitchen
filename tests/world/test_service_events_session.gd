@@ -287,6 +287,7 @@ func test_each_effect_uses_its_own_system() -> void:
 	choice = _choice()
 	choice.owner_mode = &"help"
 	_apply(choice)
+	var chosen_job: StringName = (_main.get("_owner_preferences") as OwnerModeSettings).current_mode()
 	if sim.owner_agent() != null:
 		assert_eq(sim.owner_agent().current_mode(), &"help")
 	# The floor's dirty spots.
@@ -301,3 +302,5 @@ func test_each_effect_uses_its_own_system() -> void:
 	Clock.sim.next_day()
 	assert_almost_eq(sim.event_patience_multiplier, 1.0)
 	assert_almost_eq(sim.event_arrival_factor, 1.0)
+	if sim.owner_agent() != null:
+		assert_eq(sim.owner_agent().current_mode(), chosen_job, "the owner is back on his own job next morning")
