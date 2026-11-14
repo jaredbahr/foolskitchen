@@ -1,0 +1,157 @@
+[gd_resource type="Resource" script_class="StreetPreset" format=3]
+
+[ext_resource type="Script" path="res://src/world/street_prop_spec.gd" id="1_spec"]
+[ext_resource type="Script" path="res://src/world/street_set.gd" id="2_set"]
+[ext_resource type="Script" path="res://src/world/shop_style.gd" id="3_shop"]
+[ext_resource type="Script" path="res://src/world/ground_skin.gd" id="4_skin"]
+[ext_resource type="Script" path="res://src/world/street_preset.gd" id="5_preset"]
+
+[sub_resource type="Resource" id="Spec_0"]
+script = ExtResource("1_spec")
+kind = 7
+count = 5
+
+[sub_resource type="Resource" id="Spec_1"]
+script = ExtResource("1_spec")
+kind = 10
+count = 3
+
+[sub_resource type="Resource" id="Spec_2"]
+script = ExtResource("1_spec")
+kind = 8
+zone = 1
+
+[sub_resource type="Resource" id="Spec_3"]
+script = ExtResource("1_spec")
+kind = 9
+count = 2
+zone = 1
+
+[sub_resource type="Resource" id="Spec_4"]
+script = ExtResource("1_spec")
+kind = 1
+count = 2
+
+[sub_resource type="Resource" id="Spec_5"]
+script = ExtResource("1_spec")
+kind = 2
+count = 2
+zone = 1
+
+[sub_resource type="Resource" id="Shop_0"]
+script = ExtResource("3_shop")
+id = &"fish_shack"
+wall = Color(0.7254902, 0.8509804, 0.8156863, 1)
+awning_a = Color(0.2901961, 0.4980392, 0.6588235, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.9019608, 0.854902, 0.7411765, 1)
+door = Color(0.8509804, 0.4117647, 0.3098039, 1)
+
+[sub_resource type="Resource" id="Shop_1"]
+script = ExtResource("3_shop")
+id = &"bait_and_tackle"
+wall = Color(0.8039216, 0.7490196, 0.6235294, 1)
+awning_a = Color(0.2470588, 0.5882353, 0.5647059, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.7215686, 0.6784314, 0.6039216, 1)
+door = Color(0.2980392, 0.372549, 0.5176471, 1)
+accent = 1
+
+[sub_resource type="Resource" id="Shop_2"]
+script = ExtResource("3_shop")
+id = &"ice_cream_hut"
+wall = Color(0.9019608, 0.7254902, 0.6588235, 1)
+awning_a = Color(0.8784314, 0.5607843, 0.4784314, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.9490196, 0.9215686, 0.8666667, 1)
+door = Color(0.2901961, 0.4980392, 0.6588235, 1)
+accent = 3
+
+[sub_resource type="Resource" id="Shop_3"]
+script = ExtResource("3_shop")
+id = &"beach_shop"
+wall = Color(0.7019608, 0.8117647, 0.8784314, 1)
+awning_a = Color(0.8235294, 0.6352941, 0.2980392, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.9019608, 0.854902, 0.7411765, 1)
+door = Color(0.2470588, 0.5882353, 0.5647059, 1)
+accent = 5
+
+[sub_resource type="Resource" id="Shop_4"]
+script = ExtResource("3_shop")
+id = &"chowder_stand"
+wall = Color(0.9176471, 0.8431373, 0.627451, 1)
+awning_a = Color(0.2980392, 0.372549, 0.5176471, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.8039216, 0.7490196, 0.6235294, 1)
+door = Color(0.7882353, 0.4705882, 0.4156863, 1)
+accent = 4
+
+[sub_resource type="Resource" id="Shop_5"]
+script = ExtResource("3_shop")
+id = &"sail_loft"
+wall = Color(0.8509804, 0.8901961, 0.8156863, 1)
+awning_a = Color(0.4352941, 0.6078431, 0.7098039, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.7215686, 0.6784314, 0.6039216, 1)
+door = Color(0.8235294, 0.6352941, 0.2980392, 1)
+accent = 2
+
+[sub_resource type="Resource" id="Set_sea"]
+script = ExtResource("2_set")
+seed_salt = 11
+wall_colors = Array[Color]([Color(0.9019608, 0.854902, 0.7411765, 1), Color(0.8039216, 0.7490196, 0.6235294, 1), Color(0.7254902, 0.8509804, 0.8156863, 1), Color(0.7019608, 0.8117647, 0.8784314, 1), Color(0.9176471, 0.8431373, 0.627451, 1), Color(0.9019608, 0.7254902, 0.6588235, 1), Color(0.7215686, 0.6784314, 0.6039216, 1), Color(0.8509804, 0.8901961, 0.8156863, 1)])
+roof_colors = Array[Color]([Color(0.5607843, 0.7215686, 0.8, 1), Color(0.4980392, 0.7098039, 0.6823529, 1), Color(0.8352941, 0.8039216, 0.7215686, 1), Color(0.6235294, 0.7647059, 0.8313725, 1), Color(0.6392157, 0.7098039, 0.7960784, 1), Color(0.6117647, 0.7529412, 0.7372549, 1), Color(0.5254902, 0.6823529, 0.7686275, 1)])
+door_colors = Array[Color]([Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.8509804, 0.4117647, 0.3098039, 1), Color(0.8235294, 0.6352941, 0.2980392, 1), Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.2980392, 0.372549, 0.5176471, 1), Color(0.7882353, 0.4705882, 0.4156863, 1)])
+hedge_colors = Array[Color]([Color(0.6627451, 0.7137255, 0.4509804, 1), Color(0.5960784, 0.6588235, 0.4156863, 1), Color(0.7137255, 0.7372549, 0.4941176, 1), Color(0.5490196, 0.6156863, 0.3882353, 1)])
+bloom_colors = Array[Color]([Color(0.9372549, 0.8901961, 0.6588235, 1), Color(0.8901961, 0.654902, 0.6823529, 1), Color(0.9411765, 0.9137255, 0.8392157, 1), Color(0.9098039, 0.5294118, 0.4352941, 1), Color(0.6156863, 0.7333333, 0.8470588, 1), Color(0.8235294, 0.6352941, 0.2980392, 1)])
+trim = Color(0.9490196, 0.9215686, 0.8666667, 1)
+glass = Color(0.5254902, 0.6509804, 0.7137255, 1)
+stone = Color(0.6078431, 0.5647059, 0.5176471, 1)
+path = Color(0.8039216, 0.7058824, 0.5411765, 1)
+wood = Color(0.6431373, 0.5529412, 0.4392157, 1)
+soil = Color(0.5411765, 0.4352941, 0.3333333, 1)
+laundry_colors = Array[Color]([Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.6156863, 0.7333333, 0.8470588, 1), Color(0.8901961, 0.654902, 0.6823529, 1), Color(0.9372549, 0.8901961, 0.6588235, 1), Color(0.7254902, 0.8509804, 0.8156863, 1), Color(0.9098039, 0.5294118, 0.4352941, 1)])
+play_colors = Array[Color]([Color(0.8509804, 0.4117647, 0.3098039, 1), Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.9372549, 0.8901961, 0.6588235, 1), Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.8901961, 0.654902, 0.6823529, 1)])
+window_glows = Array[Color]([Color(1, 0.8156863, 0.4588235, 1), Color(1, 0.7411765, 0.3803922, 1), Color(1, 0.8784314, 0.5803922, 1)])
+house_roofs = Array[int]([4, 0, 2, 5])
+shop_roofs = Array[int]([6, 4, 0, 5])
+house_heights = Array[float]([1.2, 1.35, 1.5])
+shop_heights = Array[float]([1.45, 1.6, 1.8])
+fences = Array[int]([3, 0])
+shops = Array[ExtResource("3_shop")]([SubResource("Shop_0"), SubResource("Shop_1"), SubResource("Shop_2"), SubResource("Shop_3"), SubResource("Shop_4"), SubResource("Shop_5")])
+furniture = Array[ExtResource("1_spec")]([SubResource("Spec_0"), SubResource("Spec_1"), SubResource("Spec_2"), SubResource("Spec_3"), SubResource("Spec_4"), SubResource("Spec_5")])
+metal = Color(0.5568627, 0.6039216, 0.6117647, 1)
+signal_red = Color(0.8235294, 0.3490196, 0.2901961, 1)
+bin_colors = Array[Color]([Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.4352941, 0.6078431, 0.7098039, 1), Color(0.2470588, 0.5882353, 0.5647059, 1)])
+birds = 4
+bird_colors = Array[Color]([Color(0.9490196, 0.9254902, 0.8784314, 1), Color(0.8862745, 0.8666667, 0.8235294, 1), Color(0.7882353, 0.8, 0.7843137, 1), Color(0.9490196, 0.9254902, 0.8784314, 1)])
+leaves = 6
+leaf_colors = Array[Color]([Color(0.6627451, 0.7137255, 0.4509804, 1), Color(0.5960784, 0.6588235, 0.4156863, 1), Color(0.7843137, 0.6980392, 0.4862745, 1), Color(0.7137255, 0.7372549, 0.4941176, 1)])
+sign_sway_degrees = 7.0
+
+[sub_resource type="Resource" id="Skin_sea"]
+script = ExtResource("4_skin")
+grass = Color(0.8627451, 0.8509804, 0.8, 1)
+patch_light = Color(0.8941176, 0.8823529, 0.8392157, 1)
+patch_dark = Color(0.8039216, 0.7882353, 0.7294118, 1)
+lawn = Color(0.7215686, 0.7803922, 0.6039216, 1)
+forest = Color(0.6627451, 0.7176471, 0.5411765, 1)
+lane = Color(0.7686275, 0.7215686, 0.6352941, 1)
+lane_edge = Color(0.6588235, 0.6117647, 0.5254902, 1)
+trunk = Color(0.4784314, 0.3764706, 0.2823529, 1)
+leaf_dark = Color(0.5529412, 0.6431373, 0.4627451, 1)
+leaf_light = Color(0.7019608, 0.7686275, 0.572549, 1)
+flowers = Array[Color]([Color(0.8509804, 0.627451, 0.6588235, 1), Color(0.9411765, 0.9137255, 0.8392157, 1), Color(0.5607843, 0.6941176, 0.8196078, 1), Color(0.9098039, 0.7686275, 0.4156863, 1), Color(0.7254902, 0.6039216, 0.7686275, 1)])
+pine_share = 0.5
+ring_pine_share = 0.55
+tree_density = 0.5
+flower_density = 1.0
+pavement = Color(0.7882353, 0.7764706, 0.7411765, 1)
+plank_seam = Color(0.7490196, 0.6823529, 0.572549, 1)
+
+[resource]
+script = ExtResource("5_preset")
+id = &"seaside"
+ground = SubResource("Skin_sea")
+buildings = SubResource("Set_sea")

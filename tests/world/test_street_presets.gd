@@ -8,6 +8,7 @@ const MAIN: PackedScene = preload("res://src/world/main.tscn")
 ## A test-only second street: one blue shop a side, three flat-roofed houses,
 ## a single bench and a sandy ground with no meadow trees.
 const ALT: String = "res://tests/fixtures/streets/test_alt.tres"
+const SEASIDE: String = "res://data/streets/seaside.tres"
 const STREETS: String = "res://data/streets/"
 const LOTS: String = "res://data/lots/"
 const RESERVE: Rect2i = Rect2i(-2, -2, 12, 9)
@@ -223,3 +224,77 @@ func test_the_view_builds_the_active_sites_street() -> void:
 	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
 	assert_true(view.street_preset == StreetPreset.starter(), "back home, back on the starter street")
 	assert_true(view.neighbourhood_dressing.street_set == StreetPreset.starter().buildings)
+
+
+func test_the_seaside_lot_stands_on_the_seaside_street() -> void:
+	var lot: LotDef = load(LOTS + "seaside_cliff.tres") as LotDef
+	assert_eq(lot.street_preset, SEASIDE, "the seaside lot names its street")
+	var seaside: StreetPreset = StreetPreset.for_lot(lot)
+	assert_true(seaside != StreetPreset.starter(), "it is not the starter street")
+	assert_eq(seaside.id, &"seaside")
+	assert_eq(seaside.errors(), PackedStringArray())
+	# Boardwalk ground, sea-blue and rope tan accents, and its own props.
+	assert_true(seaside.ground.pavement.a > 0.0 and seaside.ground.plank_seam.a > 0.0, "a boardwalk")
+	var kinds: Dictionary[int, bool] = {}
+	for spec: StreetPropSpec in seaside.buildings.furniture:
+		kinds[int(spec.kind)] = true
+	for kind: int in [StreetPropSpec.Kind.ROPE_BOLLARD, StreetPropSpec.Kind.LIFEBUOY, StreetPropSpec.Kind.CATCH_CRATES,
+			StreetPropSpec.Kind.BUNTING]:
+		assert_true(kinds.has(kind), "the seaside street sets out prop kind %d" % kind)
+	for kind: int in [StreetPropSpec.Kind.TREE_PLANTER, StreetPropSpec.Kind.BIKE_RACK, StreetPropSpec.Kind.HYDRANT,
+			StreetPropSpec.Kind.BUS_STOP, StreetPropSpec.Kind.POSTBOX]:
+		assert_false(kinds.has(kind), "no town furniture (kind %d) on the seaside street" % kind)
+	assert_true(seaside.buildings.birds > 0, "gulls")
+	assert_true(seaside.buildings.wall_colors != StreetPreset.starter().buildings.wall_colors, "its own palette")
+
+
+func test_the_starter_street_has_no_boardwalk() -> void:
+	var skin: GroundSkin = StreetPreset.starter().ground
+	assert_eq(skin.pavement.a, 0.0, "the starter paving keeps the shared grey")
+	assert_eq(skin.plank_seam.a, 0.0, "the starter paving has no seams")
+	for spec: StreetPropSpec in StreetPreset.starter().buildings.furniture:
+		assert_true(int(spec.kind) <= int(StreetPropSpec.Kind.POSTBOX), "the starter street keeps its original props")
+
+
+func test_every_prop_kind_has_a_size_and_a_mesh() -> void:
+	for kind: int in StreetPropSpec.Kind.values():
+		var size: Vector3 = StreetPropSpec.size_of(kind as StreetPropSpec.Kind)
+		assert_true(size.x > 0.0 and size.y > 0.0 and size.z > 0.0, "kind %d has a footprint" % kind)
+	var street: StreetSet = (load(SEASIDE) as StreetPreset).buildings
+	var planner: NeighbourhoodFurniture = NeighbourhoodFurniture.new()
+	planner.street = street
+	planner.lot_u = Vector2(0.0, 6.0)
+	planner.u_range = Vector2(-18.0, 24.0)
+	planner.plan()
+	var seen: Dictionary[int, bool] = {}
+	for item: NeighbourhoodFurniture.Placed in planner.placed:
+		seen[item.kind] = true
+		assert_true(item.rect().position.y >= NeighbourhoodFurniture.BAND_LO - 0.001 and item.rect().end.y <= NeighbourhoodFurniture.BAND_HI + 0.001,
+			"props stay in the pavement band, off the walking lane")
+		assert_false(item.rect().intersects(Rect2(-0.5, -2.0, 7.0, NeighbourhoodFurniture.BAND_HI + 3.0)), "none stands in front of the lot")
+	assert_eq(seen.size(), 6, "every kind the seaside street asks for finds a place: %s" % str(seen.keys()))
+	var meshes: Array[MeshInstance3D] = planner.build_meshes(0.055, 0.0, Vector2(0.3, 0.3), [] as Array[Vector2])
+	assert_not_null(meshes[0].mesh, "the props are meshed")
+	assert_not_null(meshes[1].mesh, "and have contact shadows")
+	for mesh: MeshInstance3D in meshes:
+		mesh.free()
+
+
+func test_the_seaside_street_lays_a_boardwalk_and_the_starter_street_does_not() -> void:
+	await _host()
+	var seaside: NeighbourhoodDressing = _dressing(load(SEASIDE) as StreetPreset)
+	var starter: NeighbourhoodDressing = _dressing(StreetPreset.starter())
+	assert_eq(seaside.build_error, "")
+	assert_not_null(seaside.find_child("PlankSeams", true, false), "boardwalk seams")
+	assert_null(starter.find_child("PlankSeams", true, false), "the starter street has none")
+	var kinds: Dictionary[int, bool] = {}
+	for entry: Dictionary in seaside.furniture_plan():
+		kinds[int(entry["kind"])] = true
+	assert_true(kinds.has(int(StreetPropSpec.Kind.ROPE_BOLLARD)) and kinds.has(int(StreetPropSpec.Kind.CATCH_CRATES)),
+		"the seaside props are on the street")
+	# Every kind the preset asks for is placed on the real dressing, so a dropped
+	# lifebuoy or bunting fails here.
+	for spec: StreetPropSpec in (load(SEASIDE) as StreetPreset).buildings.furniture:
+		assert_true(kinds.has(int(spec.kind)), "the real seaside dressing places prop kind %d" % int(spec.kind))
+	_free(seaside)
+	_free(starter)

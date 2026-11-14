@@ -22,6 +22,7 @@ on:
       - 'tools/daily_special_review.tscn'
       - 'tools/property_review.gd'
       - 'tools/site_card_review.gd'
+      - 'tools/seaside_street_review.*'
       - 'src/world/**'
       - 'src/ui/**'
       - 'data/layouts/**'
@@ -104,6 +105,7 @@ jobs:
             bash tools/screenshot.sh "--out=screens/visual-review/quarter-$quarter" --frames=60 --speed=1 "--quarter=$quarter"
           done
           bash tools/screenshot.sh --out=screens/visual-review/neighbourhood-street --neighbourhood-review=street --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/seaside-street --scene=res://tools/seaside_street_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/inspect-guest --open --fast=5 --select=guest --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/debug-busy --open --fast=5 --select=guest --f3 --frames=60 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/owner-kitchen --open --fast=5 --select=owner --assign-owner=kitchen --frames=60 --speed=1
