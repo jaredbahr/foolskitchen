@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="GoalChainSequence" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/goal_chain_sequence.gd" id="1_seq"]
+[ext_resource type="Script" path="res://src/sim/progression/opening_week_set.gd" id="2_set"]
+[ext_resource type="Resource" path="res://data/balance/opening_week.tres" id="3_opening"]
+[ext_resource type="Resource" path="res://data/balance/week_two.tres" id="4_week_two"]
+
+[resource]
+script = ExtResource("1_seq")
+chains = Array[ExtResource("2_set")]([ExtResource("3_opening"), ExtResource("4_week_two")])

@@ -331,7 +331,7 @@ func test_stock_controls_remain_usable_below_the_actual_fridge_access_warning() 
 	var card: Control = panel.get_node("Panel") as Control
 	var list: ScrollContainer = panel.get_node("Panel/Content/Scroll") as ScrollContainer
 	assert_true(bounds.grow(0.5).encloses(card.get_global_rect()), "Stock stays inside the real scaled canvas")
-	assert_almost_eq(card.size.x, 720.0, 0.5, "the existing panel width is preserved")
+	assert_true(card.size.x > 1000.0, "the scaled card reserves width for the inline controls")
 	var notice: Control = main.get_node("HUD/MenuNotice") as Control
 	assert_true(card.global_position.y >= notice.get_global_rect().end.y + 11.5, "Stock clears the actual warning")
 	assert_true(list.size.y >= 100.0, "the warning must not collapse the ingredient controls to a nine-pixel strip")

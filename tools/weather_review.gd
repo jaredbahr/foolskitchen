@@ -61,7 +61,7 @@ static func evidence(main: Node, root: Window, fixture: Dictionary) -> Dictionar
 	var view: ShopView = main.get_node("ShopView") as ShopView
 	var weather: WeatherView = view.weather_view
 	var hud: Label = main.get_node("HUD/Top/Row/Weather") as Label
-	var forecast: Label = main.get_node("Overlay/MenuPanel/Panel/Content/WeatherForecast") as Label
+	var forecast: Label = main.get_node("Overlay/MenuPanel").get_node("%WeatherForecast") as Label
 	var hud_icon: TextureRect = hud.get_node_or_null("ThemeIcon") as TextureRect
 	var forecast_icon: TextureRect = forecast.get_node_or_null("ThemeIcon") as TextureRect
 	var expected_icon: String = IconCatalogue.path_for(WeatherText.icon_for(world.weather.kind))

@@ -8,6 +8,8 @@ extends Resource
 ## session's flags (Main._service_event_context).
 const REQUIREMENTS: Array[StringName] = [
 	&"staff",       # a hired worker (not a manager) on today's team
+	&"spare_staff", # a hired worker someone else covers (#506): a second
+	                # worker in the same role, or a cleaner (servers mop)
 	&"regulars",    # at least one named regular
 	&"rain",        # today's weather is rain
 	&"ingredient",  # today's menu uses a bought ingredient
@@ -27,6 +29,9 @@ const ICONS: Array[StringName] = [&"chef", &"stock", &"reputation", &"staff", &"
 @export var cooldown_days: int = 3
 ## Relative chance among the cards that can come up today.
 @export var weight: int = 10
+## Never drawn by itself: it only comes up as another card's follow-up
+## (ServiceEventChoice.follow_up, #506).
+@export var follow_up_only: bool = false
 @export var choices: Array[ServiceEventChoice] = []
 
 
@@ -51,6 +56,8 @@ func errors() -> PackedStringArray:
 			found.append("%s: unknown requirement %s" % [who, need])
 	for name: String in ["staff", "regular", "ingredient"]:
 		var need: StringName = &"regulars" if name == "regular" else StringName(name)
+		if name == "staff" and requires.has(&"spare_staff"):
+			need = &"spare_staff"
 		var used: bool = text.contains("{%s}" % name)
 		for choice: ServiceEventChoice in choices:
 			if choice != null:
@@ -71,8 +78,12 @@ func errors() -> PackedStringArray:
 			found.append("%s: choice %d is missing" % [who, index + 1])
 			continue
 		found.append_array(choice.errors("%s choice %d" % [who, index + 1]))
-		if choice.staff_mood != 0 and not requires.has(&"staff"):
+		if choice.staff_mood != 0 and not requires.has(&"staff") and not requires.has(&"spare_staff"):
 			found.append("%s: a mood change needs the staff requirement" % who)
+		if choice.send_home and not requires.has(&"spare_staff"):
+			found.append("%s: sending someone home needs the spare_staff requirement" % who)
+		if choice.follow_up == id:
+			found.append("%s: a card cannot follow itself" % who)
 		if choice.stock_units != 0 and not requires.has(&"ingredient"):
 			found.append("%s: a stock change needs the ingredient requirement" % who)
 	return found

@@ -64,7 +64,7 @@ func _process(_delta: float) -> void:
 
 func _choose_burger_through_menu() -> void:
 	var picker: OptionButton = _menu_panel.get_node(
-		"Panel/Content/Body/Scroll/Pad/List/DailySpecial/Choice") as OptionButton
+		"%List/DailySpecial/Choice") as OptionButton
 	if picker == null or not picker.is_visible_in_tree() or picker.disabled:
 		_review_fail("the native morning special dropdown is unavailable")
 		return
@@ -80,7 +80,7 @@ func _choose_burger_through_menu() -> void:
 
 func _validate_morning() -> void:
 	var picker: OptionButton = _menu_panel.get_node(
-		"Panel/Content/Body/Scroll/Pad/List/DailySpecial/Choice") as OptionButton
+		"%List/DailySpecial/Choice") as OptionButton
 	var scroll: ScrollContainer = _menu_panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	var heading: Label = picker.get_parent().get_node("Label") as Label if picker != null else null
 	var recipe: RecipeDef = menu_settings.recipe(BURGER_ID)

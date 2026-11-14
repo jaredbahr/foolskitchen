@@ -274,7 +274,7 @@ func test_real_menu_reset_uses_morning_session_bridge_and_refreshes_prices() -> 
 		enabled_before.append(definition.id)
 	var rng_before: int = GameState.rng(&"customers").state
 	assert_true(main.call("set_menu_visible", true))
-	var reset: Button = panel.get_node("Panel/Content/Body/Scroll/Pad/List/BulkPrices/Reset") as Button
+	var reset: Button = panel.get_node("%List/BulkPrices/Reset") as Button
 	assert_false(reset.disabled)
 	reset.pressed.emit()
 	assert_eq(settings.price_of(burger), burger.standard_price)
