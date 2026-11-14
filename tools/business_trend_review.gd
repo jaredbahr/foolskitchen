@@ -56,12 +56,22 @@ func _ready() -> void:
 			_review_fail("the ordinary paid service did not produce its recorded closing report")
 			return
 		var history: Array[Dictionary] = business_history.summaries()
+		var good_reviews: int = 0
+		for review: Dictionary in shown_report.review_cards:
+			if int(review["stars"]) >= 4:
+				good_reviews += 1
+		var dishes: Dictionary[String, int] = {}
+		for dish: StringName in shown_report.dishes_sold:
+			dishes[String(dish)] = shown_report.dishes_sold[dish]
 		var actual: Dictionary = {"day": shown_report.day, "served": shown_report.customers_served,
 			"lost": shown_report.customers_lost, "dish_profit": shown_report.operating_profit(),
 			"dish_profit_recorded": true, "cash_change": shown_report.profit(),
-			"reputation": shown_report.reputation_after}
+			"reputation": shown_report.reputation_after,
+			"weekly_profit": shown_report.purchase_basis_operating_profit(),
+			"good_reviews": good_reviews, "no_table": shown_report.leave_reasons.get(&"no_table", 0),
+			"dishes_sold": dishes}
 		if history.size() != day_index + 1 or history[-1] != actual:
-			_review_fail("stored history differs from an actual closing report")
+			_review_fail("stored history differs from the closing report on day %d" % shown_report.day)
 			return
 		_review_daily.append({"day": shown_report.day, "cash": Economy.cash,
 			"world_tick": world.now, "report": shown_report.to_dict(), "history_row": actual})

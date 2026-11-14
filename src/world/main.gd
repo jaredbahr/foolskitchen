@@ -568,6 +568,9 @@ func _bind_world_presentation() -> void:
 		_property_panel.buy_requested.connect(_on_property_buy_requested)
 	_site_card = $Overlay/SiteCard
 	_site_card.hide()
+	_on_site_card_visibility_changed()
+	if not _site_card.visibility_changed.is_connected(_on_site_card_visibility_changed):
+		_site_card.visibility_changed.connect(_on_site_card_visibility_changed)
 	_service_event_card = $Overlay/ServiceEventCard
 	_service_event_card.close()
 	if not _service_event_card.choice_picked.is_connected(_on_service_event_choice):
@@ -1057,7 +1060,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		if code == KEY_F12 and PhotoMode.available():
+		if code == KEY_F12 and PhotoMode.available() and not is_site_card_visible():
 			if not Clock.text_entry_has_focus() and world != null:
 				_take_photo_key(photo, key)
 			return
@@ -5751,6 +5754,10 @@ func set_site_card_visible(value: bool) -> bool:
 	return true
 
 
+func _on_site_card_visibility_changed() -> void:
+	$HUD.set_site_card_blocks_repayment(is_site_card_visible())
+
+
 func is_site_card_visible() -> bool:
 	return _site_card != null and _site_card.visible
 
@@ -5829,7 +5836,7 @@ func _milestone_observation(operating_profit: int) -> MilestoneDay:
 
 
 func _begin_weekly_challenge_if_needed() -> void:
-	if weekly_challenge == null or Clock.sim == null or menu_settings == null:
+	if weekly_challenge == null or Clock.sim == null or menu_settings == null or sim == null:
 		return
 	var day: int = Clock.sim.day
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -5837,12 +5844,12 @@ func _begin_weekly_challenge_if_needed() -> void:
 		if weekly_challenge.start_day == day and not weekly_challenge.challenge_id.is_empty():
 			return
 		weekly_challenge.begin_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"))
+			GameState.rng(&"weekly"), business_history, sim.seat_count())
 	elif weekly_challenge.status == WeeklyChallengeState.Status.EMPTY:
 		# Saves made before this section existed begin a fresh challenge for the
 		# remaining days of the current week, without inventing earlier progress.
 		weekly_challenge.begin_legacy_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"))
+			GameState.rng(&"weekly"), business_history, sim.seat_count())
 
 
 func _refresh_goals(force: bool = false) -> void:
@@ -6220,6 +6227,7 @@ func _on_loan_repayment_requested(amount: int, repay_all: bool) -> void:
 	var phase: SimClock.Phase = Clock.sim.phase
 	if not _started or display_only or world == null or Clock.attached_world != world \
 			or is_haggle_active() or is_owner_picker_visible() or is_settings_visible() or is_shortcuts_visible() \
+			or is_site_card_visible() \
 			or (phase != SimClock.Phase.MORNING and phase != SimClock.Phase.CLOSED):
 		return
 	if repay_all:
@@ -7419,7 +7427,8 @@ func _on_service_closed(day: int) -> void:
 	# (test_loan_session). A new non-operating category that can be booked
 	# before the close must be added here as well as to DayReport.
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
-			Ledger.OPENING_WEEK_BONUS, Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
+			Ledger.OPENING_WEEK_BONUS, Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.AWAY_SITE_WAGES,
+			Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 			Ledger.EARLY_LOAN_REPAYMENT]:
 		operating_profit -= int(day_movements.get(category, 0))
 	# A closed day still evaluates the weekly goal (its saved day must follow
@@ -7429,7 +7438,7 @@ func _on_service_closed(day: int) -> void:
 	# tier climb: everything is already unlocked.
 	var career: bool = not GameMode.is_creative()
 	if career:
-		_award_weekly_challenge(closing_observation)
+		_award_weekly_challenge(closing_observation, business_day)
 	# Owner XP, goals and the tier climb are business-day rewards only.
 	career = career and business_day
 	staff_roster.close_growth_day()
@@ -7523,9 +7532,11 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 		Economy.add_cash(staged.cash_reward, Ledger.MILESTONE_BONUS)
 
 
-func _award_weekly_challenge(observation: MilestoneDay) -> void:
+func _award_weekly_challenge(observation: MilestoneDay, business_day: bool) -> void:
+	var first_week_pool: WeeklyChallengePool = WEEKLY_CHALLENGES if business_day and observation.day == 1 else null
+	var seats: int = sim.seat_count() if first_week_pool != null else 0
 	var staged: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(
-		weekly_challenge, observation, Economy.cash)
+		weekly_challenge, observation, Economy.cash, first_week_pool, seats)
 	if staged == null:
 		return
 	weekly_challenge = staged.state

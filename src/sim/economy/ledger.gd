@@ -25,10 +25,11 @@ const BOOKING_REFUND: StringName = &"booking_refund"
 ## Small service event choices (#495): a tip, a comped drink, a busker.
 const SERVICE_EVENT: StringName = &"service_event"
 const OTHER: StringName = &"other"
-## Multi-site money (FK-087). All four are non-operating (DayReport): they move
+## Multi-site money (FK-087). These are non-operating (DayReport): they move
 ## the owner's cash but never the active site's operating profit.
 const AWAY_SITE_INCOME: StringName = &"away_site_income"
 const AWAY_SITE_RENT: StringName = &"away_site_rent"
+const AWAY_SITE_WAGES: StringName = &"away_site_wages"
 const LOT_PURCHASE: StringName = &"lot_purchase"
 const RENOVATION: StringName = &"renovation"
 const HISTORY_DAYS: int = 30
