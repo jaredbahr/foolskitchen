@@ -1,0 +1,78 @@
+[gd_resource type="Resource" script_class="StreetPreset" format=3]
+
+[ext_resource type="Script" path="res://src/world/street_prop_spec.gd" id="1_prop"]
+[ext_resource type="Script" path="res://src/world/street_set.gd" id="2_set"]
+[ext_resource type="Script" path="res://src/world/shop_style.gd" id="3_shop"]
+[ext_resource type="Script" path="res://src/world/ground_skin.gd" id="4_ground"]
+[ext_resource type="Script" path="res://src/world/street_preset.gd" id="5_preset"]
+
+[sub_resource type="Resource" id="Prop_bench"]
+script = ExtResource("1_prop")
+kind = 1
+count = 1
+zone = 1
+
+[sub_resource type="Resource" id="Shop_blue"]
+script = ExtResource("3_shop")
+id = &"test_blue_shop"
+wall = Color(0.2, 0.4, 0.9, 1)
+awning_a = Color(0.1, 0.2, 0.6, 1)
+awning_b = Color(1, 1, 1, 1)
+sign_board = Color(0.9, 0.9, 0.8, 1)
+door = Color(0.1, 0.1, 0.5, 1)
+accent = 2
+
+[sub_resource type="Resource" id="Set_alt"]
+script = ExtResource("2_set")
+seed_salt = 31
+shops_per_side = 1
+house_count = 3
+wall_colors = Array[Color]([Color(0.3, 0.5, 0.95, 1)])
+roof_colors = Array[Color]([Color(0.1, 0.15, 0.4, 1)])
+door_colors = Array[Color]([Color(0.9, 0.2, 0.2, 1)])
+hedge_colors = Array[Color]([Color(0.2, 0.5, 0.3, 1)])
+bloom_colors = Array[Color]([Color(1, 1, 1, 1)])
+trim = Color(1, 1, 1, 1)
+glass = Color(0.5, 0.7, 0.9, 1)
+stone = Color(0.7, 0.7, 0.7, 1)
+path = Color(0.9, 0.85, 0.7, 1)
+wood = Color(0.6, 0.5, 0.35, 1)
+soil = Color(0.4, 0.3, 0.2, 1)
+laundry_colors = Array[Color]([Color(1, 1, 1, 1)])
+play_colors = Array[Color]([Color(1, 0.5, 0, 1)])
+window_glows = Array[Color]([Color(1, 0.8, 0.5, 1)])
+house_roofs = Array[int]([4])
+shop_roofs = Array[int]([5])
+house_heights = Array[float]([1.5])
+shop_heights = Array[float]([1.8])
+fences = Array[int]([3])
+shops = Array[ExtResource("3_shop")]([SubResource("Shop_blue")])
+furniture = Array[ExtResource("1_prop")]([SubResource("Prop_bench")])
+metal = Color(0.6, 0.6, 0.65, 1)
+signal_red = Color(0.9, 0.2, 0.2, 1)
+bin_colors = Array[Color]([Color(0.2, 0.3, 0.6, 1)])
+birds = 0
+bird_colors = Array[Color]([Color(1, 1, 1, 1)])
+leaves = 0
+leaf_colors = Array[Color]([Color(0.9, 0.8, 0.5, 1)])
+
+[sub_resource type="Resource" id="Ground_alt"]
+script = ExtResource("4_ground")
+grass = Color(0.85, 0.78, 0.55, 1)
+patch_light = Color(0.9, 0.84, 0.62, 1)
+patch_dark = Color(0.75, 0.68, 0.48, 1)
+lawn = Color(0.8, 0.75, 0.55, 1)
+forest = Color(0.3, 0.4, 0.3, 1)
+lane = Color(0.7, 0.65, 0.5, 1)
+lane_edge = Color(0.6, 0.55, 0.42, 1)
+trunk = Color(0.4, 0.3, 0.2, 1)
+leaf_dark = Color(0.2, 0.4, 0.25, 1)
+leaf_light = Color(0.3, 0.5, 0.3, 1)
+flowers = Array[Color]([Color(0.3, 0.5, 0.95, 1)])
+tree_density = 0.0
+
+[resource]
+script = ExtResource("5_preset")
+id = &"test_alt"
+ground = SubResource("Ground_alt")
+buildings = SubResource("Set_alt")

@@ -435,6 +435,9 @@ func _bind_world_presentation() -> void:
 		if _loaded_layout != null else _base_layout
 	var maximum_lease: ShopLayout = _lease_for(presentation_base).layout_for(presentation_base, 2)
 	var maximum_reserve: Rect2i = ShopFootprint.from_layout(maximum_lease).lot.merge(lot)
+	# The street outside is the active site's lot's preset (#425): the home lot and
+	# a lot without one get the starter street.
+	view.street_preset = StreetPreset.for_site(site_book, content)
 	view.show_world(world, maximum_reserve)
 	# A new dressing starts at day: light its lamps now, not a frame later.
 	if view.neighbourhood_dressing != null and world.clock != null:

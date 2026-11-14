@@ -2226,7 +2226,7 @@ parented under `NeighbourhoodDressing/Ground`, outside `Static` because it
 deliberately lies under the whole lot. Placement comes from an integer hash of each
 position (no RNG), colours from the existing swatches, and it is rebuilt only when
 the street frame or lot changes. Every colour and planting knob lives in a `GroundSkin`
-resource (`NeighbourhoodDressing.ground_skin`, default `GroundSkin.standard()`), so a
+resource (`NeighbourhoodDressing.ground_skin`, null = `GroundSkin.standard()`), so a
 future site's neighbourhood and cuisine can re-skin the ground and tree line without
 touching the geometry or the camera edge. The road, pavement and kerbs run on to the tree
 line (actors keep their original span), and a low kerb step edges the pavement
@@ -2320,6 +2320,20 @@ applied from `_apply_time` so it stops with the dressing's processing. Hanging s
 stay outside the lot and every building and hop under 0.15 m. The whole addition is 15 draw calls and about
 2,200 triangles; `tests/world/test_neighbourhood_props.gd` bounds both and checks the clear zones across
 salts, lot sizes and the four rotations.
+
+Street presets (#425): a `StreetPreset` (`src/world/street_preset.gd`) is one street's whole recipe, data in
+`data/streets/<id>.tres`: an `id`, a `ground` (`GroundSkin`) and `buildings` (`StreetSet`: building set,
+palette, furniture and small life). The starter street is `data/streets/starter.tres`, generated from the
+former hard-coded `standard()` builders, which now return a deep copy of it (pixel-identical captures).
+`LotDef.street_preset` is the path of the lot's preset (empty = the starter street; `ContentDB.validate_lots`
+refuses a missing file). The home lot has no `LotDef` and uses the starter street. Main sets
+`ShopView.street_preset = StreetPreset.for_site(site_book, content)` before every `show_world`, so a site
+switch rebuilds the street; `ShopView` hands it to the new dressing through `NeighbourhoodDressing.use_preset`,
+which sets `ground_skin` and `street_set`. A missing or invalid preset (`StreetPreset.errors()`: a part or a
+hashed list is empty, an unknown roof or fence) falls back to the starter street. Nothing is saved: the street
+follows from the active site's lot. `tests/world/test_street_presets.gd` checks every preset and lot, and
+builds a test-only second street (`tests/fixtures/streets/test_alt.tres`) to show that data alone changes the
+building set, palette, props and ground, both directly and after a site switch.
 
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
@@ -3718,8 +3732,9 @@ offer needs `career_tier >= 2`, and lease size and rent read the site's own
 margins, which also bound its maximum footprint), `price` (move-in ready) or
 `fixer_price` plus `renovation_bill` and `renovation_days` (2 to 5),
 `daily_rent`, `min_tier`, `min_reputation` (0 = none), `guest_mix`
-(`Dictionary[StringName, float]` over existing customer types), `upstairs_allowed`
-and `tags: Array[StringName]` (`&"seaside"`, `&"rooftop"`). `ContentDB`
+(`Dictionary[StringName, float]` over existing customer types), `upstairs_allowed`,
+`tags: Array[StringName]` (`&"seaside"`, `&"rooftop"`) and `street_preset` (#425, see "Street
+presets"). `ContentDB`
 validates them like recipes; a bad lot fails the load. The starter shop is the
 implicit home lot and is never listed. `_base_for_saved_shop` gains a lookup
 by lot id.
