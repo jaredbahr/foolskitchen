@@ -7,11 +7,23 @@ extends RefCounted
 ## event id (a fresh RandomNumberGenerator each time), so no named stream is
 ## used up and the same run always meets the same cards with the same results.
 ## Pure sim: the session applies the chosen effects to the shop's systems.
+## #506 adds multi-day nudges (pay now, gain later) and follow-up cards that
+## come back days later (chain events); both are saved, so a reload keeps them.
 
-const SAVE_VERSION: int = 1
+const SAVE_VERSION: int = 2
+## Saves from #495 (version 1) load as they are, with no nudges or follow-ups.
+const OLDEST_VERSION: int = 1
 const ROOT: String = "res://data/events"
 const MAX_DAY: int = 1000000000
 const NAME_KEYS: Array[String] = ["staff", "regular", "ingredient"]
+## All of the day's arrival nudges together stay within this (the same bound
+## as one card's nudge), so stacking cards can never swing a day further.
+const MAX_ARRIVAL_SWING: float = 0.2
+## A follow-up that could not come up (closed days, another shop, the setting
+## off) waits this many days past its own day, then is dropped unused.
+const FOLLOW_UP_GRACE_DAYS: int = 14
+## At most this many follow-ups and multi-day nudges wait at once.
+const MAX_WAITING: int = 8
 
 var tuning: ServiceEventTuning
 var definitions: Array[ServiceEventDef] = []
@@ -33,6 +45,12 @@ var answered: Array[Dictionary] = []
 var boost_day: int = 0
 var boost_percent: int = 0
 var boost_site: String = ""
+## Multi-day nudges (#506, pay now, gain later): {"from", "to", "percent",
+## "site", "title"}, each day from..to (inclusive) at that site.
+var boosts: Array[Dictionary] = []
+## Follow-up cards waiting for their day (#506, chain events): {"id", "day",
+## "site", "names", "staff_id", "staff_role", "ingredient_id"}.
+var follow_ups: Array[Dictionary] = []
 
 
 func _init(config: ServiceEventTuning = null, events: Array[ServiceEventDef] = []) -> void:
@@ -66,6 +84,17 @@ static func load_definitions(errors: PackedStringArray, root: String = ROOT) -> 
 			continue
 		seen[definition.id] = true
 		result.append(definition)
+	# A follow-up must name a card that only comes up as a follow-up.
+	var follow_up_only: Dictionary[StringName, bool] = {}
+	for definition: ServiceEventDef in result:
+		if definition.follow_up_only:
+			follow_up_only[definition.id] = true
+	for definition: ServiceEventDef in result.duplicate():
+		for choice: ServiceEventChoice in definition.choices:
+			if not choice.follow_up.is_empty() and not follow_up_only.has(choice.follow_up):
+				errors.append("event %s: follow-up %s is not a follow-up-only card" % [definition.id, choice.follow_up])
+				result.erase(definition)
+				break
 	return result
 
 
@@ -97,6 +126,9 @@ func can_show(event: ServiceEventDef, for_day: int, context: Dictionary) -> bool
 			&"staff":
 				if (context.get("staff", []) as Array).is_empty():
 					return false
+			&"spare_staff":
+				if covered_staff(context).is_empty():
+					return false
 			&"regulars":
 				if (context.get("regulars", []) as Array).is_empty():
 					return false
@@ -109,7 +141,24 @@ func can_show(event: ServiceEventDef, for_day: int, context: Dictionary) -> bool
 	return true
 
 
-## A new morning forgets yesterday's cards; cooldowns and a boost stay.
+## The context's workers that someone else covers (#506): a cleaner (the
+## servers mop), or anyone with a teammate in the same role.
+static func covered_staff(context: Dictionary) -> Array:
+	var staff: Array = context.get("staff", [])
+	var per_role: Dictionary[String, int] = {}
+	for person: Variant in staff:
+		var role: String = String((person as Dictionary).get("role", ""))
+		per_role[role] = int(per_role.get(role, 0)) + 1
+	var covered: Array = []
+	for person: Variant in staff:
+		var role: String = String((person as Dictionary).get("role", ""))
+		if role == "cleaner" or int(per_role.get(role, 0)) >= 2:
+			covered.append(person)
+	return covered
+
+
+## A new morning forgets yesterday's cards; cooldowns, nudges and waiting
+## follow-ups stay (spent nudges and long-overdue follow-ups go).
 func begin_morning(for_day: int) -> void:
 	if day == for_day:
 		return
@@ -120,13 +169,20 @@ func begin_morning(for_day: int) -> void:
 		boost_day = 0
 		boost_percent = 0
 		boost_site = ""
+	for boost: Dictionary in boosts.duplicate():
+		if int(boost["to"]) < for_day:
+			boosts.erase(boost)
+	for waiting: Dictionary in follow_ups.duplicate():
+		if for_day - int(waiting["day"]) > FOLLOW_UP_GRACE_DAYS:
+			follow_ups.erase(waiting)
 
 
 ## Draws today's cards once, at opening. `blocked` holds [from, to] shop-clock
 ## minute windows already taken (a rush, a booking, the critic). Returns the
 ## schedule; a day already drawn returns the same one without drawing again.
+## A follow-up due at `site` takes the day's first card slot (one a day).
 func plan_day(for_day: int, master_seed: int, context: Dictionary, open_minute: int,
-		close_minute: int, blocked: Array[Vector2i] = []) -> Array[Dictionary]:
+		close_minute: int, blocked: Array[Vector2i] = [], site: String = "") -> Array[Dictionary]:
 	if for_day < 1 or for_day > MAX_DAY or day == for_day or not tuning.is_valid():
 		return schedule.duplicate(true)
 	day = for_day
@@ -135,8 +191,9 @@ func plan_day(for_day: int, master_seed: int, context: Dictionary, open_minute: 
 	answered.clear()
 	var pool: Array[ServiceEventDef] = []
 	for event: ServiceEventDef in definitions:
-		if can_show(event, for_day, context):
+		if not event.follow_up_only and can_show(event, for_day, context):
 			pool.append(event)
+	var follow: Dictionary = _due_follow_up(for_day, site)
 	var first: int = open_minute + tuning.opening_margin_minutes
 	var last: int = close_minute - tuning.closing_margin_minutes
 	var minutes: Array[int] = []
@@ -144,15 +201,22 @@ func plan_day(for_day: int, master_seed: int, context: Dictionary, open_minute: 
 	for minute: int in range(start, last + 1, tuning.step_minutes):
 		if not _blocked(minute, blocked):
 			minutes.append(minute)
-	if pool.is_empty() or minutes.is_empty() or tuning.max_per_day == 0:
+	if (pool.is_empty() and follow.is_empty()) or minutes.is_empty() or tuning.max_per_day == 0:
 		return []
 	var random: RandomNumberGenerator = random_for(master_seed, for_day, "plan")
 	var count: int = tuning.min_per_day
 	if count < tuning.max_per_day and random.randi_range(0, 99) < tuning.second_card_percent:
 		count += 1
-	count = mini(maxi(count, 1), pool.size())
+	count = mini(maxi(count, 1), pool.size() + (0 if follow.is_empty() else 1))
 	var chosen_minutes: Array[int] = _pick_minutes(minutes, count, first, last, random)
 	for minute: int in chosen_minutes:
+		if not follow.is_empty():
+			follow_ups.erase(follow)
+			schedule.append({"id": follow["id"], "minute": minute, "shown": false,
+				"names": (follow["names"] as Dictionary).duplicate(), "staff_id": follow["staff_id"],
+				"staff_role": follow["staff_role"], "ingredient_id": follow["ingredient_id"]})
+			follow = {}
+			continue
 		var event: ServiceEventDef = _pick_event(pool, random)
 		pool.erase(event)
 		schedule.append(_entry(event, minute, master_seed, for_day, context))
@@ -214,10 +278,20 @@ func pick(index: int, master_seed: int, site: String = "") -> Dictionary:
 		"result": result, "title": event.title.format(names), "label": choice.label.format(names),
 		"entry": pending.duplicate(true)}
 	answered.append({"title": outcome["title"], "label": outcome["label"], "result": result})
-	if choice.tomorrow_arrivals_percent != 0:
+	if choice.tomorrow_arrivals_percent != 0 and choice.tomorrow_days <= 1:
 		boost_day = day + 1
 		boost_percent = choice.tomorrow_arrivals_percent
 		boost_site = site
+	elif choice.tomorrow_arrivals_percent != 0 and boosts.size() < MAX_WAITING:
+		boosts.append({"from": day + 1, "to": day + choice.tomorrow_days,
+			"percent": choice.tomorrow_arrivals_percent, "site": site, "title": outcome["title"]})
+	if not choice.follow_up.is_empty() and definition(choice.follow_up) != null \
+			and follow_ups.size() < MAX_WAITING:
+		var source: Dictionary = outcome["entry"]
+		follow_ups.append({"id": String(choice.follow_up), "day": day + choice.follow_up_days, "site": site,
+			"names": (source.get("names", {}) as Dictionary).duplicate(),
+			"staff_id": String(source.get("staff_id", "")), "staff_role": String(source.get("staff_role", "")),
+			"ingredient_id": String(source.get("ingredient_id", ""))})
 	pending.clear()
 	return outcome
 
@@ -230,10 +304,30 @@ func end_service() -> void:
 		entry["shown"] = true
 
 
-## The blogger's nudge to `for_day`'s arrivals at `site`; 1.0 elsewhere.
+## Every card nudge to `for_day`'s arrivals at `site` together (the
+## blogger's next day and any multi-day nudge), kept within
+## MAX_ARRIVAL_SWING; 1.0 elsewhere.
 func arrival_factor(for_day: int, site: String = "") -> float:
+	var factor: float = 1.0 + float(boost_percent) / 100.0 \
+		if boost_day > 0 and boost_day == for_day and boost_site == site else 1.0
+	for boost: Dictionary in boosts_on(for_day, site):
+		factor *= 1.0 + float(boost["percent"]) / 100.0
+	return clampf(factor, 1.0 - MAX_ARRIVAL_SWING, 1.0 + MAX_ARRIVAL_SWING)
+
+
+## The single-day nudge alone (the food blogger's buzz), for its log line.
+func next_day_factor(for_day: int, site: String = "") -> float:
 	return 1.0 + float(boost_percent) / 100.0 \
 		if boost_day > 0 and boost_day == for_day and boost_site == site else 1.0
+
+
+## The multi-day nudges running on `for_day` at `site`.
+func boosts_on(for_day: int, site: String = "") -> Array[Dictionary]:
+	var running: Array[Dictionary] = []
+	for boost: Dictionary in boosts:
+		if int(boost["from"]) <= for_day and for_day <= int(boost["to"]) and String(boost["site"]) == site:
+			running.append(boost)
+	return running
 
 
 ## One line per answered card, already player-facing.
@@ -252,7 +346,8 @@ func to_dict() -> Dictionary:
 	for entry: Dictionary in schedule:
 		rows.append(entry.duplicate(true))
 	return {"version": SAVE_VERSION, "last_shown": shown, "day": day, "schedule": rows,
-		"boost_day": boost_day, "boost_percent": boost_percent, "boost_site": boost_site}
+		"boost_day": boost_day, "boost_percent": boost_percent, "boost_site": boost_site,
+		"boosts": boosts.duplicate(true), "follow_ups": follow_ups.duplicate(true)}
 
 
 ## Validates everything before replacing live state. A card on screen is never
@@ -261,7 +356,7 @@ func from_dict(value: Variant) -> bool:
 	if not value is Dictionary:
 		return false
 	var row: Dictionary = value
-	if not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) or not _whole(row.get("day"), 0, MAX_DAY) \
+	if not _whole(row.get("version"), OLDEST_VERSION, SAVE_VERSION) or not _whole(row.get("day"), 0, MAX_DAY) \
 			or not row.get("last_shown") is Dictionary or not row.get("schedule") is Array \
 			or not _whole(row.get("boost_day"), 0, MAX_DAY + 1) or not _whole(row.get("boost_percent"), -20, 20) \
 			or not row.get("boost_site", "") is String or String(row.get("boost_site", "")).length() > 40:
@@ -293,6 +388,11 @@ func from_dict(value: Variant) -> bool:
 		rows.append(clean)
 	if rows.size() > 3:
 		return false
+	var saved_boosts: Array[Dictionary] = []
+	var saved_follow_ups: Array[Dictionary] = []
+	if not _read_boosts(row.get("boosts", []), saved_boosts) \
+			or not _read_follow_ups(row.get("follow_ups", []), saved_follow_ups):
+		return false
 	last_shown = shown
 	day = int(row["day"])
 	schedule = rows
@@ -301,7 +401,62 @@ func from_dict(value: Variant) -> bool:
 	boost_day = int(row["boost_day"])
 	boost_percent = int(row["boost_percent"])
 	boost_site = String(row.get("boost_site", ""))
+	boosts = saved_boosts
+	follow_ups = saved_follow_ups
 	return true
+
+
+static func _read_boosts(value: Variant, into: Array[Dictionary]) -> bool:
+	if not value is Array or (value as Array).size() > MAX_WAITING:
+		return false
+	for item: Variant in value:
+		if not item is Dictionary:
+			return false
+		var boost: Dictionary = item
+		if not _whole(boost.get("from"), 1, MAX_DAY + 1) or not _whole(boost.get("to"), 1, MAX_DAY + 7) \
+				or int(boost["to"]) < int(boost["from"]) or int(boost["to"]) - int(boost["from"]) > 6 \
+				or not _whole(boost.get("percent"), -20, 20) or not boost.get("site") is String \
+				or String(boost["site"]).length() > 40 or not boost.get("title") is String \
+				or String(boost["title"]).length() > 40:
+			return false
+		into.append({"from": int(boost["from"]), "to": int(boost["to"]), "percent": int(boost["percent"]),
+			"site": String(boost["site"]), "title": String(boost["title"])})
+	return true
+
+
+static func _read_follow_ups(value: Variant, into: Array[Dictionary]) -> bool:
+	if not value is Array or (value as Array).size() > MAX_WAITING:
+		return false
+	for item: Variant in value:
+		if not item is Dictionary:
+			return false
+		var waiting: Dictionary = item
+		if not waiting.get("id") is String or String(waiting["id"]).is_empty() or String(waiting["id"]).length() > 40 \
+				or not _whole(waiting.get("day"), 1, MAX_DAY + 14) or not waiting.get("site") is String \
+				or String(waiting["site"]).length() > 40 or not waiting.get("names") is Dictionary:
+			return false
+		var clean: Dictionary = {"id": String(waiting["id"]), "day": int(waiting["day"]),
+			"site": String(waiting["site"]), "names": {}}
+		for key: String in ["staff_id", "staff_role", "ingredient_id"]:
+			if not waiting.get(key, "") is String or String(waiting.get(key, "")).length() > 40:
+				return false
+			clean[key] = String(waiting.get(key, ""))
+		var names: Dictionary = waiting["names"]
+		for key: Variant in names:
+			if not NAME_KEYS.has(key) or not names[key] is String or String(names[key]).length() > 40:
+				return false
+			clean["names"][key] = names[key]
+		into.append(clean)
+	return true
+
+
+## The first follow-up due by `for_day` at `site` whose card still exists.
+func _due_follow_up(for_day: int, site: String) -> Dictionary:
+	for waiting: Dictionary in follow_ups:
+		if int(waiting["day"]) <= for_day and String(waiting["site"]) == site \
+				and definition(StringName(waiting["id"])) != null:
+			return waiting
+	return {}
 
 
 func _blocked(minute: int, blocked: Array[Vector2i]) -> bool:
@@ -353,8 +508,9 @@ func _entry(event: ServiceEventDef, minute: int, master_seed: int, for_day: int,
 	var random: RandomNumberGenerator = random_for(master_seed, for_day, "%s:names" % event.id)
 	var entry: Dictionary = {"id": String(event.id), "minute": minute, "shown": false, "names": {},
 		"staff_id": "", "staff_role": "", "ingredient_id": ""}
-	if event.requires.has(&"staff"):
-		var staff: Array = context.get("staff", [])
+	if event.requires.has(&"staff") or event.requires.has(&"spare_staff"):
+		var staff: Array = context.get("staff", []) if not event.requires.has(&"spare_staff") \
+			else covered_staff(context)
 		var person: Dictionary = staff[random.randi_range(0, staff.size() - 1)]
 		entry["names"]["staff"] = String(person.get("name", "Your cook"))
 		entry["staff_id"] = String(person.get("id", ""))

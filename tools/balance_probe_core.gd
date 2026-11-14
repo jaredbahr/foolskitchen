@@ -164,7 +164,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 	if not ProbeSetups.apply(setup_name, main, extra_cook_skill):
 		_free_main(main)
 		return {"error": "Cannot apply the requested set-up"}
-	sim.start_day()
+	sim.start_day((main.get("owner_progress") as OwnerProgress).effective_tier())
 	var totals: Dictionary = _empty_stats()
 	if observe_daily:
 		totals["daily"] = []

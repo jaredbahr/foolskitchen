@@ -63,7 +63,11 @@ func test_departure_updates_report_but_not_the_current_morning_save() -> void:
 	var morning_file: String = FileAccess.get_file_as_string(_path())
 	_certain_reviews(sim, book)
 	assert_true(Clock.sim.start_service())
-	_depart_unserved(sim, 86001)
+	_depart_seated_timeout(sim, 86001)
+	var unseated: CustomerAgent = CustomerAgent.new(sim, RandomNumberGenerator.new())
+	unseated.id = 86006
+	unseated.leave_reason = &"no_table"
+	sim.record_departure(unseated)
 	assert_eq(book.scores(), [3, 3, 3, 3, 3, 1])
 	assert_eq(sim.reviews_today.size(), 1)
 	var row: Dictionary = sim.reviews_today[0]
@@ -75,6 +79,9 @@ func test_departure_updates_report_but_not_the_current_morning_save() -> void:
 	assert_eq(report.restaurant_name, "Harbour Kitchen")
 	assert_eq(DayReport.from_dict(report.to_dict()).restaurant_name, "Harbour Kitchen")
 	assert_eq(report.review_cards.size(), 1)
+	assert_eq(report.customers_lost, 2)
+	assert_eq(report.leave_reasons.get(&"no_table"), 1)
+	assert_eq(report.leave_reasons.get(&"waited_too_long"), 1)
 	assert_eq(report.review_cards[0]["stars"], 1)
 	assert_eq(report.review_cards[0]["quote"], row["quote"])
 	assert_eq(report.today_review_average, 1.0)
@@ -140,7 +147,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 		"five stars latch into demand before the first gap")
 	_certain_reviews(sim, book)
 	assert_true(Clock.sim.start_service())
-	_depart_unserved(sim, 86004)
+	_depart_seated_timeout(sim, 86004)
 	assert_true(book.average() < 5.0)
 	assert_eq(sim.spawner.min_gap, expected_min,
 		"a review cannot change the active day's arrival rate")
@@ -164,7 +171,7 @@ func test_next_morning_saves_reviews_and_trays_together_then_reloads_both() -> v
 	Clock.sim.open_ticks = 1
 	Clock.sim.last_orders_max_ticks = 1
 	assert_true(Clock.sim.start_service())
-	_depart_unserved(sim, 86005)
+	_depart_seated_timeout(sim, 86005)
 	var morning_book: ReputationBook = ReputationBook.new()
 	assert_true(morning_book.from_dict(_document()["data"]["reviews"]))
 	assert_eq(morning_book.scores(), [3, 3, 3, 3, 3])
@@ -222,10 +229,15 @@ func _certain_reviews(sim: RestaurantSim, book: ReputationBook) -> void:
 	sim.configure_reviews(book, certain, REVIEW_QUOTES, GameState.rng(&"reviews"))
 
 
-func _depart_unserved(sim: RestaurantSim, id: int) -> void:
+func _depart_seated_timeout(sim: RestaurantSim, id: int) -> void:
 	var guest: CustomerAgent = CustomerAgent.new(sim, RandomNumberGenerator.new())
 	guest.id = id
-	guest.leave_reason = &"no_table"
+	guest.cell = sim.world.grid.entries()[0]
+	assert_true(guest._try_seat(sim.world))
+	guest.cell = guest.seat_cell
+	guest.sit_down(sim.world, sim)
+	guest.cell = sim.world.grid.entries()[0]
+	guest._leave(sim.world, sim, &"waited_too_long")
 	sim.record_departure(guest)
 	sim.record_departure(guest)
 
@@ -236,7 +248,7 @@ func _seeded_departures(main: Node, seed: int) -> Array[Dictionary]:
 	var book: ReputationBook = main.get("reputation") as ReputationBook
 	sim.configure_reviews(book, REVIEW_TUNING, REVIEW_QUOTES, GameState.rng(&"reviews"))
 	for index: int in range(32):
-		_depart_unserved(sim, 87000 + index)
+		_depart_seated_timeout(sim, 87000 + index)
 	return sim.reviews_today.duplicate(true)
 
 

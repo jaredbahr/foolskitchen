@@ -13,6 +13,8 @@ const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres"
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
+signal dish_sold_out(display_name: String)
+signal health_inspector_arrived()
 ## A detached, player-facing row without the scorer's internal cause id.
 signal review_recorded(row: Dictionary)
 ## Emitted once service has closed and every guest's departure is recorded,
@@ -102,6 +104,9 @@ var critic_result: Dictionary = {}
 ## arrival and patience exactly as before. start_day resets both.
 var event_arrival_factor: float = 1.0
 var event_patience_multiplier: float = 1.0
+## Workers sent home today (#506): member id -> their name. They are off the
+## floor until tomorrow's staff install; the session still pays them.
+var sent_home_today: Dictionary[StringName, String] = {}
 var served_today: int = 0
 ## Optional morning offer; absent callers keep their original prices and picks.
 var daily_special: DailySpecial = null
@@ -288,7 +293,7 @@ func patio_keeping_up() -> bool:
 
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
-func start_day() -> void:
+func start_day(career_tier: int = 1) -> void:
 	# Daily weather can close patio seats without a layout edit. Indoor-only
 	# shops retain their existing cache and exact morning behavior.
 	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
@@ -310,8 +315,9 @@ func start_day() -> void:
 	_booking_party_sizes.clear()
 	event_arrival_factor = 1.0
 	event_patience_multiplier = 1.0
+	sent_home_today.clear()
 	critic_result = {}
-	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
+	critic.plan_day(world.clock.day, career_tier, critic_rng_provider)
 	sold_out_today.clear()
 	service_stockouts_today.clear()
 	_service_menu_count = -1
@@ -375,6 +381,8 @@ func advance() -> void:
 	if world.booking_hold != null:
 		world.booking_hold.prepare_next_tick(world)
 	world.advance()
+	if _anyone_going_home():
+		_release_sent_home(world.clock.phase == SimClock.Phase.CLOSED)
 	# The hold synchronizes lazily from the advanced service clock inside each
 	# seating query. Spawn the booked party at its slot before the ordinary gap
 	# spawner runs, so random walk-in timing cannot delay the reservation.
@@ -404,6 +412,13 @@ func advance() -> void:
 		if dock != null:
 			dock.store_all()
 		service_closed.emit(world.clock.day)
+
+
+func _anyone_going_home() -> bool:
+	for agent: SimAgent in world.agents:
+		if agent is StaffAgent and (agent as StaffAgent).going_home:
+			return true
+	return false
 
 
 func configure_booking(model: GroupBooking) -> void:
@@ -466,6 +481,7 @@ func _advance_inspection() -> void:
 	inspector = arrival
 	_inspector_looked = 0
 	world.add_agent(arrival)
+	health_inspector_arrived.emit()
 
 
 func _record_inspection(facts: Dictionary) -> void:
@@ -499,6 +515,43 @@ func record_event_review(stars: int, quote: String) -> Dictionary:
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
 	return row
+
+
+## A service event's "Off you go" (#506): `member_id` stops taking work,
+## finishes (or hands back) the task in hand and walks out. False when they
+## are not on the floor, already going, or the doors are not open.
+func send_home(member_id: StringName) -> bool:
+	if world == null or member_id.is_empty() \
+			or not world.clock.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return false
+	var worker: StaffAgent = employee(member_id)
+	if worker == null or not worker.send_home():
+		return false
+	world.log_event("%s is going home early" % worker.display_name)
+	return true
+
+
+## The live floor worker for `member_id`, or null (sent home, a manager).
+func employee(member_id: StringName) -> StaffAgent:
+	if world == null or member_id.is_empty():
+		return null
+	for agent: SimAgent in world.all_agents():
+		var worker: StaffAgent = agent as StaffAgent
+		if worker != null and not worker is OwnerAgent and worker.member_id == member_id:
+			return worker
+	return null
+
+
+## Takes workers who reached the street off the floor; at closing anyone still
+## on the way goes too (their task, if any, is handed back by remove_agent).
+func _release_sent_home(closing: bool) -> void:
+	for agent: SimAgent in world.all_agents():
+		var worker: StaffAgent = agent as StaffAgent
+		if worker == null or not worker.going_home or not (worker.gone_home or closing):
+			continue
+		world.remove_agent(worker)
+		sent_home_today[worker.member_id] = worker.display_name
+		world.log_event("%s went home" % worker.display_name)
 
 
 ## A service event's clean sweep (#495): every dirty spot on the floor goes.
@@ -702,6 +755,7 @@ func refresh_sold_out() -> void:
 		var short: StringName = _short_ingredient(recipe, {})
 		if not short.is_empty():
 			_mark_sold_out(recipe.id, short)
+			dish_sold_out.emit(recipe.display_name)
 
 
 ## Captures the full menu after opening deliveries. It records an opening
@@ -1352,7 +1406,7 @@ func record_departure(customer: CustomerAgent) -> void:
 				finalize_booking_review(customer.party.booking_id, false)
 		elif customer.is_critic():
 			# Only a critic who sat down and ordered writes the weighted review.
-			if customer.order != null and customer.leave_reason != &"removed":
+			if (visit.was_seated or visit.served) and customer.order != null and reason != &"removed":
 				_record_critic_review(visit)
 		else:
 			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
@@ -1365,8 +1419,8 @@ func record_departure(customer: CustomerAgent) -> void:
 
 
 ## Booked members are replaced by exactly one weighted booking review when the
-## complete group has departed. A service-close fallback can create one bad
-## no-seat review when no party ever arrived.
+## complete group has departed. An unseated booking still needs a settlement
+## result so the deposit can be refunded, including the service-close fallback.
 func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> Dictionary:
 	if booking_id <= 0 or booking_review_results.has(booking_id) \
 			or review_book == null or review_tuning == null or review_quotes == null or review_rng == null:
@@ -1375,16 +1429,19 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 	for value: Variant in _booking_visits_today.get(booking_id, []):
 		if value is ReviewVisit:
 			visits.append(value as ReviewVisit)
-	if visits.is_empty() and fallback_no_seat:
-		var missed: ReviewVisit = ReviewVisit.new()
-		missed.served = false
-		missed.was_seated = false
-		visits.append(missed)
-	if visits.is_empty():
+	if visits.is_empty() and not fallback_no_seat:
 		return {}
 	var no_seat: bool = true
 	for visit: ReviewVisit in visits:
 		no_seat = no_seat and not visit.was_seated
+	if no_seat:
+		var occasion: String = "reserved"
+		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
+			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
+		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
+		var unseated: Dictionary = {"no_seat": true}
+		booking_review_results[booking_id] = unseated.duplicate()
+		return unseated
 	var expected_members: int = _booking_party_sizes.get(booking_id, 0)
 	if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
 		expected_members = int(group_booking.booking.get("party_size", expected_members))
@@ -1394,17 +1451,12 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 		review_rng, booking_tuning, expected_members)
 	if result.is_empty():
 		return {}
-	result["no_seat"] = no_seat
+	result["no_seat"] = false
 	booking_review_results[booking_id] = result.duplicate(true)
 	var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]}
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
-	if no_seat:
-		var occasion: String = "reserved"
-		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
-			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
-		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
 	return result.duplicate(true)
 
 

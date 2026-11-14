@@ -1,11 +1,15 @@
 extends TestCase
 ## The opening-week chain in a real session (#494): each goal's trigger, one
 ## ledger movement per goal, the tracker and Goals card, the save round trip,
-## old saves and the end of the chain.
+## old saves and the end of the chain. Week 2 (#514): the hand-over, each
+## goal in a real session, saves made mid-chain and old saves.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "opening_week_session"
 const CHAIN: OpeningWeekSet = preload("res://data/balance/opening_week.tres")
+const WEEK_TWO: OpeningWeekSet = preload("res://data/balance/week_two.tres")
+const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+const CAREER: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
 
 var _mains: Array[Node] = []
 var _old_save_dir: String
@@ -45,6 +49,7 @@ func test_new_game_shows_the_chain_in_the_tracker_and_goals() -> void:
 	var lines: Array[String] = hud.call("opening_week_lines")
 	assert_eq(lines.size(), 3, "the tracker shows three goals")
 	assert_eq(lines[0], OpeningWeekText.tracker_line(CHAIN.goals[0]))
+	assert_eq(hud.call("opening_week_title"), "Opening week")
 	assert_true(main.call("set_goals_visible", true))
 	var goals: GoalsPanel = main.get_node("Overlay/GoalsPanel") as GoalsPanel
 	assert_eq(goals.opening_goal_ids(), [&"change_price", &"place_decor", &"serve_15"] as Array[StringName])
@@ -70,7 +75,7 @@ func test_price_change_pays_once_as_its_own_ledger_movement() -> void:
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
 	var lines: Array[String] = hud.call("opening_week_lines")
 	assert_eq(lines[0], OpeningWeekText.tracker_line(CHAIN.by_id(&"place_decor")), "the tracker moves on")
-	assert_true(_logged(main, OpeningWeekText.met_line(CHAIN.by_id(&"change_price"))), "a log line names the goal")
+	assert_true(_logged(main, OpeningWeekText.met_line(CHAIN, CHAIN.by_id(&"change_price"))), "a log line names the goal")
 
 
 func test_decor_pays_at_opening_but_other_furniture_does_not() -> void:
@@ -238,14 +243,11 @@ func test_progress_survives_the_morning_save_and_reload() -> void:
 	assert_eq(Economy.cash, cash, "a loaded, completed goal never pays again")
 
 
-func test_old_saves_past_day_seven_never_get_the_chain() -> void:
+func test_old_saves_past_day_seven_join_week_two_inside_its_window() -> void:
 	var main: Node = await _start(true)
 	for step: int in 8:
-		reset_weekly_for_synthetic_day_jump(main)
-		Clock.sim.day += 1
-		main.call("_begin_morning")
+		_next_morning(main)
 	assert_eq(Clock.sim.day, 9)
-	assert_false(_state(main).is_active(), "the chain ended after day 7")
 	var document: Dictionary = _document()
 	(document["data"] as Dictionary).erase("opening_week")
 	_write_document(document)
@@ -253,9 +255,46 @@ func test_old_saves_past_day_seven_never_get_the_chain() -> void:
 	_close(main)
 	main = await _start(true)
 	assert_eq(Clock.sim.day, 9, "the old save loaded")
-	assert_false(_state(main).is_active(), "a save from before the chain, past day 7, has none")
+	assert_true(_state(main).is_active(), "a save from before the chains, on day 9, gets Week 2")
+	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO)
+	assert_eq(_state(main).start_day, 8, "with the days of its window that remain")
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	assert_eq(hud.call("opening_week_title"), "Week 2")
+	# Past day 14 an old save has no chain at all.
+	for step: int in 6:
+		_next_morning(main)
+	assert_eq(Clock.sim.day, 15)
+	document = _document()
+	(document["data"] as Dictionary).erase("opening_week")
+	_write_document(document)
+	_remove_backup()
+	_close(main)
+	main = await _start(true)
+	assert_eq(Clock.sim.day, 15)
+	assert_false(_state(main).is_active(), "past Week 2's window there is no chain")
+	hud = main.get_node("HUD") as CanvasLayer
 	assert_eq((hud.call("opening_week_lines") as Array).size(), 0, "no tracker")
+
+
+func test_a_version_one_save_hands_over_to_week_two() -> void:
+	var main: Node = await _start(true)
+	for step: int in 9:
+		_next_morning(main)
+	assert_eq(Clock.sim.day, 10)
+	var document: Dictionary = _document()
+	# What #494 wrote once the Opening week was over.
+	(document["data"] as Dictionary)["opening_week"] = {"version": 1, "status": "ended",
+		"completed": ["change_price", "serve_15"], "pending_xp": 0}
+	_write_document(document)
+	_remove_backup()
+	_close(main)
+	main = await _start(true)
+	assert_eq(Clock.sim.day, 10)
+	assert_true(_state(main).is_active())
+	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO)
+	assert_eq(_state(main).last_day(WEEK_TWO), 14, "an old save keeps the days of the window that remain")
+	assert_true(_state(main).completed_ids().is_empty())
+	assert_eq(int(_document()["data"]["opening_week"]["version"]), 2, "the load's morning saves version 2")
 
 
 func test_old_saves_inside_the_week_join_the_chain() -> void:
@@ -274,22 +313,39 @@ func test_old_saves_inside_the_week_join_the_chain() -> void:
 	assert_true(_state(main).completed_ids().is_empty())
 
 
-func test_chain_ends_the_morning_after_day_seven() -> void:
+func test_week_two_follows_the_morning_after_day_seven() -> void:
 	var main: Node = await _start(false)
 	for step: int in 6:
-		reset_weekly_for_synthetic_day_jump(main)
-		Clock.sim.day += 1
-		main.call("_begin_morning")
+		_next_morning(main)
 	assert_eq(Clock.sim.day, 7)
-	assert_true(_state(main).is_active(), "day 7 still has the chain")
-	reset_weekly_for_synthetic_day_jump(main)
-	Clock.sim.day += 1
-	main.call("_begin_morning")
-	assert_false(_state(main).is_active())
+	assert_eq(_state(main).current(main.get("goal_chains")), CHAIN, "day 7 still has the Opening week")
+	_state(main).observe(OpeningGoal.Condition.PRICE_CHANGED, 1.0, CHAIN)
+	_next_morning(main)
+	assert_true(_state(main).is_active())
+	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO, "Week 2 starts on day 8")
+	assert_eq(_state(main).start_day, 8)
+	assert_true(_state(main).completed_ids().is_empty(), "its own goals, none done")
+	assert_true(_logged(main, OpeningWeekText.started_line(WEEK_TWO)))
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
-	assert_eq((hud.call("opening_week_lines") as Array).size(), 0, "the tracker goes away")
+	assert_eq(hud.call("opening_week_title"), "Week 2", "the tracker carries the new title")
+	var lines: Array[String] = hud.call("opening_week_lines")
+	assert_eq(lines, [OpeningWeekText.tracker_line(WEEK_TWO.goals[0]), OpeningWeekText.tracker_line(WEEK_TWO.goals[1]),
+		OpeningWeekText.tracker_line(WEEK_TWO.goals[2])] as Array[String])
 	assert_true(main.call("set_goals_visible", true))
 	var goals: GoalsPanel = main.get_node("Overlay/GoalsPanel") as GoalsPanel
+	assert_eq(goals.opening_goal_ids(), [&"bigger_lease", &"lay_floor", &"big_table"] as Array[StringName])
+	var card: Node = goals.get_node("%List").get_node_or_null("OpeningWeek")
+	assert_not_null(card, "the same card")
+	if card != null:
+		assert_eq((card.get_node("Body/Header/Title") as Label).text, "Week 2")
+		assert_true((card.get_node("Body/Header/Status") as Label).text.contains("0 / 8 done   7 days left"))
+	for step: int in 7:
+		_next_morning(main)
+	assert_eq(Clock.sim.day, 15)
+	assert_false(_state(main).is_active(), "Week 2 ends after day 14")
+	assert_eq(_state(main).status, OpeningWeek.Status.FINISHED)
+	assert_eq((hud.call("opening_week_lines") as Array).size(), 0, "the tracker goes away")
+	goals.call("_render")
 	assert_null(goals.get_node("%List").get_node_or_null("OpeningWeek"), "the card goes away")
 
 
@@ -305,7 +361,7 @@ func test_finishing_every_goal_ends_the_chain_at_once() -> void:
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
 	assert_false(_state(main).is_active(), "the last goal ends the chain")
-	assert_true(_logged(main, OpeningWeekText.COMPLETE_LINE))
+	assert_true(_logged(main, OpeningWeekText.complete_line(CHAIN)))
 
 
 func test_creative_games_have_no_chain() -> void:
@@ -313,6 +369,264 @@ func test_creative_games_have_no_chain() -> void:
 	var main: Node = await _start(false)
 	assert_false(_state(main).is_active())
 	GameMode.request_new_game(false)
+
+
+# --- Week 2 (#514) -----------------------------------------------------------
+
+func test_lease_floor_and_table_pay_at_opening_not_before() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	_eligible_for_lease(main)
+	assert_true(main.call("lease_buy"), "the bigger lease")
+	assert_true(main.call("shop_floor", _north_strip(main), true), "six new floor tiles")
+	assert_true(_buy_anywhere(main, &"table_4"), "a four-seat table")
+	assert_eq(_bonus_entries(), [] as Array[int], "nothing pays before opening")
+	var cash: int = Economy.cash
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	for id: StringName in [&"bigger_lease", &"lay_floor", &"big_table"]:
+		assert_true(_state(main).is_completed(id), "%s pays at opening" % id)
+	var paid: Array[int] = _bonus_entries()
+	paid.sort()
+	assert_eq(paid, [60, 60, 150] as Array[int], "one ledger movement per goal")
+	assert_eq(Economy.cash, cash + 270)
+	assert_true(_logged(main, OpeningWeekText.met_line(WEEK_TWO, WEEK_TWO.by_id(&"bigger_lease"))))
+
+
+func test_undone_floor_and_table_pay_nothing_and_small_tables_never_count() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	_eligible_for_lease(main)
+	assert_true(main.call("lease_buy"))
+	assert_true(main.call("set_build_active", true))
+	assert_true(main.call("shop_floor", _north_strip(main), true))
+	assert_true(main.call("undo_edit"), "undo the floor")
+	assert_true(_buy_anywhere(main, &"round_table"))
+	assert_true(main.call("undo_edit"), "undo the round table")
+	assert_true(_buy_anywhere(main, &"table_2"), "a two-seat table is not a big one")
+	var strip: Array[Vector2i] = _north_strip(main)
+	assert_true(main.call("shop_floor", strip.slice(0, 5), true), "five tiles are one short")
+	assert_true(main.call("set_build_active", false))
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_true(_state(main).is_completed(&"bigger_lease"))
+	assert_false(_state(main).is_completed(&"lay_floor"), "undone and short floor pays nothing")
+	assert_false(_state(main).is_completed(&"big_table"), "an undone table pays nothing")
+	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"bigger_lease").reward_cash] as Array[int])
+
+
+func test_a_fried_dish_on_the_menu_pays_at_opening() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	_raise_level(main, 2)
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_false(_state(main).is_completed(&"fried_dish"))
+	Economy.cash = 5000
+	assert_true(_buy_fryer_with_fries(main), "a reachable fryer and fries on the menu")
+	assert_true(settings.enabled_recipes().has(settings.recipe(&"fries")))
+	assert_false(_state(main).is_completed(&"fried_dish"), "not before opening")
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_true(_state(main).is_completed(&"fried_dish"))
+	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"fried_dish").reward_cash] as Array[int])
+
+
+func test_a_cleaner_on_the_team_at_opening_pays_but_one_let_go_does_not() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	assert_true(_add_member(main, &"cleaner", &"test_cleaner"))
+	assert_true(main.call("staff_let_go", &"test_cleaner"), "let go again before opening")
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_false(_state(main).is_completed(&"hire_cleaner"), "the hire must still be there at opening")
+	main.call("run_ticks", 3)
+	assert_true(Clock.sim.next_day())
+	assert_true(_add_member(main, &"cleaner", &"test_cleaner_2"))
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_true(_state(main).is_completed(&"hire_cleaner"))
+
+
+func test_a_seated_group_counts_when_it_pays() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	var single: CustomerAgent = CustomerAgent.new(restaurant, RandomNumberGenerator.new())
+	main.call("_observe_opening_party", single)
+	var waiting: CustomerAgent = CustomerAgent.new(restaurant, RandomNumberGenerator.new())
+	waiting.party = Party.new([901, 902])
+	main.call("_observe_opening_party", waiting)
+	assert_false(_state(main).is_completed(&"seat_group"), "a lone guest or a party still waiting is no seated group")
+	var pair: CustomerAgent = CustomerAgent.new(restaurant, RandomNumberGenerator.new())
+	pair.party = Party.new([903, 904])
+	pair.party.seated = true
+	main.call("_observe_opening_party", pair)
+	assert_true(_state(main).is_completed(&"seat_group"), "a seated pair counts")
+	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"seat_group").reward_cash] as Array[int])
+
+
+func test_thirty_guests_and_a_calm_day_pay() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	var stars: ReputationBook = main.get("reputation") as ReputationBook
+	# Day 8: 4.0 stars, but one guest gave up waiting.
+	for i: int in 5:
+		stars.record_event_review(5)
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	restaurant.served_today = 29
+	main.call("_observe_opening_state")
+	assert_false(_state(main).is_completed(&"serve_30"))
+	restaurant.served_today = 30
+	main.call("_observe_opening_state")
+	assert_true(_state(main).is_completed(&"serve_30"), "30 guests in a day")
+	restaurant.leave_reasons_today[&"waited_too_long"] = 1
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_false(_state(main).is_completed(&"calm_day"), "one guest giving up spoils the day")
+	# Day 9: guests turned away for want of a table do not count, still 4.0 stars.
+	assert_true(Clock.sim.next_day())
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	restaurant.leave_reasons_today[&"no_table"] = 12
+	restaurant.leave_reasons_today[&"too_expensive"] = 2
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_true(_state(main).is_completed(&"calm_day"), "no guest gave up waiting; no-table and other leaves do not count")
+	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"calm_day").reward_cash] as Array[int])
+
+
+func test_the_morning_card_shows_a_fresh_day_not_yesterdays_counts() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	restaurant.served_today = 12
+	restaurant.leave_reasons_today[&"waited_too_long"] = 1
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_true(Clock.sim.next_day())
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	var values: Dictionary = main.call("_opening_values")
+	assert_eq(values[OpeningGoal.Condition.SERVED_TODAY], 0.0, "yesterday's guests are not today's")
+	assert_true(float(values[OpeningGoal.Condition.CALM_DAY_STARS]) >= 0.0, "yesterday's leaver does not spoil today")
+
+
+func test_a_calm_day_below_three_and_a_half_stars_does_not_pay() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	var stars: ReputationBook = main.get("reputation") as ReputationBook
+	assert_true(stars.average() < 3.45, "the starting rating is below 3.5 stars")
+	_close_day(main)
+	assert_false(_state(main).is_completed(&"calm_day"))
+
+
+func test_week_two_progress_survives_the_morning_save_and_reload() -> void:
+	var main: Node = await _start(true)
+	_to_week_two(main)
+	_state(main).observe(OpeningGoal.Condition.SERVED_TODAY, 30.0, WEEK_TWO)
+	_next_morning(main)
+	assert_eq(Clock.sim.day, 9)
+	var row: Dictionary = _document()["data"]["opening_week"]
+	assert_eq(int(row["version"]), 2)
+	assert_eq(row["chain"], "week_two")
+	assert_eq(int(row["start_day"]), 8)
+	assert_eq(row["completed"], ["serve_30"])
+	_close(main)
+	main = await _start(true)
+	assert_eq(Clock.sim.day, 9, "the morning save loaded")
+	assert_true(_state(main).is_active())
+	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO)
+	assert_eq(_state(main).completed_ids(), [&"serve_30"] as Array[StringName])
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	assert_eq(hud.call("opening_week_title"), "Week 2")
+	(main.get("sim") as RestaurantSim).served_today = 40
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_eq(_bonus_entries(), [] as Array[int], "a loaded, completed goal never pays again")
+
+
+func _next_morning(main: Node) -> void:
+	reset_weekly_for_synthetic_day_jump(main)
+	Clock.sim.day += 1
+	main.call("_begin_morning")
+
+
+## Seven synthetic mornings: day 8, the first morning of Week 2.
+func _to_week_two(main: Node) -> void:
+	for step: int in 7:
+		_next_morning(main)
+	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO)
+
+
+func _raise_level(main: Node, level: int) -> void:
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	if progress.level < level:
+		progress.award_bonus(progress.threshold_for(level) - progress.total_xp)
+	(main.get("menu_settings") as MenuSettings).set_owner_level(progress.level)
+	(main.get("shop_editor") as ShopEditor).set_owner_level(progress.level)
+	main.call("_refresh_menu_catalogue")
+
+
+## As test_lease_session: owner level 3, career Tier 2 and the deposit.
+func _eligible_for_lease(main: Node) -> void:
+	_raise_level(main, LEASE.owner_level)
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	assert_eq(progress.raise_career_tier(CAREER, 3.0), 2)
+	(main.get("shop_editor") as ShopEditor).set_career_tier(progress.career_tier)
+	Economy.cash = LEASE.deposit + 10000
+
+
+## Six cells in the row just north of the building, inside the bigger lot.
+func _north_strip(main: Node) -> Array[Vector2i]:
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var building: Rect2i = editor.footprint().building
+	var cells: Array[Vector2i] = []
+	for x: int in range(building.position.x + 1, building.position.x + 7):
+		cells.append(Vector2i(x, building.position.y - 1))
+	return cells
+
+
+## A fryer on the first spot whose work cell the kitchen can reach, with fries
+## switched on in the menu.
+func _buy_fryer_with_fries(main: Node) -> bool:
+	var world: SimWorld = main.get("world") as SimWorld
+	var cells: Array[Vector2i] = world.grid.cells()
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	for cell: Vector2i in cells:
+		for turns: int in 4:
+			var before: Dictionary[int, bool] = {}
+			for placed: PlacedItem in world.grid.items():
+				before[placed.id] = true
+			if main.call("shop_buy", &"fryer", cell, turns):
+				if main.call("menu_set_enabled", &"fries", true):
+					return true
+				for placed: PlacedItem in world.grid.items():
+					if not before.has(placed.id):
+						main.call("shop_sell", placed.id)
+	return false
+
+
+## Adds a hired member through the roster, as the balance probe does.
+func _add_member(main: Node, role: StringName, id: StringName) -> bool:
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	var snapshot: Dictionary = roster.to_dict()
+	var members: Array = snapshot["members"]
+	var member: StaffMember = StaffMember.new()
+	member.id = id
+	member.display_name = "Test %s" % String(role)
+	member.role = role
+	member.skill = 3
+	member.wage = restaurant.pricing_tuning.staff_wage(role, 3)
+	member.trait_id = &"steady"
+	members.append(member.to_dict())
+	snapshot["members"] = members
+	return roster.from_dict(snapshot) and restaurant.set_staff_roster(roster.members())
 
 
 func _start(saves: bool) -> Node:

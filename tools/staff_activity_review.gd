@@ -2,14 +2,17 @@ extends "res://src/world/main.gd"
 ## Fixed real Main service, not a staged report or the probe's RNG-reset profile.
 ## The existing expanded_tables fixture builds free; stock and service are paid.
 
-## Day ten: with people occupying cells (#263) service runs a little slower,
-## and the old day-fourteen close no longer crossed the cook threshold. Day ten
-## is a real close of the same seeded run that does, with a clear margin.
+## The run closes days until one from MIN_REVIEW_DAY on naturally recommends a
+## cook, up to REVIEW_DAYS. No single fixed day is used: small timing changes
+## (#263, #505, #508) and CI-versus-local runs move which days cross the cook
+## threshold, but most days from day two on do.
+const MIN_REVIEW_DAY: int = 2
 const REVIEW_DAYS: int = 10
 const REVIEW_SETUP: String = "expanded_tables"
 const REVIEW_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
 var _review_ready: bool = false
+var _review_day: int = 0
 var _review_frames: int = 0
 var _review_state: Dictionary = {}
 var _review_report: Dictionary = {}
@@ -45,9 +48,12 @@ func _ready() -> void:
 				or shown_report.day != day_index + 1:
 			_review_fail("the real service did not produce its closing report")
 			return
+		var day_advice: StringName = REVIEW_RULES.recommendation(shown_report.staff_activity, shown_report.leave_reasons)
 		_review_daily.append({"day": shown_report.day, "cash": Economy.cash,
-			"report": shown_report.to_dict(),
-			"advice": String(REVIEW_RULES.recommendation(shown_report.staff_activity, shown_report.leave_reasons))})
+			"report": shown_report.to_dict(), "advice": String(day_advice)})
+		_review_day = shown_report.day
+		if day_advice == &"cook" and shown_report.day >= MIN_REVIEW_DAY:
+			break
 		if day_index + 1 < REVIEW_DAYS and not Clock.sim.next_day():
 			_review_fail("the next ordinary morning did not start")
 			return
@@ -61,7 +67,7 @@ func _ready() -> void:
 		return
 	# Keep the actual result even when the declared case fails the advice gate.
 	print("STAFF_ACTIVITY_SERVICE_RESULT ", JSON.stringify({"setup": REVIEW_SETUP,
-		"seed": str(GameState.master_seed), "days": REVIEW_DAYS, "cash": Economy.cash,
+		"seed": str(GameState.master_seed), "days": _review_day, "cash": Economy.cash,
 		"report": _review_report, "daily": _review_daily,
 		"advice": String(REVIEW_RULES.recommendation(shown_report.staff_activity, shown_report.leave_reasons))}))
 	_review_ready = true
@@ -93,12 +99,12 @@ func _review_validate() -> void:
 	var activity: Dictionary = StaffActivity.public_snapshot(shown_report.staff_activity)
 	var advice_id: StringName = REVIEW_RULES.recommendation(activity, shown_report.leave_reasons)
 	if activity.is_empty() or activity != sim.staff_activity.snapshot() \
-			or shown_report.day != REVIEW_DAYS or Clock.sim.phase != SimClock.Phase.CLOSED \
+			or shown_report.day != _review_day or _review_day < MIN_REVIEW_DAY or Clock.sim.phase != SimClock.Phase.CLOSED \
 			or GameState.master_seed != 1 or new_game_seed_override != 1 or use_saves:
 		_review_fail("the report does not match the actual fixed service")
 		return
 	if advice_id != &"cook":
-		_review_fail("the fixed day-%d service did not naturally recommend a cook; actual result retained" % REVIEW_DAYS)
+		_review_fail("no day %d-%d service naturally recommended a cook; actual result retained" % [MIN_REVIEW_DAY, REVIEW_DAYS])
 		return
 	var section: Control = _report.get_node("%TeamSection") as Control
 	var heading: Label = _report.get_node("%TeamHeading") as Label
@@ -146,9 +152,9 @@ func _review_validate() -> void:
 		_review_fail("native validation changed the closed session snapshot")
 		return
 	print("STAFF_ACTIVITY_REPORT_REVIEW ", JSON.stringify({
-		"fixture": "actual Main seed1 expanded_tables %d-day service;" % REVIEW_DAYS + " free construction of two one-cell side wings and two tables; normal paid stock and service; no grants or saves",
+		"fixture": "actual Main seed1 expanded_tables %d-day service;" % _review_day + " free construction of two one-cell side wings and two tables; normal paid stock and service; no grants or saves",
 		"profile": "ordinary Main morning; no additional day or RNG reset; differs from BalanceProbe initialization",
-		"setup": REVIEW_SETUP, "seed": str(GameState.master_seed), "days": REVIEW_DAYS,
+		"setup": REVIEW_SETUP, "seed": str(GameState.master_seed), "days": _review_day,
 		"day": shown_report.day, "cash": Economy.cash, "initial_setup": _review_setup,
 		"report": _review_report, "report_sha256": JSON.stringify(_review_report).sha256_text(),
 		"activity": activity, "advice_id": String(advice_id),

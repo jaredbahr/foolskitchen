@@ -129,6 +129,7 @@ func test_main_explicit_regular_catalogue_retains_legacy_arrival_draw_order() ->
 	var single: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
 	single.party_size_min = 1
 	single.party_size_max = 1
+	single.pair_unlock_level = 0
 	regular.types = [single]
 	var main: Node = await _start(false, regular)
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim

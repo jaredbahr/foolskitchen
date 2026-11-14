@@ -366,7 +366,7 @@ func test_mixed_booth_looks_keep_vibe_valid_before_and_after_buy_dot_selection()
 	assert_true(first.valid, first.reason)
 	assert_true(_main.call("shop_buy", &"diner_booth", east_cell, 0, &"", &"booth_walnut"))
 	var mixed: VibeModel.Result = _main.get("vibe_result") as VibeModel.Result
-	var meter: VibeMeter = _catalogue().get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter") as VibeMeter
+	var meter: VibeMeter = _catalogue().get_node("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter") as VibeMeter
 	print("MIXED_LOOK_VIBE before_dot valid=", mixed.valid, " reason=", mixed.reason, " meter=", meter.view_state().caption)
 	assert_true(mixed.valid, mixed.reason)
 	assert_true(_main.call("set_build_active", true))

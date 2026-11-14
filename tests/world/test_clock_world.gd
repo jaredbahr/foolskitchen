@@ -61,6 +61,26 @@ func test_attached_world_respects_pause_and_speed() -> void:
 	assert_eq(world.now, 4)
 
 
+func test_pause_from_tick_listener_stops_before_the_next_tick() -> void:
+	var world: SimWorld = SimWorld.new(SimGrid.new())
+	Clock.attach_world(world)
+	world.clock.start_service()
+	Clock.set_speed(4)
+	EventBus.sim_ticked.connect(_pause_on_tick, CONNECT_ONE_SHOT)
+	Clock._process(0.1)
+	assert_eq(Clock.speed, 0)
+	assert_eq(world.now, 1, "Finish the triggering tick and discard the remaining backlog.")
+	Clock._process(1.0)
+	assert_eq(world.now, 1)
+	Clock.set_speed(1)
+	Clock._process(0.1)
+	assert_eq(world.now, 2, "Resuming should not replay discarded ticks.")
+
+
+func _pause_on_tick(_tick: int) -> void:
+	Clock.set_speed(0)
+
+
 func test_attached_world_keeps_driving_after_clock_replacement_and_restore() -> void:
 	var world: SimWorld = SimWorld.new(SimGrid.new())
 	Clock.attach_world(world)

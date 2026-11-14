@@ -27,7 +27,7 @@ extends Resource
 
 
 func is_valid() -> bool:
-	if min_day < 6 or min_satisfied_visits < 2 or cast_cap < 6 or cast_cap > 10 \
+	if min_day < 4 or min_satisfied_visits < 2 or cast_cap < 6 or cast_cap > 10 \
 			or visit_days_min < 1 or visit_days_max < visit_days_min \
 			or missing_penalty_after < 1 or names.size() < cast_cap \
 			or model_ids.is_empty() or tint_ids.is_empty() or greetings.is_empty():
