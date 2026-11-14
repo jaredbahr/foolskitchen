@@ -362,7 +362,7 @@ func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_sizes() 
 	assert_true(_requests.is_empty())
 
 
-func test_long_catalogue_shows_three_card_rows_under_pinned_toolbars() -> void:
+func test_long_catalogue_scrolls_only_its_cards_under_pinned_toolbars() -> void:
 	for index: int in range(40):
 		_content.definitions.append(_definition(StringName("item_%02d" % index), "Furniture %02d" % index, index))
 	_catalogue.bind_content(_content)
@@ -371,10 +371,13 @@ func test_long_catalogue_shows_three_card_rows_under_pinned_toolbars() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	var scroll: ScrollContainer = _scroll()
 	var toolbars: Control = _catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
+	var panel: Control = _catalogue.get_node("Panel") as Control
 	assert_false(scroll.is_ancestor_of(toolbars), "the toolbars sit outside the scroll")
+	assert_true(panel.position.y > _host.size.y * 0.5, "the panel stays below the screen centre")
 	var card: Button = _catalogue.item_buttons[&"item_00"]
 	var rows_shown: float = (scroll.size.y + BuildCatalogue.CARD_GAP) / (card.size.y + BuildCatalogue.CARD_GAP)
-	assert_almost_eq(rows_shown, float(BuildCatalogue.VISIBLE_ROWS), 0.01)
+	assert_true(rows_shown >= 1.5 and rows_shown <= float(BuildCatalogue.VISIBLE_ROWS) + 0.01,
+		"rows shown: %s" % rows_shown)
 	assert_true(scroll.get_v_scroll_bar().visible)
 	assert_false(scroll.get_h_scroll_bar().visible)
 	var pinned: Dictionary = {}

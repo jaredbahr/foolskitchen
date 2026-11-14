@@ -64,14 +64,10 @@ func _process(delta: float) -> void:
 	if _review_frames == 10:
 		FRONT_REVIEW.focus(self)
 		var camera: Camera3D = get_node("CameraRig/Camera3D") as Camera3D
-		camera.size = 8.0
+		camera.size = 6.5
 		# Leave the front above the real bottom-left Build panel. This changes
 		# only the camera pose, after screenshot.gd has settled its initial rig.
 		camera.global_position -= camera.global_basis.y
-		# The panel grew when #499 pinned its toolbars: zoom out a little and lift
-		# the picture with a view offset, not the camera, so the camera-facing
-		# wall rule still sees the same pose.
-		camera.v_offset = -1.2
 	elif _review_frames >= 25:
 		RenderingServer.frame_post_draw.connect(_review_validate, CONNECT_ONE_SHOT)
 

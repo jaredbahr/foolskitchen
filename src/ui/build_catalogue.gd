@@ -50,10 +50,12 @@ signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
 const MAX_PANEL_WIDTH: float = 980.0
-## The tallest the bottom panel may grow, as a share of the view (#499: a bit
-## taller, so the pinned toolbars leave room for VISIBLE_ROWS rows of cards).
-const PANEL_HEIGHT_SHARE: float = 0.7
-## Card rows the grid shows before it scrolls, when the view is tall enough.
+## The tallest the bottom panel may grow, as a share of the view. It keeps the
+## top of the panel below the screen centre, where Build centres the tile you
+## are working on (world clicks there must not land on the panel).
+const PANEL_HEIGHT_SHARE: float = 0.45
+## The most card rows the scroll shows before it scrolls, when the height cap
+## leaves room for them.
 const VISIBLE_ROWS: int = 3
 ## A catalogue tile: the picture on top, the price (or unlock level) under it.
 const CARD_MINIMUM: Vector2 = Vector2(96.0, 104.0)
