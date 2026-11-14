@@ -98,9 +98,12 @@ var _shift: float = 0.0
 var _paving_top: float = 0.055
 var _generation: int = 0
 ## Re-skin a street by setting this before `configure` (null = standard meadow).
+## `use_preset` sets it from the site's StreetPreset (#425).
 var ground_skin: GroundSkin
 ## Re-style a street's buildings by setting this before `configure` (null = the standard row).
 var street_set: StreetSet
+## The street recipe the two halves above came from (null until `use_preset`).
+var preset: StreetPreset
 var _ground_key: Array = []
 var _far_key: Array = []
 var _building_boxes: Array[AABB] = []
@@ -141,6 +144,14 @@ func _ready() -> void:
 	_apply_time(_effective_time())
 
 
+## Builds the street from `value` (#425): its ground and its building set,
+## palette and furniture. Call before `configure`; a later `rebuild` applies it.
+func use_preset(value: StreetPreset) -> void:
+	preset = value
+	ground_skin = value.ground if value != null else null
+	street_set = value.buildings if value != null else null
+
+
 func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictionary],
 		native_pavement: Array[AABB]) -> void:
 	_grid = grid
@@ -152,8 +163,12 @@ func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictiona
 
 func rebuild() -> void:
 	_ensure_roots()
+	# A dressing given no street gets the starter street's parts, so its cache keys
+	# match a dressing that was handed the starter preset.
 	if street_set == null:
-		street_set = StreetSet.standard()
+		street_set = StreetPreset.starter().buildings
+	if ground_skin == null:
+		ground_skin = StreetPreset.starter().ground
 	var built: Array[Vector2i] = []
 	var patio: Array[Vector2i] = []
 	if _grid != null:
