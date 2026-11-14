@@ -121,9 +121,57 @@ func test_manager_skill_needs_a_manager_in_that_roster() -> void:
 	assert_eq(AwaySites.manager_skill({}, &"boss"), 0)
 
 
-func test_rent_is_known_only_for_the_home_lot() -> void:
+func _lot(id: StringName, rent: int, expanded_rent: int) -> LotDef:
+	var lot: LotDef = LotDef.new()
+	lot.id = id
+	lot.daily_rent = rent
+	lot.expansion_price = 500
+	lot.expanded_daily_rent = expanded_rent
+	return lot
+
+
+func test_rent_is_the_home_rule_or_the_lots_own() -> void:
+	var pier: LotDef = _lot(&"pier_lot", 70, 95)
 	assert_eq(AwaySites.lot_rent(SiteBook.HOME_LOT, 40), 40)
-	assert_eq(AwaySites.lot_rent(&"pier_lot", 40), AwaySites.UNKNOWN_RENT)
+	assert_eq(AwaySites.lot_rent(SiteBook.HOME_LOT, 40, pier, true), 40, "home keeps its own rule")
+	assert_eq(AwaySites.lot_rent(&"pier_lot", 40, pier, false), 70)
+	assert_eq(AwaySites.lot_rent(&"pier_lot", 40, pier, true), 95, "an expanded lease pays the expanded rent")
+	assert_eq(AwaySites.lot_rent(&"pier_lot", 40), AwaySites.UNKNOWN_RENT, "a lot missing from the data")
+	assert_eq(AwaySites.lot_rent(&"roof_lot", 40, pier, false), AwaySites.UNKNOWN_RENT, "never another lot's rent")
+
+
+func test_an_away_lot_site_pays_its_lots_rent_normal_and_expanded() -> void:
+	var lots: Array[LotDef] = [_lot(&"pier_lot", 70, 95), _lot(&"roof_lot", 120, 160)]
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.add_site(&"harbour", &"pier_lot", "Pier Shack", 3, {"shop": {"lease_expanded": false}}))
+	assert_true(book.add_site(&"rooftop", &"roof_lot", "Sky Bar", 3, {"shop": {"lease_expanded": true}}))
+	var plans: Array[Dictionary] = AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, lots)
+	assert_eq(plans.size(), 2)
+	assert_true(bool(plans[0]["rent_known"]))
+	assert_eq(int(plans[0]["amount"]), -70)
+	assert_eq(JSON.stringify(plans[0]["movements"]), JSON.stringify([{"amount": -70,
+		"category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE}]))
+	assert_eq(AwaySites.report_line("Pier Shack", plans[0]), "Pier Shack (closed): rent -$70")
+	assert_eq(int(plans[1]["amount"]), -160, "its own lease is expanded")
+	assert_eq(AwaySites.report_line("Sky Bar", plans[1]), "Sky Bar (closed): rent -$160")
+
+
+func test_a_renovating_site_pays_rent_even_with_a_manager() -> void:
+	var lots: Array[LotDef] = [_lot(&"pier_lot", 70, 95)]
+	var book: SiteBook = SiteBook.new()
+	var sections: Dictionary = {"staff": _staff_with_manager(5), "business_history": _history([60, 80])}
+	assert_true(book.add_site(&"harbour", &"pier_lot", "Pier Shack", 3, sections, 2))
+	assert_true(book.set_manager(&"harbour", &"boss"))
+	var plan: Dictionary = AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS, lots)[0]
+	assert_eq(plan["status"], AwaySites.CLOSED, "it cannot open, so no manager runs it")
+	assert_eq(int(plan["amount"]), -70)
+	assert_eq(book.count_down_renovations(), [] as Array[StringName])
+	assert_eq(AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, lots)[0]["status"], AwaySites.CLOSED,
+		"its last renovation day is still closed (planned before the countdown)")
+	assert_eq(book.count_down_renovations(), [&"harbour"] as Array[StringName])
+	var ready: Dictionary = AwaySites.plan_close(book, 5, 40, TUNING, BOOKINGS, lots)[0]
+	assert_eq(ready["status"], AwaySites.MANAGED, "once ready, its manager runs it")
+	assert_eq(int(ready["amount"]), 70)
 
 
 func test_a_booking_lapses_on_its_day_with_the_deposit() -> void:
@@ -156,7 +204,7 @@ func test_a_close_plans_each_inactive_site() -> void:
 		"category": Ledger.AWAY_SITE_INCOME, "note": AwaySites.INCOME_NOTE}]))
 	assert_eq(AwaySites.report_line("Pier Shack", plans[0]), "Pier Shack (managed): +$70")
 	assert_eq(plans[1]["status"], AwaySites.CLOSED)
-	assert_false(bool(plans[1]["rent_known"]), "no rent source for this lot yet")
+	assert_false(bool(plans[1]["rent_known"]), "no lot data passed: no rent source")
 	var refund: int = int(plans[1]["refund"])
 	assert_true(refund > 0)
 	assert_eq(JSON.stringify(plans[1]["movements"]), JSON.stringify([{"amount": -refund,
@@ -185,9 +233,30 @@ func test_an_unmanaged_home_site_pays_its_rent() -> void:
 	assert_eq(AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS)[0]["status"], AwaySites.CLOSED)
 	assert_true(book.set_manager(SiteBook.HOME_ID, &"boss"))
 	var managed: Dictionary = AwaySites.plan_close(book, 3, 40, TUNING, BOOKINGS)[0]
-	assert_eq(managed["status"], AwaySites.MANAGED)
-	assert_eq(int(managed["amount"]), 0, "no history: nothing earned, and no rent")
-	assert_true((managed["movements"] as Array).is_empty())
+	assert_eq(managed["status"], AwaySites.CLOSED, "no history: nothing to go on, so it stays closed")
+	assert_eq(int(managed["amount"]), -40, "and pays its rent")
+	assert_eq(JSON.stringify(managed["movements"]), JSON.stringify([{"amount": -40,
+		"category": Ledger.AWAY_SITE_RENT, "note": AwaySites.RENT_NOTE}]))
+	assert_eq(AwaySites.report_line("Fool's Kitchen", managed),
+		"Fool's Kitchen (closed until you run it for a day): rent -$40")
+
+
+func test_a_managed_lot_needs_a_recorded_day_before_its_manager_runs_it() -> void:
+	var lots: Array[LotDef] = [_lot(&"pier_lot", 70, 95)]
+	var book: SiteBook = SiteBook.new()
+	var unrecorded: BusinessHistory = BusinessHistory.new()
+	for row: Dictionary in _rows([0], false):
+		unrecorded._days.append(row)
+	var sections: Dictionary = {"staff": _staff_with_manager(5),
+		"business_history": JSON.parse_string(JSON.stringify(unrecorded.capture()))}
+	assert_true(book.add_site(&"harbour", &"pier_lot", "Pier Shack", 3, sections))
+	assert_true(book.set_manager(&"harbour", &"boss"))
+	assert_eq(AwaySites.recorded_days(sections["business_history"]), 0)
+	var plan: Dictionary = AwaySites.plan_close(book, 4, 40, TUNING, BOOKINGS, lots)[0]
+	assert_eq(plan["status"], AwaySites.CLOSED, "only unrecorded days: still nothing to go on")
+	assert_eq(int(plan["amount"]), -70)
+	assert_true(bool(plan.get("no_history", false)))
+	assert_eq(AwaySites.recorded_days(_history([60, 80])), 2)
 
 
 func test_set_frozen_section_keeps_the_frozen_day() -> void:

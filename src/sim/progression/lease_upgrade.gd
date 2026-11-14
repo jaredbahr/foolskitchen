@@ -5,6 +5,9 @@ extends Resource
 
 ## No longer the offer's gate: the offer needs career Tier 2 (D30), which is
 ## reached at owner level 3 in career_tiers.tres. Kept until part 1 (#408).
+## The most an expansion adds on one side (LotDef.MAX_EXPANSION_CELLS too).
+const MAX_EXTRA_CELLS: int = 32
+
 @export var owner_level: int = 3
 @export var deposit: int = 300
 @export var daily_rent: int = 60
@@ -16,8 +19,8 @@ extends Resource
 func is_valid() -> bool:
 	return owner_level >= 3 and deposit > 0 and deposit <= 1000000 \
 		and daily_rent > 0 and daily_rent <= 1000000 \
-		and extra_west >= 0 and extra_west <= 32 and extra_east >= 0 and extra_east <= 32 \
-		and extra_north >= 0 and extra_north <= 32 and extra_west + extra_east + extra_north > 0
+		and extra_west >= 0 and extra_west <= MAX_EXTRA_CELLS and extra_east >= 0 and extra_east <= MAX_EXTRA_CELLS \
+		and extra_north >= 0 and extra_north <= MAX_EXTRA_CELLS and extra_west + extra_east + extra_north > 0
 
 
 ## Always derive from the original template, never from a previously grown lot.

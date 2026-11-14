@@ -3020,7 +3020,7 @@ There is no new save point or SaveSystem migration.
 - **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
 - **Dining-room ambience** (#366): the room tone, the chatter layers and the table clinks play on the **Ambience** bus (`default_bus_layout.tres`; Settings' Ambience slider, saved as the optional `ambience_volume` key, so older settings files load at 100%). Every level is in `data/audio/ambience.tres` (`AmbienceTuning`): loops and their gains (`room_tone`, `chatter_light/busy/packed`), `room_tone_full_guests`, the crowd size each chatter layer peaks at, the chatter fade and jukebox duck, and one `ClinkSet` per clink kind (at least 4 variants, gain, minimum interval). `SoundDirector` plays `plate` or `glass` on `OrderBook.order_delivered` (the recipe's `is_drink()`), `dish_stack` on a completed `bus_table` task, `sink` when `Kitchen.plates_changed` shows a plate washed (dirty down, clean up) and `cutlery` from a random eating guest at `AmbienceMix.cutlery_rate` (per eater, capped), with exponential gaps. Clinks fire only while open, running (speed above 0) and not `display_only`. `Sfx.play_clink` picks the variant and a pitch within `pitch_spread` (5%) from its own seeded generator (`CLINK_SEED`), never the sim's, throttles each kind, reports `clink_played` headless and plays through `AudioStreamPlayer3D`s at the table with attenuation off, so the camera's listener pans them. Chatter: `AmbienceMix.chatter_levels(crowd, anchors)` crossfades the layers that have a file at equal power by the guests not leaving, fades at `chatter_fade_seconds`, and ducks under a playing jukebox. The chatter loops (`assets/commons/audio/chatter_*.ogg`, 30 s, made from a public-domain recording; see `SOURCE.txt`) sit at -24 dB so the murmur is barely audible (Jared: a few percent of full volume). A null loop keeps its level and plays nothing, and a layer with no file drops out of the crossfade (its neighbours cover it). Adding the files is a `.tres` edit.
-- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one looping player per track on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to track: `title` is Kitchen Jamboree, `service_day` Buoyant Swing Groove, `service_evening` Smoky Vamp, `evening_report` Stir It Slow (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning and closed with no report open have none. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light, report_open)` sets the evening report context while the report is open (Main passes `_report.visible` every frame), otherwise the service context from the phase and the shop light (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
+- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one player per track (looping, except a playlist track, which plays once via `Sfx.music_stream_for` so it can end and hand over) on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to its tracks in play order: `title` is Stir It Slow, `service_day` is Buoyant Swing Groove then Kitchen Jamboree, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning and closed with no report open have none. A one-track context loops; a context with several (day service) plays each once and `Sfx` advances to the next when one finishes (`advance_music`, wrapping round, no RNG; entering a context always starts at its first track), crossfading like a context change. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light, report_open)` sets the service context from the phase and the shop light (the evening report has no song: while it is open, Main passes `_report.visible` every frame and `service_context` counts the shop as still serving, so the day or evening service track carries on under it) (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
 
 ### Supplier haggle (FK-136, #327)
 
@@ -3652,7 +3652,8 @@ implicit home lot and is never listed. `_base_for_saved_shop` gains a lookup
 by lot id.
 Built (#405, part 2, browse only): `LotDef` (`src/sim/content/lot_def.gd`)
 has the fields above plus `expansion_price` and `expanded_daily_rent` (every
-lot can expand, Jared 2026-11-13; nothing charges them yet, that is #465).
+lot can expand, Jared 2026-11-13; charged since #465, see "Lot rent and
+expansion").
 `ContentDB.validate_lots` refuses a missing or unbuildable-looking layout
 (no floor, uneven rows, no street entry, an unknown starting item), anything
 but exactly one way to pay (a price, or a fixer price with a renovation bill
@@ -3674,8 +3675,7 @@ foodies" from half the mix, else the top two). The Menu's header has a
 Property button from Tier 3 (`MenuPanel.set_property_available`, set by
 `set_menu_visible`); it opens `PropertyPanel` (`main.gd`
 `set_property_visible`, a morning view like Goals that closes back to the
-Menu and is dismissed wherever Goals is). `AwaySites.lot_rent` still charges
-nothing for a non-home lot (#465).
+Menu and is dismissed wherever Goals is).
 Capture: `tools/screenshot.sh --property-review --speed=0 --frames=12` (Tier 3
 with $9,000 on the live owner: the fixer-upper's Buy button enabled).
 
@@ -3709,9 +3709,32 @@ offered at once (`offer_new_site`, Jared 2026-11-13): the card asks "Work at
 your new place today?" (a fixer-upper: "Design it today?"); "Go there now" /
 "Design it now" calls `switch_site`, "Stay here today" returns to the market.
 It marks the morning's site choice as made, so the card does not follow.
-The lease upgrade is the home lot's only until #465 (`_lease_at_home`: no
-offer on the Menu, and `lease_refusal` reads "Only your first restaurant can
-expand its lease for now"), since a bought lot's rent would not change.
+
+**Lot rent and expansion (#465, Jared 2026-11-13).** A bought lot's site pays
+its `LotDef.daily_rent`, or `expanded_daily_rent` once its own
+`lease_expanded` is set, whether it is active (`_charge_closing_costs`, as
+`RENT`) or away and unmanaged (`AwaySites.plan_close`, as `AWAY_SITE_RENT`).
+`AwaySites.lot_rent(lot, home_rent, definition, expanded)` is the one rule:
+the home lot keeps `_home_rent()` exactly, any other lot reads its
+`LotDef.rent(expanded)`; only a lot missing from the data is still unknown
+(charged nothing, with a warning). Rent runs from the day a lot is bought:
+its first close is that day's, and a renovating site pays on every close
+(away, or active and closed with "Close for today"). A site with renovation
+days left is always closed for `plan_close`, even with a manager (it cannot
+open), and `_close_away_sites` plans before the renovation countdown so the
+last renovation day still counts as one.
+Every lot can expand once. `LotDef` has its own margins, `expansion_west`,
+`expansion_east` and `expansion_north` (0 to `MAX_EXPANSION_CELLS` = 32 each,
+at least one above 0; the street side never grows), checked by
+`validate_lots` with the expansion as a lease (`LotDef.lease_upgrade(home)`
+must be a valid `LeaseUpgrade`: its price is the deposit, its expanded rent
+the daily rent). Placeholders: the fixer-upper 0/4/3, the seaside cliff
+0/4/2, the rooftop 1/2/1 (west/east/north). `main.gd` `_lease_for(base)`
+picks the terms by the authored base layout (a lot's own, else the home
+`LEASE`), and the offer, its refusal, `lease_buy`, `_lease_layout`, the shop
+restore and the scenery reserve all read it, so the Menu offers "Deposit
+$4,000 · Daily rent $95" at the fixer-upper and the purchase grows that
+lot's own `base_layout`. Home is unchanged.
 
 **Unstaffed sites (#464).** `StaffRoster.from_dict` and
 `RestaurantSim.set_staff_roster` accept a roster without a cook or a server
@@ -3870,10 +3893,13 @@ site's report, history, records and XP never see it:
   formula is applied as written, and min() takes the whole mean, since a
   manager never does better than the owner did (and the mean already
   includes the wages and rent that would otherwise make the loss).
-- **No valid manager**: rent only, as `AWAY_SITE_RENT`. `AwaySites.lot_rent`
-  knows the home lot (today's rule: the lease rent when `property_tier` is 2,
-  else `daily_rent`); any other lot is unknown until `LotDef.daily_rent`
-  (#405) and is charged nothing, with a warning.
+- **No valid manager** (or still renovating, or a manager with no recorded
+  day to go on yet: away days never build history, so such a site would
+  otherwise never pay; its line reads "Pier Shack (closed: your manager
+  needs a day you ran there first): rent -$70", #465): rent only, as
+  `AWAY_SITE_RENT`. `AwaySites.lot_rent` gives the home lot's lease rule and
+  any other lot's own rent, expanded or not (#465, "Lot rent and
+  expansion").
 - **Bookings**: an accepted booking whose service day is today or earlier
   lapses, managed or not: `BOOKING_REFUND` of the deposit to that site, and
   its frozen `bookings` section is rewritten in place

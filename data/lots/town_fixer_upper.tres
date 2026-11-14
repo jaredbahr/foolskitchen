@@ -15,6 +15,9 @@ renovation_days = 3
 daily_rent = 70
 expansion_price = 4000
 expanded_daily_rent = 95
+expansion_west = 0
+expansion_east = 4
+expansion_north = 3
 min_tier = 3
 guest_mix = Dictionary[StringName, float]({
 &"regular": 0.4,

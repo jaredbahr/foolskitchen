@@ -358,6 +358,13 @@ static func validate_lots(definitions: Array[LotDef], item_defs: Array[ItemDef],
 			errors.append("%s: daily_rent must be > 0" % who)
 		if definition.expansion_price <= 0 or definition.expanded_daily_rent < definition.daily_rent:
 			errors.append("%s: every lot can expand: expansion_price > 0 and expanded_daily_rent >= daily_rent" % who)
+		var margins: Array[int] = [definition.expansion_west, definition.expansion_east, definition.expansion_north]
+		if margins.min() < 0 or margins.max() > LotDef.MAX_EXPANSION_CELLS \
+				or definition.expansion_west + definition.expansion_east + definition.expansion_north <= 0:
+			errors.append("%s: the expansion must add 0 to %d cells on each side, and some on one" \
+				% [who, LotDef.MAX_EXPANSION_CELLS])
+		elif not definition.lease_upgrade(null).is_valid():
+			errors.append("%s: the expansion is not a valid lease" % who)
 		if definition.min_tier < 1 or definition.min_tier > CareerTierTuning.TOP_TIER:
 			errors.append("%s: min_tier must be 1 to %d" % [who, CareerTierTuning.TOP_TIER])
 		if not is_finite(definition.min_reputation) or definition.min_reputation < 0.0 \

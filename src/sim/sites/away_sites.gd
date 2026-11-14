@@ -12,8 +12,14 @@ extends RefCounted
 ##   A negative mean is paid as a loss: the formula is applied as written, and
 ##   min() then takes the whole mean (a manager never does better than the
 ##   owner did in person, on a bad run as on a good one).
-## - A site without one stays closed and pays only its rent. A lot whose rent
-##   is unknown here (no LotDef yet, #405) is charged nothing, with a warning.
+## - A managed site with no recorded day yet has nothing to go on: it stays
+##   closed and pays its rent (away days never build history, so it would
+##   otherwise never pay any).
+## - A site without one stays closed and pays only its rent: its lot's
+##   `daily_rent`, or `expanded_daily_rent` once its own lease is expanded
+##   (#465). Rent runs from the day a lot is bought (Jared, 2026-11-13), so a
+##   site still renovating pays it too and cannot be managed (it cannot open).
+##   A lot missing from the game's data is charged nothing, with a warning.
 ## - An accepted group booking whose day has come lapses at this close with
 ##   its deposit refunded and no reputation change, managed or not.
 ## Away days are never written into a site's history.
@@ -55,6 +61,19 @@ static func earnings_from_section(history: Dictionary, skill: int, tuning: SiteM
 	return earnings(decoded.summaries(), skill, tuning)
 
 
+## How many days with a recorded dish profit a saved business_history
+## section holds (0 when it has none or does not decode).
+static func recorded_days(history: Dictionary) -> int:
+	var decoded: BusinessHistory = BusinessHistory.new()
+	if history.is_empty() or not decoded.restore(history):
+		return 0
+	var count: int = 0
+	for row: Dictionary in decoded.summaries():
+		if bool(row.get("dish_profit_recorded", false)):
+			count += 1
+	return count
+
+
 ## The service skill of `member_id` when that person is a Manager in the
 ## saved staff section, else 0 (no valid manager).
 static func manager_skill(staff: Dictionary, member_id: StringName) -> int:
@@ -69,13 +88,24 @@ static func manager_skill(staff: Dictionary, member_id: StringName) -> int:
 	return 0
 
 
-## A closed site's daily rent: the home lot pays `home_rent` (today's rent
-## rule, which the caller reads from the home lease). Other lots have no
-## rent source yet (LotDef.daily_rent, #405): UNKNOWN_RENT.
-static func lot_rent(lot: StringName, home_rent: int) -> int:
+## A site's daily rent, active or away: the home lot pays `home_rent` (the
+## home lease's rule, which the caller reads); any other lot pays its
+## LotDef's rent, expanded or not (#465). UNKNOWN_RENT when `definition` is
+## not that lot (a lot missing from the data).
+static func lot_rent(lot: StringName, home_rent: int, definition: LotDef = null,
+		expanded: bool = false) -> int:
 	if lot == SiteBook.HOME_LOT:
 		return maxi(0, home_rent)
-	return UNKNOWN_RENT
+	if definition == null or definition.id != lot:
+		return UNKNOWN_RENT
+	return maxi(0, definition.rent(expanded))
+
+
+## Whether a saved `shop` section's lease is expanded (FK-087: the lease is
+## the site's own, `lease_expanded`). A missing or odd value reads as not.
+static func shop_lease_expanded(sections: Dictionary) -> bool:
+	var shop: Variant = sections.get("shop", {})
+	return shop is Dictionary and (shop as Dictionary).get("lease_expanded", false) == true
 
 
 ## Lapses an accepted booking due on or before `day` in a saved bookings
@@ -100,8 +130,11 @@ static func lapse_booking(section: Dictionary, day: int, tuning: BookingTuning) 
 ## "refund": int (a lapsed booking's deposit, else 0), "bookings": Dictionary
 ## (the rewritten section; only when a booking lapsed), "movements":
 ## Array[Dictionary] of {"amount", "category", "note"} for Economy}.
+## `lots` are the game's lot definitions, for each bought lot's rent. A site
+## with renovation days left is closed whatever its manager: call this before
+## the close's countdown, so the last renovation day is still one.
 static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteManagerTuning,
-		booking_tuning: BookingTuning) -> Array[Dictionary]:
+		booking_tuning: BookingTuning, lots: Array[LotDef] = []) -> Array[Dictionary]:
 	var plans: Array[Dictionary] = []
 	if book == null:
 		return plans
@@ -113,17 +146,23 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 			"refund": 0, "movements": [] as Array[Dictionary]}
 		var movements: Array[Dictionary] = plan["movements"]
 		var staff: Dictionary = sections.get("staff", {}) if sections.get("staff") is Dictionary else {}
-		var skill: int = manager_skill(staff, book.manager(id))
+		var skill: int = manager_skill(staff, book.manager(id)) \
+			if book.renovation_days_left(id) == 0 else 0
+		var history: Dictionary = sections.get("business_history", {}) \
+			if sections.get("business_history") is Dictionary else {}
+		if skill > 0 and recorded_days(history) == 0:
+			# Nothing to go on: the manager keeps it closed, and it pays rent.
+			plan["no_history"] = true
+			skill = 0
 		if skill > 0:
 			plan["status"] = MANAGED
-			var history: Dictionary = sections.get("business_history", {}) \
-				if sections.get("business_history") is Dictionary else {}
 			var earned: int = earnings_from_section(history, skill, tuning)
 			plan["amount"] = earned
 			if earned != 0:
 				movements.append({"amount": earned, "category": Ledger.AWAY_SITE_INCOME, "note": INCOME_NOTE})
 		else:
-			var rent: int = lot_rent(book.lot_id(id), home_rent)
+			var lot: StringName = book.lot_id(id)
+			var rent: int = lot_rent(lot, home_rent, _find_lot(lots, lot), shop_lease_expanded(sections))
 			if rent == UNKNOWN_RENT:
 				plan["rent_known"] = false
 			else:
@@ -140,6 +179,13 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 						"note": SiteThaw.REFUND_NOTE})
 		plans.append(plan)
 	return plans
+
+
+static func _find_lot(lots: Array[LotDef], id: StringName) -> LotDef:
+	for lot: LotDef in lots:
+		if lot != null and lot.id == id:
+			return lot
+	return null
 
 
 ## The site's name for player text: its own name, else the restaurant name
@@ -166,7 +212,9 @@ static func report_line(name: String, plan: Dictionary) -> String:
 	elif not bool(plan.get("rent_known", true)):
 		line = "%s (closed): no rent charged" % name
 	else:
-		line = "%s (closed): rent %s" % [name, _signed_money(amount) if amount != 0 else "$0"]
+		var closed: String = "closed until you run it for a day" \
+			if bool(plan.get("no_history", false)) else "closed"
+		line = "%s (%s): rent %s" % [name, closed, _signed_money(amount) if amount != 0 else "$0"]
 	var refund: int = int(plan.get("refund", 0))
 	if refund > 0:
 		line += "; a group booking there was refunded (%s)" % _signed_money(-refund)
