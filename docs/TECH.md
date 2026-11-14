@@ -2016,11 +2016,12 @@ is added. Regular compatibility fixtures retain the pre-type methods from main
 before/after balance probe.
 
 **Group seating (FK-066):** the same catalogue authors Family parties of 2-4
-and Regular, Student and Foodie parties of 1-2. Each type's
-`party_unlock_level` (data) sets the owner level from which it may arrive as
-a group: 5 for Regular, Student and Foodie, 1 for Family (whose own unlock is
-level 4). Below it the type is a single guest that draws exactly what main's
-single guest draws: no size draw and one private seed. Frozen single-guest
+and Regular, Student and Foodie parties of 1-2. The optional
+`pair_unlock_level` opens that 1-2 range at owner level 2 as each type starts
+visiting. `party_unlock_level` still gates growth beyond pairs at level 5 for
+those types. Families arrive in groups when their type unlocks at level 4.
+Below a type's opening group level, a single guest draws no party size and
+uses one private seed. Frozen single-guest
 integration comparisons share the current traffic and world implementation.
 Fixed-size ranges consume no size draw either. An unlocked type draws one
 ranged party size, then clamps it to the largest currently usable dining group
@@ -3264,9 +3265,9 @@ cast, authored by `data/regulars/cast.tres`. Solo arrivals of the existing Regul
 type belong to sixteen anonymous, deterministic repeat cohorts (their daily
 arrival order, cycling without a random draw). Satisfied visits on distinct days
 teach the most-enjoyed dish and most-used seat; ties keep the first favourite.
-Promotion requires two satisfied visits, at least 2.5 stars, positive vibe (1),
-and **day 6 or later**. The five-day balance probe therefore has no promotions,
-new regular-stream draws, tips, or changed guest choices. The cast keeps at most
+Promotion requires two satisfied visits, at least 2.5 stars, a vibe score of
+0.5 or higher, and **day 4 or later**. This lets a promoted guest make a
+scheduled return during the first week. The cast keeps at most
 eight lifetime identities, including those who stop coming; departed names are
 retained in the saved history and never silently reassigned.
 
