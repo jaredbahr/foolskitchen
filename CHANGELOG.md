@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Keep large cash balances on one HUD row and show the full amount on hover. (#521)
+- Keep large cash balances on one HUD row and show the full amount on hover. (#522)
 - Weekly challenges now use your shop’s recent service results. Serving targets fit your seating, and shops still turning guests away at the door get other goals to work toward. (#509)
 - Guests who leave before getting a table no longer leave a review. Their walkouts still appear in the evening report. (#508)
 - Service events: one or two small choice cards now pop up during every service day, from day 1. A busker by the door, a spilled drink, a food blogger who wants to skip the queue, a van selling suspiciously cheap stock and more. The game pauses until you pick (click a choice or press 1, 2 or 3), and each choice shows what it will do. A choice you can't afford, or whose stock won't fit or isn't on your shelves, is greyed out with the reason, and there is always a free choice. The effects are small: a few dollars, a review, a little more or less patience, a stock bargain that may be a bad batch. Each card and your choice go in the evening report. You can turn them off in Settings ("Service events"). (#505)
