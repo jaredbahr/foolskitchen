@@ -914,6 +914,12 @@ static func prepare_milestone_review(main: Node, context_root: Node) -> Dictiona
 			or not main.has_method("set_menu_visible") or not main.has_method("is_goals_visible"):
 		fixture["error"] = "milestone review requires fresh paused unsaved Main at day-one morning"
 		return fixture
+	# This capture reviews the career goals' layout. The opening-week card
+	# (#494) leads Goals during a real first week and pushes them down, so the
+	# fixture retires the chain first; nothing it pays happens in this capture.
+	if "opening_week" in main:
+		main.set("opening_week", OpeningWeek.ended())
+		main.call("_refresh_opening_tracker")
 	if not main.call("set_menu_visible", true) or not menu.visible:
 		fixture["error"] = "milestone review could not open the native morning Menu"
 		return fixture
