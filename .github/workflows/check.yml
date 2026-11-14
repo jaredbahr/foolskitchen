@@ -34,6 +34,10 @@ jobs:
         run: bash tools/get_godot.sh
 
       - name: Import, parse and test
+        # Hosted runners have 4 vCPUs; four test shards keep the suite well
+        # inside the job limit (#529). Local runs keep check.sh's default of 2.
+        env:
+          TEST_SHARDS: 4
         run: bash tools/check.sh
 
   changelog:
