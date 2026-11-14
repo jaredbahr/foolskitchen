@@ -572,9 +572,9 @@ func _raise_level(main: Node, level: int) -> void:
 	main.call("_refresh_menu_catalogue")
 
 
-## As test_lease_session: owner level 3, career Tier 2 and the deposit.
+## As test_lease_session: the authored level for career Tier 2 and the deposit.
 func _eligible_for_lease(main: Node) -> void:
-	_raise_level(main, LEASE.owner_level)
+	_raise_level(main, CAREER.rung_for(2).min_level)
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	assert_eq(progress.raise_career_tier(CAREER, 3.0), 2)
 	(main.get("shop_editor") as ShopEditor).set_career_tier(progress.career_tier)
