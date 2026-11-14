@@ -587,6 +587,8 @@ func _bind_world_presentation() -> void:
 		_staff_panel.raise_decline_requested.connect(_on_staff_raise_decline_requested)
 	if not _staff_panel.job_priority_requested.is_connected(_on_staff_job_priority_requested):
 		_staff_panel.job_priority_requested.connect(_on_staff_job_priority_requested)
+	if not _staff_panel.transfer_requested.is_connected(_on_staff_transfer_requested):
+		_staff_panel.transfer_requested.connect(_on_staff_transfer_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
 		$HUD.connect(&"staff_pressed", toggle_staff)
 	_stock_panel = $Overlay/StockPanel
@@ -3415,6 +3417,7 @@ func switch_site(target: StringName) -> bool:
 		return false
 	# Record the swap while it can still be undone: pure bookkeeping, and
 	# can_swap was checked, so it is not expected to refuse.
+	var leaving: StringName = site_book.active_id
 	if not site_book.swap_active(target, day, departing):
 		SaveSystem.restore_sections(departing, SiteSections.PER_SITE)
 		_clear_site_staging()
@@ -3422,6 +3425,9 @@ func switch_site(target: StringName) -> bool:
 		_log_switch_refusal(target, "the site list could not record it")
 		return false
 	# From here the switch cannot be refused.
+	# A Manager hired at the site being left runs it while the owner is away
+	# (#473): its row takes the best Manager on its staff if it has no valid one.
+	_adopt_site_manager(leaving)
 	_disconnect_session()
 	Clock.attach_world(null)
 	# Notes kept from the departing site's morning belong to it and are saved
@@ -4381,6 +4387,94 @@ func _change_staff(id: StringName, hiring: bool) -> bool:
 	return true
 
 
+## Sends employee `id` to another of the owner's sites, this morning (FK-087
+## part 5, #473): they leave this roster and join `target`'s frozen staff
+## section as they are (StaffTransfer has the rules, including managers).
+## No fee, no severance, no RNG, no save: the next morning autosave (or a
+## switch's) writes both sites. They work there the next time it is active.
+func staff_transfer(id: StringName, target: StringName) -> bool:
+	if not can_edit_staff() or target == site_book.active_id or not site_book.is_frozen(target):
+		return false
+	var destination: StaffRoster = _frozen_roster(target)
+	var choices: StaffRoster = StaffRoster.new(TUNING)
+	if destination == null or not choices.from_dict(staff_roster.to_dict()):
+		return false
+	var moving: StaffMember = null
+	for member: StaffMember in choices.members():
+		if member.id == id:
+			moving = member
+	var arrived: StringName = StaffTransfer.move(choices, id, destination, _site_managed(target))
+	if arrived.is_empty() or not sim.set_staff_roster(choices.members()):
+		return false
+	# Checked above (a frozen site, a per-site key): this cannot refuse.
+	if not site_book.set_frozen_section(target, "staff", destination.to_dict()):
+		push_error("A staff transfer could not write the other site's team")
+	# A manager runs the site they move to (it had no running manager).
+	if moving.role == StaffMember.MANAGER and not site_book.set_manager(target, arrived):
+		push_error("A transferred manager could not be made the site's manager")
+	staff_roster = choices
+	_prune_site_manager()
+	_staff_panel.bind_roster(staff_roster)
+	_refresh_staff_transfer_sites()
+	_refresh_opening_block()
+	refresh_presentation()
+	return true
+
+
+## Why `id` cannot be sent to `target` right now, as StaffTransfer.Refusal;
+## NONE when they can. Outside the morning, or for a site that is not one of
+## the owner's other sites, UNKNOWN.
+func staff_transfer_refusal(id: StringName, target: StringName) -> StaffTransfer.Refusal:
+	if not can_edit_staff() or target == site_book.active_id or not site_book.is_frozen(target):
+		return StaffTransfer.Refusal.UNKNOWN
+	return StaffTransfer.refusal(staff_roster, id, _frozen_roster(target), _site_managed(target))
+
+
+## True when a frozen site's row names a Manager on its own staff, so it
+## runs while the owner is away (the same test as AwaySites.plan_close).
+func _site_managed(site: StringName) -> bool:
+	var staff: Variant = site_book.frozen_sections(site).get("staff", null)
+	return staff is Dictionary and AwaySites.manager_skill(staff, site_book.manager(site)) > 0
+
+
+## A frozen site's roster as it would load: its saved staff section, or the
+## starter team a load gives a copy saved without one. null if it is unreadable.
+func _frozen_roster(site: StringName) -> StaffRoster:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var staff: Variant = site_book.frozen_sections(site).get("staff", null)
+	if staff is Dictionary and not roster.from_dict(staff):
+		return null
+	return roster
+
+
+## The owner's other sites, for the Staff panel's "Send to…" list.
+func _refresh_staff_transfer_sites() -> void:
+	if _staff_panel == null:
+		return
+	var sites: Array[StaffPanel.TransferSite] = []
+	for site: StringName in site_book.site_ids():
+		if site == site_book.active_id:
+			continue
+		var roster: StaffRoster = _frozen_roster(site)
+		if roster == null:
+			continue
+		var entry: StaffPanel.TransferSite = StaffPanel.TransferSite.new()
+		entry.id = site
+		entry.name = AwaySites.display_name(site_book, site)
+		entry.roster = roster
+		entry.managed = _site_managed(site)
+		sites.append(entry)
+	_staff_panel.set_transfer_sites(sites)
+
+
+func _on_staff_transfer_requested(id: StringName, target: StringName) -> void:
+	if not staff_transfer(id, target) and world != null:
+		var reason: String = StaffPanel.transfer_refusal_text(staff_transfer_refusal(id, target))
+		world.log_event("Could not send them to %s: %s" % [AwaySites.display_name(site_book, target),
+			reason.trim_suffix(".")])
+	_staff_panel.refresh()
+
+
 ## Managers are hired only from the manager tier (FK-087), and only once the
 ## owner has a second site for one to run; floor roles always.
 func _may_hire_role(role: StringName) -> bool:
@@ -4422,6 +4516,8 @@ func set_staff_visible(value: bool) -> bool:
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	_staff_panel.set_trays(tray_level, TUNING.tray_prices, Economy.spendable(), _loan_upgrade_refusal())
+	if value:
+		_refresh_staff_transfer_sites()
 	_staff_panel.visible = value
 	if not value and Clock.sim.phase == SimClock.Phase.CLOSED and shown_report != null:
 		_show_evening_report(build_report(Clock.sim.day))
@@ -5748,6 +5844,7 @@ func _begin_morning() -> void:
 	staff_roster = choices
 	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
+	_refresh_staff_transfer_sites()
 	# Retain yesterday's detached report while today's live counters reset.
 	_staff_panel.set_team_activity(_last_team_activity)
 	if _staff_notice_day != Clock.sim.day:
@@ -6716,6 +6813,18 @@ func _is_roster_manager(member_id: StringName) -> bool:
 		if member.id == member_id:
 			return member.role == StaffMember.MANAGER
 	return false
+
+
+## A frozen site whose row names no valid manager takes the best Manager on
+## its own staff (AwaySites.best_manager: highest skill, then smallest id).
+## Called for the site the owner leaves (switch_site, FK-087, #473).
+func _adopt_site_manager(site: StringName) -> void:
+	var staff: Variant = site_book.frozen_sections(site).get("staff", null)
+	if not staff is Dictionary or _site_managed(site):
+		return
+	var best: StringName = AwaySites.best_manager(staff)
+	if not best.is_empty() and not site_book.set_manager(site, best):
+		push_error("The site's manager could not be recorded")
 
 
 ## Clears the active site's manager once that person has left the roster.
