@@ -36,10 +36,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
+theme_override_constants/separation = 6
 
 [node name="Header" type="HBoxContainer" parent="Panel/Content"]
 layout_mode = 2
 mouse_filter = 2
+theme_override_constants/separation = 10
 
 [node name="Title" type="Label" parent="Panel/Content/Header"]
 layout_mode = 2
@@ -116,9 +118,11 @@ tooltip_text = "Close the menu (Esc)"
 [node name="Identity" type="VBoxContainer" parent="Panel/Content"]
 layout_mode = 2
 mouse_filter = 2
+theme_override_constants/separation = 4
 
 [node name="NameRow" type="HBoxContainer" parent="Panel/Content/Identity"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="RestaurantName" type="LineEdit" parent="Panel/Content/Identity/NameRow"]
 unique_name_in_owner = true
@@ -139,9 +143,16 @@ layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="WeatherForecast" type="Label" parent="Panel/Content"]
+[node name="Hints" type="HBoxContainer" parent="Panel/Content/Identity"]
 layout_mode = 2
 mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="WeatherForecast" type="Label" parent="Panel/Content/Identity/Hints"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
 text = "Sunny today"
 
 [node name="BookingOffer" type="VBoxContainer" parent="Panel/Content"]
@@ -209,17 +220,16 @@ autowrap_mode = 3
 layout_mode = 2
 text = "Adopt a cat"
 
-[node name="Body" type="HBoxContainer" parent="Panel/Content"]
+[node name="Body" type="VBoxContainer" parent="Panel/Content"]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
-theme_override_constants/separation = 20
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/Content/Body"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.15
+size_flags_vertical = 3
 clip_contents = true
 mouse_filter = 0
 mouse_force_pass_scroll_events = false
@@ -236,49 +246,39 @@ theme_override_constants/margin_top = 0
 theme_override_constants/margin_right = 14
 theme_override_constants/margin_bottom = 0
 
-[node name="List" type="VBoxContainer" parent="Panel/Content/Body/Scroll/Pad"]
+[node name="Columns" type="HBoxContainer" parent="Panel/Content/Body/Scroll/Pad"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 20
+
+[node name="List" type="VBoxContainer" parent="Panel/Content/Body/Scroll/Pad/Columns"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="MenuCount" type="Label" parent="Panel/Content/Body/Scroll/Pad/List"]
+[node name="MenuCount" type="Label" parent="Panel/Content/Body/Scroll/Pad/Columns/List"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 text = "0 / 6 dishes on the menu"
 
-[node name="Empty" type="Label" parent="Panel/Content/Body/Scroll/Pad/List"]
+[node name="Empty" type="Label" parent="Panel/Content/Body/Scroll/Pad/Columns/List"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 text = "No cookable dishes are available."
 
-[node name="DetailScroll" type="ScrollContainer" parent="Panel/Content/Body"]
+[node name="Detail" type="VBoxContainer" parent="Panel/Content/Body/Scroll/Pad/Columns"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-clip_contents = true
-mouse_filter = 0
-mouse_force_pass_scroll_events = false
-focus_mode = 2
-horizontal_scroll_mode = 0
-vertical_scroll_mode = 1
-
-[node name="Pad" type="MarginContainer" parent="Panel/Content/Body/DetailScroll"]
-layout_mode = 2
-size_flags_horizontal = 3
-mouse_filter = 2
-theme_override_constants/margin_left = 0
-theme_override_constants/margin_top = 0
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 0
-
-[node name="Detail" type="VBoxContainer" parent="Panel/Content/Body/DetailScroll/Pad"]
-layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 0
 mouse_filter = 2
 
-[node name="Rows" type="VBoxContainer" parent="Panel/Content/Body/DetailScroll/Pad/Detail"]
+[node name="Rows" type="VBoxContainer" parent="Panel/Content/Body/Scroll/Pad/Columns/Detail"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2

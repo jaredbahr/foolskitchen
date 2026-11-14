@@ -56,8 +56,8 @@ an active edit/panel/selection first, or opens Settings when none is active.
 
 **Panel scrolling (#497):** every panel (Menu, Staff, Stock, Goals, Property,
 the evening report, Settings, the Build catalogue) attaches `PanelScroll`
-(`src/ui/panel_scroll.gd`) with its card, its one main scroll area and any
-extra area (Menu's dish detail). A wheel notch is always `WHEEL_STEP` (110 px);
+(`src/ui/panel_scroll.gd`) with its card and its main scroll area. The Menu scrolls the dish list
+and detail together. A wheel notch is always `WHEEL_STEP` (110 px);
 a wheel anywhere over the card scrolls the area under it, else the main one;
 the helper takes the wheel from each control's `gui_input` before the control
 sees it, so sliders and choices never change while scrolling. PgUp/PgDn/
@@ -2226,7 +2226,7 @@ parented under `NeighbourhoodDressing/Ground`, outside `Static` because it
 deliberately lies under the whole lot. Placement comes from an integer hash of each
 position (no RNG), colours from the existing swatches, and it is rebuilt only when
 the street frame or lot changes. Every colour and planting knob lives in a `GroundSkin`
-resource (`NeighbourhoodDressing.ground_skin`, default `GroundSkin.standard()`), so a
+resource (`NeighbourhoodDressing.ground_skin`, null = `GroundSkin.standard()`), so a
 future site's neighbourhood and cuisine can re-skin the ground and tree line without
 touching the geometry or the camera edge. The road, pavement and kerbs run on to the tree
 line (actors keep their original span), and a low kerb step edges the pavement
@@ -2320,6 +2320,20 @@ applied from `_apply_time` so it stops with the dressing's processing. Hanging s
 stay outside the lot and every building and hop under 0.15 m. The whole addition is 15 draw calls and about
 2,200 triangles; `tests/world/test_neighbourhood_props.gd` bounds both and checks the clear zones across
 salts, lot sizes and the four rotations.
+
+Street presets (#425): a `StreetPreset` (`src/world/street_preset.gd`) is one street's whole recipe, data in
+`data/streets/<id>.tres`: an `id`, a `ground` (`GroundSkin`) and `buildings` (`StreetSet`: building set,
+palette, furniture and small life). The starter street is `data/streets/starter.tres`, generated from the
+former hard-coded `standard()` builders, which now return a deep copy of it (pixel-identical captures).
+`LotDef.street_preset` is the path of the lot's preset (empty = the starter street; `ContentDB.validate_lots`
+refuses a missing file). The home lot has no `LotDef` and uses the starter street. Main sets
+`ShopView.street_preset = StreetPreset.for_site(site_book, content)` before every `show_world`, so a site
+switch rebuilds the street; `ShopView` hands it to the new dressing through `NeighbourhoodDressing.use_preset`,
+which sets `ground_skin` and `street_set`. A missing or invalid preset (`StreetPreset.errors()`: a part or a
+hashed list is empty, an unknown roof or fence) falls back to the starter street. Nothing is saved: the street
+follows from the active site's lot. `tests/world/test_street_presets.gd` checks every preset and lot, and
+builds a test-only second street (`tests/fixtures/streets/test_alt.tres`) to show that data alone changes the
+building set, palette, props and ground, both directly and after a site switch.
 
 The camera still frames only the shop with its original defaults and expansion
 glides. Main adds a three-metre extension to only the street-facing pan clamp;
@@ -2615,11 +2629,13 @@ invalidate the appropriate cached geometry. HUD/Menu presentation is read-only.
 - Review capture: `tools/critic_review.tscn` (`food-critic` in `visual-review.yml`).
 
 ### Service events (#495)
-- **Data.** One `ServiceEventDef` per card in `data/events/*.tres` (id, title, text, icon role, min level and tier, `requires` from `staff`, `regulars`, `rain`, `ingredient`, cooldown days, weight, 2-3 `ServiceEventChoice` sub-resources). A choice is a flat set of small effects (`cash`, `review_stars`, `guest_patience_seconds`, `day_patience_percent`, `day_arrivals_percent`, `tomorrow_arrivals_percent`, `stock_units` at `stock_price_percent`, `staff_mood`, `clean_spots`) plus an optional seeded risk (`risk_percent`, `risk_result`, `risk_review_stars`, `risk_cash`, `risk_stock_lost_percent`, below 100). `errors()` bounds every value (cash within $60, nudges within 20%, stock within 30 units), needs one `is_free()` choice per card (no cash, counting a costly risk via `cash_needed()`, and no stock) and checks that `{staff}`, `{regular}` and `{ingredient}` in the text have their requirement. `ServiceEvents.load_definitions` lists the folder with `ResourceLoader.list_directory` (works in exports) and leaves out invalid cards with an error. Timing is `ServiceEventTuning` (`data/balance/service_events.tres`).
+- **Data.** One `ServiceEventDef` per card in `data/events/*.tres` (id, title, text, icon role, min level and tier, `requires` from `staff`, `spare_staff`, `regulars`, `rain`, `ingredient`, cooldown days, weight, 2-3 `ServiceEventChoice` sub-resources). A choice is a flat set of small effects (`cash`, `review_stars`, `guest_patience_seconds`, `day_patience_percent`, `day_arrivals_percent`, `tomorrow_arrivals_percent`, `stock_units` at `stock_price_percent`, `staff_mood`, `clean_spots`) plus an optional seeded risk (`risk_percent`, `risk_result`, `risk_review_stars`, `risk_cash`, `risk_stock_lost_percent`, below 100). `errors()` bounds every value (cash within $60, nudges within 20%, stock within 30 units), needs one `is_free()` choice per card (no cash, counting a costly risk via `cash_needed()`, and no stock) and checks that `{staff}`, `{regular}` and `{ingredient}` in the text have their requirement. `ServiceEvents.load_definitions` lists the folder with `ResourceLoader.list_directory` (works in exports) and leaves out invalid cards with an error. Timing is `ServiceEventTuning` (`data/balance/service_events.tres`).
 - **Sim.** `ServiceEvents` (`src/sim/events/service_events.gd`) holds the cooldowns (`last_shown`), today's `schedule`, the `pending` card, today's `answered` rows and a one-day arrivals `boost` (`boost_day`, `boost_percent`, `boost_site`: `pick(index, seed, site)` records the site, `arrival_factor(day, site)` reads it). `plan_day` runs once, as the doors open (Main's OPEN phase change), so the rush, an accepted booking and the critic's plan are known and kept clear. Every draw uses a fresh `RandomNumberGenerator` seeded with `hash("<master seed>:service_events:<day>:<salt>")` (`plan`, `<id>:names`, `<id>:risk:<choice>`): no named `GameState` stream is created or advanced, so no other system's draws change. `due(minute)` shows a card when the shop clock reaches it (its cooldown starts then); `pick(index)` resolves it; `end_service()` (closing) drops an unanswered card with no effect, which only happens when tools drive ticks with `run_ticks`.
 - **Session.** `Main._check_service_event` runs from the per-tick handler. `service_events_active()` needs `use_saves or service_events_for_tools`, a Career game and `Preferences.service_events_enabled` (Settings > "Service events", optional key `service_events`, default on). Like the guide, tools and tests without saves opt in, so every existing capture, fixture and the default balance probe are unchanged. Showing a card stores the speed, calls `Clock.set_speed(0)` and `HUD.set_event_card_active(true)` (the speed buttons wait); `_unhandled_input` swallows every key while it is up (also in its photo-mode branch), except that 1/2/3 (`ServiceEventCard.index_for_key`) pick an enabled choice; a card due while `PhotoMode.held` calls `leave()` first; `Clock._process` stops a frame's ticks on the tick that set speed 0, so the card pauses on its exact tick; and Menu, Goals, Settings, Staff and Stock refuse to open. `ServiceEventCard` (`src/ui/service_event_card.tscn`, in `Overlay`) shows the icon, title, text and one numbered button per choice with its `ServiceEventText.preview` (all player words). `Main.service_event_refusal(choice, entry)` is the one availability rule: `Economy.can_spend_without_loan(cash_needed + stock cost)`, `StorageSpace.free_units` of the ingredient's kind for a purchase, stock on hand for a use; a refused choice is a disabled button whose preview starts with the reason, `service_event_pick` refuses it before `ServiceEvents.pick` (nothing rolled, logged or spent) and `_apply_service_event` refuses it again. Tools' `service_event_auto_pick` falls back to the first allowed choice. `service_event_pick(index)` applies the effects in `_apply_service_event`: `Economy.add_cash` under `Ledger.SERVICE_EVENT` ("Service events" in the report, operating), `RestaurantSim.record_event_review` (the review window plus `reviews_today`, so the evening count and average match), `RestaurantSim.nudge_guest_patience` (`CustomerAgent.nudge_patience` keeps at least 10 s of the current wait), `RestaurantSim.event_patience_multiplier` / `event_arrival_factor` (reset by `start_day`; 1.0 leaves the exact old arithmetic), `ServiceEvents.arrival_factor(day, site)` multiplied into `event_arrival_factor` at the next opening at that site (`_apply_service_event_buzz`, with a Today log line; not a demand factor, so never shown as curb appeal), `Economy.buy_ingredient_lot` for the van (one batch whose `total_cost` is the cash paid, one ledger line; a bad batch keeps only the good units at the whole price and lists the rest in "Thrown out today"), `Stock.take_many_valued` for a use (its cost joins today's food cost), `StaffRoster.adjust_mood` (1-3) and `RestaurantSim.clean_all_spots`. It logs `Service event: <title>. <choice>. <result>` with `world.log_event` and puts the clock back. `DayReport.service_event_lines` (saved only when present) shows as a `ServiceEvents` label under the rush line in the evening report. `service_event_auto_pick` (tools only) answers each card at once.
-- **Save.** Global section `service_events` (`SiteSections.GLOBAL`: cooldowns follow the owner): `{version: 1, last_shown, day, schedule, boost_day, boost_percent, boost_site}`. Saves happen in the morning, after `begin_morning` has cleared yesterday's cards, so the schedule is empty and a card on screen is never saved. No section loads as an empty state; a malformed one refuses the load.
-- **Probe.** `bash tools/balance_probe.sh --setup service_events --seeds 1,2,3 --days 5` runs the starter shop with cards on, each answered with its first choice. Every other set-up passes `service_events_for_tools = false`.
+- **#506 effects.** `ServiceEventChoice.send_home` (needs the `spare_staff` requirement: `ServiceEvents.covered_staff(context)` keeps cleaners and anyone sharing a role, and `_entry` names only them), `tomorrow_days` (1-7; above 1 the nudge goes in `ServiceEvents.boosts` as `{from, to, percent, site, title}` instead of the one-day `boost_*` slot, which stays the food blogger's), and `follow_up` + `follow_up_days` (1-14) naming a `ServiceEventDef.follow_up_only` card (checked by `load_definitions`). `pick` queues a follow-up in `ServiceEvents.follow_ups` (`{id, day, site, names, staff_id, staff_role, ingredient_id}`, at most 8); `plan_day(..., site)` puts the first one due at that site in the day's first chosen minute (drawn cards keep their draws; with none due the draw is exactly as before) and `begin_morning` drops follow-ups 14 days overdue and spent boosts. `arrival_factor` multiplies every nudge for the day and clamps to `1 +/- MAX_ARRIVAL_SWING` (0.2); `next_day_factor` and `boosts_on` feed the Today log lines (`ServiceEventText.buzz_line`, `later_line`). A gamble is the existing seeded risk with a `risk_cash` (`preview` adds "or -$25 if it goes wrong").
+- **Send home.** `StaffAgent.send_home()` sets `going_home`: `tick` runs `_tick_going_home` instead of claiming work. A held task still at its first GO step with nothing carried (and not mid-edge) is dropped back to the board uncounted (`&"sent_home"`); any other task runs to completion (or to its own timeout/stuck drop). Then `_walk_home` paths to the nearest `grid.entries()` cell and sets `gone_home` there (or after `EXIT_GIVE_UP_TICKS` without progress). `RestaurantSim.advance` removes `gone_home` workers after `world.advance()` (all `going_home` ones once CLOSED) with `world.remove_agent` and records them in `sent_home_today` (cleared by `start_day`). `_can_fallback_clean`'s cleaner check and `_idle_server_can_clean` ignore a worker going home. `Main.can_send_home` (OPEN/LAST_ORDERS, on the floor, not leaving, a cleaner or another same-role worker still working) feeds `service_event_refusal` (`ServiceEventText.nobody_covers`); `_apply_service_event` calls `RestaurantSim.send_home`. `_charge_closing_costs` pays each `sent_home_today` member from the roster when they have no live agent. The next morning's `set_staff_roster` adds the missing worker back at their spawn, so nothing about it is saved: a reload goes back to that morning's save, where they are on the team.
+- **Save.** Global section `service_events` (`SiteSections.GLOBAL`: cooldowns follow the owner): `{version: 2, last_shown, day, schedule, boost_day, boost_percent, boost_site, boosts, follow_ups}`; version 1 saves (no `boosts`/`follow_ups`) load with none. Saves happen in the morning, after `begin_morning` has cleared yesterday's cards, so the schedule is empty and a card on screen is never saved. No section loads as an empty state; a malformed one refuses the load.
+- **Probe.** `bash tools/balance_probe.sh --setup service_events --seeds 1,2,3 --days 5` runs the starter shop with cards on, each answered with its first choice (its one cook and one server never get "Can I leave early?"). Every other set-up passes `service_events_for_tools = false`.
 - **Capture.** `SERVICE_EVENT_REVIEW_ID=busker bash tools/screenshot.sh --out=screens/service-event --scene=res://tools/service_event_review.tscn --frames=60 --speed=0` runs 900 ticks of real service, then brings the chosen card up through the session's own path.
 - Coverage: `tests/sim/test_service_events.gd`, `tests/world/test_service_events_session.gd`.
 
@@ -3205,26 +3221,49 @@ action. `use_saves = false` and title backdrops suppress guide presentation unle
 a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
 for the single first-morning capture in the existing visual-review job.
 
-### Opening week (#494)
+### Opening week (#494) and Week 2 (#514): goal chains
 
-`OpeningWeek` (`src/sim/progression/opening_week.gd`) is the pure chain state;
-`OpeningWeekSet` / `OpeningGoal` are the authored data in
-`data/balance/opening_week.tres`. Main reports observations through one
-`_observe_opening(condition, value)` and pays each newly met goal at once with
-`Ledger.OPENING_WEEK_BONUS` (non-operating; subtracted from the close's profit
-basis like booking advances). Hooks: `menu_set_price` (a real change),
-`_on_customer_paid` and owner assignment (drinks on the menu, served today,
-owner on the floor, only while open or in last orders), and opening: Grow
+`OpeningWeek` (`src/sim/progression/opening_week.gd`) is the pure state of the
+goal chains: the running chain's id, its start day, its completed goal ids,
+the status (ACTIVE, ENDED: over and the next starts at the next morning,
+FINISHED: none left) and pending XP. `GoalChainSequence`
+(`data/balance/goal_chains.tres`) lists the chains in order; each
+`OpeningWeekSet` (`opening_week.tres`, `week_two.tres`) has an id (saved; never
+rename), a title (card, tracker, paid lines), `days` (it runs that many days
+from its start) and ordered `OpeningGoal`s. Goals with their own parameter
+(`item_ids`, `station_type`, `role`, `leave_reasons`) are observed one goal at a
+time (`observe(..., goal_id)`). `_begin_morning` ends a finished or overdue
+chain, then `advance` starts the next whose window holds today: it starts today
+but never later than its natural window (`natural_start`: day 8 for Week 2), so
+an old save joins late with the days that remain, or skips it.
+
+Main reports observations through one `_observe_opening(condition, value,
+goal_id)` and pays each newly met goal at once with `Ledger.OPENING_WEEK_BONUS`
+(non-operating; subtracted from the close's profit basis like booking
+advances; "Week goals" in the report). Hooks: `menu_set_price` (a real change),
+`_on_customer_paid` and owner assignment (drinks and dishes from a station on
+the menu, served today, owner on the floor, only while open or in last orders;
+a paying guest of a seated party of 2+ for "Seat a group"), and opening: Grow
 together (TABLE-category items and hired servers both above the counts
-`_begin_morning` noted, same day and site), decor (DECOR items plus hung wall
-decor above the count at the last opening, same site) and drinks. Checking
-these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks today's guests served and five-star reviews,
-then adds the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
-in the report. The `opening_week` save section (version 1: status, completed
-ids, pending XP) joins only the morning autosave; a missing section means a
-save from before the chain, which joins only on day 7 or earlier.
-`_begin_morning` ends a finished or overdue chain before the autosave. Tests of
-other features that check exact books call `TestCase.retire_opening_week`.
+`_begin_morning` noted, same day and site), decor, bought floor cells
+(`ShopEditor.bought_floor()`) and the named tables above `_last_open_counts`
+(the counts at the last opening, or the session's first morning, same site),
+the lease (`lease_expanded`) and hired roles as they stand. Checking these at
+opening means a buy undone or sold before opening pays nothing. The career
+business-day close checks today's guests served, five-star reviews and the calm
+day (the rating rounded to one decimal, as the HUD shows it, zero if more than
+`max_turned_away` guests, here 0, left for a reason in `leave_reasons`, here
+`waited_too_long`), then adds the waiting
+XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp` in the report.
+
+The global `opening_week` save section is version 2: `chain`, `start_day`,
+`status` (active, ended, finished), completed ids and pending XP; it joins only
+the morning autosave. Version 1 (#494, the Opening week alone) decodes as the
+first chain from day 1, and the load's morning hands an ended one over to
+Week 2 inside its window. A missing section means a save from before the
+chains (`legacy_for_day`). An unknown chain id retires quietly. Creative games
+and tools use `OpeningWeek.ended()` (FINISHED). Tests of other features that
+check exact books call `TestCase.retire_opening_week`, which retires every chain.
 
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
@@ -3695,8 +3734,9 @@ offer needs `career_tier >= 2`, and lease size and rent read the site's own
 margins, which also bound its maximum footprint), `price` (move-in ready) or
 `fixer_price` plus `renovation_bill` and `renovation_days` (2 to 5),
 `daily_rent`, `min_tier`, `min_reputation` (0 = none), `guest_mix`
-(`Dictionary[StringName, float]` over existing customer types), `upstairs_allowed`
-and `tags: Array[StringName]` (`&"seaside"`, `&"rooftop"`). `ContentDB`
+(`Dictionary[StringName, float]` over existing customer types), `upstairs_allowed`,
+`tags: Array[StringName]` (`&"seaside"`, `&"rooftop"`) and `street_preset` (#425, see "Street
+presets"). `ContentDB`
 validates them like recipes; a bad lot fails the load. The starter shop is the
 implicit home lot and is never listed. `_base_for_saved_shop` gains a lookup
 by lot id.

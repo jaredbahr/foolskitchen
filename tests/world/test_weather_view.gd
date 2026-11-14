@@ -83,7 +83,7 @@ func test_hud_day_weather_group_and_morning_forecast_fit_both_windows_and_all_ui
 	var day: Label = hud.get_node("Top/Row/Day") as Label
 	var weather: Label = hud.get_node("Top/Row/Weather") as Label
 	var panel: MenuPanel = _main.get_node("Overlay/MenuPanel") as MenuPanel
-	var forecast: Label = panel.get_node("Panel/Content/WeatherForecast") as Label
+	var forecast: Label = panel.get_node("%WeatherForecast") as Label
 	for dimensions: Vector2i in [Vector2i(1600, 900), Vector2i(1280, 720)]:
 		_root_window.size = dimensions
 		for scale: float in [1.0, 1.25, 1.5]:

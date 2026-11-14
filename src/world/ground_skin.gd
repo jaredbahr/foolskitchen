@@ -2,8 +2,9 @@ class_name GroundSkin
 extends Resource
 ## The look of one street's ground and tree line (#421, #424): every colour and
 ## planting knob NeighbourhoodGround uses. A future site (a neighbourhood plus a
-## cuisine) supplies its own skin; the geometry and the camera edge never change.
-## `standard()` is the warm meadow the first street uses, from existing swatches.
+## cuisine) supplies its own skin in its StreetPreset (#425); the geometry and the
+## camera edge never change. The warm meadow the starter street uses is data in
+## data/streets/starter.tres; `standard()` returns a copy of it.
 
 @export var grass: Color = Color.WHITE
 @export var patch_light: Color = Color.WHITE
@@ -28,30 +29,7 @@ extends Resource
 
 
 static func standard() -> GroundSkin:
-	var moss: Color = (load("res://data/swatches/moss.tres") as SwatchDef).color
-	var sage: Color = (load("res://data/swatches/sage.tres") as SwatchDef).color
-	var butter: Color = (load("res://data/swatches/butter.tres") as SwatchDef).color
-	var cream: Color = (load("res://data/swatches/cream.tres") as SwatchDef).color
-	var clay: Color = (load("res://data/swatches/clay.tres") as SwatchDef).color
-	var rose: Color = (load("res://data/swatches/dusty_rose.tres") as SwatchDef).color
-	var terracotta: Color = (load("res://data/swatches/terracotta.tres") as SwatchDef).color
-	var honey: Color = (load("res://data/swatches/honey.tres") as SwatchDef).color
-	var skin: GroundSkin = GroundSkin.new()
-	# Sage and moss warmed with butter, then pushed toward a fresh meadow green:
-	# the scene's tone-mapping and soft light dim every swatch a good deal.
-	var mix: Color = sage.lerp(butter, 0.30).lerp(moss, 0.15)
-	skin.grass = Color.from_hsv(lerpf(mix.h, 0.235, 0.7), clampf(mix.s * 2.0, 0.0, 0.47), clampf(mix.v * 1.22, 0.0, 0.82))
-	skin.patch_light = skin.grass.lerp(butter, 0.22)
-	skin.patch_dark = skin.grass.lerp(moss, 0.4)
-	skin.lawn = skin.grass.lerp(cream, 0.10).lerp(butter, 0.08)
-	skin.forest = skin.grass.darkened(0.42)
-	skin.lane = clay.lerp(butter, 0.35).lerp(cream, 0.5)
-	skin.lane_edge = skin.lane.darkened(0.16)
-	skin.trunk = (load("res://data/swatches/walnut.tres") as SwatchDef).color
-	skin.leaf_dark = skin.grass.darkened(0.22).lerp(moss.darkened(0.1), 0.1)
-	skin.leaf_light = skin.grass.lightened(0.04)
-	skin.flowers = [butter, rose, cream, terracotta.lerp(rose, 0.3), honey]
-	return skin
+	return StreetPreset.starter().ground.duplicate_deep(Resource.DEEP_DUPLICATE_ALL) as GroundSkin
 
 
 ## A string that changes whenever any colour or knob does; used in cache keys.

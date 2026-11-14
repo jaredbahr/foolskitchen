@@ -8,7 +8,7 @@ static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
 		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter", "patio", "opening_week",
-		"service_events"]
+		"service_events", "week_two"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -64,6 +64,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return true
 		"opening_week":
 			return _opening_week(main)
+		"week_two":
+			return _opening_week(main)
 		"expanded_staffed":
 			# #85: grow the floor and hire for it, the player's "expand" move.
 			return _expand_with_tables(main) and _add_staff(main, &"cook", 3) and _add_staff(main, &"server", 3)
@@ -84,6 +86,8 @@ static func morning(name: String, main: Node) -> bool:
 			return _enable(main, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"])
 		"opening_week":
 			return _opening_week(main)
+		"week_two":
+			return _opening_week(main) and _week_two(main)
 	return true
 
 
@@ -117,6 +121,82 @@ static func _opening_week(main: Node) -> bool:
 			# No server applied this morning: the probe hires a skill-3 one.
 			return _add_staff(main, &"server", 3)
 	return true
+
+
+## #514: the opening_week player, who then follows the Week 2 goals through
+## real, paid commands each morning of Week 2, as cash allows, in order: take
+## the bigger lease once it is offered (owner level 3, the deposit, no loan);
+## lay a 2x3 floor wing east of the dining room; place a four-seat table on
+## the first spot the editor accepts with everything reachable (east first);
+## buy a fryer the same way and put fries on the menu; hire a cleaner (an
+## applicant, else a skill-3 one); accept any group booking on offer.
+static func _week_two(main: Node) -> bool:
+	var chains: GoalChainSequence = main.get("goal_chains") as GoalChainSequence
+	var state: OpeningWeek = main.get("opening_week") as OpeningWeek
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	if chains == null or state == null or editor == null or settings == null or sim == null:
+		return false
+	var chain: OpeningWeekSet = state.current(chains)
+	if not state.is_active() or chain == null or chain.id != &"week_two":
+		return true
+	var booking: GroupBooking = main.get("group_booking") as GroupBooking
+	if booking != null and not booking.offer.is_empty() and not booking.has_active_booking():
+		main.call("_on_booking_accept_requested")
+	if not main.get("lease_expanded"):
+		if not (main.call("lease_refusal") as String).is_empty() or not main.call("lease_buy"):
+			return true
+	if not main.has_meta(&"probe_week_two_floor"):
+		var building: Rect2i = editor.footprint().building
+		var front_y: int = building.end.y - 1
+		var wing: Array[Vector2i] = []
+		for y: int in range(front_y - 3, front_y):
+			for x: int in range(building.end.x, building.end.x + 2):
+				wing.append(Vector2i(x, y))
+		if not main.call("shop_floor", wing, true):
+			return true
+		main.set_meta(&"probe_week_two_floor", true)
+	if _count_items(sim.world.grid, &"table_4") == 0 and not _buy_first_fit(main, &"table_4"):
+		return true
+	if _count_items(sim.world.grid, &"fryer") == 0 and not _buy_first_fit(main, &"fryer"):
+		return true
+	if settings.recipe(&"fries") != null and not settings.is_enabled(&"fries"):
+		main.call("menu_set_enabled", &"fries", true)
+	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	for member: StaffMember in roster.members():
+		if member.role == &"cleaner":
+			return true
+	for member: StaffMember in roster.candidates():
+		if member.role == &"cleaner":
+			main.call("staff_hire", member.id)
+			return true
+	return _add_staff(main, &"cleaner", 3)
+
+
+static func _count_items(grid: SimGrid, id: StringName) -> int:
+	var count: int = 0
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.id == id:
+			count += 1
+	return count
+
+
+## Buys `id` through Main on the first cell (east first, then north first) and
+## turn the editor accepts with nothing left unreachable. False when nothing
+## fits or cash is short.
+static func _buy_first_fit(main: Node, id: StringName) -> bool:
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var cells: Array[Vector2i] = sim.world.grid.cells()
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x > b.x or (a.x == b.x and a.y < b.y))
+	for cell: Vector2i in cells:
+		for turns: int in 4:
+			var check: EditCheck = editor.check_buy(id, cell, turns)
+			if check.ok and check.unreachable.is_empty() and check.aisle_pinches.is_empty():
+				return main.call("shop_buy", id, cell, turns)
+	return false
 
 
 ## Demand comparison: the existing free expanded layout plus a reachable

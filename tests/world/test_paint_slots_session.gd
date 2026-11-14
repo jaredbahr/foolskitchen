@@ -103,7 +103,7 @@ func test_copy_look_button_copies_the_next_piece_clicked() -> void:
 
 
 func _title() -> String:
-	return (_catalogue().get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text
+	return (_catalogue().get_node("Panel/Margin/Rows/Toolbars/Title") as Label).text
 
 
 func _colour(id: StringName) -> Color:
