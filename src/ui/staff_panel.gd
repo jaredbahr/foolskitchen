@@ -21,11 +21,18 @@ const PRIORITY_CYCLE: Array[int] = [StaffJobPriorities.Level.HIGH, StaffJobPrior
 ## Jobs a role can't do sit flat on the panel: a faint outline and a faded dash.
 const LOCKED_BORDER_ALPHA: float = 0.35
 const LOCKED_TEXT_ALPHA: float = 0.45
-const SEND_TO: String = "Send to…"
+const ROLE_WIDTH: float = 78.0
+const SKILL_WIDTH: float = 98.0
+const MOOD_WIDTH: float = 50.0
+const WAGE_WIDTH: float = 86.0
+const ACTION_WIDTH: float = 88.0
+const TRANSFER_WIDTH: float = 116.0
+const ROW_SPACING: int = 6
+const SEND_TO: String = "Send toâ€¦"
 const SEND_TO_HINT: String = "Move this person to another of your restaurants. No fee; they keep their skills and pay."
 
 
-## One of the owner's other restaurants, for "Send to…" (main supplies them).
+## One of the owner's other restaurants, for "Send toâ€¦" (main supplies them).
 class TransferSite:
 	extends RefCounted
 	var id: StringName = &""
@@ -52,6 +59,7 @@ var _tray_prices: PackedInt32Array = PackedInt32Array()
 var _tray_lock_reason: String = ""
 var _cash: int = 0
 var _priority_headers_ready: bool = false
+var _pinned_headings: Array[Label] = []
 var _priority_names: Dictionary[StringName, Label] = {}
 var _priority_buttons: Dictionary[StringName, Dictionary] = {}
 var _owner_name: String = OwnerAppearance.DEFAULT_NAME
@@ -66,12 +74,19 @@ func _ready() -> void:
 	# One wheel step everywhere, and the wheel works over the whole card.
 	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer,
 		[] as Array[ScrollContainer], $Panel as ScrollContainer)
+	var pinned: Panel = %PinnedPriorities
+	var background: StyleBoxFlat = StyleBoxFlat.new()
+	background.bg_color = (SHARED_THEME.get_stylebox("panel", "PanelContainer") as StyleBoxFlat).bg_color
+	pinned.add_theme_stylebox_override("panel", background)
+	($Panel/Content/Scroll as ScrollContainer).get_v_scroll_bar().value_changed.connect(_on_staff_scrolled)
 	refresh()
+	_update_pinned_headings()
 
 
 func _process(_delta: float) -> void:
 	if visible and _roster != null:
 		_refresh_work()
+		_update_pinned_headings()
 
 
 func set_owner_name(display_name: String) -> void:
@@ -123,7 +138,7 @@ func set_morning(day: int, notices: Array[Dictionary]) -> void:
 	refresh()
 
 
-## The owner's other sites; none hides "Send to…". Main refreshes it when the
+## The owner's other sites; none hides "Send toâ€¦". Main refreshes it when the
 ## panel opens, each morning and after a transfer.
 func set_transfer_sites(sites: Array[TransferSite]) -> void:
 	_transfer_sites = sites.duplicate()
@@ -212,8 +227,8 @@ func refresh() -> void:
 		var title: String = "Trays" if level == 1 else "Big trays"
 		var label: Label = %TraysLabel if level == 1 else %BigTraysLabel
 		var purchase: Button = %TraysBuy if level == 1 else %BigTraysBuy
-		label.text = "%s — %s" % [title, Fmt.price(price) if GameMode.is_creative() else "$%d" % price] \
-			if price >= 0 else "%s — price unavailable" % title
+		label.text = "%s â€” %s" % [title, Fmt.price(price) if GameMode.is_creative() else "$%d" % price] \
+			if price >= 0 else "%s â€” price unavailable" % title
 		purchase.text = "Owned" if _tray_level >= level else "Buy"
 		purchase.disabled = not editable or price < 0 or _tray_level != level - 1 or _cash < price \
 			or not _tray_lock_reason.is_empty()
@@ -226,7 +241,9 @@ func refresh() -> void:
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_let_go(member.id)
 		button.tooltip_text = MORNING_HINT if not editable else ("Keep at least one cook and one server." if button.disabled else "Let this person go before today's service.")
-		_refresh_transfer(_rows[member.id].get_node("Top/Transfer") as MenuButton, member.id, editable)
+		var transfer: MenuButton = _rows[member.id].get_node("Top/Transfer") as MenuButton
+		_refresh_transfer(transfer, member.id, editable)
+		(_rows[member.id].get_node("Top/TransferSpace") as Control).visible = not transfer.visible
 	for member: StaffMember in _roster.candidates():
 		var button: Button = _rows[member.id].get_node("Top/Action") as Button
 		button.disabled = not editable or not _roster.can_hire(member.id)
@@ -259,6 +276,37 @@ func priority_button_for(id: StringName, job: StringName) -> Button:
 
 ## These cells are independent of growth/candidate cards: a roster refresh must
 ## retain an unchanged native button between mouse-down and mouse-up.
+func _on_staff_scrolled(_value: float) -> void:
+	_update_pinned_headings()
+
+
+## Repeat the column labels along the scroll's top edge only while job rows
+## are passing beneath it. The original grid owns every interactive cell.
+func _update_pinned_headings() -> void:
+	var pinned: Panel = %PinnedPriorities
+	var scroll: ScrollContainer = $Panel/Content/Scroll
+	var grid: GridContainer = %PriorityGrid
+	if not is_visible_in_tree() or not grid.is_visible_in_tree() or not _priority_headers_ready:
+		pinned.hide()
+		return
+	var first: Label = grid.get_child(0) as Label
+	var viewport_top: float = scroll.get_global_rect().position.y
+	var first_rect: Rect2 = first.get_global_rect()
+	var bottom: float = grid.get_global_rect().end.y
+	var height: float = first_rect.size.y
+	pinned.visible = first_rect.position.y < viewport_top and bottom > viewport_top + height
+	if not pinned.visible:
+		return
+	var grid_rect: Rect2 = grid.get_global_rect()
+	pinned.global_position = Vector2(grid_rect.position.x, viewport_top)
+	pinned.size = Vector2(grid_rect.size.x, height)
+	for index: int in grid.columns:
+		var original: Label = grid.get_child(index) as Label
+		var rect: Rect2 = original.get_global_rect()
+		_pinned_headings[index].position = Vector2(rect.position.x - grid_rect.position.x, 0.0)
+		_pinned_headings[index].size = Vector2(rect.size.x, height)
+
+
 func _refresh_priorities() -> void:
 	var section: VBoxContainer = %Priorities as VBoxContainer
 	var grid: GridContainer = %PriorityGrid as GridContainer
@@ -277,6 +325,16 @@ func _refresh_priorities() -> void:
 			label.mouse_filter = Control.MOUSE_FILTER_PASS
 			label.tooltip_text = _job_description(job)
 			grid.add_child(label)
+		var pinned: Panel = %PinnedPriorities
+		for index: int in grid.columns:
+			var original: Label = grid.get_child(index) as Label
+			var copy: Label = Label.new()
+			copy.text = original.text
+			copy.horizontal_alignment = original.horizontal_alignment
+			copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pinned.add_child(copy)
+			_pinned_headings.append(copy)
 		_priority_headers_ready = true
 	var members: Array[StaffMember] = []
 	if _roster != null:
@@ -334,7 +392,7 @@ func _refresh_priorities() -> void:
 			var supported: bool = StaffJobPriorities.supports(choices.role, job)
 			var value: int = choices.priority(job) if supported else StaffJobPriorities.Level.OFF
 			button.disabled = not supported
-			button.text = StaffJobPriorities.level_label(value) if supported else "—"
+			button.text = StaffJobPriorities.level_label(value) if supported else "â€”"
 			button.tooltip_text = _priority_tooltip(choices, job, has_cleaner)
 			if int(button.get_meta(&"priority_level", -1)) != value \
 					or bool(button.get_meta(&"priority_supported", false)) != supported:
@@ -473,19 +531,49 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	var top: HBoxContainer = HBoxContainer.new()
 	top.name = "Top"
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_theme_constant_override(&"separation", ROW_SPACING)
 	row.add_child(top)
-	var title: Label = Label.new()
-	title.name = "Name"
-	title.text = "%s - %s, skill %d" % [member.display_name, _role_name(member.role), member.skill] \
-		+ ("" if GameMode.is_creative() else " - $%d/day" % _day_wage(member.wage))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var person: VBoxContainer = VBoxContainer.new()
+	person.name = "Person"
+	person.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	person.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	person.add_theme_constant_override(&"separation", 0)
+	top.add_child(person)
+	var title: Label = _staff_cell(person, "Name", member.display_name)
+	title.add_theme_font_size_override(&"font_size", 19)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(title)
+	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
+	var detail: Label = _staff_cell(person, "Trait",
+		"%s: %s" % [trait_def.display_name, trait_def.description_for(member.role)])
+	detail.add_theme_font_size_override(&"font_size", 14)
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if not candidate and member.role != StaffMember.MANAGER:
+		var work: Label = _staff_cell(person, "Work", member.work_summary())
+		work.add_theme_font_size_override(&"font_size", 14)
+		work.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_staff_cell(top, "Role", _role_name(member.role), ROLE_WIDTH)
+	var skill: VBoxContainer = VBoxContainer.new()
+	skill.name = "Skill"
+	skill.custom_minimum_size.x = SKILL_WIDTH
+	skill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	skill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	skill.add_theme_constant_override(&"separation", 1)
+	top.add_child(skill)
+	_staff_cell(skill, "Level", "Skill %d" % member.skill, SKILL_WIDTH)
+	if not candidate:
+		_add_growth(skill, member)
+	var mood: int = member.growth_state().mood
+	var face: Label = _staff_cell(top, "Mood", "—" if candidate else _mood_face(mood), MOOD_WIDTH)
+	if not candidate:
+		face.tooltip_text = _mood_name(mood)
+		face.mouse_filter = Control.MOUSE_FILTER_PASS
+	var wage: String = "" if GameMode.is_creative() else "$%d/day" % _day_wage(member.wage)
+	_staff_cell(top, "Wage", wage, WAGE_WIDTH).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var button: Button = Button.new()
 	button.name = "Action"
 	button.text = "Hire" if candidate else "Let go"
-	button.theme = SHARED_THEME
+	button.custom_minimum_size.x = ACTION_WIDTH
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.pressed.connect(_on_request.bind(member.id, candidate))
@@ -495,33 +583,31 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 		transfer.name = "Transfer"
 		transfer.text = SEND_TO
 		transfer.flat = false
-		transfer.theme = SHARED_THEME
+		transfer.custom_minimum_size.x = TRANSFER_WIDTH
+		transfer.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		transfer.focus_mode = Control.FOCUS_NONE
 		transfer.mouse_filter = Control.MOUSE_FILTER_STOP
 		transfer.visible = false
 		transfer.get_popup().theme = SHARED_THEME
 		transfer.get_popup().id_pressed.connect(_on_transfer_picked.bind(member.id))
 		top.add_child(transfer)
-	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
-	var detail: Label = Label.new()
-	detail.name = "Trait"
-	detail.text = "%s: %s" % [trait_def.display_name, trait_def.description_for(member.role)]
-	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(detail)
-	if not candidate:
-		# Keep the work line with the member details without adding a full card gap.
-		row.add_theme_constant_override(&"separation", 2)
-		_add_growth(row, member)
-	# Managers do no floor work, so they have nothing to count.
-	if not candidate and member.role != StaffMember.MANAGER:
-		var work: Label = Label.new()
-		work.name = "Work"
-		work.text = member.work_summary()
-		work.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		work.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(work)
+	var space: Control = Control.new()
+	space.name = "TransferSpace"
+	space.custom_minimum_size.x = TRANSFER_WIDTH
+	space.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(space)
 	_rows[member.id] = row
+
+
+func _staff_cell(parent: Control, node_name: String, text: String, width: float = 0.0) -> Label:
+	var label: Label = Label.new()
+	label.name = node_name
+	label.text = text
+	label.custom_minimum_size.x = width
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(label)
+	return label
 
 
 ## Work changes during service; never replace native action buttons for it.
@@ -530,47 +616,28 @@ func _refresh_work() -> void:
 		var row: Control = _rows.get(member.id) as Control
 		if row == null:
 			continue
-		var work: Label = row.get_node_or_null("Work") as Label
+		var work: Label = row.get_node_or_null("Top/Person/Work") as Label
 		if work != null:
 			work.text = member.work_summary()
 
 
-func _add_growth(row: VBoxContainer, member: StaffMember) -> void:
+func _add_growth(skill: VBoxContainer, member: StaffMember) -> void:
 	var growth: StaffGrowth = member.growth_state()
 	var primary: StringName = StaffMember._primary_skill(member.role)
 	var level: int = growth.skill_level(primary)
 	var needed: int = GROWTH_RULES.needed_for_next_level(level)
 	var earned: int = growth.progress_xp(primary)
-	var line: HBoxContainer = HBoxContainer.new()
-	line.name = "Growth"
-	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(line)
-	var face: Label = Label.new()
-	face.name = "Mood"
-	face.text = _mood_face(growth.mood)
-	face.tooltip_text = _mood_name(growth.mood)
-	face.mouse_filter = Control.MOUSE_FILTER_PASS
-	line.add_child(face)
 	var bar: ProgressBar = ProgressBar.new()
 	bar.name = "XP"
-	bar.custom_minimum_size = Vector2(120.0, 18.0)
-	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.custom_minimum_size.y = 6.0
 	bar.show_percentage = false
 	bar.max_value = float(maxi(1, needed))
 	bar.value = float(earned if needed > 0 else 1)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_child(bar)
-	var caption: Label = Label.new()
-	caption.name = "XPLabel"
-	caption.text = "XP %d/%d" % [earned, needed] if needed > 0 else "Skill maxed out"
-	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_child(caption)
-	var inset: Control = Control.new()
-	inset.name = "XPInset"
-	inset.custom_minimum_size.x = 8.0
-	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	inset.focus_mode = Control.FOCUS_NONE
-	line.add_child(inset)
+	skill.add_child(bar)
+	var caption: Label = _staff_cell(skill, "XPLabel",
+		"XP %d/%d" % [earned, needed] if needed > 0 else "Skill maxed out")
+	caption.add_theme_font_size_override(&"font_size", 13)
 
 
 static func _mood_face(mood: int) -> String:

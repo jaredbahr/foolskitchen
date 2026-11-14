@@ -198,11 +198,11 @@ func test_panel_exposes_all_choices_and_writes_through_the_model() -> void:
 	tree.root.add_child(panel)
 	await tree.process_frame
 	assert_eq(panel.theme, preload("res://src/ui/theme/main_theme.tres"))
-	var scale: OptionButton = panel.get_node("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton
-	var speed: OptionButton = panel.get_node("Panel/Column/Scroll/Content/SpeedChoice") as OptionButton
-	var music: HSlider = panel.get_node("Panel/Column/Scroll/Content/MusicRow/MusicSlider") as HSlider
-	var ambience: HSlider = panel.get_node("Panel/Column/Scroll/Content/AmbienceRow/AmbienceSlider") as HSlider
-	var fullscreen_row: HBoxContainer = panel.get_node("Panel/Column/Scroll/Content/FullscreenRow") as HBoxContainer
+	var scale: OptionButton = panel.get_node("%ScaleChoice") as OptionButton
+	var speed: OptionButton = panel.get_node("%SpeedChoice") as OptionButton
+	var music: HSlider = panel.get_node("%MusicSlider") as HSlider
+	var ambience: HSlider = panel.get_node("%AmbienceSlider") as HSlider
+	var fullscreen_row: HBoxContainer = panel.get_node("%FullscreenRow") as HBoxContainer
 	assert_eq(scale.item_count, 3)
 	assert_eq(speed.item_count, 2)
 	assert_eq(fullscreen_row.visible, not OS.has_feature("web"))
@@ -226,7 +226,7 @@ func test_slider_previews_audio_without_writes_until_drag_release() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(panel)
 	await tree.process_frame
-	var music: HSlider = panel.get_node("Panel/Column/Scroll/Content/MusicRow/MusicSlider") as HSlider
+	var music: HSlider = panel.get_node("%MusicSlider") as HSlider
 	music.value = 70
 	assert_eq(FileAccess.get_file_as_string(_path), before)
 	music.value = 45
@@ -281,6 +281,11 @@ func test_failed_explicit_flush_reports_the_pending_write_and_recovers_after_the
 		await tree.process_frame
 	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
 	assert_almost_eq(window.get_visible_rect().size.y, 900.0, 0.01, "use the real project canvas, not the headless root")
+	var columns: GridContainer = panel.get_node("Panel/Column/Scroll/Content/Columns") as GridContainer
+	var display: Control = columns.get_node("DisplayAndPlay") as Control
+	assert_eq(columns.columns, 2, "the 1600x900 layout has two settings columns")
+	assert_false(PanelScroll.overflows(scroll), "all settings fit without scrolling")
+	assert_true(scroll.get_global_rect().encloses(display.get_global_rect()))
 	assert_true(scroll.size.y > 0.0 and status.size.y > 0.0, "the visible controls have settled native bounds")
 	assert_true(scroll.get_global_rect().encloses(status.get_global_rect()),
 		"the reported error must be visible inside the settings scroll area")
@@ -308,7 +313,7 @@ func test_slider_without_drag_saves_after_debounce_and_close_flushes() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(panel)
 	await tree.process_frame
-	var master: HSlider = panel.get_node("Panel/Column/Scroll/Content/MasterRow/MasterSlider") as HSlider
+	var master: HSlider = panel.get_node("%MasterSlider") as HSlider
 	# Keyboard steps also emit value_changed without a drag_ended signal.
 	master.value = 85
 	master.value = 60

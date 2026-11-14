@@ -498,8 +498,9 @@ func _fill_owner_progress(report: DayReport) -> void:
 func _apply_creative() -> void:
 	if not GameMode.is_creative():
 		return
+	_profit.hide()
 	var content: Node = get_node("Panel/Column/Scroll/Content")
-	for path: String in ["Profit", "Finances", "LoanNotice", "CashChange", "MilestoneHeading",
+	for path: String in ["Finances", "LoanNotice", "CashChange", "MilestoneHeading",
 			"MilestoneRows", "WeeklyChallengeLine", "BusinessTrendSection", "LevelUpCallout",
 			"CareerTierUp", "OwnerHeading", "OwnerLevel", "OwnerXPRows", "AwaySites"]:
 		var node: CanvasItem = content.get_node_or_null(path) as CanvasItem

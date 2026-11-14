@@ -49,11 +49,10 @@ func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
 	assert_eq((_panel.get_node("Panel/Content/Scroll/List/RosterTitle") as Label).text, "Your team (2/6) - $55 a day")
 	for member: StaffMember in _roster.members():
 		var row: Control = _panel.row_for(member.id)
-		assert_true((row.get_node("Top/Name") as Label).text.contains(member.display_name))
-		assert_true((row.get_node("Top/Name") as Label).text.contains(
-			" - Cook," if member.role == &"cook" else " - Server,"))
-		assert_true((row.get_node("Top/Name") as Label).text.contains("skill 3"))
-		assert_true((row.get_node("Trait") as Label).text.contains("Steady"))
+		assert_true((row.get_node("Top/Person/Name") as Label).text.contains(member.display_name))
+		assert_eq((row.get_node("Top/Role") as Label).text, "Cook" if member.role == &"cook" else "Server")
+		assert_eq((row.get_node("Top/Skill/Level") as Label).text, "Skill 3")
+		assert_true((row.get_node("Top/Person/Trait") as Label).text.contains("Steady"))
 		assert_true((row.get_node("Top/Action") as Button).disabled)
 		assert_eq((row.get_node("Top/Action") as Button).tooltip_text, "Keep at least one cook and one server.")
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
@@ -75,11 +74,10 @@ func test_optional_cleaner_is_named_and_can_be_hired_then_let_go_by_request() ->
 	_panel.refresh()
 	var candidate: StaffMember = _roster.candidates()[0]
 	var row: Control = _panel.row_for(candidate.id)
-	var title: String = (row.get_node("Top/Name") as Label).text
-	assert_true(title.contains(" - Cleaner, skill "))
-	assert_true(title.contains("$%d/day" % expected_wage))
-	assert_false(title.contains(" - Server,"), "a cleaner is not shown as a server")
-	assert_false(title.contains(" - cleaner,"), "never show a raw role id")
+	assert_eq((row.get_node("Top/Person/Name") as Label).text, candidate.display_name)
+	assert_eq((row.get_node("Top/Role") as Label).text, "Cleaner")
+	assert_eq((row.get_node("Top/Skill/Level") as Label).text, "Skill %d" % candidate.skill)
+	assert_eq((row.get_node("Top/Wage") as Label).text, "$%d/day" % expected_wage)
 	assert_true((_panel.get_node("Panel/Content/Status") as Label).text.contains(
 		"Keep a cook and a server"), "the cleaner remains optional")
 	var hire: Button = row.get_node("Top/Action") as Button
@@ -93,7 +91,7 @@ func test_optional_cleaner_is_named_and_can_be_hired_then_let_go_by_request() ->
 	assert_true(_roster.hire(candidate.id))
 	_panel.refresh()
 	var hired_row: Control = _panel.row_for(candidate.id)
-	assert_true((hired_row.get_node("Top/Name") as Label).text.contains(" - Cleaner, skill "))
+	assert_eq((hired_row.get_node("Top/Role") as Label).text, "Cleaner")
 	var let_go: Button = hired_row.get_node("Top/Action") as Button
 	assert_eq(let_go.text, "Let go")
 	assert_false(let_go.disabled, "the last cleaner may be let go")
@@ -131,7 +129,7 @@ func test_candidate_trait_text_describes_only_the_bonus_available_to_their_role(
 		var before: Dictionary = _roster.to_dict()
 		_panel.refresh()
 		var candidate: StaffMember = _roster.candidates()[0]
-		var trait_label: Label = _panel.row_for(candidate.id).get_node("Trait") as Label
+		var trait_label: Label = _panel.row_for(candidate.id).get_node("Top/Person/Trait") as Label
 		assert_eq(trait_label.text, example["text"])
 		assert_eq(_roster.to_dict(), before, "describing a trait never changes the roster")
 
@@ -171,24 +169,18 @@ func test_employee_xp_bar_and_three_mood_faces_follow_saved_growth() -> void:
 		assert_true(_roster.from_dict(saved))
 		_panel.refresh()
 		var row: Control = _panel.row_for(&"starter_cook")
-		var bar: ProgressBar = row.get_node("Growth/XP") as ProgressBar
-		var face: Label = row.get_node("Growth/Mood") as Label
+		var bar: ProgressBar = row.get_node("Top/Skill/XP") as ProgressBar
+		var face: Label = row.get_node("Top/Mood") as Label
 		assert_eq(int(bar.value), 44)
 		assert_eq(int(bar.max_value), StaffPanel.GROWTH_RULES.needed_for_next_level(3))
 		assert_eq(face.text, [":(", ":|", ":)"][mood - 1])
 		assert_eq(face.tooltip_text, ["Upset", "Okay", "Happy"][mood - 1])
 		assert_eq(face.mouse_filter, Control.MOUSE_FILTER_PASS,
 			"the mood word must be available as a tooltip")
-		var growth: HBoxContainer = row.get_node("Growth") as HBoxContainer
-		assert_false(growth.has_theme_constant_override(&"separation"),
-			"the XP line keeps the shared HBox spacing")
-		var inset: Control = growth.get_node("XPInset") as Control
-		assert_eq(inset.custom_minimum_size.x, 8.0)
-		assert_eq(inset.mouse_filter, Control.MOUSE_FILTER_IGNORE)
-		assert_eq(inset.focus_mode, Control.FOCUS_NONE)
-		assert_eq((row.get_node("Growth/XPLabel") as Label).text,
+		assert_true(row.get_node("Top/Skill").is_ancestor_of(bar), "the bar shares the Skill column")
+		assert_eq((row.get_node("Top/Skill/XPLabel") as Label).text,
 			"XP 44/%d" % StaffPanel.GROWTH_RULES.needed_for_next_level(3))
-		assert_null(_panel.row_for(&"candidate_1_0").get_node_or_null("Growth"),
+		assert_null(_panel.row_for(&"candidate_1_0").get_node_or_null("Top/Skill/XP"),
 			"only hired members show progression")
 	var capped: Dictionary = _roster.to_dict()
 	capped["members"][0]["skill"] = 5
@@ -197,8 +189,8 @@ func test_employee_xp_bar_and_three_mood_faces_follow_saved_growth() -> void:
 	assert_true(_roster.from_dict(capped))
 	_panel.refresh()
 	var capped_row: Control = _panel.row_for(&"starter_cook")
-	assert_eq((capped_row.get_node("Growth/XPLabel") as Label).text, "Skill maxed out")
-	assert_eq((capped_row.get_node("Growth/XP") as ProgressBar).value, 1.0)
+	assert_eq((capped_row.get_node("Top/Skill/XPLabel") as Label).text, "Skill maxed out")
+	assert_eq((capped_row.get_node("Top/Skill/XP") as ProgressBar).value, 1.0)
 
 
 func test_raise_cards_and_quit_notice_are_morning_only_requests() -> void:
@@ -623,8 +615,14 @@ func test_full_priority_matrix_fits_private_windows_and_scrolls_at_supported_int
 				assert_true(grid.get_combined_minimum_size().x <= scroll.size.x + 0.5,
 					"%s grid_min=%s" % [context, grid.get_combined_minimum_size()])
 				assert_true(scroll.get_v_scroll_bar().visible, "the full team remains available through bounded scrolling")
+				var first_row: Control = _panel.row_for(_roster.members().front().id)
 				for member: StaffMember in _roster.members():
-					var xp_label: Label = _panel.row_for(member.id).get_node("Growth/XPLabel") as Label
+					var row: Control = _panel.row_for(member.id)
+					for path: String in ["Role", "Skill", "Mood", "Wage", "Action"]:
+						var column: Control = row.get_node("Top/" + path) as Control
+						var first_column: Control = first_row.get_node("Top/" + path) as Control
+						assert_almost_eq(column.get_global_rect().position.x, first_column.get_global_rect().position.x, 0.5)
+					var xp_label: Label = _panel.row_for(member.id).get_node("Top/Skill/XPLabel") as Label
 					var xp_bounds: Rect2 = xp_label.get_global_rect()
 					var scrollbar_bounds: Rect2 = scroll.get_v_scroll_bar().get_global_rect()
 					assert_true(xp_bounds.position.x >= scroll.get_global_rect().position.x - 0.5, context)
@@ -636,6 +634,13 @@ func test_full_priority_matrix_fits_private_windows_and_scrolls_at_supported_int
 						assert_true(button.size.x >= button.get_combined_minimum_size().x - 0.5, context)
 						assert_true(button.get_global_rect().position.x >= scroll.get_global_rect().position.x - 0.5, context)
 						assert_true(button.get_global_rect().end.x <= scroll.get_global_rect().end.x + 0.5, context)
+				var headings: Panel = _panel.get_node("%PinnedPriorities") as Panel
+				var first_heading: Label = grid.get_child(0) as Label
+				var first_top: float = first_heading.get_global_rect().position.y
+				scroll.scroll_vertical += roundi(first_top - scroll.get_global_rect().position.y + first_heading.size.y)
+				await _priority_frames(2)
+				assert_true(headings.visible, "priority headings remain visible while scrolling the grid")
+				assert_almost_eq(headings.get_global_rect().position.y, scroll.get_global_rect().position.y, 0.5)
 				var last: StaffMember = _roster.members().back()
 				var last_cell: Button = _panel.priority_button_for(last.id, &"cleaning")
 				scroll.ensure_control_visible(last_cell)
@@ -725,7 +730,7 @@ func _linear_channel(value: float) -> float:
 
 func test_work_summary_updates_in_place_and_omits_zero_other() -> void:
 	var row: Control = _panel.row_for(&"starter_cook")
-	var work: Label = row.get_node("Work") as Label
+	var work: Label = row.get_node("Top/Person/Work") as Label
 	var action: Button = row.get_node("Top/Action") as Button
 	assert_eq(work.text, "Today: 0 tasks   Total: 0 tasks")
 	assert_true(_roster.record_completed_task(&"starter_cook", &"cook"))
@@ -739,7 +744,7 @@ func test_work_summary_updates_in_place_and_omits_zero_other() -> void:
 	assert_eq(work.text, "Today: 1 cooked · 1 other   Total: 1 cooked · 1 other")
 	assert_false(work.text.contains("not_a_task"))
 	for candidate: StaffMember in _roster.candidates():
-		assert_false(_panel.row_for(candidate.id).has_node("Work"), "candidates have not worked here")
+		assert_false(_panel.row_for(candidate.id).has_node("Top/Person/Work"), "candidates have not worked here")
 
 
 func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> void:
@@ -763,7 +768,7 @@ func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> voi
 	assert_true(hire.is_pressed())
 	assert_true(_roster.record_completed_task(&"starter_cook", &"cook"))
 	await _priority_frames(2)
-	assert_eq((_panel.row_for(&"starter_cook").get_node("Work") as Label).text,
+	assert_eq((_panel.row_for(&"starter_cook").get_node("Top/Person/Work") as Label).text,
 		"Today: 1 cooked   Total: 1 cooked", "visible work updates without a command refresh")
 	assert_true(_panel.row_for(id).get_node("Top/Action") == hire)
 	assert_true(hire.is_pressed(), "work labels must not replace an in-progress native press")

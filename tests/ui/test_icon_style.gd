@@ -159,10 +159,10 @@ func test_existing_panel_heading_paths_gain_one_icon_and_paint_uses_made_brush()
 	var report: Control = load("res://src/ui/evening_report.tscn").instantiate() as Control
 	report.call("show_report", DayReport.new())
 	report.call("show_report", DayReport.new())
-	_assert_heading(report.get_node("Panel/Column/Scroll/Content/Header") as Label, "leaderboardsSimple.png")
+	_assert_heading(report.get_node("%Header") as Label, "leaderboardsSimple.png")
 	_assert_heading(report.get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label, "star.png")
 	_assert_heading(report.get_node("Panel/Column/Scroll/Content/GuestHeading") as Label, "singleplayer.png")
-	assert_eq((report.get_node("Panel/Column/Scroll/Content/NextDay") as Button).text, "Next day")
+	assert_eq((report.get_node("%NextDay") as Button).text, "Next day")
 	report.free()
 
 
@@ -217,7 +217,7 @@ func test_staff_headings_keep_native_paths_padding_and_caches_after_roster_refre
 	await tree.process_frame
 	await tree.process_frame
 	assert_true(labels[1].text.begins_with("Your team (3/6)"), "dynamic roster text still refreshes")
-	assert_not_null(staff.row_for(candidate.id).get_node("Top/Name") as Label,
+	assert_not_null(staff.row_for(candidate.id).get_node("Top/Person/Name") as Label,
 		"dynamic member rows retain their public paths")
 	for index: int in paths.size():
 		var label: Label = labels[index]
