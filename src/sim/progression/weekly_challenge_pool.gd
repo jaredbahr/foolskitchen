@@ -61,8 +61,10 @@ func shop_target(challenge: WeeklyChallenge, recent: Array[Dictionary], seats: i
 		measured += 1
 	var target: int = challenge.base_target
 	if challenge.kind == WeeklyChallenge.Kind.NO_LOSS_DAYS:
+		# No history (week 1): the shop hasn't shown it can go a day without
+		# losing a guest, so this goal waits for a week it can be sized from.
 		if measured == 0:
-			return mini(target, service_days)
+			return 0
 		if no_table > max_recent_no_table_losses or total == 0.0:
 			return 0
 		return clampi(roundi(total / measured * service_days), 1, mini(target, service_days))
@@ -70,8 +72,10 @@ func shop_target(challenge: WeeklyChallenge, recent: Array[Dictionary], seats: i
 		if total <= 0.0 and challenge.kind != WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
 			return 0
 		var period: int = 1 if challenge.kind == WeeklyChallenge.Kind.SERVE_IN_ONE_DAY else service_days
-		var bumped: float = total / measured * period * (1.0 + recent_stretch)
-		target = roundi(clampf(bumped, 1.0, WeeklyChallenge.MAX_TARGET))
+		var usual: float = total / measured * period
+		var bumped: float = usual * (1.0 + recent_stretch)
+		# Always at least one more than usual, so a small average still stretches.
+		target = clampi(maxi(roundi(bumped), floori(usual) + 1), 1, WeeklyChallenge.MAX_TARGET)
 	if challenge.kind == WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
 		return mini(target, clampi(seats, 0, WeeklyChallenge.MAX_TARGET) * guests_per_seat_per_day)
 	return target
