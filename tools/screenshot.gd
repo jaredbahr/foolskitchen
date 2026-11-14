@@ -1122,10 +1122,10 @@ static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
 
 
 static func _milestone_report_evidence(_main: Node, panel: Control, report: DayReport, ledger: Ledger) -> Dictionary:
-	var heading: Label = panel.get_node_or_null("Panel/Scroll/Content/MilestoneHeading") as Label
-	var rows: VBoxContainer = panel.get_node_or_null("Panel/Scroll/Content/MilestoneRows") as VBoxContainer
-	var income: GridContainer = panel.get_node_or_null("Panel/Scroll/Content/Finances/Income/IncomeRows") as GridContainer
-	var xp_rows: GridContainer = panel.get_node_or_null("Panel/Scroll/Content/OwnerXPRows") as GridContainer
+	var heading: Label = panel.get_node_or_null("Panel/Column/Scroll/Content/MilestoneHeading") as Label
+	var rows: VBoxContainer = panel.get_node_or_null("Panel/Column/Scroll/Content/MilestoneRows") as VBoxContainer
+	var income: GridContainer = panel.get_node_or_null("Panel/Column/Scroll/Content/Finances/Income/IncomeRows") as GridContainer
+	var xp_rows: GridContainer = panel.get_node_or_null("Panel/Column/Scroll/Content/OwnerXPRows") as GridContainer
 	var title_evidence: Dictionary = {"available": false}
 	var reward_evidence: Dictionary = {"available": false}
 	if rows != null and rows.get_child_count() > 0:
@@ -1401,8 +1401,8 @@ static func loan_review_evidence(main: Node, context_root: Node) -> Dictionary:
 	var account: LoanAccount = economy.get("loan") as LoanAccount if economy != null else null
 	var ledger: Ledger = economy.get("ledger") as Ledger if economy != null else null
 	var panel: Control = main.get_node_or_null("Overlay/EveningReport") as Control
-	var notice: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LoanNotice") as Label
-	var headline: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/Profit") as Label
+	var notice: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/LoanNotice") as Label
+	var headline: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/Profit") as Label
 	var hud: Label = main.get_node_or_null("HUD/Top/Row/Loan") as Label
 	if time == null or account == null or ledger == null or panel == null or notice == null or headline == null or hud == null:
 		return {"available": false}
@@ -1412,7 +1412,7 @@ static func loan_review_evidence(main: Node, context_root: Node) -> Dictionary:
 		if entry["category"] in [Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT]:
 			flows.append({"day": entry["day"], "category": String(entry["category"]), "amount": entry["amount"]})
 	var labels: Array[Dictionary] = []
-	for path: String in ["Panel/Scroll/Content/Finances/Income/IncomeRows", "Panel/Scroll/Content/Finances/Costs/CostRows"]:
+	for path: String in ["Panel/Column/Scroll/Content/Finances/Income/IncomeRows", "Panel/Column/Scroll/Content/Finances/Costs/CostRows"]:
 		var rows: Node = panel.get_node_or_null(path)
 		if rows == null:
 			return {"available": false}
@@ -2737,8 +2737,8 @@ func _prepare_signature_review() -> Dictionary:
 	var report: DayReport = _main.get("shown_report") as DayReport
 	if report == null:
 		return {"error": "signature demand fixture did not produce an actual DayReport"}
-	var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
-	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+	var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/DemandForecast") as Control
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll") as ScrollContainer
 	if section == null or scroll == null or not section.visible:
 		return {"error": "the real Evening Report did not show its demand section"}
 	fixture["actual_service_days"] = 1
@@ -2790,8 +2790,8 @@ func _prepare_signature_review_layout() -> void:
 		rig.force_update_transform()
 		return
 	if _signature_review == "demand":
-		var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
-		var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
+		var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/DemandForecast") as Control
+		var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll") as ScrollContainer
 		if section == null or scroll == null or not section.visible:
 			_fail_capture("signature demand framing could not find the real visible forecast section")
 			return
@@ -2827,7 +2827,7 @@ func _signature_review_evidence(world: SimWorld) -> Dictionary:
 			board_visible = board_text.is_visible_in_tree() and not camera.is_position_behind(board_text.global_position)
 			board_text_value = board_text.text
 	var report: DayReport = _main.get("shown_report") as DayReport if "shown_report" in _main else null
-	var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/DemandForecast") as Control
+	var section: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/DemandForecast") as Control
 	var factors: Label = section.get_node_or_null("Factors") as Label if section != null else null
 	var forecast: Dictionary = report.demand_forecast if report != null else {}
 	var state_after: Dictionary = signature_state.call("to_dict")
@@ -3150,7 +3150,7 @@ func _settings_pixel_rect(control: Control) -> Rect2:
 
 func _settings_card_bounded(panel: SettingsPanel) -> bool:
 	var card: Control = panel.get_node("Panel") as Control
-	var close: Button = panel.get_node("Panel/Column/CloseButton") as Button
+	var close: Button = panel.get_node("%CloseButton") as Button
 	var header: Control = _main.get_node("HUD/Top") as Control
 	var rect: Rect2 = _settings_pixel_rect(card)
 	return panel.is_visible_in_tree() and close.is_visible_in_tree() \
@@ -3198,6 +3198,10 @@ static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dicti
 	if replay.is_visible_in_tree():
 		targets.append(replay)
 	targets.append(panel.get_node("%WhatsNewButton") as Button)
+	# Close sits in the title bar (#497): Tab reaches it after the last action.
+	var quit: Button = panel.get_node("%QuitToTitleButton") as Button
+	if quit.is_visible_in_tree():
+		targets.append(quit)
 	targets.append(close)
 	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
 	scroll.ensure_control_visible(edge)
@@ -3884,23 +3888,23 @@ func _queue_capture() -> void:
 
 ## Brings the closed-day report's Low stock heading to the top of its scroll.
 func _scroll_report_to_low_stock() -> void:
-	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
-	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll") as ScrollContainer
+	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/LowStockHeading") as Control
 	if scroll != null and heading != null and scroll.is_visible_in_tree():
 		scroll.scroll_vertical = int(heading.position.y)
 
 
 ## Bring the real seller label into the existing report viewport for a focused capture.
 func _scroll_report_to_slowest_seller() -> void:
-	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
-	var label: Label = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/SlowestSeller") as Label
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll") as ScrollContainer
+	var label: Label = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/SlowestSeller") as Label
 	if scroll != null and label != null and label.visible and scroll.is_visible_in_tree():
 		scroll.scroll_vertical = int(label.position.y)
 
 
 func _low_stock_visible(world: SimWorld) -> bool:
-	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll") as ScrollContainer
-	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Scroll/Content/LowStockHeading") as Control
+	var scroll: ScrollContainer = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll") as ScrollContainer
+	var heading: Control = _main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/LowStockHeading") as Control
 	var report: DayReport = _main.get("shown_report") as DayReport
 	return world != null and world.clock.phase == SimClock.Phase.CLOSED and report != null \
 		and scroll != null and heading != null and scroll.is_visible_in_tree() \
@@ -4319,11 +4323,13 @@ func _report_capture_valid(world: SimWorld) -> bool:
 	if report == null or report.review_cards.size() < 2 or panel == null or not panel.is_visible_in_tree():
 		return false
 	var rows: Node = panel.get_node_or_null("%ReviewRows")
-	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Column/Scroll") as ScrollContainer
 	if rows == null or rows.get_child_count() < 2 or scroll == null or scroll.scroll_vertical != 0:
 		return false
 	var viewport: Rect2 = scroll.get_global_rect()
-	for index: int in range(mini(report.review_cards.size(), 3)):
+	# The report's title bar with Close stays fixed above the scroll (#497),
+	# so the unscrolled view is shorter: the first two cards must show in it.
+	for index: int in range(mini(report.review_cards.size(), 2)):
 		var card: Dictionary = report.review_cards[index]
 		var native: Label = rows.get_child(index) as Label
 		if native == null or String(card.get("quote", "")).is_empty() \
@@ -4347,7 +4353,7 @@ func _report_slowest_capture_valid(world: SimWorld) -> bool:
 		return false
 	var seller: Dictionary = report.slowest_dish_details()
 	var label: Label = panel.get_node_or_null("%SlowestSeller") as Label
-	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Column/Scroll") as ScrollContainer
 	var sale_total: int = 0
 	for count: int in report.dishes_sold.values():
 		sale_total += count
@@ -4378,7 +4384,7 @@ func _slowest_seller_capture_evidence() -> Dictionary:
 	var label: Label = panel.get_node_or_null("%SlowestSeller") as Label
 	if label == null:
 		return {}
-	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = panel.get_node_or_null("Panel/Column/Scroll") as ScrollContainer
 	var sales: int = 0
 	for count: int in report.dishes_sold.values():
 		sales += count
@@ -4393,7 +4399,7 @@ func _slowest_seller_capture_evidence() -> Dictionary:
 		"scroll_vertical": scroll.scroll_vertical if scroll != null else null,
 		"label_rect": _staff_rect_data(label.get_global_rect()),
 		"capture_viewport": _staff_rect_data(
-			(panel.get_node("Panel/Scroll") as ScrollContainer).get_global_rect()),
+			(panel.get_node("Panel/Column/Scroll") as ScrollContainer).get_global_rect()),
 	}
 
 

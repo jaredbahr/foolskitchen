@@ -82,7 +82,7 @@ func test_real_close_covers_wages_and_rent_before_report_once_without_bank_xp_or
 	assert_eq(report.owner_xp_breakdown["profit_xp"], 0, "the rounded bank advance earns no owner XP")
 	assert_true(report.loan_first_advance, "both close-time report builds retain the first introduction")
 	assert_true((main.call("build_report", 1) as DayReport).loan_first_advance)
-	var notice: Label = main.get_node("Overlay/EveningReport/Panel/Scroll/Content/LoanNotice") as Label
+	var notice: Label = main.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content/LoanNotice") as Label
 	assert_true(notice.visible)
 	assert_eq(notice.text, "The bank covered your shortfall. It'll take a share of your profits until it's paid back.")
 	var chip: Label = main.get_node("HUD/Top/Row/Loan") as Label
@@ -403,7 +403,7 @@ func test_next_morning_saves_loan_inside_economy_and_reload_preserves_guard_and_
 	_close_service(second)
 	assert_false((second.get("shown_report") as DayReport).loan_first_advance,
 		"a later close after morning reload does not repeat the introduction")
-	assert_false((second.get_node("Overlay/EveningReport/Panel/Scroll/Content/LoanNotice") as Label).visible)
+	assert_false((second.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content/LoanNotice") as Label).visible)
 
 
 func test_old_economy_save_without_loan_loads_debt_free_and_new_game_resets_debt() -> void:

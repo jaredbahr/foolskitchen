@@ -20,6 +20,8 @@ var _ids: Array[StringName] = []
 
 
 func _ready() -> void:
+	# One wheel step everywhere, and the wheel works over the whole card (#497).
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer)
 	(%Intro as Label).text = PropertyText.INTRO
 	(%EmptyState as Label).text = PropertyText.EMPTY
 	(get_node("Panel/Content/Header/Title") as Label).text = PropertyText.TITLE

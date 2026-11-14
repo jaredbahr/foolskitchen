@@ -24,6 +24,7 @@ var _whats_new: WhatsNewPanel
 @onready var _column: VBoxContainer = $Panel/Column
 @onready var _scroll: ScrollContainer = $Panel/Column/Scroll
 @onready var _content: VBoxContainer = $Panel/Column/Scroll/Content
+@onready var _title_bar: HBoxContainer = $Panel/Column/TitleBar
 
 @onready var _master: HSlider = %MasterSlider
 @onready var _music: HSlider = %MusicSlider
@@ -78,6 +79,8 @@ func _ready() -> void:
 	_service_events.tooltip_text = SERVICE_EVENTS_TIP
 	_service_events.toggled.connect(_on_service_events_toggled)
 	_close.pressed.connect(_on_close_pressed)
+	# One wheel step everywhere, and the wheel works over the whole card (#497).
+	PanelScroll.attach(self, _panel, _scroll)
 	_whats_new = WHATS_NEW_SCENE.instantiate() as WhatsNewPanel
 	add_child(_whats_new)
 	_whats_new_button.text = TitleText.WHATS_NEW
@@ -175,7 +178,8 @@ func _layout_card() -> void:
 	var available: Vector2 = Vector2(viewport_size.x - VIEW_MARGIN * 2.0,
 		viewport_size.y - top - VIEW_MARGIN)
 	var padding: Vector2 = _panel.get_theme_stylebox("panel").get_minimum_size()
-	var footer_height: float = _close.get_combined_minimum_size().y \
+	# The title bar holds Close (#497); Quit to title stays the footer action.
+	var footer_height: float = _title_bar.get_combined_minimum_size().y \
 		+ float(_column.get_theme_constant("separation"))
 	if _quit_to_title.visible:
 		footer_height += _quit_to_title.get_combined_minimum_size().y \
@@ -185,7 +189,7 @@ func _layout_card() -> void:
 		maxf(0.0, available.y - padding.y - footer_height))
 	var bar_width: float = _scroll.get_v_scroll_bar().get_combined_minimum_size().x \
 		if content_height < natural.y else 0.0
-	var content_width: float = minf(natural.x + bar_width,
+	var content_width: float = minf(maxf(natural.x + bar_width, _title_bar.get_combined_minimum_size().x),
 		maxf(0.0, available.x - padding.x))
 	_scroll.custom_minimum_size = Vector2(content_width, content_height)
 	var card_size: Vector2 = Vector2(content_width + padding.x,

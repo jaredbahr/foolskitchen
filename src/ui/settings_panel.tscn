@@ -23,6 +23,25 @@ mouse_filter = 0
 layout_mode = 2
 theme_override_constants/separation = 12
 
+[node name="TitleBar" type="HBoxContainer" parent="Panel/Column"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Panel/Column/TitleBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_font_sizes/font_size = 26
+text = "Settings"
+
+[node name="CloseButton" type="Button" parent="Panel/Column/TitleBar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 0
+text = "Close"
+
 [node name="Scroll" type="ScrollContainer" parent="Panel/Column"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -36,11 +55,6 @@ vertical_scroll_mode = 1
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 9
-
-[node name="Title" type="Label" parent="Panel/Column/Scroll/Content"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-text = "Settings"
 
 [node name="MasterLabel" type="Label" parent="Panel/Column/Scroll/Content"]
 layout_mode = 2
@@ -188,11 +202,6 @@ theme_override_colors/font_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
 unique_name_in_owner = true
 layout_mode = 2
 text = "Changes are saved automatically."
-
-[node name="CloseButton" type="Button" parent="Panel/Column"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Close"
 
 [node name="QuitToTitleButton" type="Button" parent="Panel/Column"]
 unique_name_in_owner = true

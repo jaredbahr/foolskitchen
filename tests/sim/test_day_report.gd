@@ -482,13 +482,13 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 	report.owner_level_after = 2
 	report.owner_unlocks = ["Potted plant", "Tomato melt recipe"]
 	_screen.call("show_report", report)
-	var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _screen.get_node("Panel/Column/Scroll") as ScrollContainer
 	var rows: VBoxContainer = _screen.get_node("%ReviewRows") as VBoxContainer
 	var profit: Label = _screen.get_node("%Profit") as Label
-	var callout: HBoxContainer = _screen.get_node("Panel/Scroll/Content/LevelUpCallout") as HBoxContainer
+	var callout: HBoxContainer = _screen.get_node("Panel/Column/Scroll/Content/LevelUpCallout") as HBoxContainer
 	var banner: Label = _screen.get_node("%OwnerLevelUp") as Label
 	var unlocks: Label = _screen.get_node("%OwnerUnlocks") as Label
-	var finances: HBoxContainer = _screen.get_node("Panel/Scroll/Content/Finances") as HBoxContainer
+	var finances: HBoxContainer = _screen.get_node("Panel/Column/Scroll/Content/Finances") as HBoxContainer
 	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0)]:
 		_host.size = bounds
 		scroll.scroll_vertical = 0
@@ -547,7 +547,7 @@ func test_two_milestones_and_three_quotes_fit_native_1600x900_report() -> void:
 	_screen.call("show_report", report)
 	await tree.process_frame
 	await tree.process_frame
-	var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _screen.get_node("Panel/Column/Scroll") as ScrollContainer
 	var viewport: Rect2 = scroll.get_global_rect()
 	assert_eq(_screen.size, Vector2(1600.0, 900.0))
 	assert_eq(scroll.scroll_vertical, 0)
@@ -695,7 +695,7 @@ func test_native_report_maps_bank_lines_and_wraps_first_notice_then_clears_it() 
 		_host.size = bounds
 		await tree.process_frame
 		await tree.process_frame
-		var scroll: ScrollContainer = _screen.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _screen.get_node("Panel/Column/Scroll") as ScrollContainer
 		var viewport: Rect2 = scroll.get_global_rect()
 		assert_true(notice.is_visible_in_tree())
 		assert_true(viewport.grow(0.5).encloses(notice.get_global_rect()), "the introduction fits the unscrolled report")
