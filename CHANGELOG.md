@@ -212,6 +212,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - The screenshot check in CI now has 60 minutes instead of 45: runs were taking up to 44 minutes, so a slow runner cancelled PRs that changed nothing visual. Splitting the job is tracked in #477. (#485)
 - Each restaurant now keeps its own opening hours and its own bigger lease, so switching restaurants (once you can own two) never carries one shop's hours or lease to the other. Older saves keep their hours and lease. (#463)
 - Design doc: how every street outside the restaurant should look, and how each new site gets its own street from the same parts. (#441)
