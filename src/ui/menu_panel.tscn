@@ -15,7 +15,7 @@ mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
-[node name="Panel" type="PanelContainer" parent="."]
+[node name="Panel" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchor_left = 0.5
 anchor_right = 0.5
@@ -27,6 +27,9 @@ offset_bottom = -12.0
 clip_contents = true
 mouse_filter = 0
 mouse_force_pass_scroll_events = false
+focus_mode = 0
+horizontal_scroll_mode = 0
+follow_focus = true
 
 [node name="Content" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -44,6 +47,7 @@ size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "Menu and prices"
+text_overrun_behavior = 3
 
 [node name="PropertyButton" type="Button" parent="Panel/Content/Header"]
 unique_name_in_owner = true

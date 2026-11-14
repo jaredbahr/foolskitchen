@@ -10,6 +10,10 @@ extends Node
 ##   can never change a value while scrolling;
 ## - PgUp, PgDn, Home and End scroll the main area while the panel is open.
 ## Esc is not handled here: Main owns it.
+## Menu, Stock and Staff also wrap the whole card in a scroll (`overflow`) so
+## a very short window (150% UI on a small screen) can still reach the footer.
+## It only takes the wheel while it actually overflows; otherwise header and
+## footer wheels go to the main area.
 
 ## About three rows. The one wheel step for every panel.
 const WHEEL_STEP: int = 110
@@ -20,27 +24,34 @@ var _host: Control
 var _frame: Control
 var _main: ScrollContainer
 var _scrolls: Array[ScrollContainer] = []
+var _overflow: ScrollContainer
 var _hooked: Dictionary[int, bool] = {}
 
 
 ## Adds the helper under `host` (the panel root whose visibility opens it).
 static func attach(host: Control, frame: Control, main: ScrollContainer,
-		extras: Array[ScrollContainer] = []) -> PanelScroll:
+		extras: Array[ScrollContainer] = [], overflow: ScrollContainer = null) -> PanelScroll:
 	var helper: PanelScroll = PanelScroll.new()
 	helper.name = NODE_NAME
-	helper.setup(host, frame, main, extras)
+	helper.setup(host, frame, main, extras, overflow)
 	host.add_child(helper, false, Node.INTERNAL_MODE_BACK)
 	return helper
 
 
-func setup(host: Control, frame: Control, main: ScrollContainer, extras: Array[ScrollContainer]) -> void:
+func setup(host: Control, frame: Control, main: ScrollContainer, extras: Array[ScrollContainer],
+		overflow: ScrollContainer = null) -> void:
 	_host = host
 	_frame = frame
 	_main = main
+	_overflow = overflow
 	_scrolls = [main]
 	for scroll: ScrollContainer in extras:
 		if scroll != null and not _scrolls.has(scroll):
 			_scrolls.append(scroll)
+	if overflow != null and not _scrolls.has(overflow):
+		_scrolls.append(overflow)
+		# It never takes focus away from the panel's controls.
+		overflow.focus_mode = Control.FOCUS_NONE
 	# The card takes every wheel its children pass up and never lets one
 	# through to the camera zoom behind it.
 	_frame.mouse_force_pass_scroll_events = false
@@ -133,13 +144,22 @@ func _on_gui_input(event: InputEvent, control: Control) -> void:
 
 
 ## The innermost registered scroll area holding `control`, else the main one.
+## The card's fallback scroll counts only while it overflows.
 func _scroll_for(control: Control) -> ScrollContainer:
 	var node: Node = control
 	while node != null and node != _host:
 		if node is ScrollContainer and _scrolls.has(node as ScrollContainer):
-			return node as ScrollContainer
+			var scroll: ScrollContainer = node as ScrollContainer
+			if scroll == _overflow and not overflows(scroll):
+				return _main
+			return scroll
 		node = node.get_parent()
 	return _main
+
+
+static func overflows(scroll: ScrollContainer) -> bool:
+	var bar: VScrollBar = scroll.get_v_scroll_bar()
+	return bar.max_value - bar.page > 0.5
 
 
 func _factor(button: InputEventMouseButton) -> float:

@@ -60,8 +60,12 @@ var _transfer_sites: Array[TransferSite] = []
 
 
 func _ready() -> void:
-	# One wheel step everywhere, and the wheel works over the whole card (#497).
-	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer)
+	# The card's own scroll is only a fallback for very short windows (150%
+	# UI on a small screen); at normal sizes nothing overflows it (#497).
+	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
+	# One wheel step everywhere, and the wheel works over the whole card.
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer,
+		[] as Array[ScrollContainer], $Panel as ScrollContainer)
 	refresh()
 
 
