@@ -249,6 +249,22 @@ func let_go(id: StringName) -> bool:
 	return true
 
 
+## True when the id is taken by an employee or a candidate of this roster.
+func has_id(id: StringName) -> bool:
+	return _find(_members, id) >= 0 or _find(_candidates, id) >= 0
+
+
+## Takes in an employee arriving from another of the owner's sites (FK-087
+## part 5, #473), as they are: skill, trait, wage, mood, priorities and
+## history. Refuses a full roster or an id already used here (StaffTransfer
+## picks a free one first). No fee, no RNG.
+func accept_transfer(member: StaffMember) -> bool:
+	if member == null or _members.size() >= CAPACITY or has_id(member.id):
+		return false
+	_members.append(member.copy())
+	return true
+
+
 ## Same-morning loads and refreshes consume no random values, even after hires.
 ## With `managers` (the manager hiring tier, FK-087) a candidate's role is
 ## drawn from the floor roles plus Manager; without it the draw is exactly

@@ -182,11 +182,11 @@ func test_a_managed_home_site_earns_at_the_second_sites_close() -> void:
 
 func test_an_unmanaged_home_site_pays_only_its_rent() -> void:
 	var day: int = _two_sites()
-	_owner().career_tier = 3
-	_offer_manager()
-	assert_true(_main.call("staff_hire", MANAGER_ID))
-	# Hired but not assigned: the home site stays closed.
+	# No Manager on the home staff: the home site stays closed. (A Manager
+	# hired there would take its row on leaving, #488:
+	# test_staff_transfer_session.)
 	assert_true(_main.call("switch_site", &"second"))
+	assert_eq(_book().manager(SiteBook.HOME_ID), &"")
 	var rent: int = _main.call("_home_rent")
 	assert_true(rent > 0)
 	var report: DayReport = _play_to_close(day)

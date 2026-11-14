@@ -88,6 +88,23 @@ static func manager_skill(staff: Dictionary, member_id: StringName) -> int:
 	return 0
 
 
+## The Manager on a saved staff section who should run that site: the
+## highest skill, ties broken by the smaller id; &"" when there is none
+## (FK-087, #473). Deterministic, no RNG.
+static func best_manager(staff: Dictionary) -> StringName:
+	var roster: StaffRoster = StaffRoster.new()
+	if staff.is_empty() or not roster.from_dict(staff):
+		return &""
+	var best: StaffMember = null
+	for member: StaffMember in roster.members():
+		if member.role != StaffMember.MANAGER:
+			continue
+		if best == null or member.skill > best.skill \
+				or (member.skill == best.skill and String(member.id) < String(best.id)):
+			best = member
+	return best.id if best != null else &""
+
+
 ## A site's daily rent, active or away: the home lot pays `home_rent` (the
 ## home lease's rule, which the caller reads); any other lot pays its
 ## LotDef's rent, expanded or not (#465). UNKNOWN_RENT when `definition` is
