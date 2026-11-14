@@ -292,5 +292,9 @@ func test_the_seaside_street_lays_a_boardwalk_and_the_starter_street_does_not() 
 		kinds[int(entry["kind"])] = true
 	assert_true(kinds.has(int(StreetPropSpec.Kind.ROPE_BOLLARD)) and kinds.has(int(StreetPropSpec.Kind.CATCH_CRATES)),
 		"the seaside props are on the street")
+	# Every kind the preset asks for is placed on the real dressing, so a dropped
+	# lifebuoy or bunting fails here.
+	for spec: StreetPropSpec in (load(SEASIDE) as StreetPreset).buildings.furniture:
+		assert_true(kinds.has(int(spec.kind)), "the real seaside dressing places prop kind %d" % int(spec.kind))
 	_free(seaside)
 	_free(starter)

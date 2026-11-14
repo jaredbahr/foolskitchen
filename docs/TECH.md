@@ -2341,7 +2341,10 @@ shop's own entrance pads (`RoomDressing.street_pavement`); it is a tint under th
 lights up as sandy timber, and a transparent colour (the default) keeps the grey paving. `GroundSkin.plank_seam`
 draws one thin seam every 0.32 m across the pavement (`NeighbourhoodDressing._build_planks`, one flat mesh), and
 `StreetPropSpec.Kind` gained `ROPE_BOLLARD`, `LIFEBUOY`, `CATCH_CRATES` and `BUNTING`, drawn and shadowed by
-`NeighbourhoodFurniture` like the others. Gulls are the existing `birds` with white and grey colours.
+`NeighbourhoodFurniture` like the others. Gulls are the existing `birds` with white and grey colours. The four new
+props are code-built like the #423 street furniture (chunky boxes, drums and lumps in the street set's flat colours),
+not files in `assets/made/`. They are made items under `docs/ART_STYLE.md` §8, named for approval in #527 against
+Jared's #425 brief for the seaside street (boardwalk, blues, rope).
 `tools/seaside_street_review.tscn` shows the seaside street on an unsaved first morning
 (`bash tools/screenshot.sh --scene=res://tools/seaside_street_review.tscn --speed=0 --frames=60 [--quarter=N]`;
 `SEASIDE_STREET_ZOOM` and `SEASIDE_STREET_U` give a close-up along the pavement).
