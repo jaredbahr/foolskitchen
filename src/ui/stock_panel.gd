@@ -25,6 +25,8 @@ const WARNING_COLOR: Color = Color("a83e35")
 const UNUSED_ALPHA: float = 0.55
 const CART_STEPS: Array[int] = [-1, 1, 5]
 const MAX_CART: int = 99
+const PANEL_MAX_WIDTH: float = 1048.0
+const PANEL_SIDE_MARGIN: float = 12.0
 
 var _status: Label
 var _notes: Label
@@ -57,12 +59,60 @@ func _ready() -> void:
 	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer,
 		[] as Array[ScrollContainer], $Panel as ScrollContainer)
 	refresh()
+	_fit_width()
+	# The delivery bar ends where the ingredient rows end, not under the
+	# scrollbar, whether or not the list needs one.
+	_rows_node.resized.connect(_queue_align_delivery)
+	($Panel/Content/Scroll as Control).resized.connect(_queue_align_delivery)
+	_queue_align_delivery()
 
 
 func _notification(what: int) -> void:
 	# A Throw out asked for on an earlier visit never carries over.
 	if what == NOTIFICATION_VISIBILITY_CHANGED:
 		_armed_throw = &""
+	if what == NOTIFICATION_RESIZED:
+		_fit_width()
+
+
+## Containers settle the scroll and rows widths in the same pass, so measure
+## them once that pass is over.
+func _queue_align_delivery() -> void:
+	_align_delivery.call_deferred()
+
+
+func _align_delivery() -> void:
+	var delivery: HBoxContainer = get_node_or_null("Panel/Content/Delivery") as HBoxContainer
+	var scroll: Control = get_node_or_null("Panel/Content/Scroll") as Control
+	if delivery == null or scroll == null or _rows_node == null:
+		return
+	var gap: Control = delivery.get_node_or_null("EndGap") as Control
+	if gap == null:
+		# The theme's gap between the label and the bar becomes a spacer, so
+		# the bar's right inset below can be any width, including none.
+		var middle: Control = Control.new()
+		middle.name = "MidGap"
+		middle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		middle.custom_minimum_size.x = delivery.get_theme_constant("separation")
+		delivery.add_child(middle)
+		delivery.move_child(middle, (delivery.get_node("DeliveryBar") as Node).get_index())
+		delivery.add_theme_constant_override("separation", 0)
+		gap = Control.new()
+		gap.name = "EndGap"
+		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		delivery.add_child(gap)
+	var width: float = maxf(0.0, scroll.get_global_rect().end.x - _rows_node.get_global_rect().end.x)
+	if absf(gap.custom_minimum_size.x - width) > 0.5:
+		gap.custom_minimum_size.x = width
+
+
+func _fit_width() -> void:
+	var panel: Control = get_node_or_null("Panel") as Control
+	if panel == null:
+		return
+	var half: float = minf(PANEL_MAX_WIDTH, maxf(size.x - 2.0 * PANEL_SIDE_MARGIN, 0.0)) / 2.0
+	panel.offset_left = -half
+	panel.offset_right = half
 
 
 ## View: {rows, groups, cash, editable, notes, premium, cart_total,
@@ -294,6 +344,7 @@ func _rebuild_rows() -> void:
 		header.name = "Group%d" % kind
 		header.theme = SHARED_THEME
 		header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		header.add_theme_constant_override("separation", 3)
 		_rows_node.add_child(header)
 		var line: HBoxContainer = _add_line(header, "Header")
 		var title: Label = _add_label(line, "Title")
@@ -325,60 +376,64 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	row.name = "Ingredient%d" % index
 	row.theme = SHARED_THEME
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 2)
 	parent.add_child(row)
-	var top: HBoxContainer = _add_line(row, "Top")
+	var line: HBoxContainer = _add_line(row, "Line")
+	line.add_theme_constant_override("separation", 4)
 	var identity: VBoxContainer = VBoxContainer.new()
 	identity.name = "Identity"
 	identity.theme = SHARED_THEME
 	identity.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	identity.custom_minimum_size.x = 130.0
-	top.add_child(identity)
+	identity.custom_minimum_size.x = 95.0
+	identity.add_theme_constant_override("separation", 0)
+	identity.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(identity)
 	var title: Label = _add_label(identity, "Name")
-	var count: Label = _add_label(top, "Count")
-	count.custom_minimum_size.x = 100.0
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var count: Label = _add_label(line, "Count")
+	count.add_theme_font_size_override("font_size", 16)
+	count.custom_minimum_size.x = 72.0
 	count.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var season: Label = _add_label(identity, "Season")
 	season.add_theme_font_size_override("font_size", 14)
 	season.add_theme_color_override("font_color", MUTED_COLOR)
 	season.visible = false
-	var price: Label = _add_label(top, "Price")
+	var price: Label = _add_label(line, "Price")
+	price.add_theme_font_size_override("font_size", 16)
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var parts: Dictionary = {"root": row, "identity": identity, "name": title, "count": count,
 		"season": season, "price": price}
-	var less: Button = _add_button(top, "CartMinus", "−")
+	var buy: HBoxContainer = _add_line(line, "Buy")
+	buy.add_theme_constant_override("separation", 2)
+	var less: Button = _add_button(buy, "CartMinus", "−")
 	less.pressed.connect(_on_cart_step.bind(id, -1))
 	parts["cart-1"] = less
-	var amount: Label = _add_label(top, "Cart")
-	amount.custom_minimum_size.x = 36.0
+	var amount: Label = _add_label(buy, "Cart")
+	amount.custom_minimum_size.x = 22.0
 	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	parts["cart"] = amount
 	for step: int in [1, 5]:
-		var more: Button = _add_button(top, "CartPlus%d" % step, "+" if step == 1 else "+%d" % step)
+		var more: Button = _add_button(buy, "CartPlus%d" % step, "+" if step == 1 else "+%d" % step)
 		more.pressed.connect(_on_cart_step.bind(id, step))
 		parts["cart%+d" % step] = more
-	var detail: HBoxContainer = _add_line(row, "Reorder")
-	# Leave room for both scrollbars without widening the existing card.
-	detail.add_theme_constant_override("separation", 14)
-	var throw: Button = _add_button(detail, "Throw", "Throw out")
+	var throw: Button = _add_button(line, "Throw", "Throw out")
 	throw.pressed.connect(_on_throw_pressed.bind(id))
-	throw.custom_minimum_size.x = 150.0
-	var spacer: Control = Control.new()
-	spacer.name = "Spacer"
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail.add_child(spacer)
-	var auto: Button = _add_button(detail, "Auto", "Auto-reorder on")
+	var auto: Button = _add_button(line, "Auto", "Auto-reorder on")
+	auto.add_theme_font_size_override("font_size", 15)
 	auto.toggle_mode = true
 	auto.toggled.connect(_on_auto_toggled.bind(id))
-	var target_label: Label = _add_label(detail, "TargetLabel")
+	var reorder: HBoxContainer = _add_line(line, "Reorder")
+	reorder.add_theme_constant_override("separation", 2)
+	var target_label: Label = _add_label(reorder, "TargetLabel")
+	target_label.add_theme_font_size_override("font_size", 16)
 	target_label.text = "Target"
-	var minus: Button = _add_button(detail, "Minus", "−")
+	var minus: Button = _add_button(reorder, "Minus", "−")
 	minus.pressed.connect(_on_target_step.bind(id, -1))
-	var target: Label = _add_label(detail, "Target")
-	target.custom_minimum_size.x = 36.0
+	var target: Label = _add_label(reorder, "Target")
+	target.custom_minimum_size.x = 22.0
 	target.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var plus: Button = _add_button(detail, "Plus", "+")
+	var plus: Button = _add_button(reorder, "Plus", "+")
 	plus.pressed.connect(_on_target_step.bind(id, 1))
 	var separator: HSeparator = HSeparator.new()
 	separator.theme = SHARED_THEME
@@ -415,7 +470,9 @@ func _add_button(parent: Node, title: String, text: String) -> Button:
 	button.theme = SHARED_THEME
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
-	button.custom_minimum_size.x = 44.0
+	button.custom_minimum_size.x = 26.0
+	button.add_theme_font_size_override("font_size", 16)
+	IconStyle.compact_button(button)
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	parent.add_child(button)
 	return button
