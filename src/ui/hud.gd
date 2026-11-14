@@ -164,8 +164,9 @@ func queue_toast(text: String) -> void:
 	_show_collection_toast()
 
 
-## The opening-week tracker: one short line per shown goal; none hides it.
-func set_opening_week(lines: Array[String]) -> void:
+## The goal-chain tracker (#494, #514): the running chain's title over one
+## short line per shown goal; no lines hides it.
+func set_opening_week(lines: Array[String], title: String = "") -> void:
 	if _opening_panel == null and lines.is_empty():
 		return
 	if _opening_panel == null:
@@ -195,7 +196,7 @@ func set_opening_week(lines: Array[String]) -> void:
 	if not lines.is_empty():
 		var heading: Label = Label.new()
 		heading.name = "Heading"
-		heading.text = OpeningWeekText.TITLE
+		heading.text = title
 		heading.add_theme_font_size_override(&"font_size", 15)
 		heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_opening_rows.add_child(heading)
@@ -209,6 +210,14 @@ func set_opening_week(lines: Array[String]) -> void:
 			_opening_rows.add_child(row)
 	_opening_panel.visible = not lines.is_empty()
 	_layout_opening_week()
+
+
+## The tracker's heading now, empty when hidden (tests and captures).
+func opening_week_title() -> String:
+	if _opening_panel == null or not _opening_panel.visible:
+		return ""
+	var heading: Label = _opening_rows.get_node_or_null(^"Heading") as Label
+	return heading.text if heading != null else ""
 
 
 ## Lines the tracker shows now (tests and captures).

@@ -1,0 +1,96 @@
+[gd_resource type="Resource" script_class="OpeningWeekSet" load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/opening_week_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://src/sim/progression/opening_goal.gd" id="2_goal"]
+
+[sub_resource type="Resource" id="goal_1"]
+script = ExtResource("2_goal")
+id = &"bigger_lease"
+title = "Take the bigger lease"
+description = "From owner level 3, open the Menu and choose Upgrade your lease (Tier 2): more land to build on. It counts at opening."
+condition = 7
+target = 1.0
+reward_cash = 150
+reward_xp = 15
+
+[sub_resource type="Resource" id="goal_2"]
+script = ExtResource("2_goal")
+id = &"lay_floor"
+title = "Lay 6 new floor tiles"
+description = "In Build, buy 6 or more floor tiles between one opening and the next. They count once they are still there at opening."
+condition = 8
+target = 6.0
+reward_cash = 60
+reward_xp = 5
+
+[sub_resource type="Resource" id="goal_3"]
+script = ExtResource("2_goal")
+id = &"big_table"
+title = "Place a four-seat or round table"
+description = "In Buy, place a four-seat table or a round table. It counts once it is still there at opening."
+condition = 9
+target = 1.0
+reward_cash = 60
+reward_xp = 5
+item_ids = Array[StringName]([&"table_4", &"round_table"])
+
+[sub_resource type="Resource" id="goal_4"]
+script = ExtResource("2_goal")
+id = &"fried_dish"
+title = "Put a fried dish on the menu"
+description = "Buy a fryer, then put fries or another fried dish on the menu. It counts once you open with it on."
+condition = 10
+target = 1.0
+reward_cash = 80
+reward_xp = 10
+station_type = &"fryer"
+
+[sub_resource type="Resource" id="goal_5"]
+script = ExtResource("2_goal")
+id = &"hire_cleaner"
+title = "Hire a cleaner"
+description = "In Staff, hire a cleaner to keep the floor and tables clean. They count once they are still on the team at opening."
+condition = 11
+target = 1.0
+reward_cash = 60
+reward_xp = 5
+role = &"cleaner"
+
+[sub_resource type="Resource" id="goal_6"]
+script = ExtResource("2_goal")
+id = &"seat_group"
+title = "Seat a group"
+description = "Seat a group of two or more together and serve them. A booked party counts too."
+condition = 12
+target = 2.0
+reward_cash = 60
+reward_xp = 5
+
+[sub_resource type="Resource" id="goal_7"]
+script = ExtResource("2_goal")
+id = &"serve_35"
+title = "Serve 35 guests in a day"
+description = "A full house: serve 35 guests in one day. The bigger room and more hands help."
+condition = 2
+target = 35.0
+reward_cash = 100
+reward_xp = 10
+
+[sub_resource type="Resource" id="goal_8"]
+script = ExtResource("2_goal")
+id = &"calm_day"
+title = "3.5 stars, nobody turned away"
+description = "End a day at 3.5 stars or more with no guest leaving because there was no table."
+condition = 13
+target = 3.5
+reward_cash = 130
+reward_xp = 15
+leave_reasons = Array[StringName]([&"no_table"])
+
+[resource]
+script = ExtResource("1_set")
+id = &"week_two"
+title = "Week 2"
+goals = Array[ExtResource("2_goal")]([SubResource("goal_1"), SubResource("goal_2"), SubResource("goal_3"), SubResource("goal_4"), SubResource("goal_5"), SubResource("goal_6"), SubResource("goal_7"), SubResource("goal_8")])
+days = 7
+shown_goals = 3
