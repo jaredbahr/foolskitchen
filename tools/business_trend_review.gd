@@ -5,6 +5,7 @@ extends "res://src/world/main.gd"
 
 const REVIEW_SCENE: String = "res://tools/business_trend_review.tscn"
 const REVIEW_FRAME: int = 60
+const ReviewHUD = preload("res://tools/business_trend_review_hud.gd")
 
 var _review_ready: bool = false
 var _review_days: int = 14
@@ -41,11 +42,40 @@ func _ready() -> void:
 		_review_fail("the ordinary seed-one morning did not start with empty history")
 		return
 	_review_initial_state = BalanceProbe._control_snapshot(self, sim)
+	var hud: ReviewHUD = $HUD as ReviewHUD
+	if hud == null:
+		_review_fail("the capture HUD is missing")
+		return
+	hud.skip_tick_refresh = true
+	var completed: bool = _review_run_services()
+	hud.skip_tick_refresh = false
+	hud.refresh()
+	if not completed:
+		return
+	Clock.set_speed(0)
+	_review_state = BalanceProbe._control_snapshot(self, sim)
+	_review_report = shown_report.to_dict().duplicate(true)
+	_review_history = business_history.summaries()
+	# A normal growth notice can leave Staff open; its Close restores the report.
+	if is_staff_visible() and not set_staff_visible(false):
+		_review_fail("the ordinary Staff close did not restore the report")
+		return
+	if _review_range == 30:
+		var button: Button = _report.get_node("%BusinessTrendSection/BusinessTrendRanges/Days30") as Button
+		button.pressed.emit()
+	print("BUSINESS_TREND_SERVICE_RESULT ", JSON.stringify({"scene": REVIEW_SCENE,
+		"profile": "ordinary Main seed1 default; no additional day or RNG reset; differs from BalanceProbe initialization",
+		"days": _review_days, "initial_state": _review_initial_state,
+		"daily": _review_daily, "history": _review_history, "report": _review_report}))
+	_review_ready = true
+
+
+func _review_run_services() -> bool:
 	# Main already prepared paid stock and the ordinary morning RNG state.
 	for day_index: int in range(_review_days):
 		if not Clock.sim.start_service():
 			_review_fail("the ordinary service did not open")
-			return
+			return false
 		var batches: int = 0
 		while Clock.sim.phase != SimClock.Phase.CLOSED and batches < 30:
 			run_ticks(1000)
@@ -54,7 +84,7 @@ func _ready() -> void:
 				or shown_report.day != day_index + 1 or shown_report.customers_served <= 0 \
 				or not shown_report.operating_profit_recorded():
 			_review_fail("the ordinary paid service did not produce its recorded closing report")
-			return
+			return false
 		var history: Array[Dictionary] = business_history.summaries()
 		var good_reviews: int = 0
 		for review: Dictionary in shown_report.review_cards:
@@ -72,28 +102,13 @@ func _ready() -> void:
 			"dishes_sold": dishes}
 		if history.size() != day_index + 1 or history[-1] != actual:
 			_review_fail("stored history differs from the closing report on day %d" % shown_report.day)
-			return
+			return false
 		_review_daily.append({"day": shown_report.day, "cash": Economy.cash,
 			"world_tick": world.now, "report": shown_report.to_dict(), "history_row": actual})
 		if day_index + 1 < _review_days and not Clock.sim.next_day():
 			_review_fail("the next ordinary morning did not start")
-			return
-	Clock.set_speed(0)
-	_review_state = BalanceProbe._control_snapshot(self, sim)
-	_review_report = shown_report.to_dict().duplicate(true)
-	_review_history = business_history.summaries()
-	# A normal growth notice can leave Staff open; its Close restores the report.
-	if is_staff_visible() and not set_staff_visible(false):
-		_review_fail("the ordinary Staff close did not restore the report")
-		return
-	if _review_range == 30:
-		var button: Button = _report.get_node("%BusinessTrendSection/BusinessTrendRanges/Days30") as Button
-		button.pressed.emit()
-	print("BUSINESS_TREND_SERVICE_RESULT ", JSON.stringify({"scene": REVIEW_SCENE,
-		"profile": "ordinary Main seed1 default; no additional day or RNG reset; differs from BalanceProbe initialization",
-		"days": _review_days, "initial_state": _review_initial_state,
-		"daily": _review_daily, "history": _review_history, "report": _review_report}))
-	_review_ready = true
+			return false
+	return true
 
 
 func _process(_delta: float) -> void:
@@ -176,7 +191,8 @@ func _review_validate() -> void:
 		_review_fail("the saved frame60 PNG identity differs from this unchanged native service")
 		return
 	var source_hashes: Dictionary = {}
-	for path: String in ["tools/business_trend_review.gd", "src/world/main.gd", "src/sim/business_history.gd",
+	for path: String in ["tools/business_trend_review.gd", "tools/business_trend_review.tscn",
+		"tools/business_trend_review_hud.gd", "src/world/main.gd", "src/sim/business_history.gd",
 			"src/ui/business_trend_chart.gd", "src/ui/business_trend_text.gd", "src/ui/evening_report.gd",
 			"src/ui/evening_report.tscn", "tools/screenshot.gd"]:
 		source_hashes[path] = FileAccess.get_sha256("res://" + path)
