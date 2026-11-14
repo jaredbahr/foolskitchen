@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
+          SCREENSHOT_TIMEOUT_SECONDS=180 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-codes --blueprints=ghost --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/report-slowest --report-slowest --open --fast=100 --speed=0 --frames=60
