@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ServiceEventDef" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/sim/events/service_event_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://src/sim/events/service_event_choice.gd" id="2_choice"]
+
+[sub_resource type="Resource" id="Choice_1"]
+script = ExtResource("2_choice")
+label = "Towels and umbrellas"
+result = "Towels by the door, umbrellas by the coats. Guests dripped politely."
+cash = -8
+day_patience_percent = 10
+clean_spots = true
+
+[sub_resource type="Resource" id="Choice_2"]
+script = ExtResource("2_choice")
+label = "Let them drip"
+result = "Puddles everywhere. Character, you call it."
+
+[resource]
+script = ExtResource("1_def")
+id = &"rain_umbrellas"
+title = "Rain at the door"
+text = "It's coming down sideways. Guests are arriving soaked, and the floor knows it."
+icon = &"weather_rain"
+requires = Array[StringName]([&"rain"])
+cooldown_days = 3
+choices = Array[ExtResource("2_choice")]([SubResource("Choice_1"), SubResource("Choice_2")])

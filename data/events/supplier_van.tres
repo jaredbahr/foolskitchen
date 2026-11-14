@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="ServiceEventDef" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/sim/events/service_event_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://src/sim/events/service_event_choice.gd" id="2_choice"]
+
+[sub_resource type="Resource" id="Choice_1"]
+script = ExtResource("2_choice")
+label = "Buy a crate"
+result = "A crate of {ingredient} for a song. They look fine. Mostly."
+stock_units = 20
+stock_price_percent = 60
+risk_percent = 25
+risk_stock_lost_percent = 50
+risk_result = "Half the crate was already plotting its escape. Into the bin it goes."
+
+[sub_resource type="Resource" id="Choice_2"]
+script = ExtResource("2_choice")
+label = "No, thank you"
+result = "The van drives off. It has no number plate either."
+
+[resource]
+script = ExtResource("1_def")
+id = &"supplier_van"
+title = "A van with no name"
+text = "A van pulls up out back. \"Cheap {ingredient}, no questions asked.\" The driver winks. You wish he hadn't."
+icon = &"stock"
+requires = Array[StringName]([&"ingredient"])
+cooldown_days = 4
+choices = Array[ExtResource("2_choice")]([SubResource("Choice_1"), SubResource("Choice_2")])
