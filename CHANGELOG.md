@@ -229,7 +229,6 @@ Each line ends with its PR number.
 
 ### Under the hood
 - A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
-- The hosted check runs its tests in four shards instead of two. With two it took 18 to 24 minutes of a 25-minute limit and was being cancelled at the limit. (#530)
 - The "local versus CI" difference in the staff advice capture was a branch behind `main`, not the game: for one commit, a seeded run gives the same result in a cloud container and on hosted CI. The capture's comment and the worker rules now say so, and `tools/check.sh` notes when a checkout is behind `main` and when a test shard was stopped by its timeout. (#525)
 - The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)

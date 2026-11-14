@@ -34,10 +34,6 @@ jobs:
         run: bash tools/get_godot.sh
 
       - name: Import, parse and test
-        # Four test shards, one per runner core. With two, this job took 18 to
-        # 24 minutes of its 25 and was cancelled at the limit on #530.
-        env:
-          TEST_SHARDS: 4
         run: bash tools/check.sh
 
   changelog:
