@@ -19,6 +19,7 @@ var _completed_known_ids: Array[StringName] = []
 var _record_lines: Array[String] = ["Finish a service day to start your records."]
 var _collection_result: CollectionModel.Result
 var _opening_week: OpeningWeek
+## The running chain's set (#514: Opening week, then Week 2).
 var _opening_catalogue: OpeningWeekSet
 ## Live values by OpeningGoal.Condition, for progress lines.
 var _opening_values: Dictionary[int, float] = {}
@@ -67,8 +68,8 @@ func set_goals(catalogue: MilestoneSet, completed_ids: Array[StringName],
 	_render()
 
 
-## The opening-week card (#494). Main owns the chain; a null or ended chain
-## shows no card.
+## The goal-chain card (#494, #514), titled by the running chain. Main owns
+## the chain; a null or ended chain shows no card.
 func set_opening_week(state: OpeningWeek, catalogue: OpeningWeekSet,
 		values: Dictionary[int, float], day: int) -> void:
 	_opening_week = state
@@ -279,14 +280,14 @@ func _make_opening_card() -> Control:
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var body: VBoxContainer = _compact_body(card)
 	var header: HBoxContainer = _goal_line(body, "Header")
-	var title: Label = _add_label(header, "Title", OpeningWeekText.TITLE)
+	var title: Label = _add_label(header, "Title", _opening_catalogue.title)
 	title.add_theme_font_size_override(&"font_size", 20)
 	var done: int = 0
 	for goal: OpeningGoal in _opening_catalogue.goals:
 		if _opening_week.is_completed(goal.id):
 			done += 1
 	var status: Label = _add_label(header, "Status", "%d / %d done   %s" % [done,
-		_opening_catalogue.goals.size(), OpeningWeekText.days_left(_day, _opening_catalogue.last_day)])
+		_opening_catalogue.goals.size(), OpeningWeekText.days_left(_day, _opening_week.last_day(_opening_catalogue))])
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	status.add_theme_font_size_override(&"font_size", 16)
 	for index: int in shown.size():

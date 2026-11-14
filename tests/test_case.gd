@@ -28,7 +28,7 @@ func reset_weekly_for_synthetic_day_jump(main: Node) -> void:
 
 
 ## Tests of other features that check exact cash after a price change, a
-## decor buy or a day's service retire the opening-week chain (#494) first,
+## decor buy or a day's service retire the goal chains (#494, #514) first,
 ## so its goal rewards stay out of their sums. Its own tests never call this.
 func retire_opening_week(main: Node) -> void:
 	if main == null or not is_instance_valid(main) or not main.get("opening_week") is OpeningWeek:
