@@ -21,6 +21,14 @@ if [[ -z "$GODOT" ]]; then
 fi
 command -v "$GODOT" >/dev/null 2>&1 || [[ -x "$GODOT" ]] || { echo "Godot not found. Run: bash tools/get_godot.sh"; exit 2; }
 
+# CI tests a pull request merged with the current main, not the branch alone.
+# A branch behind main is why a seeded run once looked different "between
+# machines" (#518). This reads the last fetch; it never fetches or fails.
+behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || true)"
+if [[ -n "$behind" && "$behind" != "0" ]]; then
+  echo "NOTE: this checkout is $behind commit(s) behind origin/main (as last fetched). CI tests your branch merged with main: merge main before comparing a result with CI."
+fi
+
 fail=0
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
@@ -65,7 +73,10 @@ for ((k = 0; k < shards; k++)); do
   wait "${pids[$k]}"
   code=$?
   cat "${logs[$k]}"
-  if [[ $code -ne 0 ]] || has_errors "${logs[$k]}"; then echo "FAIL: tests (shard $k/$shards)"; fail=1; fi
+  if [[ $code -eq 124 ]]; then
+    # `timeout` exits 124: the shard was killed, it did not fail a test.
+    echo "FAIL: tests (shard $k/$shards) timed out after 1500 s. On a busy machine, rerun alone before reading it as a test failure."; fail=1
+  elif [[ $code -ne 0 ]] || has_errors "${logs[$k]}"; then echo "FAIL: tests (shard $k/$shards)"; fail=1; fi
   rm -rf -- "${logs[$k]}" "${homes[$k]}"
 done
 

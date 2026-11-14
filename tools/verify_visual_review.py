@@ -368,7 +368,7 @@ def verify_service_views(root):
     assert review['unchanged'] is True and review['day'] == 5 and review['forecast']['day'] == 6, 'demand-report: incoherent actual forecast'
     print(f'demand-report: actual day5 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
-    # One fixed real ten-day service; GDScript validates team/reason text and geometry.
+    # One real seeded service of two to ten days; GDScript validates team/reason text and geometry.
     png = root / 'staff-activity-report' / 'shot_0060.png'
     raw = png.read_bytes()
     assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'staff-activity-report: missing/invalid PNG'
