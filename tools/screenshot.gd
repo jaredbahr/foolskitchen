@@ -1109,7 +1109,7 @@ static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
 			var path: String = "Body/" + field
 			if field in ["Title", "ProgressText"]:
 				path = "Body/Summary/" + field
-			elif field in ["ProgressBar", "Reward"]:
+			elif field in ["Description", "Reward"]:
 				path = "Body/Detail/" + field
 			var control: Control = card.get_node_or_null(path) as Control
 			fields[field] = _loan_control_evidence(control) if control != null else {"visible": false}

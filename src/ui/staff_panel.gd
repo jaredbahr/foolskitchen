@@ -21,18 +21,18 @@ const PRIORITY_CYCLE: Array[int] = [StaffJobPriorities.Level.HIGH, StaffJobPrior
 ## Jobs a role can't do sit flat on the panel: a faint outline and a faded dash.
 const LOCKED_BORDER_ALPHA: float = 0.35
 const LOCKED_TEXT_ALPHA: float = 0.45
-const ROLE_WIDTH: float = 78.0
+const ROLE_WIDTH: float = 82.0
 const SKILL_WIDTH: float = 98.0
 const MOOD_WIDTH: float = 50.0
 const WAGE_WIDTH: float = 86.0
 const ACTION_WIDTH: float = 88.0
 const TRANSFER_WIDTH: float = 116.0
 const ROW_SPACING: int = 6
-const SEND_TO: String = "Send toâ€¦"
+const SEND_TO: String = "Send to…"
 const SEND_TO_HINT: String = "Move this person to another of your restaurants. No fee; they keep their skills and pay."
 
 
-## One of the owner's other restaurants, for "Send toâ€¦" (main supplies them).
+## One of the owner's other restaurants, for "Send to…" (main supplies them).
 class TransferSite:
 	extends RefCounted
 	var id: StringName = &""
@@ -138,7 +138,7 @@ func set_morning(day: int, notices: Array[Dictionary]) -> void:
 	refresh()
 
 
-## The owner's other sites; none hides "Send toâ€¦". Main refreshes it when the
+## The owner's other sites; none hides "Send to…". Main refreshes it when the
 ## panel opens, each morning and after a transfer.
 func set_transfer_sites(sites: Array[TransferSite]) -> void:
 	_transfer_sites = sites.duplicate()
@@ -227,8 +227,8 @@ func refresh() -> void:
 		var title: String = "Trays" if level == 1 else "Big trays"
 		var label: Label = %TraysLabel if level == 1 else %BigTraysLabel
 		var purchase: Button = %TraysBuy if level == 1 else %BigTraysBuy
-		label.text = "%s â€” %s" % [title, Fmt.price(price) if GameMode.is_creative() else "$%d" % price] \
-			if price >= 0 else "%s â€” price unavailable" % title
+		label.text = "%s — %s" % [title, Fmt.price(price) if GameMode.is_creative() else "$%d" % price] \
+			if price >= 0 else "%s — price unavailable" % title
 		purchase.text = "Owned" if _tray_level >= level else "Buy"
 		purchase.disabled = not editable or price < 0 or _tray_level != level - 1 or _cash < price \
 			or not _tray_lock_reason.is_empty()
@@ -392,7 +392,7 @@ func _refresh_priorities() -> void:
 			var supported: bool = StaffJobPriorities.supports(choices.role, job)
 			var value: int = choices.priority(job) if supported else StaffJobPriorities.Level.OFF
 			button.disabled = not supported
-			button.text = StaffJobPriorities.level_label(value) if supported else "â€”"
+			button.text = StaffJobPriorities.level_label(value) if supported else "—"
 			button.tooltip_text = _priority_tooltip(choices, job, has_cleaner)
 			if int(button.get_meta(&"priority_level", -1)) != value \
 					or bool(button.get_meta(&"priority_supported", false)) != supported:

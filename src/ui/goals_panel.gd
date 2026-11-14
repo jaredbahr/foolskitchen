@@ -193,12 +193,12 @@ func _render_collections() -> void:
 			short_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			for requirement_index: int in range(entry.requirements.size()):
 				var requirement: CollectionModel.Entry.Requirement = entry.requirements[requirement_index]
-				var mark: String = "âœ“" if requirement.present else "â–¡"
+				var mark: String = "✓" if requirement.present else "□"
 				var item_label: Label = _add_label(rows,
 					"Collection%dItem%d" % [index, requirement_index], "%s %s" % [mark, requirement.display_name])
 				item_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			if entry.floor_required:
-				var floor_mark: String = "âœ“" if entry.has_floor else "â–¡"
+				var floor_mark: String = "✓" if entry.has_floor else "□"
 				_add_label(rows, "Collection%dFloor" % index,
 					"%s Floor: %s" % [floor_mark, entry.floor_name])
 			if entry.completed:
@@ -277,20 +277,8 @@ func _make_opening_card() -> Control:
 	card.theme = SHARED_THEME
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var panel_style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
-	if panel_style is StyleBoxFlat:
-		(panel_style as StyleBoxFlat).content_margin_top = 9.0
-		(panel_style as StyleBoxFlat).content_margin_bottom = 9.0
-	card.add_theme_stylebox_override(&"panel", panel_style)
-	var body: VBoxContainer = VBoxContainer.new()
-	body.name = "Body"
-	body.add_theme_constant_override(&"separation", 2)
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(body)
-	var header: HBoxContainer = HBoxContainer.new()
-	header.name = "Header"
-	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.add_child(header)
+	var body: VBoxContainer = _compact_body(card)
+	var header: HBoxContainer = _goal_line(body, "Header")
 	var title: Label = _add_label(header, "Title", OpeningWeekText.TITLE)
 	title.add_theme_font_size_override(&"font_size", 20)
 	var done: int = 0
@@ -309,23 +297,25 @@ func _make_opening_card() -> Control:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override(&"separation", 0)
 		body.add_child(row)
-		var line: HBoxContainer = HBoxContainer.new()
-		line.name = "Line"
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(line)
-		var name_label: Label = _add_label(line, "Title", "â–¡ " + goal.title)
+		var line: HBoxContainer = _goal_line(row, "Line")
+		var name_label: Label = _add_label(line, "Title", "□ " + goal.title)
 		name_label.add_theme_font_size_override(&"font_size", 18)
-		var reward: Label = _add_label(line, "Reward", "$%d" % goal.reward_cash)
-		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		reward.size_flags_horizontal = Control.SIZE_SHRINK_END
-		reward.add_theme_font_size_override(&"font_size", 18)
-		var detail: String = goal.description
-		var progress: String = OpeningWeekText.progress_line(goal, _opening_values.get(goal.condition, 0.0))
-		if not progress.is_empty():
-			detail += "  " + progress
-		var description: Label = _add_label(row, "Description", detail)
+		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var raw: float = _opening_values.get(goal.condition, 0.0)
+		var progress_text: String = OpeningWeekText.progress_line(goal, raw)
+		if not progress_text.is_empty():
+			var progress: Label = _add_label(line, "ProgressText", progress_text)
+			progress.size_flags_horizontal = Control.SIZE_SHRINK_END
+			progress.add_theme_font_size_override(&"font_size", 15)
+		var description: Label = _add_label(row, "Description", goal.description)
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		description.add_theme_font_size_override(&"font_size", 15)
+		var details: HBoxContainer = _goal_line(row, "Detail")
+		_progress_bar(details, clampf(raw / goal.target, 0.0, 1.0) if is_finite(raw) else 0.0)
+		var reward: Label = _add_label(details, "Reward", "$%d" % goal.reward_cash)
+		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		reward.size_flags_horizontal = Control.SIZE_SHRINK_END
+		reward.add_theme_font_size_override(&"font_size", 15)
 	return card
 
 
@@ -354,11 +344,11 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 	progress.size_flags_horizontal = Control.SIZE_SHRINK_END
 	progress.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	progress.add_theme_font_size_override(&"font_size", 15)
-	var description: Label = _add_label(body, "Description", goal.description)
+	var detail: HBoxContainer = _goal_line(body, "Detail")
+	var description: Label = _add_label(detail, "Description", goal.description)
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	description.add_theme_font_size_override(&"font_size", 15)
-	var detail: HBoxContainer = _goal_line(body, "Detail")
-	var bar: ProgressBar = _progress_bar(detail, 1.0 if completed else _progress_ratio(goal))
+	var bar: ProgressBar = _progress_bar(body, 1.0 if completed else _progress_ratio(goal))
 	var reward: Label = _add_label(detail, "Reward", "Reward: %d XP   Cash: $%d" % [goal.reward_xp, goal.reward_cash])
 	reward.size_flags_horizontal = Control.SIZE_SHRINK_END
 	reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -374,8 +364,8 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 
 func _compact_body(card: PanelContainer) -> VBoxContainer:
 	var style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
-	style.content_margin_top = 3.0
-	style.content_margin_bottom = 3.0
+	style.content_margin_top = 2.0
+	style.content_margin_bottom = 2.0
 	card.add_theme_stylebox_override(&"panel", style)
 	var body: VBoxContainer = VBoxContainer.new()
 	body.name = "Body"

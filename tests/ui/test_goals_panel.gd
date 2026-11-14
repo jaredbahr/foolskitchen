@@ -52,7 +52,7 @@ func test_progress_is_finite_bounded_and_rewards_are_player_readable() -> void:
 	var card: Control = _panel.goal_card_for(&"partway")
 	assert_eq((card.get_node("Body/Summary/ProgressText") as Label).text, "Progress: 2 / 10 guests")
 	assert_eq((card.get_node("Body/Detail/Reward") as Label).text, "Reward: 20 XP   Cash: $10")
-	assert_false((card.get_node("Body/Detail/ProgressBar") as ProgressBar).show_percentage)
+	assert_false((card.get_node("Body/ProgressBar") as ProgressBar).show_percentage)
 
 
 func test_non_finite_progress_falls_back_to_zero_within_active_goal_limit() -> void:
@@ -176,7 +176,7 @@ func test_completed_cards_are_full_greyed_and_do_not_mutate_inputs() -> void:
 	var first_title: String = _catalogue.by_id(&"first").title
 	_panel.set_goals(_catalogue, completed, progress, 2)
 	var completed_card: Control = _panel.goal_card_for(&"done")
-	assert_almost_eq((completed_card.get_node("Body/Detail/ProgressBar") as ProgressBar).value, 1.0)
+	assert_almost_eq((completed_card.get_node("Body/ProgressBar") as ProgressBar).value, 1.0)
 	assert_eq((completed_card.get_node("Body/Summary/ProgressText") as Label).text, "Completed")
 	var original_label: Color = GoalsPanel.SHARED_THEME.get_color("font_color", "Label")
 	var completed_label: Label = completed_card.get_node("Body/Summary/Title") as Label
@@ -311,7 +311,7 @@ func _assert_full_catalogue_window(window_size: Vector2i) -> void:
 	var summary: HBoxContainer = second.get_node("Body/Summary") as HBoxContainer
 	var progress: Label = summary.get_node("ProgressText") as Label
 	var short_title: Label = summary.get_node("Title") as Label
-	var bar: ProgressBar = second.get_node("Body/Detail/ProgressBar") as ProgressBar
+	var bar: ProgressBar = second.get_node("Body/ProgressBar") as ProgressBar
 	assert_true(second.size.y <= 72.0, "an ordinary goal occupies about 60 px")
 	assert_almost_eq(short_title.get_global_rect().get_center().y, progress.get_global_rect().get_center().y, 2.0)
 	assert_true(bar.size.y <= 12.0, "a compact bar still shows the same goal progress")
@@ -380,7 +380,7 @@ func _goal(id: StringName, title: String, target: float, unlock_level: int) -> M
 
 func _bar_value(id: StringName) -> float:
 	var card: Control = _panel.goal_card_for(id)
-	return (card.get_node("Body/Detail/ProgressBar") as ProgressBar).value
+	return (card.get_node("Body/ProgressBar") as ProgressBar).value
 
 
 func _record_close() -> void:
