@@ -163,8 +163,12 @@ func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictiona
 
 func rebuild() -> void:
 	_ensure_roots()
+	# A dressing given no street gets the starter street's parts, so its cache keys
+	# match a dressing that was handed the starter preset.
 	if street_set == null:
-		street_set = StreetSet.standard()
+		street_set = StreetPreset.starter().buildings
+	if ground_skin == null:
+		ground_skin = StreetPreset.starter().ground
 	var built: Array[Vector2i] = []
 	var patio: Array[Vector2i] = []
 	if _grid != null:
