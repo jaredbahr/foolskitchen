@@ -172,26 +172,26 @@ func test_close_adds_the_xp_and_the_rating_goal() -> void:
 	assert_true(main.call("menu_set_price", dish.id, settings.price_of(dish) + 1))
 	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	var xp_before: int = owner.total_xp
-	main.set("reputation", _book_high())
+	_five_star_reviews(main, 5)
 	_close_day(main)
 	var report: DayReport = main.get("shown_report") as DayReport
-	var opening_xp: int = CHAIN.by_id(&"change_price").reward_xp + CHAIN.by_id(&"reach_4_stars").reward_xp
+	var opening_xp: int = CHAIN.by_id(&"change_price").reward_xp + CHAIN.by_id(&"five_star_day").reward_xp
 	assert_eq(int(report.owner_xp_breakdown.get("opening_week_xp", 0)), opening_xp)
 	assert_true(owner.total_xp >= xp_before + opening_xp)
 	assert_eq(_state(main).pending_xp, 0)
-	assert_true(_state(main).is_completed(&"reach_4_stars"), "a 4-star close meets the rating goal")
+	assert_true(_state(main).is_completed(&"five_star_day"), "five 5-star reviews today meet the goal at close")
 	assert_eq(int(report.income.get(Ledger.OPENING_WEEK_BONUS, 0)),
-		CHAIN.by_id(&"change_price").reward_cash + CHAIN.by_id(&"reach_4_stars").reward_cash)
+		CHAIN.by_id(&"change_price").reward_cash + CHAIN.by_id(&"five_star_day").reward_cash)
 
 
 func test_a_guest_paid_on_the_closing_tick_counts_and_close_toasts_wait() -> void:
 	var main: Node = await _start(false)
 	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
-	main.set("reputation", _book_high())
+	_five_star_reviews(main, 5)
 	_close_day(main)
 	# The 15th guest paid after the phase had turned CLOSED: the live check
 	# missed them, so the close counts today's guests once more.
-	assert_true(_state(main).is_completed(&"reach_4_stars"))
+	assert_true(_state(main).is_completed(&"five_star_day"))
 	assert_false(_state(main).is_completed(&"serve_15"))
 	restaurant.served_today = 15
 	main.call("_close_opening_week", Clock.sim.day)
@@ -391,10 +391,10 @@ func _server_candidate(main: Node) -> StringName:
 
 
 ## Ten fives: a rating well above four stars, whatever today adds.
-func _book_high() -> ReputationBook:
-	var book: ReputationBook = ReputationBook.new()
-	assert_true(book.from_dict({"version": 1, "scores": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}))
-	return book
+func _five_star_reviews(main: Node, count: int) -> void:
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	for i: int in count:
+		restaurant.reviews_today.append({"stars": 5})
 
 
 func _quiet_service(main: Node) -> void:

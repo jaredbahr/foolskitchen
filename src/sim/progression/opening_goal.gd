@@ -16,8 +16,8 @@ enum Condition {
 	OWNER_ON_FLOOR,
 	## At opening, more tables and more servers than at the start of the morning.
 	GROW_TOGETHER,
-	## Closing reputation in stars.
-	REPUTATION,
+	## Five-star reviews written so far today.
+	FIVE_STAR_REVIEWS_TODAY,
 }
 
 @export var id: StringName = &""
@@ -26,8 +26,8 @@ enum Condition {
 ## One plain sentence for the Goals card.
 @export_multiline var description: String = ""
 @export_enum("Price changed", "Decor placed", "Served today", "Drink on menu",
-	"Owner on floor", "Grow together", "Reputation") var condition: int = Condition.PRICE_CHANGED
-## Reputation uses a fractional star target; other conditions use whole counts.
+	"Owner on floor", "Grow together", "Five-star reviews today") var condition: int = Condition.PRICE_CHANGED
+## Every condition uses a whole-number target.
 @export var target: float = 1.0
 @export_range(0, 100000, 1) var reward_cash: int = 0
 @export_range(0, 100000, 1) var reward_xp: int = 0
@@ -35,11 +35,9 @@ enum Condition {
 
 func is_valid() -> bool:
 	if id.is_empty() or title.strip_edges().is_empty() or description.strip_edges().is_empty() \
-			or condition < Condition.PRICE_CHANGED or condition > Condition.REPUTATION \
+			or condition < Condition.PRICE_CHANGED or condition > Condition.FIVE_STAR_REVIEWS_TODAY \
 			or not is_finite(target) or target <= 0.0 \
 			or reward_cash < 0 or reward_cash > 100000 or reward_xp < 0 or reward_xp > 100000 \
 			or (reward_cash == 0 and reward_xp == 0):
 		return false
-	if condition == Condition.REPUTATION:
-		return target <= 5.0
 	return target <= 1000000.0 and floorf(target) == target

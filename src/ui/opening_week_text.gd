@@ -22,8 +22,8 @@ static func progress_line(goal: OpeningGoal, value: float) -> String:
 	match goal.condition:
 		OpeningGoal.Condition.SERVED_TODAY:
 			return "Today: %d / %d guests" % [floori(current), floori(goal.target)]
-		OpeningGoal.Condition.REPUTATION:
-			return "Rating: %.1f / %.1f stars" % [current, goal.target]
+		OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY:
+			return "Today: %d / %d five-star reviews" % [floori(current), floori(goal.target)]
 	return ""
 
 

@@ -16,7 +16,7 @@ func test_authored_chain_is_valid_and_pays_about_six_hundred() -> void:
 		conditions[goal.condition] = true
 		assert_true(goal.reward_cash > 0 and goal.reward_xp > 0, "%s pays cash and a little XP" % goal.id)
 		assert_true(goal.reward_xp <= 20, "%s: only a little XP" % goal.id)
-	for condition: int in range(OpeningGoal.Condition.PRICE_CHANGED, OpeningGoal.Condition.REPUTATION + 1):
+	for condition: int in range(OpeningGoal.Condition.PRICE_CHANGED, OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY + 1):
 		assert_true(conditions.has(condition), "every condition has a goal: %d" % condition)
 
 
@@ -28,7 +28,7 @@ func test_each_goal_triggers_from_its_own_condition_and_pays_once() -> void:
 		[&"drink_on_menu", OpeningGoal.Condition.DRINK_ON_MENU, 1.0],
 		[&"owner_on_floor", OpeningGoal.Condition.OWNER_ON_FLOOR, 1.0],
 		[&"grow_together", OpeningGoal.Condition.GROW_TOGETHER, 1.0],
-		[&"reach_4_stars", OpeningGoal.Condition.REPUTATION, 4.0],
+		[&"five_star_day", OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY, 5.0],
 	]
 	for row: Array in cases:
 		var state: OpeningWeek = OpeningWeek.new()
@@ -45,7 +45,7 @@ func test_each_goal_triggers_from_its_own_condition_and_pays_once() -> void:
 func test_thresholds_and_the_serve_pair() -> void:
 	var state: OpeningWeek = OpeningWeek.new()
 	assert_true(state.observe(OpeningGoal.Condition.SERVED_TODAY, 14.0, CHAIN).is_empty())
-	assert_true(state.observe(OpeningGoal.Condition.REPUTATION, 3.95, CHAIN).is_empty())
+	assert_true(state.observe(OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY, 4.0, CHAIN).is_empty())
 	assert_true(state.observe(OpeningGoal.Condition.DRINK_ON_MENU, 0.0, CHAIN).is_empty())
 	var both: Array[OpeningGoal] = state.observe(OpeningGoal.Condition.SERVED_TODAY, 25.0, CHAIN)
 	assert_eq(both.size(), 2, "a 25-guest day meets both serving goals at once")

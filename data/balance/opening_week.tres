@@ -75,11 +75,11 @@ reward_xp = 10
 
 [sub_resource type="Resource" id="goal_8"]
 script = ExtResource("2_goal")
-id = &"reach_4_stars"
-title = "Reach 4 stars"
-description = "End a day with your rating at 4 stars or better."
+id = &"five_star_day"
+title = "Five 5-star reviews"
+description = "Get five 5-star reviews in one day. Good food, short waits and fair prices earn them."
 condition = 6
-target = 4.0
+target = 5.0
 reward_cash = 100
 reward_xp = 10
 

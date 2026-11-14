@@ -5479,7 +5479,7 @@ func _refresh_goals(force: bool = false) -> void:
 		_goals_panel.set_collections(vibe_result.collection_result)
 		var opening_values: Dictionary[int, float] = {
 			OpeningGoal.Condition.SERVED_TODAY: float(sim.served_today),
-			OpeningGoal.Condition.REPUTATION: reputation.average()}
+			OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY: float(_five_star_reviews_today())}
 		_goals_panel.set_opening_week(null if creative else opening_week, opening_week_catalogue,
 			opening_values, Clock.sim.day)
 		_goals_snapshot = snapshot.duplicate(true)
@@ -7033,10 +7033,7 @@ func _on_service_closed(day: int) -> void:
 	# Owner XP, goals and the tier climb are business-day rewards only.
 	career = career and business_day
 	staff_roster.close_growth_day()
-	var five_star_reviews: int = 0
-	for row: Dictionary in sim.reviews_today:
-		if int(row.get("stars", 0)) == 5:
-			five_star_reviews += 1
+	var five_star_reviews: int = _five_star_reviews_today()
 	var level_before: int = owner_progress.level
 	if career:
 		_owner_award_today = owner_progress.award_day(day,
@@ -7247,11 +7244,20 @@ func _observe_opening_at_open() -> void:
 
 ## The close checks the rating goal, then adds the chain's waiting XP to
 ## tonight's owner award (career business days only, like career goals).
+## Five-star reviews written so far today (owner XP and the opening week).
+func _five_star_reviews_today() -> int:
+	var count: int = 0
+	for row: Dictionary in sim.reviews_today:
+		if int(row.get("stars", 0)) == 5:
+			count += 1
+	return count
+
+
 func _close_opening_week(day: int) -> void:
 	# A guest who pays on the closing tick pays after the phase turned CLOSED,
 	# so the live check missed them: count today's guests once more here.
 	_observe_opening(OpeningGoal.Condition.SERVED_TODAY, float(sim.served_today))
-	_observe_opening(OpeningGoal.Condition.REPUTATION, reputation.average())
+	_observe_opening(OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY, float(_five_star_reviews_today()))
 	if opening_week.pending_xp <= 0:
 		return
 	var bonus: Dictionary = owner_progress.award_bonus(opening_week.pending_xp)
