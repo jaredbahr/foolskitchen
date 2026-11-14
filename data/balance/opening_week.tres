@@ -85,6 +85,8 @@ reward_xp = 10
 
 [resource]
 script = ExtResource("1_set")
+id = &"opening_week"
+title = "Opening week"
 goals = Array[ExtResource("2_goal")]([SubResource("goal_1"), SubResource("goal_2"), SubResource("goal_3"), SubResource("goal_4"), SubResource("goal_5"), SubResource("goal_6"), SubResource("goal_7"), SubResource("goal_8")])
-last_day = 7
+days = 7
 shown_goals = 3
