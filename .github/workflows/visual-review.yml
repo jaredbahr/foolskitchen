@@ -1,8 +1,14 @@
 name: Visual review captures
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/visual-review.yml'
+      - 'tools/verify_visual_review.py'
   pull_request:
     paths:
+      - 'tools/verify_visual_review.py'
       - '.github/workflows/visual-review.yml'
       - 'tools/screenshot.*'
       - 'tools/menu_boards_review.gd'
@@ -28,9 +34,13 @@ concurrency:
 
 jobs:
   capture:
-    name: Default, cutaway and inspection views
+    name: Visual captures (${{ matrix.batch }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [shop, service]
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
@@ -47,6 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p screens/visual-review
+          printf 'batch=%s\n' '${{ matrix.batch }}' > screens/visual-review/capture-context.txt
           for command in xvfb-run Xvfb xauth timeout python3 dpkg-query; do
             command -v "$command" >/dev/null || { echo "BLOCKED: preinstalled command missing: $command"; exit 2; }
           done
@@ -77,7 +88,8 @@ jobs:
             exit 1
           fi
 
-      - name: Capture actual default, cutaway and inspection views sequentially
+      - if: matrix.batch == 'shop'
+        name: Capture shop and inspection views
         shell: bash
         run: |
           set -euo pipefail
@@ -123,6 +135,13 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/health-inspector --scene=res://tools/inspector_review.tscn --speed=0 --frames=30,70,110
           OWNER_REVIEW_STAGE=picker bash tools/screenshot.sh --out=screens/visual-review/owner-picker --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
           OWNER_REVIEW_STAGE=shop bash tools/screenshot.sh --out=screens/visual-review/owner-character --scene=res://tools/owner_character_review.tscn --speed=0 --frames=60
+
+      - if: matrix.batch == 'service'
+        name: Capture order-counter, service and interface views
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
           bash tools/screenshot.sh --out=screens/visual-review/report --report --open --fast=100 --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-codes --blueprints=ghost --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/report-slowest --report-slowest --open --fast=100 --speed=0 --frames=60
@@ -157,7 +176,6 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/signature-menu --signature-review=menu --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/signature-demand --signature-review=demand --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/jukebox --scene=res://tools/jukebox_review.tscn --speed=0 --frames=12,40
-          SCREENSHOT_TIMEOUT_SECONDS=120 bash tools/screenshot.sh --out=screens/visual-review/order-counter --scene=res://tools/order_counter_review.tscn --speed=0 --frames=90,330
           bash tools/screenshot.sh --out=screens/visual-review/build-green --build=green --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-red --build=red --quarter=0 --frames=12 --speed=1
           bash tools/screenshot.sh --out=screens/visual-review/build-pinch --build=pinch --quarter=2 --frames=12 --speed=1
@@ -174,21 +192,27 @@ jobs:
           MESS_REVIEW_FLOOR=light bash tools/screenshot.sh --out=screens/visual-review/messes-light --scene=res://tools/messes_review.tscn --speed=0 --frames=60
           timeout 60 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/title_review.gd -- --out=screens/visual-review/title
 
-      - name: Capture seated guests at a real table
+      - if: matrix.batch == 'service'
+        name: Capture seated guests at a real table
         shell: bash
         run: |
           set -euo pipefail
-          export XDG_DATA_HOME="$(mktemp -d)"
+          capture_data=$(mktemp -d)
+          trap 'rm -rf -- "$capture_data"' EXIT
+          export XDG_DATA_HOME="$capture_data"
           timeout 120 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/seated_table_review.gd -- --capture-only --out=screens/visual-review/seated-tables 2>&1 | tee screens/visual-review/seated-tables.log
           if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' screens/visual-review/seated-tables.log; then
             exit 1
           fi
 
-      - name: Capture the advisory restock warning
+      - if: matrix.batch == 'service'
+        name: Capture the advisory restock warning
         shell: bash
         run: |
           set -euo pipefail
-          export XDG_DATA_HOME="$(mktemp -d)"
+          capture_data=$(mktemp -d)
+          trap 'rm -rf -- "$capture_data"' EXIT
+          export XDG_DATA_HOME="$capture_data"
           timeout 60 xvfb-run -a -s '-screen 0 1600x900x24' "$GODOT" --path . --rendering-method gl_compatibility --audio-driver Dummy --script tools/restock_warning_shot.gd -- --out=screens/visual-review/restock-warning 2>&1 | tee screens/visual-review/restock-warning.log
           if grep -E 'SCRIPT ERROR|Parse Error|^[[:space:]]*ERROR:' screens/visual-review/restock-warning.log; then
             exit 1
@@ -196,248 +220,34 @@ jobs:
 
       - name: Verify capture identity and image metadata
         shell: bash
+        env:
+          VISUAL_REVIEW_BATCH: ${{ matrix.batch }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import math
-          from pathlib import Path
-          import struct
-
-          root = Path('screens/visual-review')
-          captures = [('default', -1, False, False, 60)] + [(f'quarter-{q}', q, False, False, 60) for q in range(4)]
-          captures += [('report', -1, False, False, 60)]
-          captures += [('inspect-guest', -1, True, False, 60), ('debug-busy', -1, True, True, 60)]
-          captures += [('owner-kitchen', -1, False, False, 60)]
-          captures += [('milestone-review', -1, False, False, frame) for frame in (12, 90)]
-          captures += [('mood-waits', -1, False, False, frame) for frame in (120, 180, 240, 300)]
-          captures += [('menu', -1, False, False, 12)]
-          captures += [('staff', -1, False, False, 12)]
-          captures += [('paint', -1, False, False, 60)]
-          captures += [('build-green', 0, False, False, 12), ('build-red', 0, False, False, 12)]
-          captures += [('settings', -1, False, False, 12)]
-          captures += [('shortcuts', -1, False, False, 12)]
-          captures += [('settings-world', -1, False, False, 90)]
-          observed_bands = set()
-          for name, requested, inspect_guest, debug, frame in captures:
-              inspect_owner = name == 'owner-kitchen'
-              png = root / name / f'shot_{frame:04d}.png'
-              raw = png.read_bytes()
-              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
-              assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'{name}: wrong PNG dimensions'
-              data = json.loads(png.with_suffix('.json').read_text())
-              assert data['image_file'] == png.name, f'{name}: metadata names another image'
-              assert data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'{name}: image/metadata digest mismatch'
-              expected = 0 if requested == -1 else requested
-              assert data['scene'] == 'res://src/world/main.tscn', f'{name}: wrong captured scene'
-              assert data['capture_timing'] == 'frame_post_draw', f'{name}: pixels/state were not captured after draw'
-              if name == 'milestone-review':
-                  review = data.get('milestone_review')
-                  assert isinstance(review, dict) and isinstance(review.get('fixture'), dict) and isinstance(review.get('state'), dict), f'{name}: missing GDScript-validated milestone evidence'
-                  assert review['state'].get('frame') == frame, f'{name}: milestone evidence frame does not match this image'
-              if name == 'shortcuts':
-                  shortcuts = data.get('shortcuts')
-                  assert isinstance(shortcuts, dict), 'shortcuts: missing runtime panel evidence'
-                  assert data.get('requested_shortcuts_visible') is True and shortcuts.get('visible') is True, 'shortcuts: production F1 path did not leave the panel visible'
-                  assert shortcuts.get('close_button_focused') is True, 'shortcuts: Close did not receive actual focus'
-                  assert shortcuts.get('input') == {'delivery': 'Viewport.push_input', 'key': 'F1', 'frame': 3}, 'shortcuts: capture was not opened through the actual viewport F1 event'
-                  assert shortcuts.get('group_headings') == ['Game', 'Owner', 'Build'], 'shortcuts: wrong visible groups/order'
-                  assert shortcuts.get('row_count') == shortcuts.get('expected_row_count') and shortcuts['row_count'] > 0, 'shortcuts: visible table rows are incomplete'
-                  assert shortcuts.get('column_count') == 2 and shortcuts.get('two_cell_rows') is True, 'shortcuts: expected key/action two-column rows'
-                  x, y, width, height = shortcuts['panel_bounds']
-                  assert width > 0 and height > 0 and x >= 0 and y >= 0 and x + width <= data['width'] and y + height <= data['height'], 'shortcuts: panel card is outside the viewport'
-              assert data['requested_quarter'] == requested, f'{name}: wrong requested quarter'
-              assert data['actual_quarter'] == expected, f'{name}: wrong actual quarter'
-              assert math.isclose(data['yaw_degrees'], 45 + 90 * expected, abs_tol=0.01), f'{name}: wrong rendered yaw'
-              assert data['wall_mode'] == 1, f'{name}: not Cutaway'
-              assert type(data['engine_errors']) is int and data['engine_errors'] == 0, f'{name}: engine/script errors'
-              assert (data['width'], data['height'], data['frame']) == (1600, 900, frame), f'{name}: wrong viewport/frame'
-              assert 'llvmpipe' in data['video_adapter'].lower(), f'{name}: not the requested software Mesa adapter'
-              assert data['lowered_wall_cells'], f'{name}: no lowered walls'
-              assert data['requested_selection'] == ('owner' if inspect_owner else 'guest' if inspect_guest else ''), f'{name}: wrong requested selection'
-              assert data['requested_debug_visible'] is debug, f'{name}: wrong requested F3 state'
-              menu = name == 'menu'
-              assert data['requested_menu_visible'] is menu, f'{name}: wrong requested menu state'
-              assert data['menu_visible'] is menu, f'{name}: wrong actual menu visibility'
-              staff = name == 'staff'
-              assert data['requested_staff_visible'] is staff, f'{name}: wrong requested Staff state'
-              assert data['staff']['visible'] is staff, f'{name}: wrong actual Staff visibility'
-              build_kind = name.removeprefix('build-') if name.startswith('build-') else ''
-              assert data['requested_build'] == build_kind, f'{name}: wrong requested build preview'
-              if build_kind:
-                  build = data['build']
-                  assert build['active'] is True and build['has_ghost'] is True and build['ghost_visible'] is True, f'{name}: missing native ghost'
-                  assert build['ok'] is build['ghost_valid'] is (build_kind == 'green'), f'{name}: wrong editor/native validity'
-                  assert build['state'] == 3 and build['origin'] == build['pointer_cell'], f'{name}: incoherent buy preview pointer'
-                  assert data['day_phase'] == 0 and data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 1}
-                  assert build_kind != 'red' or build['why'], f'{name}: missing placement reason'
-              assert data['debug_visible'] is debug, f'{name}: wrong actual F3 state'
-              assert data['panel_visible'] is (inspect_guest or inspect_owner), f'{name}: wrong actual inspect panel state'
-              assert data['selected_item_id'] == -1, f'{name}: unexpected item selection'
-              assert type(data['world_tick']) is int and data['world_tick'] >= 0, f'{name}: invalid world tick'
-              if inspect_guest or inspect_owner:
-                  assert type(data['selected_agent_id']) is int and data['selected_agent_id'] > 0, f'{name}: no selected agent id'
-                  assert data['selected_role'] == ('owner' if inspect_owner else 'guest') and data['selected_agent_live'] is True, f'{name}: selected agent is not the requested live agent'
-                  assert data['world_tick'] > 0, f'{name}: busy world did not advance'
-              else:
-                  assert data['selected_agent_id'] == -1 and data['selected_role'] == '', f'{name}: unexpected agent selection'
-                  assert data['selected_agent_live'] is False, f'{name}: unexpected live selection'
-              assert data['requested_owner_mode'] == ('kitchen' if inspect_owner else ''), f'{name}: wrong requested owner mode'
-              if inspect_owner:
-                  assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 5, 'speed': 1}, 'wrong owner capture parameters'
-                  assert data['owner_mode'] == 'kitchen', 'owner is not assigned to kitchen'
-                  assert type(data['owner_warmup_ticks']) is int and 0 <= data['owner_warmup_ticks'] <= 900, 'invalid owner warmup budget'
-                  assert type(data['selected_task_id']) is int and data['selected_task_id'] > 0, 'owner has no actual task'
-                  assert data['selected_task_role'] == 'cook' and data['selected_task_label'], 'owner is not cooking'
-                  assert data['selected_task_state'] == 1 and data['selected_task_claimant'] == data['selected_agent_id'], 'owner does not hold the real CLAIMED task'
-                  assert type(data['selected_task_step']) is int and data['selected_task_step'] >= 0, 'invalid actual task step'
-              if menu:
-                  assert type(data['day_phase']) is int and data['day_phase'] == 0, 'menu capture is not MORNING'
-                  assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'wrong paused menu capture parameters'
-                  assert data['world_tick'] == 0, 'paused morning menu capture advanced the simulation'
-              if name == 'mood-waits':
-                  assert data['capture_parameters'] == {'open': True, 'fast_ticks_per_frame': 8, 'speed': 1}, 'wrong mood capture parameters'
-                  assert data['world_tick'] > 0, 'normal mood capture did not advance the simulation'
-                  assert type(data['master_seed']) is str and data['master_seed'].lstrip('-').isdigit(), 'missing actual master seed'
-                  assert set(data['restaurant_rng']) == {'seed', 'state'}, 'missing actual restaurant RNG snapshot'
-                  assert all(type(value) is str and value.lstrip('-').isdigit() for value in data['restaurant_rng'].values()), 'invalid restaurant RNG snapshot'
-                  mood = data['mood']
-                  assert mood['available'] is True and mood['fixture'] == 'none', 'mood capture must use the normal live scene'
-                  waiting = mood['waiting_guests']
-                  visible = mood['visible_indicators']
-                  guests = {row['id']: row for row in waiting}
-                  icons = {row['id']: row for row in visible}
-                  assert len(guests) == len(waiting) and len(icons) == len(visible), 'duplicate mood evidence ids'
-                  assert set(guests) == set(icons), 'visible indicator ids do not match actual waiting guests'
-                  colors = ((56, 118, 75), (201, 163, 70), (200, 116, 58), (168, 62, 53))
-                  for guest_id, guest in guests.items():
-                      assert type(guest_id) is int and guest_id > 0 and type(guest['state']) is int and guest['state'] in (1, 3, 4), 'invalid waiting guest'
-                      assert all(type(guest[key]) is int for key in ('queue_wait', 'queue_patience', 'food_wait', 'food_patience')), 'invalid patience snapshot'
-                      elapsed, budget = (guest['queue_wait'], guest['queue_patience']) if guest['state'] == 1 else (guest['food_wait'], guest['food_patience'])
-                      expected_mood = 0.0 if budget <= 0 else (budget - min(max(elapsed, 0), budget)) / budget
-                      assert math.isfinite(guest['mood']) and math.isclose(guest['mood'], expected_mood, rel_tol=0, abs_tol=1e-12), 'mood does not match actual patience'
-                      band = 0 if expected_mood >= .6 else 1 if expected_mood >= .35 else 2 if expected_mood >= .15 else 3
-                      icon = icons[guest_id]
-                      assert type(icon['parent_agent_id']) is int and icon['parent_agent_id'] == guest_id, 'indicator is attached to another agent'
-                      assert type(guest['band']) is int and type(icon['band']) is int and guest['band'] == icon['band'] == band, 'displayed band differs from waiting guest'
-                      assert icon['visible_in_tree'] is True and icon['dot_visible'] is True, 'indicator is hidden'
-                      assert icon['mark'] == ('', '', '!', '!!')[band] and icon['mark_visible'] is (band >= 2), 'wrong visible mood punctuation'
-                      assert len(icon['color']) == 4 and all(math.isclose(actual, expected / 255, rel_tol=0, abs_tol=1e-7) for actual, expected in zip(icon['color'], (*colors[band], 255))), 'wrong native dot color'
-                      assert icon['in_camera_frustum'] is True, 'waiting indicator is outside the captured camera'
-                      assert len(icon['screen_position']) == 2 and 0 <= icon['screen_position'][0] < data['width'] and 0 <= icon['screen_position'][1] < data['height'], 'indicator center is outside the image'
-                      assert all(type(guest[key]) is str and guest[key].lstrip('-').isdigit() for key in ('rng_seed', 'rng_state')), 'missing actual guest RNG snapshot'
-                      observed_bands.add(band)
-                  print(f'mood-waits frame={frame}: observed bands={sorted({row["band"] for row in visible})}, waiting ids={sorted(guests)}, seed={data["master_seed"]}, fixture=none')
-              print(f'{name}: actual quarter={expected}, Cutaway, guest={data["selected_agent_id"]}, F3={debug}, tick={data["world_tick"]}, 1600x900, sha256={hashlib.sha256(raw).hexdigest()}')
-          print(f'Normal mood capture observed bands across frames: {sorted(observed_bands)}; multiple-band screenshot acceptance still requires image review.')
-
-          # These are image/scale/frame identity checks. Native state and HUD
-          # geometry remain GDScript tests and director image review.
-          def verify_hud_identity(name, size, frame, percent):
-              png = root / name / f'shot_{frame:04d}.png'
-              raw = png.read_bytes()
-              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'{name}: missing/invalid PNG'
-              assert struct.unpack('>II', raw[16:24]) == size, f'{name}: wrong PNG dimensions'
-              data = json.loads(png.with_suffix('.json').read_text())
-              assert data['image_file'] == png.name, f'{name}: metadata names another image'
-              assert data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'{name}: image/metadata digest mismatch'
-              assert data['scene'] == 'res://src/world/main.tscn' and data['capture_timing'] == 'frame_post_draw', f'{name}: wrong image source'
-              hud = data['hud_layout']
-              assert data['requested_hud_layout'] is True and data['frame'] == hud['frame'] == frame, f'{name}: wrong frame identity'
-              assert (data['width'], data['height']) == size and data['requested_window_size'] == list(size), f'{name}: wrong viewport identity'
-              assert hud['window_size'] == hud['display_size'] == list(size), f'{name}: wrong native window identity'
-              assert data['requested_ui_scale_percent'] == hud['ui_scale_percent'] == hud['selected_ui_scale_percent'] == percent, f'{name}: wrong UI scale identity'
-              assert math.isclose(hud['content_scale_factor'], percent / 100, abs_tol=1e-7), f'{name}: wrong rendered UI scale'
-              print(f'{name}: frame={frame}, scale={percent}%, size={size}, sha256={hashlib.sha256(raw).hexdigest()}')
-
-          verify_hud_identity('hud-1280', (1280, 720), 12, 125)
-          verify_hud_identity('hud-1280', (1280, 720), 90, 150)
-          verify_hud_identity('hud-1600', (1600, 900), 12, 125)
-          verify_hud_identity('hud-1600', (1600, 900), 90, 150)
-
-          # One actual five-day service capture; the scene validates native forecast text and bounds.
-          png = root / 'demand-report' / 'shot_0060.png'
-          raw = png.read_bytes()
-          assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'demand-report: missing/invalid PNG'
-          assert struct.unpack('>II', raw[16:24]) == (1600, 900), 'demand-report: wrong PNG dimensions'
-          data = json.loads(png.with_suffix('.json').read_text())
-          assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), 'demand-report: image identity mismatch'
-          assert data['scene'] == 'res://tools/demand_report_review.tscn' and data['capture_timing'] == 'frame_post_draw', 'demand-report: wrong image source'
-          assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), 'demand-report: wrong viewport/frame'
-          assert type(data['engine_errors']) is int and data['engine_errors'] == 0, 'demand-report: engine/script errors'
-          assert 'llvmpipe' in data['video_adapter'].lower(), 'demand-report: wrong software Mesa adapter'
-          assert data['day_phase'] == 3 and data['world_tick'] > 0, 'demand-report: service did not close'
-          assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'demand-report: wrong paused capture parameters'
-          assert data['master_seed'] == data['new_game_seed_override'] == '1', 'demand-report: wrong actual seed'
-          log = (root / 'demand-report' / 'capture.log').read_text()
-          assert log.count('DEMAND_REPORT_REVIEW ') == 1, 'demand-report: missing unique native validation receipt'
-          review = json.loads(log.split('DEMAND_REPORT_REVIEW ', 1)[1].splitlines()[0])
-          assert review['unchanged'] is True and review['day'] == 5 and review['forecast']['day'] == 6, 'demand-report: incoherent actual forecast'
-          print(f'demand-report: actual day5 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
-
-          # One fixed real ten-day service; GDScript validates team/reason text and geometry.
-          png = root / 'staff-activity-report' / 'shot_0060.png'
-          raw = png.read_bytes()
-          assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'staff-activity-report: missing/invalid PNG'
-          assert struct.unpack('>II', raw[16:24]) == (1600, 900), 'staff-activity-report: wrong PNG dimensions'
-          data = json.loads(png.with_suffix('.json').read_text())
-          assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), 'staff-activity-report: image identity mismatch'
-          assert data['scene'] == 'res://tools/staff_activity_review.tscn' and data['capture_timing'] == 'frame_post_draw', 'staff-activity-report: wrong image source'
-          assert (data['width'], data['height'], data['frame']) == (1600, 900, 60), 'staff-activity-report: wrong viewport/frame'
-          assert type(data['engine_errors']) is int and data['engine_errors'] == 0, 'staff-activity-report: engine/script errors'
-          assert 'llvmpipe' in data['video_adapter'].lower() and data['day_phase'] == 3, 'staff-activity-report: wrong renderer or phase'
-          assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'staff-activity-report: wrong paused capture parameters'
-          log = (root / 'staff-activity-report' / 'capture.log').read_text()
-          assert log.count('STAFF_ACTIVITY_REPORT_REVIEW ') == 1, 'staff-activity-report: missing unique native validation receipt'
-          review = json.loads(log.split('STAFF_ACTIVITY_REPORT_REVIEW ', 1)[1].splitlines()[0])
-          assert review['seed'] == data['master_seed'] == data['new_game_seed_override'] == '1', 'staff-activity-report: wrong actual seed'
-          assert review['setup'] == 'expanded_tables' and review['days'] == review['day'] == 10, 'staff-activity-report: wrong fixed service case'
-          assert review['unchanged'] is True and review['validation_timing'] == 'frame_post_draw' and review['world_tick'] == data['world_tick'] > 0, 'staff-activity-report: incoherent native receipt'
-          assert review['advice_id'] == 'cook' and 'hiring another cook' in review['advice'], 'staff-activity-report: missing natural cook advice'
-          print(f'staff-activity-report: actual expanded_tables day10 cook advice, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
-
-          # One ordinary seed-one run: morning choice, live service HUD, and
-          # paid evening report. Native GDScript checks validate the real UI state.
-          special_dir = root / 'daily-special'
-          special_context = (root / 'capture-context.txt').read_text().splitlines()
-          context = dict(line.split('=', 1) for line in special_context if '=' in line)
-          for key, relative in [('daily_special_review_gd_sha256', 'tools/daily_special_review.gd'),
-                                ('daily_special_review_tscn_sha256', 'tools/daily_special_review.tscn')]:
-              assert context.get(key) == hashlib.sha256(Path(relative).read_bytes()).hexdigest(), f'daily-special: source context mismatch for {relative}'
-          log = (special_dir / 'capture.log').read_text()
-          assert log.count('SPECIAL_REVIEW ') == 3, 'daily-special: missing unique morning/HUD/report receipts'
-          reviews = {}
-          for line in log.splitlines():
-              if 'SPECIAL_REVIEW ' not in line:
-                  continue
-              review = json.loads(line.split('SPECIAL_REVIEW ', 1)[1])
-              assert review['view'] not in reviews, 'daily-special: duplicate native review receipt'
-              reviews[review['view']] = review
-          assert set(reviews) == {'morning', 'service_hud', 'evening_report'}, 'daily-special: incomplete native view receipts'
-          for name, frame, phase in [('morning', 30, 0), ('report', 120, 3)]:
-              png = special_dir / f'shot_{frame:04d}.png'
-              raw = png.read_bytes()
-              assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, f'daily-special/{name}: missing/invalid PNG'
-              assert struct.unpack('>II', raw[16:24]) == (1600, 900), f'daily-special/{name}: wrong PNG dimensions'
-              data = json.loads(png.with_suffix('.json').read_text())
-              assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), f'daily-special/{name}: image metadata mismatch'
-              assert data['scene'] == 'res://tools/daily_special_review.tscn' and data['capture_timing'] == 'frame_post_draw', f'daily-special/{name}: wrong source or capture timing'
-              assert (data['width'], data['height'], data['frame'], data['day_phase']) == (1600, 900, frame, phase), f'daily-special/{name}: wrong size/frame/phase'
-              assert type(data['engine_errors']) is int and data['engine_errors'] == 0 and 'llvmpipe' in data['video_adapter'].lower(), f'daily-special/{name}: renderer or engine diagnostics mismatch'
-              assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, f'daily-special/{name}: wrong normal paused capture parameters'
-              assert data['master_seed'] == data['new_game_seed_override'] == '1', f'daily-special/{name}: wrong seed'
-              assert data['world_tick'] == 0 if name == 'morning' else data['world_tick'] > 0, f'daily-special/{name}: wrong simulation time'
-              print(f'daily-special/{name}: frame={frame}, phase={phase}, seed=1, sha256={hashlib.sha256(raw).hexdigest()}')
-          PY
-          timeout 60 "$GODOT" --headless --path . --script tools/diner_capture_validator.gd
+          python3 tools/verify_visual_review.py "$VISUAL_REVIEW_BATCH"
+          if [[ "$VISUAL_REVIEW_BATCH" == shop ]]; then
+            timeout 60 "$GODOT" --headless --path . --script tools/diner_capture_validator.gd
+          fi
 
       - name: Upload actual captures, metadata and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: visual-review-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          name: visual-review-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_attempt }}-${{ matrix.batch }}
           path: screens/visual-review/
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+  visual-review:
+    name: Default, cutaway and inspection views
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: capture
+    if: ${{ always() }}
+    steps:
+      - name: Require both visual capture jobs
+        shell: bash
+        env:
+          CAPTURE_RESULT: ${{ needs.capture.result }}
+        run: test "$CAPTURE_RESULT" = success
