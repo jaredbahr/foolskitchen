@@ -869,7 +869,7 @@ func test_tree_sizes_to_its_rows_without_trapping_the_wheel() -> void:
 
 func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 	var recipes: Array[RecipeDef] = []
-	for index: int in 14:
+	for index: int in 24:
 		recipes.append(_recipe(StringName("dish%02d" % index), "Dish %d" % index, 6))
 	_panel.bind_menu(MenuSettings.new(recipes))
 	var scene: SceneTree = Engine.get_main_loop() as SceneTree
@@ -899,6 +899,12 @@ func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 	assert_true(scroll.scroll_vertical > 0, "the tree passes the wheel to the column")
 	# A late dish still opens with its details in view on the same scroll.
 	var late: TreeItem = _panel.tree_item_for(&"dish13")
+	# A real click needs the row on screen: scroll just far enough to show it.
+	var late_rect: Rect2 = tree.get_item_area_rect(late)
+	late_rect.position += tree.get_global_rect().position
+	if late_rect.end.y > scroll.get_global_rect().end.y:
+		scroll.scroll_vertical += ceili(late_rect.end.y - scroll.get_global_rect().end.y)
+		await scene.process_frame
 	var previously_selected: TreeItem = tree.get_selected()
 	if previously_selected != null:
 		previously_selected.deselect(0)
@@ -908,7 +914,46 @@ func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 		await scene.process_frame
 	assert_eq(_panel.get("_selected_recipe"), &"dish13")
 	var heading: Control = _panel.get("_detail_heading") as Control
-	assert_true(scroll.get_global_rect().encloses(heading.get_global_rect()),
-		"the shared area brings the selected dish's detail back into view")
+	var view: Rect2 = scroll.get_global_rect().grow(0.5)
+	var row: Rect2 = tree.get_item_area_rect(late)
+	row.position += tree.get_global_rect().position
+	assert_true(view.encloses(row), "the clicked dish row stays in view")
+	if row.end.y - heading.get_global_rect().position.y <= scroll.size.y:
+		assert_true(view.encloses(heading.get_global_rect()),
+			"the shared area brings the selected dish's detail back into view")
+	# Scrolled down a little, a dish near the top of the view fits with the
+	# heading: the scroll moves up just enough to show both.
+	scroll.scroll_vertical = 60
+	await scene.process_frame
+	var near: TreeItem = _panel.tree_item_for(&"dish00")
+	late.deselect(0)
+	near.select(0)
+	tree.item_selected.emit()
+	for frame: int in 3:
+		await scene.process_frame
+	var near_row: Rect2 = tree.get_item_area_rect(near)
+	near_row.position += tree.get_global_rect().position
+	assert_true(scroll.scroll_vertical < 60, "the scroll moved up to the heading")
+	assert_true(scroll.get_global_rect().grow(0.5).encloses(heading.get_global_rect()), "the heading shows")
+	assert_true(scroll.get_global_rect().grow(0.5).encloses(near_row), "and so does the clicked row")
+	near.deselect(0)
+	# Scrolled to the very bottom, the last dish is too far below the heading
+	# for both to fit: the scroll stays put and the clicked row stays visible.
+	scroll.scroll_vertical = ceili(scroll.get_v_scroll_bar().max_value)
+	await scene.process_frame
+	var bottom: int = scroll.scroll_vertical
+	var last: TreeItem = _panel.tree_item_for(&"dish23")
+	assert_not_null(last)
+	last.select(0)
+	tree.item_selected.emit()
+	for frame: int in 3:
+		await scene.process_frame
+	var last_row: Rect2 = tree.get_item_area_rect(last)
+	last_row.position += tree.get_global_rect().position
+	assert_true(scroll.get_global_rect().grow(0.5).encloses(last_row), "the last clicked row stays in view")
+	if last_row.end.y - heading.get_global_rect().position.y > scroll.size.y:
+		assert_eq(scroll.scroll_vertical, bottom, "no jump that would hide the clicked row")
+	else:
+		assert_true(scroll.get_global_rect().grow(0.5).encloses(heading.get_global_rect()))
 	viewport.remove_child(_panel)
 	viewport.free()

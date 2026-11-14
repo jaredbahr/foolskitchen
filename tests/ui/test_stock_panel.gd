@@ -186,6 +186,9 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 			assert_true(rect.grow(0.5).encloses(control.get_global_rect()), "%s stays reachable at %s" % [path, dimensions])
 		var scroll: Control = _panel.get_node("Panel/Content/Scroll") as Control
 		assert_true(scroll.size.y >= 100.0, "rows keep a scrolling area at %s" % dimensions)
+		var bar_end: float = (_panel.get_node("%DeliveryBar") as Control).get_global_rect().end.x
+		var rows_end: float = (_panel.get_node("%Rows") as Control).get_global_rect().end.x
+		assert_almost_eq(bar_end, rows_end, 1.0, "the delivery bar ends with the ingredient rows at %s" % dimensions)
 		for data: Dictionary in _rows():
 			var row: Dictionary = _panel.row_for(data["id"])
 			var line: Rect2 = (row["root"] as Control).get_node("Line").get_global_rect()

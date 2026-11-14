@@ -557,6 +557,7 @@ func _build_sections() -> void:
 	_detail.move_child(_drink_rows, _rows_node.get_index() + 1)
 
 
+## Main owns the accepted choice; this setter only updates the request control.
 func set_special(recipe_id: StringName) -> void:
 	_special_id = recipe_id
 	_bind_nodes()
@@ -917,11 +918,26 @@ func _on_recipe_selected() -> void:
 	var selected: TreeItem = _recipe_tree.get_selected()
 	if selected != null and selected.get_metadata(0) != null:
 		select_recipe(StringName(selected.get_metadata(0)))
-		# A dish chosen near the bottom of the list may be below the detail
-		# heading. Bring the selected dish back into view in the shared scroll.
-		var scroll: ScrollContainer = $Panel/Content/Body/Scroll
-		if _detail_heading.get_global_rect().position.y < scroll.get_global_rect().position.y:
-			scroll.ensure_control_visible.call_deferred(_detail_heading)
+		# A dish chosen low in the list may sit below the detail heading in the
+		# shared scroll. Bring the heading into view only when the clicked row
+		# stays visible too; otherwise leave the scroll where the player put it.
+		_reveal_detail_keeping_row.call_deferred(selected)
+
+
+func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
+	var scroll: ScrollContainer = $Panel/Content/Body/Scroll
+	if row_item == null or not is_instance_valid(_recipe_tree) or row_item.get_tree() != _recipe_tree:
+		return
+	var view: Rect2 = scroll.get_global_rect()
+	var heading: Rect2 = _detail_heading.get_global_rect()
+	if heading.position.y >= view.position.y:
+		return
+	var shift: int = ceili(view.position.y - heading.position.y)
+	var row: Rect2 = _recipe_tree.get_item_area_rect(row_item)
+	row.position += _recipe_tree.get_global_rect().position
+	if row.end.y + shift > view.end.y:
+		return
+	scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - shift)
 
 
 func _build_recipe_tree() -> void:

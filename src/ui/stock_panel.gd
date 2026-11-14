@@ -60,6 +60,11 @@ func _ready() -> void:
 		[] as Array[ScrollContainer], $Panel as ScrollContainer)
 	refresh()
 	_fit_width()
+	# The delivery bar ends where the ingredient rows end, not under the
+	# scrollbar, whether or not the list needs one.
+	_rows_node.resized.connect(_queue_align_delivery)
+	($Panel/Content/Scroll as Control).resized.connect(_queue_align_delivery)
+	_queue_align_delivery()
 
 
 func _notification(what: int) -> void:
@@ -68,6 +73,37 @@ func _notification(what: int) -> void:
 		_armed_throw = &""
 	if what == NOTIFICATION_RESIZED:
 		_fit_width()
+
+
+## Containers settle the scroll and rows widths in the same pass, so measure
+## them once that pass is over.
+func _queue_align_delivery() -> void:
+	_align_delivery.call_deferred()
+
+
+func _align_delivery() -> void:
+	var delivery: HBoxContainer = get_node_or_null("Panel/Content/Delivery") as HBoxContainer
+	var scroll: Control = get_node_or_null("Panel/Content/Scroll") as Control
+	if delivery == null or scroll == null or _rows_node == null:
+		return
+	var gap: Control = delivery.get_node_or_null("EndGap") as Control
+	if gap == null:
+		# The theme's gap between the label and the bar becomes a spacer, so
+		# the bar's right inset below can be any width, including none.
+		var middle: Control = Control.new()
+		middle.name = "MidGap"
+		middle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		middle.custom_minimum_size.x = delivery.get_theme_constant("separation")
+		delivery.add_child(middle)
+		delivery.move_child(middle, (delivery.get_node("DeliveryBar") as Node).get_index())
+		delivery.add_theme_constant_override("separation", 0)
+		gap = Control.new()
+		gap.name = "EndGap"
+		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		delivery.add_child(gap)
+	var width: float = maxf(0.0, scroll.get_global_rect().end.x - _rows_node.get_global_rect().end.x)
+	if absf(gap.custom_minimum_size.x - width) > 0.5:
+		gap.custom_minimum_size.x = width
 
 
 func _fit_width() -> void:
