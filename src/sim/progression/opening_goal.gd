@@ -60,7 +60,7 @@ const LAST_CONDITION: int = Condition.CALM_DAY_STARS
 @export var station_type: StringName = &""
 ## STAFF_ROLE: the role that counts (for example cleaner).
 @export var role: StringName = &""
-## CALM_DAY_STARS: leave reasons that spoil the day (for example no_table).
+## CALM_DAY_STARS: leave reasons that spoil the day (for example waited_too_long).
 @export var leave_reasons: Array[StringName] = []
 ## CALM_DAY_STARS: how many such guests the day may lose and still count.
 @export_range(0, 1000, 1) var max_turned_away: int = 0

@@ -3235,8 +3235,8 @@ the lease (`lease_expanded`) and hired roles as they stand. Checking these at
 opening means a buy undone or sold before opening pays nothing. The career
 business-day close checks today's guests served, five-star reviews and the calm
 day (the rating rounded to one decimal, as the HUD shows it, zero if more than
-`max_turned_away` guests, here 2, left for a reason in `leave_reasons`, here
-`no_table`), then adds the waiting
+`max_turned_away` guests, here 0, left for a reason in `leave_reasons`, here
+`waited_too_long`), then adds the waiting
 XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp` in the report.
 
 The global `opening_week` save section is version 2: `chain`, `start_day`,

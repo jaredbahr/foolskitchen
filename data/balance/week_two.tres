@@ -80,13 +80,13 @@ reward_xp = 10
 script = ExtResource("2_goal")
 id = &"calm_day"
 title = "A calm 3.5-star day"
-description = "End a day at 3.5 stars or more with at most 2 guests turned away because there was no table."
+description = "End a day at 3.5 stars or more without a single guest giving up because they waited too long."
 condition = 13
 target = 3.5
 reward_cash = 130
 reward_xp = 15
-leave_reasons = Array[StringName]([&"no_table"])
-max_turned_away = 2
+leave_reasons = Array[StringName]([&"waited_too_long"])
+max_turned_away = 0
 
 [resource]
 script = ExtResource("1_set")

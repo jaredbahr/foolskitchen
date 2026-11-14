@@ -472,7 +472,7 @@ func test_thirty_guests_and_a_calm_day_pay() -> void:
 	_to_week_two(main)
 	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
 	var stars: ReputationBook = main.get("reputation") as ReputationBook
-	# Day 8: 4.0 stars, but three guests found no table.
+	# Day 8: 4.0 stars, but one guest gave up waiting.
 	for i: int in 5:
 		stars.record_event_review(5)
 	_quiet_service(main)
@@ -483,19 +483,19 @@ func test_thirty_guests_and_a_calm_day_pay() -> void:
 	restaurant.served_today = 30
 	main.call("_observe_opening_state")
 	assert_true(_state(main).is_completed(&"serve_30"), "30 guests in a day")
-	restaurant.leave_reasons_today[&"no_table"] = 3
+	restaurant.leave_reasons_today[&"waited_too_long"] = 1
 	main.call("run_ticks", 3)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
-	assert_false(_state(main).is_completed(&"calm_day"), "three guests turned away spoil the day")
-	# Day 9: two turned away is still calm enough, still 4.0 stars.
+	assert_false(_state(main).is_completed(&"calm_day"), "one guest giving up spoils the day")
+	# Day 9: guests turned away for want of a table do not count, still 4.0 stars.
 	assert_true(Clock.sim.next_day())
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	restaurant.leave_reasons_today[&"no_table"] = 2
-	restaurant.leave_reasons_today[&"waited_too_long"] = 4
+	restaurant.leave_reasons_today[&"no_table"] = 12
+	restaurant.leave_reasons_today[&"too_expensive"] = 2
 	main.call("run_ticks", 3)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
-	assert_true(_state(main).is_completed(&"calm_day"), "two turned away, and other reasons for leaving, still count")
+	assert_true(_state(main).is_completed(&"calm_day"), "no guest gave up waiting; no-table and other leaves do not count")
 	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"calm_day").reward_cash] as Array[int])
 
 
