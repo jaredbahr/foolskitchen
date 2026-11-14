@@ -9,6 +9,8 @@ extends SimAgent
 ## Waiting for a busy station is not "stuck": the task timeout covers it.
 
 const STUCK_TICKS: int = 30
+## A worker sent home who cannot reach the street this long just leaves.
+const EXIT_GIVE_UP_TICKS: int = 200
 const GUEST_URGENCY: GuestUrgencyTuning = preload("res://data/balance/guest_urgency.tres")
 
 ## How strongly the guests nearest to leaving are served first (#307).
@@ -41,6 +43,13 @@ var _held_item_id: int = 0
 var _held_cell: Vector2i = SimGrid.NO_CELL
 var _repaths: int = 0
 var _waiting_for: String = ""
+## Sent home for the rest of the day (#506): no new work; the task in hand is
+## finished (or handed back before it starts), then the worker walks to the
+## street. `gone_home` marks one who got there: RestaurantSim takes them off
+## the floor that tick, and the next morning's staff install brings them back.
+var going_home: bool = false
+var gone_home: bool = false
+var _exit_waited: int = 0
 
 
 func _init(staff_role: StringName = &"cook", skill: int = 3) -> void:
@@ -125,7 +134,18 @@ func on_removed(world: SimWorld) -> void:
 		world.board.drop(t, &"agent_removed")
 
 
+## Starts the walk home (#506). False for the owner or someone already going.
+func send_home() -> bool:
+	if going_home or member_id.is_empty():
+		return false
+	going_home = true
+	return true
+
+
 func tick(world: SimWorld) -> void:
+	if going_home:
+		_tick_going_home(world)
+		return
 	if task == null:
 		if not world.grid.is_walkable(cell):
 			return
@@ -145,6 +165,62 @@ func maintain_movement_pause(world: SimWorld) -> void:
 	if task == null or not _maintain_claim(world):
 		return
 	_recover_no_progress(world)
+
+
+## A task not yet under way (still walking to its first stop, nothing in
+## hand) goes back on the board for a teammate, uncounted; anything further
+## along is finished first, so no order, plate or dish is left half done.
+## The task's own timeout still hands it back if it cannot be finished.
+func _tick_going_home(world: SimWorld) -> void:
+	if gone_home:
+		return
+	if task != null:
+		if not _maintain_claim(world):
+			return
+		var first_walk: bool = step_index == 0 and not task.steps.is_empty() \
+			and task.steps[0].kind in [TaskStep.Kind.GO_TO_ITEM, TaskStep.Kind.GO_TO_CELL]
+		if first_walk and not carries_food() and move_progress == 0.0:
+			var handed: SimTask = task
+			_let_go(world)
+			world.board.drop(handed, &"sent_home", false)
+			world.log_event("%s handed \"%s\" to a teammate" % [_name(), handed.label])
+		else:
+			_run_step(world)
+			_recover_no_progress(world)
+			return
+	_walk_home(world)
+
+
+func _walk_home(world: SimWorld) -> void:
+	var exits: Array[Vector2i] = world.grid.entries()
+	if exits.is_empty() or _exit_waited >= EXIT_GIVE_UP_TICKS:
+		gone_home = true
+		return
+	if move_progress == 0.0 and exits.has(cell):
+		gone_home = true
+		return
+	if needs_repath or path.is_empty():
+		# The nearest street cell first; ties keep the authored order.
+		exits.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return GridMath.octile(cell, a) < GridMath.octile(cell, b))
+		var routed: bool = false
+		for exit: Vector2i in exits:
+			if set_destination(world.grid, exit):
+				routed = true
+				break
+		if not routed:
+			_exit_waited += 1
+			return
+	var result: MoveResult = step_move(world)
+	if result == MoveResult.MOVING and last_progress_tick != world.now:
+		_exit_waited += 1
+	if move_progress == 0.0 and exits.has(cell):
+		gone_home = true
+	elif result == MoveResult.BLOCKED:
+		_exit_waited += 1
+		clear_path()
+	elif result == MoveResult.ARRIVED:
+		clear_path()
 
 
 func _maintain_claim(world: SimWorld) -> bool:
@@ -190,6 +266,8 @@ func _recover_no_progress(world: SimWorld) -> void:
 
 
 func why() -> String:
+	if going_home and task == null:
+		return "Going home early"
 	if task == null:
 		return "Idle: looking for work"
 	var step_text := ""
@@ -341,7 +419,7 @@ func _is_clean_spot(candidate: SimTask) -> bool:
 func _idle_server_can_clean(world: SimWorld) -> bool:
 	for agent: SimAgent in world.agents:
 		var server: StaffAgent = agent as StaffAgent
-		if server != null and server.role == &"server" and server.task == null \
+		if server != null and server.role == &"server" and server.task == null and not server.going_home \
 				and int(server.priorities.get(&"server", 0)) > 0 \
 				and (server._job_priorities == null or server._job_priorities.priority(&"cleaning") > StaffJobPriorities.Level.OFF):
 			return true
@@ -364,7 +442,7 @@ func _team_has_cleaner(world: SimWorld) -> bool:
 	_cleaner_checked_agents = world.agents.size()
 	_cleaner_on_team = false
 	for agent: SimAgent in world.agents:
-		if agent is StaffAgent and agent.role == &"cleaner":
+		if agent is StaffAgent and agent.role == &"cleaner" and not (agent as StaffAgent).going_home:
 			_cleaner_on_team = true
 			break
 	return _cleaner_on_team

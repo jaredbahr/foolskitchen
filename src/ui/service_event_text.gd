@@ -45,17 +45,27 @@ static func preview(choice: ServiceEventChoice, names: Dictionary = {}, unit_cos
 		parts.append("more walk-ins today")
 	elif choice.day_arrivals_percent < 0:
 		parts.append("fewer walk-ins today")
+	var later: String = "tomorrow" if choice.tomorrow_days <= 1 else "for %d days" % choice.tomorrow_days
 	if choice.tomorrow_arrivals_percent > 0:
-		parts.append("more guests tomorrow")
+		parts.append("more guests %s" % later)
 	elif choice.tomorrow_arrivals_percent < 0:
-		parts.append("fewer guests tomorrow")
+		parts.append("fewer guests %s" % later)
 	if choice.staff_mood > 0:
 		parts.append("%s cheers up" % staff)
 	elif choice.staff_mood < 0:
 		parts.append("%s sulks" % staff)
 	if choice.clean_spots:
 		parts.append("the floor gets cleaned")
-	if choice.risk_percent > 0:
+	if choice.send_home:
+		parts.append("%s goes home, still paid" % staff)
+	if not choice.follow_up.is_empty():
+		parts.append("more to come in a few days")
+	if choice.risk_percent > 0 and choice.risk_cash != 0:
+		# A gamble (#506): the other way it can go, in money.
+		parts.append("or %s if it goes wrong" % signed_money(choice.cash + choice.risk_cash))
+		if choice.risk_review_stars > 0:
+			parts.append(_risk_words(choice))
+	elif choice.risk_percent > 0:
 		parts.append(_risk_words(choice))
 	if parts.is_empty():
 		return NOTHING
@@ -68,6 +78,11 @@ static func not_enough_stock(ingredient: String) -> String:
 	return "Not enough %s" % ingredient
 
 
+## Why "Off you go" is greyed out: nobody else on the floor does their job.
+static func nobody_covers(staff: String) -> String:
+	return "Nobody can cover for %s" % (staff if not staff.is_empty() else "them")
+
+
 ## A greyed-out choice's preview: the reason first, then what it would do.
 static func refused_preview(reason: String, preview_text: String) -> String:
 	return "%s. %s" % [reason, preview_text] if not preview_text.is_empty() else reason
@@ -76,6 +91,12 @@ static func refused_preview(reason: String, preview_text: String) -> String:
 ## The Today log line as yesterday's food blogger buzz brings more guests.
 static func buzz_line(factor: float) -> String:
 	return "Yesterday's food blogger post: more curious faces today (arrivals %s)." % DemandText.change_text(factor)
+
+
+## The Today log line while a multi-day nudge (#506) brings guests in.
+static func later_line(title: String, percent: int) -> String:
+	return "%s: %s today (arrivals %s)." % [title, "a few more faces" if percent > 0 else "a quieter street",
+		DemandText.change_text(1.0 + float(percent) / 100.0)]
 
 
 static func signed_money(amount: int) -> String:
