@@ -44,6 +44,10 @@ const MAX_EXPANSION_CELLS: int = LeaseUpgrade.MAX_EXTRA_CELLS
 @export var guest_mix: Dictionary[StringName, float] = {}
 @export var upstairs_allowed: bool = false
 @export var tags: Array[StringName] = []
+## The street the lot stands on (#425): a StreetPreset in data/streets/ (the
+## ground, building set, palette and street furniture). Empty means the starter
+## street. ContentDB.validate_lots refuses a path that does not exist.
+@export_file("*.tres") var street_preset: String = ""
 
 
 func is_fixer_upper() -> bool:

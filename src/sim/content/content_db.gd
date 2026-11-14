@@ -385,6 +385,9 @@ static func validate_lots(definitions: Array[LotDef], item_defs: Array[ItemDef],
 			elif seen_tags.has(tag):
 				errors.append("%s: tag '%s' is duplicated" % [who, tag])
 			seen_tags[tag] = true
+		# The street preset itself is a view resource; the world tests check it builds (#425).
+		if not definition.street_preset.is_empty() and not ResourceLoader.exists(definition.street_preset):
+			errors.append("%s: street preset '%s' does not exist" % [who, definition.street_preset])
 	return errors
 
 
