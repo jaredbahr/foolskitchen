@@ -11,12 +11,13 @@ extends TestCase
 ## thin-layout save migration and demand growth have separate coverage.
 ## The weekly review target now completes on day two, paying its authored
 ## $100 separately from operating sales and included in closing cash.
+## #491 skips reviews for pre-seating walkouts, changing the first day's review RNG state.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "-3285513833473108564"], [17, 2, 154, 449, "1894290104310310707", "6227064950443097254"]]
+const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "759273845251939063"], [17, 2, 154, 449, "1894290104310310707", "6227064950443097254"]]
 
 var _main: Node
 var _layout_backup: Dictionary = {}
