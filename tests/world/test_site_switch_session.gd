@@ -371,8 +371,11 @@ func test_a_switch_keeps_each_sites_morning_books() -> void:
 	assert_eq(int(closed.costs.get(Ledger.INGREDIENTS, 0)), -_net(day, &"second", Ledger.INGREDIENTS),
 		"ingredient costs are only the arriving site's")
 	assert_true(closed.food_cost_recorded and closed.food_cost > 0, "food cost is today's sales here")
-	# The close adds only the closed home site's rent (#408 D2) to its books.
+	# Closing costs follow the inactive home site to its own books.
 	var home_after: Array[Dictionary] = Economy.ledger.entries_for_day(day, SiteBook.HOME_ID)
+	var home_wages: Dictionary = home_after.pop_back()
+	assert_eq(home_wages["category"], Ledger.AWAY_SITE_WAGES)
+	assert_eq(int(home_wages["amount"]), -StaffRoster.new().total_wages())
 	var home_rent: Dictionary = home_after.pop_back()
 	assert_eq(home_rent["category"], Ledger.AWAY_SITE_RENT, "the closed home site pays its rent")
 	assert_eq(int(home_rent["amount"]), -int(_main.call("_home_rent")))
