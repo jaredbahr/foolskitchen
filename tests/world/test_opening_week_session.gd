@@ -184,6 +184,24 @@ func test_close_adds_the_xp_and_the_rating_goal() -> void:
 		CHAIN.by_id(&"change_price").reward_cash + CHAIN.by_id(&"reach_4_stars").reward_cash)
 
 
+func test_a_guest_paid_on_the_closing_tick_counts_and_close_toasts_wait() -> void:
+	var main: Node = await _start(false)
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	main.set("reputation", _book_high())
+	_close_day(main)
+	# The 15th guest paid after the phase had turned CLOSED: the live check
+	# missed them, so the close counts today's guests once more.
+	assert_true(_state(main).is_completed(&"reach_4_stars"))
+	assert_false(_state(main).is_completed(&"serve_15"))
+	restaurant.served_today = 15
+	main.call("_close_opening_week", Clock.sim.day)
+	assert_true(_state(main).is_completed(&"serve_15"), "the close counts today's guests")
+	var held: Array[String] = main.get("_held_opening_toasts")
+	assert_true(held.size() >= 2, "toasts met under the evening report wait for the next day")
+	main.call("_on_next_day_pressed")
+	assert_true((main.get("_held_opening_toasts") as Array[String]).is_empty())
+
+
 func test_progress_survives_the_morning_save_and_reload() -> void:
 	var main: Node = await _start(true)
 	var settings: MenuSettings = main.get("menu_settings") as MenuSettings

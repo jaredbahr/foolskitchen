@@ -277,6 +277,9 @@ var _weekly_challenge_reward_day: int = 0
 var _weekly_challenge_report_line: String = ""
 var _opening_week_xp_today: int = 0
 var _opening_week_xp_day: int = 0
+## Opening week toasts raised while the evening report covers the toast area;
+## shown when the player moves on to the next day.
+var _held_opening_toasts: Array[String] = []
 var _report: Control
 var _inspect_panel: InspectPanel
 var _debug_overlay: DebugOverlay
@@ -7181,14 +7184,23 @@ func _observe_opening(condition: int, value: float) -> void:
 			Economy.add_cash(goal.reward_cash, Ledger.OPENING_WEEK_BONUS, goal.title)
 		var line: String = OpeningWeekText.met_line(goal)
 		world.log_event(line)
-		$HUD.queue_toast(line)
+		_opening_toast(line)
 	Sounds.play(&"milestone")
 	if opening_week.all_done(opening_week_catalogue):
 		opening_week.end_if_due(Clock.sim.day, opening_week_catalogue)
 		world.log_event(OpeningWeekText.COMPLETE_LINE)
-		$HUD.queue_toast(OpeningWeekText.COMPLETE_LINE)
+		_opening_toast(OpeningWeekText.COMPLETE_LINE)
 	_refresh_opening_tracker()
 	_refresh_goals(true)
+
+
+## Goals met at the close would toast under the evening report, so hold them
+## until the player moves on to the next day.
+func _opening_toast(line: String) -> void:
+	if Clock.sim.phase == SimClock.Phase.CLOSED:
+		_held_opening_toasts.append(line)
+	else:
+		$HUD.queue_toast(line)
 
 
 ## The goals that follow the shop's live state while it is open: drinks on
@@ -7231,6 +7243,9 @@ func _observe_opening_at_open() -> void:
 ## The close checks the rating goal, then adds the chain's waiting XP to
 ## tonight's owner award (career business days only, like career goals).
 func _close_opening_week(day: int) -> void:
+	# A guest who pays on the closing tick pays after the phase turned CLOSED,
+	# so the live check missed them: count today's guests once more here.
+	_observe_opening(OpeningGoal.Condition.SERVED_TODAY, float(sim.served_today))
 	_observe_opening(OpeningGoal.Condition.REPUTATION, reputation.average())
 	if opening_week.pending_xp <= 0:
 		return
@@ -7348,6 +7363,9 @@ func _on_next_day_pressed() -> void:
 			and _closed_day != Clock.sim.day:
 		business_history.record(build_report(Clock.sim.day))
 	Clock.sim.next_day()
+	for line: String in _held_opening_toasts:
+		$HUD.queue_toast(line)
+	_held_opening_toasts.clear()
 
 
 ## Read-only presentation snapshot: all dishes, even those missing equipment.
