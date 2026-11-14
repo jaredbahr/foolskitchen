@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The Seaside Cliff lot now has its own seaside street: a sun-bleached boardwalk of planks instead of grey paving, low weathered beach shacks in sea-blue, seafoam and sand with striped awnings, rope bollards, a lifebuoy, crates of the day's catch, strings of bunting, benches and bins in seaside blues, gulls on the dune grass and a pale sandy back lane. Your own shop is still the boldest colour on the street. (#527)
 - Menu puts the restaurant name, hours and forecast together and scrolls dishes and their details as one. Stock puts each ingredient, buying controls and auto-reorder on one line. (#513)
 - In the Build and Buy catalogue, the top rows stay put: Build/Buy, the tools, the room tabs, the vibe readout and the filters no longer scroll away. Only the item cards scroll, and only up and down. (#524)
 - Service events have sharper choices. "Double or nothing" bets a guest's bill on your kitchen's speed, "Flyers for hire" costs money today for more guests over the next days, "A guest with opinions" makes you pick between the guest and your worker, and seating the food blogger brings their review back a few days later. "Can I leave early?" is back, and "Off you go" really sends the worker home: they finish what they're carrying, walk out, are still paid, and are back (happier) the next morning. It only asks about someone a teammate can cover for. (#523)
@@ -228,10 +229,12 @@ Each line ends with its PR number.
 
 ### Under the hood
 - A new test plays two days, starts a new game with the same seed and checks that every saved part of the game starts exactly as on a first boot, so nothing from the last game can leak into the next. (#528)
+- The "local versus CI" difference in the staff advice capture was a branch behind `main`, not the game: for one commit, a seeded run gives the same result in a cloud container and on hosted CI. The capture's comment and the worker rules now say so, and `tools/check.sh` notes when a checkout is behind `main` and when a test shard was stopped by its timeout. (#525)
 - The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - Run visual review captures in two parallel jobs and verify every requested frame. (#479)
 - The profit review capture no longer fails when its third day closes with level-up and milestone callouts above the reviews, the order-counter capture gets 180 seconds instead of 120 on slow runners, and the staff advice capture stops at the first day from day 2 that recommends a cook instead of needing exactly day 10. (#517)
+- Fixed two screenshot checks that failed on longer evening reports and on a slow 30-day trend capture. (#516)
 - The screenshot check in CI now has 60 minutes instead of 45: runs were taking up to 44 minutes, so a slow runner cancelled PRs that changed nothing visual. Splitting the job is tracked in #477. (#485)
 - Each restaurant now keeps its own opening hours and its own bigger lease, so switching restaurants (once you can own two) never carries one shop's hours or lease to the other. Older saves keep their hours and lease. (#463)
 - Design doc: how every street outside the restaurant should look, and how each new site gets its own street from the same parts. (#441)

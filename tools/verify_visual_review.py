@@ -22,6 +22,7 @@ CAPTURE_FRAMES = {
         "quarter-2": (60,),
         "quarter-3": (60,),
         "neighbourhood-street": (60,),
+        "seaside-street": (60,),
         "inspect-guest": (60,),
         "debug-busy": (60,),
         "owner-kitchen": (60,),
@@ -301,6 +302,25 @@ def verify_standard_views(root, batch):
         print(f'Normal mood capture observed bands across frames: {sorted(observed_bands)}; multiple-band screenshot acceptance still requires image review.')
 
 
+def verify_profit_review(root):
+    profit_dir = root / 'profit-review'
+    png = profit_dir / 'shot_0060.png'
+    raw = png.read_bytes()
+    data = json.loads(png.with_suffix('.json').read_text())
+    review = json.loads((profit_dir / 'profit-review.json').read_text())
+    assert raw[:8] == b'\x89PNG\r\n\x1a\n' and struct.unpack('>II', raw[16:24]) == (1600, 900), 'profit-review: wrong PNG'
+    assert data['image_file'] == png.name and data['image_sha256'] == hashlib.sha256(raw).hexdigest(), 'profit-review: image identity mismatch'
+    assert data['scene'] == 'res://tools/profit_review.tscn' and data['capture_timing'] == 'frame_post_draw', 'profit-review: wrong source or timing'
+    assert (data['width'], data['height'], data['frame'], data['day_phase']) == (1600, 900, 60, 3), 'profit-review: wrong viewport, frame or phase'
+    assert type(data['engine_errors']) is int and data['engine_errors'] == 0 and 'llvmpipe' in data['video_adapter'].lower(), 'profit-review: engine or renderer mismatch'
+    assert data['capture_parameters'] == {'open': False, 'fast_ticks_per_frame': 0, 'speed': 0}, 'profit-review: wrong paused capture parameters'
+    assert data['master_seed'] == data['new_game_seed_override'] == str(review['seed']) == '1', 'profit-review: wrong seed'
+    assert review['world_tick'] == data['world_tick'] > 0 and review['native_frame'] == 50, 'profit-review: wrong native validation frame'
+    assert review['valid'] is True and review['real_service'] is True and review['use_saves'] is False, 'profit-review: invalid service receipt'
+    assert review['cash_inside_scroll'] is True and review['review_cards_fit'] is True and review['scroll_vertical'] == 0, 'profit-review: finance or review bounds failed'
+    print(f'profit-review: real service, finance and review bounds, sha256={data["image_sha256"]}')
+
+
 def verify_service_views(root):
     # These are image/scale/frame identity checks. Native state and HUD
     # geometry remain GDScript tests and director image review.
@@ -325,6 +345,7 @@ def verify_service_views(root):
     verify_hud_identity('hud-1280', (1280, 720), 90, 150)
     verify_hud_identity('hud-1600', (1600, 900), 12, 125)
     verify_hud_identity('hud-1600', (1600, 900), 90, 150)
+    verify_profit_review(root)
 
     # One actual five-day service capture; the scene validates native forecast text and bounds.
     png = root / 'demand-report' / 'shot_0060.png'
@@ -346,7 +367,7 @@ def verify_service_views(root):
     assert review['unchanged'] is True and review['day'] == 5 and review['forecast']['day'] == 6, 'demand-report: incoherent actual forecast'
     print(f'demand-report: actual day5 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
-    # One fixed real ten-day service; GDScript validates team/reason text and geometry.
+    # One real seeded service of two to ten days; GDScript validates team/reason text and geometry.
     png = root / 'staff-activity-report' / 'shot_0060.png'
     raw = png.read_bytes()
     assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'staff-activity-report: missing/invalid PNG'

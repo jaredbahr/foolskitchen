@@ -2,9 +2,9 @@ extends "res://src/world/main.gd"
 ## Pays for one spare Pastry with the ordinary Stock cart, then runs three real
 ## service days until it naturally expires. This disclosed player-action fixture
 ## is not a default balance trajectory. No cash, stock, reviews or random state
-## are injected; saves are disabled. The standard --report validator still
-## checks the real review cards. PROFIT_REVIEW_SMALL=1 is a manual 1280x720 /150%
-## capture: frames 12,60 show the finances, then the native Next day button.
+## are injected; saves are disabled. Check the review cards in the scroll before
+## restoring the initial finance view. PROFIT_REVIEW_SMALL=1 is a manual
+## 1280x720 /150% capture of the finances and the native Next day button.
 
 const REVIEW_DAYS: int = 3
 const SPARE_INGREDIENT: StringName = &"pastry"
@@ -16,6 +16,7 @@ var _review_small: bool = false
 var _review_reports: Array[Dictionary] = []
 var _review_purchase: Dictionary = {}
 var _review_output: String = ""
+var _review_cards_fit: bool = false
 
 
 func _ready() -> void:
@@ -77,12 +78,42 @@ func _process(_delta: float) -> void:
 	if not _review_ready:
 		return
 	_review_frames += 1
+	if not _review_small and _review_frames == 20:
+		_check_review_cards()
 	if _review_small and _review_frames == 30:
 		var next_day: Button = _report.get_node("%NextDay") as Button
 		next_day.grab_focus()
 		(_report.get_node("Panel/Column/Scroll") as ScrollContainer).ensure_control_visible(next_day)
 	if _review_frames in [10, 50]:
 		_record_native_report()
+
+
+func _check_review_cards() -> void:
+	var rows: Node = _report.get_node("%ReviewRows")
+	if shown_report.review_cards.size() < 2 or rows.get_child_count() < 2:
+		push_error("Profit review did not show two real review cards")
+		return
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var start: int = scroll.scroll_vertical
+	var second: Label = rows.get_child(1) as Label
+	if second == null:
+		push_error("Profit review did not render the second review as a label")
+		return
+	scroll.ensure_control_visible(second)
+	await RenderingServer.frame_post_draw
+	var viewport: Rect2 = scroll.get_global_rect().grow(1.0)
+	var valid: bool = start == 0
+	for index: int in range(2):
+		var card: Dictionary = shown_report.review_cards[index]
+		var label: Label = rows.get_child(index) as Label
+		var quote: String = String(card.get("quote", ""))
+		valid = valid and label != null and not quote.is_empty() and label.is_visible_in_tree() \
+			and label.text == '%d stars - "%s"' % [int(card.get("stars", 0)), quote] \
+			and label.get_global_rect().has_area() and viewport.encloses(label.get_global_rect())
+	scroll.scroll_vertical = start
+	_review_cards_fit = valid
+	if not valid:
+		push_error("Profit review's first two native review cards did not match or fit in the scroll")
 
 
 func _record_native_report() -> void:
@@ -123,12 +154,15 @@ func _record_native_report() -> void:
 		and cash_change.text == "Cash change today: %s" % Fmt.money(shown_report.profit()) \
 		and (_report.get_node("%Profit") as Label).text == "%s operating profit" % Fmt.money(shown_report.operating_profit()) \
 		and (cash_visible if not _review_small else (next_visible if _review_frames >= 30 else true))
+	if not _review_small:
+		valid = valid and scroll.scroll_vertical == 0 and (_review_frames < 20 or _review_cards_fit)
 	var evidence: Dictionary = {"real_service": true, "seed": 1,
 		"fixture": "Paid one spare Pastry through Stock on day 1; ordinary service through day 3; not the default balance run",
 		"paid_purchase": _review_purchase, "expired_this_morning": _expired_this_morning,
 		"days": _review_reports, "world_tick": _review_tick, "use_saves": use_saves,
 		"native_rows": rows, "cash_change": cash_change.text, "cash_inside_scroll": cash_visible,
 		"next_day_inside_scroll": next_visible, "scroll_vertical": scroll.scroll_vertical,
+		"review_cards_fit": _review_cards_fit,
 		"ui_scale_percent": Preferences.ui_scale_percent,
 		"window_size": [get_window().size.x, get_window().size.y], "valid": valid,
 		"native_frame": _review_frames, "capture_timing": "frame_post_draw"}
