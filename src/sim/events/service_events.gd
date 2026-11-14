@@ -26,9 +26,13 @@ var schedule: Array[Dictionary] = []
 var pending: Dictionary = {}
 ## Today's answered cards, for the evening report: {"title", "label", "result"}.
 var answered: Array[Dictionary] = []
-## A nudge to one later day's arrivals (the food blogger): day and percent.
+## A nudge to one later day's arrivals (the food blogger): day, percent and
+## the site it happened at (the buzz is about that shop, not the owner's
+## others). Applied as that day's arrival factor at opening, never as a
+## demand factor, so it never shows up as curb appeal.
 var boost_day: int = 0
 var boost_percent: int = 0
+var boost_site: String = ""
 
 
 func _init(config: ServiceEventTuning = null, events: Array[ServiceEventDef] = []) -> void:
@@ -115,6 +119,7 @@ func begin_morning(for_day: int) -> void:
 	if boost_day > 0 and boost_day < for_day:
 		boost_day = 0
 		boost_percent = 0
+		boost_site = ""
 
 
 ## Draws today's cards once, at opening. `blocked` holds [from, to] shop-clock
@@ -191,10 +196,11 @@ static func risk_hit(choice: ServiceEventChoice, master_seed: int, for_day: int,
 	return random.randi_range(0, 99) < choice.risk_percent
 
 
-## Answers the pending card. Returns {"id", "index", "choice", "risk", "result",
-## "title", "label", "entry"} for the session to apply, or {} when nothing is
-## pending or the index is out of range.
-func pick(index: int, master_seed: int) -> Dictionary:
+## Answers the pending card at `site` (where a nudge to tomorrow lands).
+## Returns {"id", "index", "choice", "risk", "result", "title", "label",
+## "entry"} for the session to apply, or {} when nothing is pending or the
+## index is out of range. The session checks the choice is affordable first.
+func pick(index: int, master_seed: int, site: String = "") -> Dictionary:
 	if pending.is_empty():
 		return {}
 	var event: ServiceEventDef = definition(StringName(pending["id"]))
@@ -211,6 +217,7 @@ func pick(index: int, master_seed: int) -> Dictionary:
 	if choice.tomorrow_arrivals_percent != 0:
 		boost_day = day + 1
 		boost_percent = choice.tomorrow_arrivals_percent
+		boost_site = site
 	pending.clear()
 	return outcome
 
@@ -223,8 +230,10 @@ func end_service() -> void:
 		entry["shown"] = true
 
 
-func arrival_factor(for_day: int) -> float:
-	return 1.0 + float(boost_percent) / 100.0 if boost_day > 0 and boost_day == for_day else 1.0
+## The blogger's nudge to `for_day`'s arrivals at `site`; 1.0 elsewhere.
+func arrival_factor(for_day: int, site: String = "") -> float:
+	return 1.0 + float(boost_percent) / 100.0 \
+		if boost_day > 0 and boost_day == for_day and boost_site == site else 1.0
 
 
 ## One line per answered card, already player-facing.
@@ -243,7 +252,7 @@ func to_dict() -> Dictionary:
 	for entry: Dictionary in schedule:
 		rows.append(entry.duplicate(true))
 	return {"version": SAVE_VERSION, "last_shown": shown, "day": day, "schedule": rows,
-		"boost_day": boost_day, "boost_percent": boost_percent}
+		"boost_day": boost_day, "boost_percent": boost_percent, "boost_site": boost_site}
 
 
 ## Validates everything before replacing live state. A card on screen is never
@@ -254,7 +263,8 @@ func from_dict(value: Variant) -> bool:
 	var row: Dictionary = value
 	if not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) or not _whole(row.get("day"), 0, MAX_DAY) \
 			or not row.get("last_shown") is Dictionary or not row.get("schedule") is Array \
-			or not _whole(row.get("boost_day"), 0, MAX_DAY + 1) or not _whole(row.get("boost_percent"), -20, 20):
+			or not _whole(row.get("boost_day"), 0, MAX_DAY + 1) or not _whole(row.get("boost_percent"), -20, 20) \
+			or not row.get("boost_site", "") is String or String(row.get("boost_site", "")).length() > 40:
 		return false
 	var shown: Dictionary[StringName, int] = {}
 	var saved_shown: Dictionary = row["last_shown"]
@@ -290,6 +300,7 @@ func from_dict(value: Variant) -> bool:
 	answered = []
 	boost_day = int(row["boost_day"])
 	boost_percent = int(row["boost_percent"])
+	boost_site = String(row.get("boost_site", ""))
 	return true
 
 

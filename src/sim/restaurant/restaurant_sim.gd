@@ -485,6 +485,22 @@ func nudge_guest_patience(seconds: int) -> int:
 	return nudged
 
 
+## A service event's review (#495): one plain score in the rolling window,
+## counted with today's reviews so the evening count, the average and the
+## reputation change agree. `quote` names the card.
+func record_event_review(stars: int, quote: String) -> Dictionary:
+	if review_book == null:
+		return {}
+	var result: Dictionary = review_book.record_event_review(stars)
+	if result.is_empty():
+		return {}
+	var row: Dictionary = {"stars": result["stars"], "quote": quote,
+		"before": result["before"], "after": result["after"]}
+	reviews_today.append(row)
+	review_recorded.emit(row.duplicate())
+	return row
+
+
 ## A service event's clean sweep (#495): every dirty spot on the floor goes.
 func clean_all_spots() -> int:
 	if cleanliness == null:

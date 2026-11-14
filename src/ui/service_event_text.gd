@@ -4,11 +4,8 @@ extends RefCounted
 ## (code rule 11). A preview names each effect in plain words, cheapest first.
 
 const NOTHING: String = "Nothing happens"
-const OWNER_JOBS: Dictionary = {
-	&"kitchen": "you cover the kitchen",
-	&"floor": "you cover the floor",
-	&"help": "you pitch in",
-}
+## Why a choice is greyed out (the card shows it in place of the preview).
+const NOT_ENOUGH_CASH: String = "Not enough cash"
 
 
 ## The cash a stock purchase costs: list price times units, at a discount,
@@ -56,8 +53,6 @@ static func preview(choice: ServiceEventChoice, names: Dictionary = {}, unit_cos
 		parts.append("%s cheers up" % staff)
 	elif choice.staff_mood < 0:
 		parts.append("%s sulks" % staff)
-	if OWNER_JOBS.has(choice.owner_mode):
-		parts.append(OWNER_JOBS[choice.owner_mode])
 	if choice.clean_spots:
 		parts.append("the floor gets cleaned")
 	if choice.risk_percent > 0:
@@ -66,6 +61,21 @@ static func preview(choice: ServiceEventChoice, names: Dictionary = {}, unit_cos
 		return NOTHING
 	var text: String = ", ".join(parts)
 	return text.left(1).to_upper() + text.substr(1)
+
+
+## "Not enough tomato" for an improvised dish the shelves can't cover.
+static func not_enough_stock(ingredient: String) -> String:
+	return "Not enough %s" % ingredient
+
+
+## A greyed-out choice's preview: the reason first, then what it would do.
+static func refused_preview(reason: String, preview_text: String) -> String:
+	return "%s. %s" % [reason, preview_text] if not preview_text.is_empty() else reason
+
+
+## The Today log line as yesterday's food blogger buzz brings more guests.
+static func buzz_line(factor: float) -> String:
+	return "Yesterday's food blogger post: more curious faces today (arrivals %s)." % DemandText.change_text(factor)
 
 
 static func signed_money(amount: int) -> String:

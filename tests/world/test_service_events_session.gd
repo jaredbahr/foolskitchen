@@ -198,8 +198,8 @@ func test_mid_morning_save_has_no_card_and_round_trips() -> void:
 
 
 ## One effect at a time, through the session's own apply step.
-func _apply(choice: ServiceEventChoice, entry: Dictionary = {}, risk: bool = false) -> void:
-	_main.call("_apply_service_event", {"choice": choice, "entry": entry, "risk": risk, "title": "Test card"})
+func _apply(choice: ServiceEventChoice, entry: Dictionary = {}, risk: bool = false) -> bool:
+	return _main.call("_apply_service_event", {"choice": choice, "entry": entry, "risk": risk, "title": "Test card"})
 
 
 func _choice() -> ServiceEventChoice:
@@ -209,25 +209,52 @@ func _choice() -> ServiceEventChoice:
 	return choice
 
 
-func test_each_effect_uses_its_own_system() -> void:
+func _open_service() -> RestaurantSim:
 	_start()
 	assert_true(Clock.sim.start_service())
 	_main.call("run_ticks", 10)
-	var sim: RestaurantSim = _sim()
+	return _sim()
+
+
+## Leaves exactly `amount` cash in the till.
+func _set_cash(amount: int) -> void:
+	Economy.add_cash(amount - Economy.cash, Ledger.OTHER)
+
+
+func _newest_tomato_batch() -> Dictionary:
+	var batches: Array = Economy.stock._batches.get(&"tomato", [])
+	return batches.back() if not batches.is_empty() else {}
+
+
+func _van() -> ServiceEventChoice:
+	var choice: ServiceEventChoice = _choice()
+	choice.stock_units = 20
+	choice.stock_price_percent = 60
+	return choice
+
+
+const TOMATO: Dictionary = {"ingredient_id": "tomato", "names": {"ingredient": "tomato"}}
+
+
+func test_each_effect_uses_its_own_system() -> void:
+	var sim: RestaurantSim = _open_service()
 	# Cash: its own ledger category.
 	var choice: ServiceEventChoice = _choice()
 	choice.cash = -10
-	_apply(choice)
+	assert_true(_apply(choice))
 	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.SERVICE_EVENT, 0)), -10)
-	# A review joins the rolling window; a risk swaps in its own stars.
+	# A review joins the rolling window and today's reviews; a risk swaps in its own stars.
 	choice = _choice()
 	choice.review_stars = 2
 	choice.risk_percent = 50
 	choice.risk_review_stars = 5
 	var before: int = sim.review_book.scores().size()
+	var today: int = sim.reviews_today.size()
 	_apply(choice, {}, true)
 	assert_eq(sim.review_book.scores().size(), before + 1)
 	assert_eq(sim.review_book.scores().back(), 5)
+	assert_eq(sim.reviews_today.size(), today + 1, "the evening count includes the card's review")
+	assert_eq(int(sim.reviews_today.back()["stars"]), 5)
 	# Guests in the shop now.
 	var guest: CustomerAgent = CustomerAgent.new(sim, RandomNumberGenerator.new())
 	guest.cell = sim.world.grid.entries()[0]
@@ -248,30 +275,16 @@ func test_each_effect_uses_its_own_system() -> void:
 	_apply(choice)
 	assert_almost_eq(sim.event_patience_multiplier, 1.1)
 	assert_almost_eq(sim.arrival_rate(), rate * 1.05)
-	# Tomorrow's arrivals join tomorrow's street factor.
-	var street: float = _main.call("_street_factor", 2)
-	_events().boost_day = 2
-	_events().boost_percent = 8
-	assert_almost_eq(_main.call("_street_factor", 2), street * 1.08)
-	# Stock: a discounted batch through the normal purchase, a bad batch, and use.
-	var entry: Dictionary = {"ingredient_id": "tomato"}
+	# Improvising uses stock and books it as today's food cost.
+	Economy.stock.add(&"tomato", 5, Clock.day, 10)
 	var tomatoes: int = Economy.stock.count(&"tomato")
-	var spent: int = int(Economy.ledger.day_totals(1).get(Ledger.INGREDIENTS, 0))
-	choice = _choice()
-	choice.stock_units = 20
-	choice.stock_price_percent = 60
-	_apply(choice, entry)
-	assert_eq(Economy.stock.count(&"tomato"), tomatoes + 20)
-	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.INGREDIENTS, 0)), spent - 12, "20 at $1 for 60%")
-	choice.risk_percent = 25
-	choice.risk_result = "Bad"
-	choice.risk_stock_lost_percent = 50
-	_apply(choice, entry, true)
-	assert_eq(Economy.stock.count(&"tomato"), tomatoes + 30, "half the second crate went in the bin")
+	var food_cost: int = int((_main.get("_food_cost_today") as Dictionary)["cost"])
 	choice = _choice()
 	choice.stock_units = -2
-	_apply(choice, entry)
-	assert_eq(Economy.stock.count(&"tomato"), tomatoes + 28)
+	assert_true(_apply(choice, TOMATO))
+	assert_eq(Economy.stock.count(&"tomato"), tomatoes - 2)
+	assert_true(int((_main.get("_food_cost_today") as Dictionary)["cost"]) > food_cost,
+		"the used tomatoes join today's food cost")
 	# Staff mood stays between 1 and 3.
 	var roster: StaffRoster = _main.get("staff_roster")
 	var member: StaffMember = roster.members()[0]
@@ -283,13 +296,6 @@ func test_each_effect_uses_its_own_system() -> void:
 	choice.staff_mood = 1
 	_apply(choice, {"staff_id": String(member.id)})
 	assert_eq(roster.members()[0].growth_state().mood, 2)
-	# The owner's job.
-	choice = _choice()
-	choice.owner_mode = &"help"
-	_apply(choice)
-	var chosen_job: StringName = (_main.get("_owner_preferences") as OwnerModeSettings).current_mode()
-	if sim.owner_agent() != null:
-		assert_eq(sim.owner_agent().current_mode(), &"help")
 	# The floor's dirty spots.
 	var spot: Vector2i = sim.world.grid.entries()[0]
 	sim.cleanliness.add_spill(spot)
@@ -302,5 +308,169 @@ func test_each_effect_uses_its_own_system() -> void:
 	Clock.sim.next_day()
 	assert_almost_eq(sim.event_patience_multiplier, 1.0)
 	assert_almost_eq(sim.event_arrival_factor, 1.0)
-	if sim.owner_agent() != null:
-		assert_eq(sim.owner_agent().current_mode(), chosen_job, "the owner is back on his own job next morning")
+
+
+func test_the_van_buys_one_lot_at_its_real_price() -> void:
+	_open_service()
+	_set_cash(100)
+	var tomatoes: int = Economy.stock.count(&"tomato")
+	var spent: int = int(Economy.ledger.day_totals(1).get(Ledger.INGREDIENTS, 0))
+	# $1 tomatoes at 60%: 20 for $12, one batch, one ledger line, no rounding to $0.
+	assert_true(_apply(_van(), TOMATO))
+	assert_eq(Economy.stock.count(&"tomato"), tomatoes + 20)
+	assert_eq(Economy.cash, 88)
+	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.INGREDIENTS, 0)), spent - 12)
+	assert_eq(int(_newest_tomato_batch().get("total_cost", -1)), 12, "the batch costs what was paid")
+	assert_eq(int(_newest_tomato_batch()["qty"]), 20)
+	# A bad batch is part of the van's own crate: half never reaches the shelf.
+	var choice: ServiceEventChoice = _van()
+	choice.risk_percent = 25
+	choice.risk_result = "Bad"
+	choice.risk_stock_lost_percent = 50
+	var older: Array = (Economy.stock._batches[&"tomato"] as Array).duplicate(true)
+	assert_true(_apply(choice, TOMATO, true))
+	assert_eq(Economy.stock.count(&"tomato"), tomatoes + 30)
+	assert_eq(Economy.cash, 76)
+	assert_eq(int(_newest_tomato_batch()["qty"]), 10)
+	assert_eq(int(_newest_tomato_batch()["total_cost"]), 12, "the good half carries the whole price")
+	assert_eq((Economy.stock._batches[&"tomato"] as Array).slice(0, older.size()), older,
+		"older stock is untouched")
+	assert_eq(int((_main.get("_thrown_today") as Dictionary).get(&"tomato", 0)), 10,
+		"the bin shows in the Stock notes")
+
+
+func test_the_van_respects_cash_and_storage() -> void:
+	_open_service()
+	var choice: ServiceEventChoice = _van()
+	choice.risk_percent = 25
+	choice.risk_result = "Bad"
+	choice.risk_stock_lost_percent = 50
+	# Not enough cash: refused, nothing changes, and the reason says so.
+	_set_cash(5)
+	var tomatoes: int = Economy.stock.count(&"tomato")
+	var entries: int = Economy.ledger.entries_for_day(1, Economy.active_site).size()
+	assert_eq(_main.call("service_event_refusal", choice, TOMATO), ServiceEventText.NOT_ENOUGH_CASH)
+	assert_false(_apply(choice, TOMATO, true))
+	assert_eq(Economy.cash, 5, "cash never goes negative")
+	assert_eq(Economy.stock.count(&"tomato"), tomatoes)
+	assert_eq(Economy.ledger.entries_for_day(1, Economy.active_site).size(), entries)
+	assert_eq(int((_main.get("_thrown_today") as Dictionary).get(&"tomato", 0)), 0, "no bad batch without a buy")
+	# Not enough fridge space: refused the same way.
+	_set_cash(100)
+	var space: StorageSpace = _main.call("storage_space")
+	var kind: int = space.kind_of(&"tomato")
+	var room: int = space.free_units(kind)
+	if room > 10:
+		Economy.stock.add(&"tomato", room - 10, Clock.day, 0)
+	assert_eq(_main.call("service_event_refusal", choice, TOMATO), StorageSpace.refusal(kind))
+	assert_false(_apply(choice, TOMATO))
+	assert_eq(Economy.cash, 100)
+	assert_true((_main.call("storage_space") as StorageSpace).committed(kind)
+		<= (_main.call("storage_space") as StorageSpace).capacity(kind), "storage is never overfilled")
+	# Improvising needs the stock on the shelves.
+	var improvise: ServiceEventChoice = _choice()
+	improvise.stock_units = -2
+	Economy.stock.take(&"tomato", Economy.stock.count(&"tomato"))
+	Economy.stock.add(&"tomato", 1, Clock.day, 1)
+	assert_eq(_main.call("service_event_refusal", improvise, TOMATO), "Not enough tomato")
+	assert_false(_apply(improvise, TOMATO))
+	assert_eq(Economy.stock.count(&"tomato"), 1)
+
+
+## Brings the busker's card up for real, with `cash` in the till.
+func _show_busker(cash: int) -> void:
+	_open_service()
+	_set_cash(cash)
+	var events: ServiceEvents = _events()
+	events.day = Clock.sim.day
+	events.schedule = [{"id": "busker", "minute": 0, "shown": false, "names": {},
+		"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+	var entry: Dictionary = events.due(Clock.sim.display_minutes())
+	_main.call("_show_service_event_card", entry)
+	assert_true(_card().visible)
+
+
+func _key(code: Key) -> InputEventKey:
+	var key: InputEventKey = InputEventKey.new()
+	key.pressed = true
+	key.physical_keycode = code
+	return key
+
+
+func test_a_choice_you_cannot_afford_is_greyed_out_with_a_reason() -> void:
+	_show_busker(5)
+	var buttons: Array[Button] = _card().choice_buttons()
+	assert_true(buttons[0].disabled, "the $15 tip is out of reach")
+	assert_true((buttons[0].get_node("Lines/Preview") as Label).text.begins_with("Not enough cash"))
+	assert_false(buttons[1].disabled, "the free choice always stays")
+	assert_eq((buttons[0].get_node("Lines/Label") as Label).text, "1. Tip him to stay", "each button shows its key")
+	assert_eq((buttons[1].get_node("Lines/Label") as Label).text, "2. Move him along")
+	# Neither a pick nor key 1 takes it: nothing spent, rolled or logged.
+	assert_false(_main.call("service_event_pick", 0))
+	_main.call("_unhandled_input", _key(KEY_1))
+	assert_true(_card().visible)
+	assert_eq(Economy.cash, 5)
+	assert_eq(_events().answered.size(), 0)
+	# Key 2 picks the free choice.
+	_main.call("_unhandled_input", _key(KEY_2))
+	assert_false(_card().visible)
+	assert_eq(_events().answered.size(), 1)
+	assert_eq(Economy.cash, 5)
+
+
+func test_number_keys_pick_an_affordable_choice() -> void:
+	_show_busker(100)
+	_main.call("_unhandled_input", _key(KEY_3))
+	assert_true(_card().visible, "there is no third choice")
+	_main.call("_unhandled_input", _key(KEY_1))
+	assert_false(_card().visible)
+	assert_eq(Economy.cash, 85, "the tip is paid")
+
+
+func test_tools_auto_pick_falls_back_to_a_free_choice() -> void:
+	_start(true, false, 0)
+	_set_cash(0)
+	assert_true(Clock.sim.start_service())
+	_finish_day()
+	assert_true(_events().answered.size() >= 1, "the day's cards were answered")
+	assert_true(int(Economy.ledger.day_totals(1).get(Ledger.SERVICE_EVENT, 0)) >= 0,
+		"with no cash, no card spends any")
+
+
+func test_a_card_due_in_photo_mode_leaves_photo_mode() -> void:
+	_open_service()
+	var photo: PhotoMode = _main.get_node("PhotoMode") as PhotoMode
+	photo.toggle_held()
+	assert_true(photo.held)
+	var events: ServiceEvents = _events()
+	events.day = Clock.sim.day
+	events.schedule = [{"id": "busker", "minute": 0, "shown": false, "names": {},
+		"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+	_main.call("run_ticks", 1)
+	assert_true(_card().visible)
+	assert_false(photo.held, "photo mode is left, so the card can be seen and answered")
+	assert_true((_main.get_node("Overlay") as CanvasLayer).visible)
+
+
+func test_blogger_buzz_is_its_own_nudge_at_its_own_site() -> void:
+	var sim: RestaurantSim = _open_service()
+	var street: float = _main.call("_street_factor", 2)
+	_finish_day()
+	Clock.sim.next_day()
+	_events().boost_day = 2
+	_events().boost_percent = 8
+	_events().boost_site = "elsewhere"
+	assert_almost_eq(_main.call("_street_factor", 2), street, 0.0001, "never shown as curb appeal")
+	assert_true(Clock.sim.start_service())
+	assert_almost_eq(sim.event_arrival_factor, 1.0, 0.0001, "another site's buzz does nothing here")
+	_finish_day()
+	Clock.sim.next_day()
+	_events().boost_day = 3
+	_events().boost_percent = 8
+	_events().boost_site = String(Economy.active_site)
+	assert_true(Clock.sim.start_service())
+	assert_almost_eq(sim.event_arrival_factor, 1.08, 0.0001, "today's arrivals at this shop")
+	var logged: bool = false
+	for line: String in sim.world.event_log:
+		logged = logged or line.contains("food blogger")
+	assert_true(logged, "the Today log names it")

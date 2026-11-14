@@ -6,8 +6,8 @@
 [sub_resource type="Resource" id="Choice_1"]
 script = ExtResource("2_choice")
 label = "Hang it by the till"
-result = "Up it went. The parents left five stars. The dragon stays."
-review_stars = 5
+result = "Up it went. The parents left four stars. The dragon stays."
+review_stars = 4
 
 [sub_resource type="Resource" id="Choice_2"]
 script = ExtResource("2_choice")

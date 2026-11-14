@@ -60,6 +60,11 @@ func errors() -> PackedStringArray:
 			found.append("%s: {%s} needs the %s requirement" % [who, name, need])
 	if choices.size() < 2 or choices.size() > 3:
 		found.append("%s: an event has 2-3 choices" % who)
+	var has_free: bool = false
+	for choice: ServiceEventChoice in choices:
+		has_free = has_free or (choice != null and choice.is_free())
+	if not has_free:
+		found.append("%s: one choice must cost no cash and no stock" % who)
 	for index: int in choices.size():
 		var choice: ServiceEventChoice = choices[index]
 		if choice == null:

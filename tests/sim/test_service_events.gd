@@ -47,17 +47,54 @@ func _run_days(model: ServiceEvents, seed_value: int, days: int, context: Dictio
 	return shown
 
 
-func test_pool_loads_twelve_valid_cards_from_data() -> void:
+func test_pool_loads_eleven_valid_cards_from_data() -> void:
 	var definitions: Array[ServiceEventDef] = _definitions()
-	assert_eq(definitions.size(), 12)
+	# "Can I leave early?" waits for a real send-home (#506).
+	assert_eq(definitions.size(), 11)
 	var ids: Array[StringName] = []
 	for definition: ServiceEventDef in definitions:
 		ids.append(definition.id)
 		assert_true(definition.choices.size() >= 2 and definition.choices.size() <= 3, "%s has 2-3 choices" % definition.id)
 	for id: StringName in [&"off_menu", &"supplier_van", &"busker", &"spilled_drink", &"food_blogger",
 			&"power_flicker", &"regular_birthday", &"neighbour_complaint", &"kids_drawing",
-			&"rain_umbrellas", &"leave_early", &"critic_rumour"]:
+			&"rain_umbrellas", &"critic_rumour"]:
 		assert_true(ids.has(id), "%s is in the pool" % id)
+	assert_false(ids.has(&"leave_early"), "the leave-early card is out until send-home exists")
+
+
+func test_every_card_keeps_a_free_choice() -> void:
+	for definition: ServiceEventDef in _definitions():
+		var free: int = 0
+		for choice: ServiceEventChoice in definition.choices:
+			if choice.is_free():
+				free += 1
+		assert_true(free >= 1, "%s can always be answered" % definition.id)
+	var definition: ServiceEventDef = _definitions()[0].duplicate(true)
+	for choice: ServiceEventChoice in definition.choices:
+		choice.cash = -5
+	assert_true(", ".join(definition.errors()).contains("one choice must cost no cash and no stock"))
+
+
+func test_cash_needed_counts_a_costly_risk() -> void:
+	var choice: ServiceEventChoice = ServiceEventChoice.new()
+	assert_eq(choice.cash_needed(), 0)
+	choice.cash = -10
+	assert_eq(choice.cash_needed(), 10)
+	choice.cash = 4
+	choice.risk_percent = 30
+	choice.risk_cash = -10
+	assert_eq(choice.cash_needed(), 6, "a risk that may cost money must be affordable too")
+	choice.risk_cash = 10
+	assert_eq(choice.cash_needed(), 0)
+	assert_true(choice.is_free())
+	choice.stock_units = -2
+	assert_false(choice.is_free(), "using stock is not free")
+
+
+func test_kids_drawing_is_a_small_nudge() -> void:
+	var hang: ServiceEventChoice = _model().definition(&"kids_drawing").choices[0]
+	assert_eq(hang.review_stars, 4, "a four-star review, not a free five")
+	assert_true(hang.result.contains("four stars"))
 
 
 func test_invalid_cards_are_refused() -> void:
@@ -150,7 +187,7 @@ func test_conditions_gate_cards() -> void:
 	for seed_value: int in range(1, 6):
 		for row: Dictionary in _run_days(_model(), seed_value, 40, _bare()):
 			seen[row["id"]] = true
-	for gated: String in ["regular_birthday", "rain_umbrellas", "leave_early", "critic_rumour",
+	for gated: String in ["regular_birthday", "rain_umbrellas", "critic_rumour",
 			"supplier_van", "off_menu"]:
 		assert_false(seen.has(gated), "%s needs its condition" % gated)
 	assert_true(seen.has("busker") and seen.has("spilled_drink"), "ungated cards still come up")
@@ -171,13 +208,13 @@ func test_names_fill_the_card_from_the_context() -> void:
 		model = _model()
 		model.plan_day(2, seed_value, context, OPEN, CLOSE)
 		for entry: Dictionary in model.schedule:
-			if entry["id"] == "leave_early":
+			if entry["id"] == "supplier_van":
 				var card: Dictionary = model.card_text(entry)
-				assert_true(String(card["text"]).begins_with("Ana") or String(card["text"]).begins_with("Bo"))
-				assert_true(entry["staff_id"] in ["ana", "bo"])
-				assert_false(String(card["title"]).contains("{"))
+				assert_true(String(card["text"]).contains("Cheap tomato") or String(card["text"]).contains("Cheap bun"))
+				assert_true(entry["ingredient_id"] in ["tomato", "bun"])
+				assert_false(String(card["title"]).contains("{") or String(card["text"]).contains("{"))
 				return
-	assert_true(false, "leave_early came up for some seed")
+	assert_true(false, "supplier_van came up for some seed")
 
 
 func test_risk_rolls_are_seeded_and_proportionate() -> void:
@@ -205,14 +242,15 @@ func test_pick_records_the_answer_and_tomorrow_nudge() -> void:
 	assert_eq(model.last_shown[&"food_blogger"], 6, "the cooldown starts when it shows")
 	assert_eq(model.due(800), {}, "nothing else while a card is up")
 	assert_eq(model.pick(5, 1), {}, "an out-of-range choice is refused")
-	var outcome: Dictionary = model.pick(0, 1)
+	var outcome: Dictionary = model.pick(0, 1, "home")
 	assert_eq(outcome["label"], "Seat them now")
-	assert_almost_eq(model.arrival_factor(7), 1.08)
-	assert_almost_eq(model.arrival_factor(6), 1.0)
+	assert_almost_eq(model.arrival_factor(7, "home"), 1.08)
+	assert_almost_eq(model.arrival_factor(7, "site_2"), 1.0, 0.0001, "the buzz is about the shop it happened at")
+	assert_almost_eq(model.arrival_factor(6, "home"), 1.0)
 	assert_eq(model.report_lines().size(), 1)
 	assert_true(model.report_lines()[0].begins_with("Food blogger at the door: Seat them now."))
 	model.begin_morning(8)
-	assert_almost_eq(model.arrival_factor(8), 1.0, 0.0001, "the nudge was for one day")
+	assert_almost_eq(model.arrival_factor(8, "home"), 1.0, 0.0001, "the nudge was for one day")
 	assert_eq(model.answered.size(), 0, "a new morning forgets yesterday's answers")
 
 
@@ -232,6 +270,7 @@ func test_save_round_trip_and_old_saves() -> void:
 	_run_days(model, 9, 6, _rich())
 	model.boost_day = 7
 	model.boost_percent = 8
+	model.boost_site = "home"
 	var saved: Dictionary = JSON.parse_string(JSON.stringify(model.to_dict()))
 	assert_false(saved.has("pending"), "a card on screen is never saved")
 	var loaded: ServiceEvents = _model()
@@ -241,7 +280,7 @@ func test_save_round_trip_and_old_saves() -> void:
 	# The next days continue exactly as the unsaved run does.
 	assert_eq(_continue(loaded), _continue(model))
 	for broken: Dictionary in [{}, {"version": 2}, saved.merged({"boost_percent": 90}, true),
-			saved.merged({"last_shown": {"busker": -1}}, true)]:
+			saved.merged({"last_shown": {"busker": -1}}, true), saved.merged({"boost_site": 3}, true)]:
 		assert_false(_model().from_dict(broken), "invalid data is refused: %s" % str(broken))
 	var fresh: ServiceEvents = _model()
 	assert_eq(fresh.last_shown.size(), 0, "a game from before service events starts empty")

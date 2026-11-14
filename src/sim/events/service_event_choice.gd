@@ -26,8 +26,6 @@ extends Resource
 @export_range(0, 100) var stock_price_percent: int = 100
 ## The event's staff member's mood changes by this much (kept between 1 and 3).
 @export_range(-1, 1) var staff_mood: int = 0
-## The owner switches to this job (kitchen, floor, help); "" leaves him alone.
-@export var owner_mode: StringName = &""
 ## Every dirty spot on the floor is cleaned at once.
 @export var clean_spots: bool = false
 ## Chance (percent) that the risk outcome below happens as well.
@@ -36,10 +34,22 @@ extends Resource
 @export var risk_result: String = ""
 @export_range(0, 5) var risk_review_stars: int = 0
 @export var risk_cash: int = 0
-## Share of the units just bought that turn out bad and are thrown away.
-@export_range(0, 100) var risk_stock_lost_percent: int = 0
+## Share of the units just bought that turn out bad and are thrown away
+## (below 100, so the crate always keeps something).
+@export_range(0, 99) var risk_stock_lost_percent: int = 0
 
-const OWNER_MODES: Array[StringName] = [&"", &"kitchen", &"floor", &"help"]
+
+## The most cash this choice can take, besides a stock purchase: its cost
+## plus a costly risk. The card's availability and the effect both use it.
+func cash_needed() -> int:
+	var worst: int = cash + (mini(0, risk_cash) if risk_percent > 0 else 0)
+	return maxi(0, -worst)
+
+
+## A choice that needs no cash and no stock: every card keeps one, so the
+## player can always pick.
+func is_free() -> bool:
+	return cash_needed() == 0 and stock_units == 0
 
 
 func errors(who: String) -> PackedStringArray:
@@ -57,8 +67,8 @@ func errors(who: String) -> PackedStringArray:
 			found.append("%s: day and tomorrow nudges must stay within 20%%" % who)
 	if absi(stock_units) > 30:
 		found.append("%s: stock changes must stay within 30 units" % who)
-	if not OWNER_MODES.has(owner_mode):
-		found.append("%s: unknown owner job %s" % [who, owner_mode])
+	if risk_stock_lost_percent < 0 or risk_stock_lost_percent > 99:
+		found.append("%s: a bad batch loses 0-99%% of the crate" % who)
 	if risk_percent > 0 and risk_result.strip_edges().is_empty():
 		found.append("%s: a risk needs its own result text" % who)
 	if risk_percent == 0 and (risk_review_stars != 0 or risk_cash != 0 or risk_stock_lost_percent != 0):

@@ -19,9 +19,11 @@ const CHOICE_PADDING: float = 8.0
 var _event_id: StringName = &""
 
 
-## `labels` and `previews` run in choice order; the first choice is on top.
+## `labels`, `previews` and `enabled` run in choice order; the first choice
+## is on top. A choice that is not enabled is greyed out (its preview says
+## why); a missing `enabled` entry counts as enabled.
 func show_card(event_id: StringName, title: String, text: String, icon: StringName,
-		labels: Array[String], previews: Array[String]) -> void:
+		labels: Array[String], previews: Array[String], enabled: Array[bool] = []) -> void:
 	_event_id = event_id
 	var texture: Texture2D = IconCatalogue.texture_for(icon) if not icon.is_empty() else null
 	var icon_rect: TextureRect = get_node("Center/Panel/Content/Header/Icon") as TextureRect
@@ -39,12 +41,36 @@ func show_card(event_id: StringName, title: String, text: String, icon: StringNa
 		list.remove_child(child)
 		child.queue_free()
 	for index: int in labels.size():
-		list.add_child(_make_choice(index, labels[index], previews[index] if index < previews.size() else ""))
+		var choice: Button = _make_choice(index, labels[index], previews[index] if index < previews.size() else "")
+		choice.disabled = index < enabled.size() and not enabled[index]
+		if choice.disabled:
+			# Greyed out: the label takes the muted tone like its reason below.
+			(choice.get_node("Lines/Label") as Label).add_theme_color_override(&"font_color", MUTED_COLOR)
+		list.add_child(choice)
 	show()
 
 
 func event_id() -> StringName:
 	return _event_id if visible else &""
+
+
+## Choice keys: 1, 2 and 3 (top row or keypad) pick the first, second and
+## third choice; -1 for any other key.
+static func index_for_key(code: Key) -> int:
+	match code:
+		KEY_1, KEY_KP_1:
+			return 0
+		KEY_2, KEY_KP_2:
+			return 1
+		KEY_3, KEY_KP_3:
+			return 2
+	return -1
+
+
+## Whether choice `index` is on the card and can be picked now.
+func is_choice_enabled(index: int) -> bool:
+	var buttons: Array[Button] = choice_buttons()
+	return visible and index >= 0 and index < buttons.size() and not buttons[index].disabled
 
 
 ## The choice buttons in order, for tests and capture tools.
@@ -82,7 +108,8 @@ func _make_choice(index: int, label: String, preview: String) -> Button:
 	lines.alignment = BoxContainer.ALIGNMENT_CENTER
 	lines.add_theme_constant_override(&"separation", 0)
 	button.add_child(lines)
-	var title: Label = _label("Label", label, LABEL_FONT_SIZE)
+	# The number is the choice's key (1, 2, 3).
+	var title: Label = _label("Label", "%d. %s" % [index + 1, label], LABEL_FONT_SIZE)
 	title.add_theme_color_override(&"font_color", SHARED_THEME.get_color(&"font_color", &"Button"))
 	lines.add_child(title)
 	var detail: Label = _label("Preview", preview, PREVIEW_FONT_SIZE)

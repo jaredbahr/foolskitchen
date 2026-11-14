@@ -85,8 +85,6 @@ var _loaded_service_events: ServiceEvents = null
 var _service_event_card: ServiceEventCard
 ## The speed to return to once a card is answered.
 var _service_event_resume_speed: int = 1
-## True when a card moved the owner to another job for the rest of today.
-var _service_event_owner_borrowed: bool = false
 ## Tools that boot Main directly retain the old default appearance and flow.
 var skip_owner_picker: bool = false
 ## An explicit fresh-run UI request also works in headless integration tests.
@@ -1005,12 +1003,21 @@ func _unhandled_input(event: InputEvent) -> void:
 				_mark_input_handled()
 			elif photo_code == KEY_F12:
 				_take_photo_key(photo, key)
+		if is_service_event_visible():
+			# A card is up under a one-frame capture: no key reaches the Clock.
+			_mark_input_handled()
 		return
 	if is_haggle_active():
 		_mark_input_handled()
 		return
 	if is_service_event_visible():
-		# A choice is required (#495): Escape, speed and owner keys do nothing.
+		# A choice is required (#495): Escape, speed and owner keys do nothing;
+		# 1, 2 and 3 pick an enabled choice.
+		if key != null and key.pressed and not key.echo:
+			var choice_index: int = ServiceEventCard.index_for_key(
+				key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode)
+			if choice_index >= 0 and _service_event_card.is_choice_enabled(choice_index):
+				service_event_pick(choice_index)
 		_mark_input_handled()
 		return
 	if is_owner_picker_visible():
@@ -1720,10 +1727,7 @@ func _refresh_demand() -> void:
 ## What the street sees on `day`: the frontage's curb appeal and the health
 ## inspection grade in the window (#302), which nudges arrivals for a week.
 func _street_factor(day: int) -> float:
-	var factor: float = curb_appeal_factor * sim.inspection.arrival_factor(day)
-	# A service event's nudge to this day (#495); 1.0 changes nothing.
-	var nudge: float = service_events.arrival_factor(day) if service_events != null else 1.0
-	return factor * nudge if nudge != 1.0 else factor
+	return curb_appeal_factor * sim.inspection.arrival_factor(day)
 
 
 func _demand_enabled_dishes() -> int:
@@ -4262,7 +4266,7 @@ func _check_service_event() -> void:
 	if entry.is_empty():
 		return
 	if service_event_auto_pick >= 0:
-		service_event_pick(service_event_auto_pick)
+		service_event_pick(_service_event_auto_index(entry))
 		return
 	_show_service_event_card(entry)
 
@@ -4276,15 +4280,23 @@ func _show_service_event_card(entry: Dictionary) -> void:
 	var names: Dictionary = entry.get("names", {})
 	var unit_cost: int = _service_event_unit_cost(entry)
 	var previews: Array[String] = []
+	var enabled: Array[bool] = []
 	for choice: ServiceEventChoice in event.choices:
-		previews.append(ServiceEventText.preview(choice, names, unit_cost))
+		var preview: String = ServiceEventText.preview(choice, names, unit_cost)
+		var refusal: String = service_event_refusal(choice, entry)
+		previews.append(preview if refusal.is_empty() else ServiceEventText.refused_preview(refusal, preview))
+		enabled.append(refusal.is_empty())
 	var labels: Array[String] = []
 	labels.assign(card["labels"])
+	# A card hidden under photo mode could never be answered: leave it first.
+	var photo: PhotoMode = get_node_or_null("PhotoMode") as PhotoMode
+	if photo != null and photo.held:
+		photo.leave()
 	_service_event_resume_speed = Clock.speed
 	Clock.set_speed(0)
 	$HUD.set_event_card_active(true)
 	_service_event_card.show_card(event.id, String(card["title"]), String(card["text"]),
-		StringName(card["icon"]), labels, previews)
+		StringName(card["icon"]), labels, previews, enabled)
 
 
 func is_service_event_visible() -> bool:
@@ -4294,10 +4306,16 @@ func is_service_event_visible() -> bool:
 ## Answers the card on screen (or the auto-picked one): applies the effects,
 ## logs them and puts the clock back at its earlier speed.
 func service_event_pick(index: int) -> bool:
-	var outcome: Dictionary = service_events.pick(index, GameState.master_seed) if service_events != null else {}
-	if outcome.is_empty():
+	if service_events == null or service_events.pending.is_empty():
 		return false
-	_apply_service_event(outcome)
+	var event: ServiceEventDef = service_events.definition(StringName(service_events.pending.get("id", "")))
+	if event == null or index < 0 or index >= event.choices.size() \
+			or not service_event_refusal(event.choices[index], service_events.pending).is_empty():
+		# A greyed-out choice: nothing is spent, rolled or logged; the card stays.
+		return false
+	var outcome: Dictionary = service_events.pick(index, GameState.master_seed, String(Economy.active_site))
+	if outcome.is_empty() or not _apply_service_event(outcome):
+		return false
 	world.log_event("Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]])
 	_close_service_event_card(true)
 	refresh_presentation()
@@ -4325,6 +4343,64 @@ func _close_service_event_card(resume: bool) -> void:
 		Clock.set_speed(_service_event_resume_speed)
 
 
+## Tools only: the requested choice when it can be picked, else the first
+## one that can (every card keeps a free one).
+func _service_event_auto_index(entry: Dictionary) -> int:
+	var event: ServiceEventDef = service_events.definition(StringName(entry.get("id", "")))
+	if event == null:
+		return service_event_auto_pick
+	var wanted: int = mini(service_event_auto_pick, event.choices.size() - 1)
+	if service_event_refusal(event.choices[wanted], entry).is_empty():
+		return wanted
+	for index: int in event.choices.size():
+		if service_event_refusal(event.choices[index], entry).is_empty():
+			return index
+	return wanted
+
+
+## Why `choice` on the card `entry` cannot be picked now, or "" when it can:
+## its cash (with a stock purchase) must be spendable without a loan, bought
+## stock must fit its storage, and used stock must be on the shelves. The
+## card greys a refused choice out with this reason, and the pick and the
+## effect refuse it by the same rule, so a refused choice changes nothing.
+func service_event_refusal(choice: ServiceEventChoice, entry: Dictionary) -> String:
+	if choice == null:
+		return ""
+	var ingredient_id: StringName = StringName(entry.get("ingredient_id", ""))
+	var stock_cost: int = 0
+	if choice.stock_units > 0 and not ingredient_id.is_empty():
+		var space: StorageSpace = storage_space()
+		var kind: int = space.kind_of(ingredient_id)
+		if space.free_units(kind) < choice.stock_units:
+			return StorageSpace.refusal(kind)
+		stock_cost = _service_event_stock_cost(choice, entry)
+	elif choice.stock_units < 0 and not ingredient_id.is_empty():
+		if Economy.stock.count(ingredient_id) < -choice.stock_units:
+			var names: Dictionary = entry.get("names", {})
+			return ServiceEventText.not_enough_stock(String(names.get("ingredient", "stock")))
+	var need: int = choice.cash_needed() + stock_cost
+	if need > 0 and not Economy.can_spend_without_loan(need):
+		return ServiceEventText.NOT_ENOUGH_CASH
+	return ""
+
+
+func _service_event_stock_cost(choice: ServiceEventChoice, entry: Dictionary) -> int:
+	return ServiceEventText.stock_cost(choice.stock_units, _service_event_unit_cost(entry), choice.stock_price_percent)
+
+
+## The food blogger's buzz (#495) lands on the day after, at the site it
+## happened at, as that day's own arrival nudge (never curb appeal), and the
+## Today log names it.
+func _apply_service_event_buzz() -> void:
+	if sim == null or service_events == null:
+		return
+	var factor: float = service_events.arrival_factor(Clock.sim.day, String(Economy.active_site))
+	if factor == 1.0:
+		return
+	sim.event_arrival_factor *= factor
+	world.log_event(ServiceEventText.buzz_line(factor))
+
+
 func _service_event_unit_cost(entry: Dictionary) -> int:
 	var id: StringName = StringName(entry.get("ingredient_id", ""))
 	var ingredient: IngredientDef = content.ingredient(id) if not id.is_empty() and content != null else null
@@ -4332,38 +4408,41 @@ func _service_event_unit_cost(entry: Dictionary) -> int:
 
 
 ## Each effect goes through the system that already owns it: the ledger, the
-## review window, the guests' patience, today's arrivals and patience, tomorrow's
-## demand (via ServiceEvents.arrival_factor), stock, staff mood, the owner's job
-## and the floor's dirty spots.
-func _apply_service_event(outcome: Dictionary) -> void:
+## review window (and today's reviews), the guests' patience, today's arrivals
+## and patience, tomorrow's arrivals (ServiceEvents.arrival_factor, applied at
+## opening), stock, staff mood and the floor's dirty spots. Returns false,
+## changing nothing, when the choice is refused (see service_event_refusal).
+func _apply_service_event(outcome: Dictionary) -> bool:
 	var choice: ServiceEventChoice = outcome["choice"] as ServiceEventChoice
 	var entry: Dictionary = outcome["entry"]
+	if choice == null or not service_event_refusal(choice, entry).is_empty():
+		return false
 	var risk: bool = bool(outcome["risk"])
 	var note: String = String(outcome["title"])
+	var ingredient_id: StringName = StringName(entry.get("ingredient_id", ""))
+	if choice.stock_units > 0 and not ingredient_id.is_empty():
+		# One lot at the real bargain price: its cost is the cash paid. A bad
+		# batch is part of this lot: those units go straight in the bin (the
+		# Stock notes list them) and the good ones carry the whole price.
+		var lost: int = choice.stock_units * choice.risk_stock_lost_percent / 100 if risk else 0
+		if not Economy.buy_ingredient_lot(ingredient_id, choice.stock_units - lost,
+				_service_event_stock_cost(choice, entry)):
+			return false
+		if lost > 0:
+			_note_thrown_out(ingredient_id, lost)
+		sim.refresh_sold_out()
+	elif choice.stock_units < 0 and not ingredient_id.is_empty():
+		# An improvised dish: the stock it used is today's food cost.
+		var used: Dictionary = Economy.stock.take_many_valued({ingredient_id: -choice.stock_units})
+		if bool(used["taken"]):
+			PurchaseBasis.combine(_food_cost_today, {"cost": int(used["cost"]), "recorded": bool(used["recorded"])})
+		sim.refresh_sold_out()
 	var cash: int = choice.cash + (choice.risk_cash if risk else 0)
 	if cash != 0:
 		Economy.add_cash(cash, Ledger.SERVICE_EVENT, note)
-	var ingredient_id: StringName = StringName(entry.get("ingredient_id", ""))
-	if choice.stock_units > 0 and not ingredient_id.is_empty():
-		var unit_cost: int = _service_event_unit_cost(entry)
-		var total: int = ServiceEventText.stock_cost(choice.stock_units, unit_cost, choice.stock_price_percent)
-		# One discounted batch through the ordinary purchase path.
-		var each: int = total / choice.stock_units
-		var bought: bool = total > 0 and Economy.buy_ingredient(ingredient_id, choice.stock_units, each)
-		var remainder: int = total - each * choice.stock_units
-		if bought and remainder > 0:
-			Economy.add_cash(-remainder, Ledger.INGREDIENTS, String(ingredient_id))
-		if bought and risk and choice.risk_stock_lost_percent > 0:
-			var lost: int = choice.stock_units * choice.risk_stock_lost_percent / 100
-			Economy.stock.take(ingredient_id, mini(lost, Economy.stock.count(ingredient_id)))
-		sim.refresh_sold_out()
-	elif choice.stock_units < 0 and not ingredient_id.is_empty():
-		Economy.stock.take(ingredient_id, mini(-choice.stock_units, Economy.stock.count(ingredient_id)))
-		sim.refresh_sold_out()
 	var stars: int = choice.risk_review_stars if risk and choice.risk_review_stars > 0 else choice.review_stars
 	if stars > 0:
-		sim.review_book.record_event_review(stars)
-		$HUD.set_reputation(reputation.average(), reputation.scores().size())
+		sim.record_event_review(stars, note)
 	if choice.guest_patience_seconds != 0:
 		sim.nudge_guest_patience(choice.guest_patience_seconds)
 	if choice.day_patience_percent != 0:
@@ -4372,12 +4451,9 @@ func _apply_service_event(outcome: Dictionary) -> void:
 		sim.event_arrival_factor *= 1.0 + float(choice.day_arrivals_percent) / 100.0
 	if choice.staff_mood != 0 and staff_roster != null:
 		staff_roster.adjust_mood(StringName(entry.get("staff_id", "")), choice.staff_mood)
-	# The owner covers until close; the next morning puts him back on the job
-	# the player chose (which is also the one saved).
-	if not choice.owner_mode.is_empty() and sim.assign_owner(choice.owner_mode):
-		_service_event_owner_borrowed = true
 	if choice.clean_spots:
 		sim.clean_all_spots()
+	return true
 
 
 func _capture_owner() -> Dictionary:
@@ -6191,9 +6267,6 @@ func _begin_morning() -> void:
 	_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
 	if service_events != null:
 		service_events.begin_morning(Clock.sim.day)
-	if _service_event_owner_borrowed:
-		_service_event_owner_borrowed = false
-		sim.assign_owner(_owner_preferences.current_mode())
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	_owner_award_today.clear()
 	_owner_unlocks_today.clear()
@@ -6671,13 +6744,18 @@ func stock_throw_out(id: StringName) -> int:
 	var units: int = Economy.stock.count(id)
 	if units <= 0 or not Economy.stock.take(id, units):
 		return -1
+	_note_thrown_out(id, units)
+	world.log_event("Threw out %d %s by hand" % [units, id])
+	_refresh_stock_panel()
+	return units
+
+
+## Today's "Thrown out today" Stock note counts these units.
+func _note_thrown_out(id: StringName, units: int) -> void:
 	if _thrown_day != Clock.sim.day:
 		_thrown_day = Clock.sim.day
 		_thrown_today.clear()
 	_thrown_today[id] = int(_thrown_today.get(id, 0)) + units
-	world.log_event("Threw out %d %s by hand" % [units, id])
-	_refresh_stock_panel()
-	return units
 
 
 func stock_clear_cart() -> void:
@@ -7621,6 +7699,7 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 		# report keeps this menu and its prices even if tomorrow's menu changes.
 		if sim != null:
 			sim.begin_service_menu_snapshot()
+		_apply_service_event_buzz()
 		_plan_service_events()
 		_observe_opening_at_open()
 	else:
