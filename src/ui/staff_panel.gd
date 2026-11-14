@@ -659,7 +659,7 @@ func _on_request(id: StringName, hiring: bool) -> void:
 	refresh()
 
 
-## One item per other site: its name, or "Name: why not" and disabled. A
+## One item per other site: its name, or "Name (why not)" and disabled. A
 ## last cook or server disables the whole button, as Let go does.
 func _refresh_transfer(transfer: MenuButton, id: StringName, editable: bool) -> void:
 	transfer.visible = not _transfer_sites.is_empty()
