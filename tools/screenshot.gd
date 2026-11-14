@@ -1897,8 +1897,9 @@ static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: Conten
 	var menu: MenuSettings = main.get("menu_settings") as MenuSettings
 	var meter: VibeMeter = catalogue.get_node_or_null("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter") as VibeMeter
 	var panel: Control = catalogue.get_node_or_null("Panel") as Control
-	var scroll: ScrollContainer = catalogue.get_node_or_null("Panel/Margin/Rows/Scroll") as ScrollContainer
-	if not ("vibe_result" in main) or menu == null or meter == null or panel == null or scroll == null:
+	# The readout is pinned above the card scroll (#499), so it must fit there.
+	var toolbars: Control = catalogue.get_node_or_null("Panel/Margin/Rows/Toolbars") as Control
+	if not ("vibe_result" in main) or menu == null or meter == null or panel == null or toolbars == null:
 		return {"available": false}
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu.enabled_recipes(),
 		editor.wall_swatch_id, editor.floor_vibe_swatch())
@@ -1931,7 +1932,7 @@ static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: Conten
 			"fill_color": _staff_rgba(fill.bg_color), "background_color": _staff_rgba(background.bg_color),
 			"panel_bounds": _staff_rect_data(_staff_pixel_rect(panel)),
 			"window_bounds": _staff_rect_data(meter.get_viewport().get_final_transform() * meter.get_viewport().get_visible_rect()),
-			"scroll_viewport_bounds": _staff_rect_data(_staff_scroll_viewport(scroll)),
+			"toolbars_bounds": _staff_rect_data(_staff_pixel_rect(toolbars)),
 			"bounds": _staff_rect_data(_staff_pixel_rect(meter)),
 			"caption_bounds": _staff_rect_data(_staff_pixel_rect(caption)),
 			"bar_bounds": _staff_rect_data(_staff_pixel_rect(bar)),
@@ -2010,7 +2011,7 @@ static func catalogue_vibe_valid(state: Dictionary, frame: int) -> bool:
 		return true
 	var panel: Rect2 = _staff_rect(meter, "panel_bounds")
 	var window: Rect2 = _staff_rect(meter, "window_bounds")
-	var viewport: Rect2 = _staff_rect(meter, "scroll_viewport_bounds")
+	var viewport: Rect2 = _staff_rect(meter, "toolbars_bounds")
 	var bounds: Rect2 = _staff_rect(meter, "bounds")
 	if meter.get("visible") != true or meter.get("caption_visible") != true or meter.get("bar_visible") != true \
 			or not window.has_area() or not panel.has_area() or not viewport.has_area() or not bounds.has_area() \

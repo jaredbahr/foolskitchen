@@ -64,10 +64,14 @@ func _process(delta: float) -> void:
 	if _review_frames == 10:
 		FRONT_REVIEW.focus(self)
 		var camera: Camera3D = get_node("CameraRig/Camera3D") as Camera3D
-		camera.size = 6.5
+		camera.size = 8.0
 		# Leave the front above the real bottom-left Build panel. This changes
 		# only the camera pose, after screenshot.gd has settled its initial rig.
 		camera.global_position -= camera.global_basis.y
+		# The panel grew when #499 pinned its toolbars: zoom out a little and lift
+		# the picture with a view offset, not the camera, so the camera-facing
+		# wall rule still sees the same pose.
+		camera.v_offset = -1.2
 	elif _review_frames >= 25:
 		RenderingServer.frame_post_draw.connect(_review_validate, CONNECT_ONE_SHOT)
 
@@ -79,7 +83,8 @@ func _review_validate() -> void:
 	var state: Dictionary = meter.view_state()
 	var front: Dictionary = FRONT_REVIEW.evidence(self, get_tree().root)
 	var panel: Control = _build_catalogue.get_node("Panel") as Control
-	var scroll: ScrollContainer = _build_catalogue.get_node("Panel/Margin/Rows/Scroll") as ScrollContainer
+	# The readout is pinned above the card scroll (#499).
+	var toolbars: Control = _build_catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
 	var viewport: Rect2 = get_viewport().get_visible_rect()
 	if not is_build_active() or not meter.is_visible_in_tree() or state.get("available") != true \
 			or not is_finite(curb_appeal_score) or curb_appeal_score <= 0.0 or curb_appeal_score > 100.0 \
@@ -93,7 +98,7 @@ func _review_validate() -> void:
 	for control: Control in [meter, meter.caption_label, meter.bonus_label, meter.score_bar]:
 		if not control.is_visible_in_tree() or not viewport.encloses(control.get_global_rect()) \
 				or not panel.get_global_rect().grow(1.0).encloses(control.get_global_rect()) \
-				or not scroll.get_global_rect().grow(1.0).encloses(control.get_global_rect()):
+				or not toolbars.get_global_rect().grow(1.0).encloses(control.get_global_rect()):
 			_review_fail("the native curb meter or labels are clipped")
 			return
 	for label: Label in [meter.caption_label, meter.bonus_label]:
@@ -145,7 +150,7 @@ func _review_validate() -> void:
 			"value": meter.score_bar.value, "tooltip": meter.tooltip_text},
 		"meter_rect": _review_rect(meter), "caption_rect": _review_rect(meter.caption_label),
 		"bonus_rect": _review_rect(meter.bonus_label), "bar_rect": _review_rect(meter.score_bar),
-		"catalogue_rect": _review_rect(panel), "scroll_rect": _review_rect(scroll),
+		"catalogue_rect": _review_rect(panel), "toolbars_rect": _review_rect(toolbars),
 		"front": front, "snapshot": _review_state, "unchanged": true,
 		"player_meaning": "A decorated street front contributes a small walk-in multiplier through the existing demand breakdown. Actual arrivals vary; construction cost is not part of this service comparison.",
 		"frame": 60, "validation_timing": "frame_post_draw", "image_file": "shot_0060.png",
