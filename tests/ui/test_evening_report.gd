@@ -61,14 +61,14 @@ func test_booking_and_rush_annotations_survive_json_and_keep_stable_independent_
 	var day: DayReport = DayReport.new()
 	day.rush_hour_lines = ["Book club brought 8 guests."]
 	_report.call("show_report", day)
-	assert_null(_report.get_node_or_null("Panel/Scroll/Content/Bookings"))
+	assert_null(_report.get_node_or_null("Panel/Column/Scroll/Content/Bookings"))
 	day.booking_lines = ["Booking: the birthday group couldn't be seated. Deposit refunded."]
 	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
 	assert_eq(restored.booking_lines, day.booking_lines)
 	assert_eq(restored.rush_hour_lines, day.rush_hour_lines)
 	_report.call("show_report", restored)
-	var booking: Label = _report.get_node("Panel/Scroll/Content/Bookings") as Label
-	var rush: Label = _report.get_node("Panel/Scroll/Content/RushHour") as Label
+	var booking: Label = _report.get_node("Panel/Column/Scroll/Content/Bookings") as Label
+	var rush: Label = _report.get_node("Panel/Column/Scroll/Content/RushHour") as Label
 	assert_true(booking.visible)
 	assert_true(rush.visible)
 	assert_true(rush.get_index() < booking.get_index(), "creation order cannot reorder the two annotations")
@@ -82,7 +82,7 @@ func test_takeaways_line_shows_only_on_days_the_order_counter_sold_any() -> void
 	day.customers_served = 9
 	day.takeaways = 3
 	_report.call("show_report", day)
-	var label: Label = _report.get_node("Panel/Scroll/Content/Takeaways") as Label
+	var label: Label = _report.get_node("Panel/Column/Scroll/Content/Takeaways") as Label
 	assert_eq(label.text, "Takeaways: 3")
 	assert_true(label.visible)
 	_report.call("show_report", DayReport.new())
@@ -139,7 +139,7 @@ func test_daily_special_line_round_trips_and_hides_for_legacy_or_empty_reports()
 	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(encoded)))
 	assert_eq(restored.daily_special_line, day.daily_special_line)
 	_report.call("show_report", restored)
-	var label: Label = _report.get_node("Panel/Scroll/Content/DailySpecial") as Label
+	var label: Label = _report.get_node("Panel/Column/Scroll/Content/DailySpecial") as Label
 	assert_true(label.visible)
 	assert_eq(label.text, day.daily_special_line)
 	assert_eq(label.get_index(), (_report.get_node("%SlowestSeller") as Label).get_index() + 1,
@@ -160,13 +160,13 @@ func test_saved_report_name_contextualizes_reviews_without_changing_quotes() -> 
 	_report.call("show_report", day)
 	assert_eq((_report.get_node("%RestaurantName") as Label).text, "Copper Cafe")
 	assert_eq((_report.get_node("%Header") as Label).text, "Day 3: Closed")
-	assert_eq((_report.get_node("Panel/Scroll/Content/ReviewHeading") as Label).text, "Reviews of Copper Cafe")
+	assert_eq((_report.get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label).text, "Reviews of Copper Cafe")
 	var reviews: Node = _report.get_node("%ReviewRows")
 	assert_eq((reviews.get_child(0) as Label).text, '4 stars - "Warm food and friendly service."')
 	var next: DayReport = DayReport.new()
 	_report.call("show_report", next)
 	assert_eq((_report.get_node("%RestaurantName") as Label).text, MenuSettings.DEFAULT_NAME)
-	assert_eq((_report.get_node("Panel/Scroll/Content/ReviewHeading") as Label).text,
+	assert_eq((_report.get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label).text,
 		"Reviews of %s" % MenuSettings.DEFAULT_NAME)
 
 
@@ -184,7 +184,7 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 			await tree.process_frame
 		var panel: Control = _report.get_node("Panel") as Control
 		var name: Label = _report.get_node("%RestaurantName") as Label
-		var heading: Label = _report.get_node("Panel/Scroll/Content/ReviewHeading") as Label
+		var heading: Label = _report.get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label
 		assert_true(name.get_global_rect().position.x >= panel.get_global_rect().position.x)
 		assert_true(name.get_global_rect().end.x <= panel.get_global_rect().end.x)
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")

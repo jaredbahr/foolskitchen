@@ -235,6 +235,13 @@ layout_mode = 2
 focus_mode = 0
 text = "Open shop"
 
+[node name="Report" type="Button" parent="Top/Row"]
+visible = false
+layout_mode = 2
+focus_mode = 0
+text = "Report"
+tooltip_text = "Show today's report again"
+
 [node name="Menu" type="Button" parent="Top/Row"]
 layout_mode = 2
 focus_mode = 0
