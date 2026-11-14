@@ -56,11 +56,13 @@ func projected_progress(observation: MilestoneDay) -> int:
 
 
 func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
-		enabled_menu: Array[RecipeDef], random: RandomNumberGenerator) -> bool:
+		enabled_menu: Array[RecipeDef], random: RandomNumberGenerator,
+		history: BusinessHistory = null, seats: int = 0, service_days: int = WEEK_DAYS) -> bool:
 	if day < 1 or day > MAX_DAY - WEEK_DAYS + 1 or not _is_rotation_day(day) \
 			or (status != Status.EMPTY and day <= end_day) \
 			or (status == Status.EMPTY and challenge_id != &"") or owner_level < 1 or owner_level > MAX_DAY \
-			or pool == null or not pool.is_valid() or random == null:
+			or pool == null or not pool.is_valid() or random == null \
+			or service_days < 1 or service_days > WEEK_DAYS:
 		return false
 	var dishes: Array[RecipeDef] = []
 	for recipe: RecipeDef in enabled_menu:
@@ -71,21 +73,31 @@ func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 			dishes.append(recipe)
 	var eligible: Array[WeeklyChallenge] = []
 	var dish_options: Dictionary = {}
+	var targets: Dictionary = {}
+	var recent: Array[Dictionary] = []
+	if history != null and day > 1:
+		recent = history.recent(WEEK_DAYS)
 	for candidate: WeeklyChallenge in pool.challenges:
-		var candidate_target: int = candidate.target_at_level(owner_level)
-		if candidate_target < 1:
-			continue
+		var fallback: int = candidate.target_at_level(owner_level)
 		if candidate.kind != WeeklyChallenge.Kind.SELL_DISH:
-			if not candidate.display_text(candidate_target).is_empty():
+			var candidate_target: int = fallback if history == null \
+				else pool.shop_target(candidate, recent, seats, service_days)
+			if candidate_target > 0 and not candidate.display_text(candidate_target).is_empty():
 				eligible.append(candidate)
+				targets[candidate.id] = candidate_target
 			continue
 		var valid_dishes: Array[RecipeDef] = []
+		var dish_targets: Dictionary[StringName, int] = {}
 		for recipe: RecipeDef in dishes:
-			if not candidate.display_text(candidate_target, recipe.display_name.strip_edges()).is_empty():
+			var candidate_target: int = fallback if history == null \
+				else pool.shop_target(candidate, recent, seats, service_days, recipe.id)
+			if candidate_target > 0 and not candidate.display_text(candidate_target, recipe.display_name.strip_edges()).is_empty():
 				valid_dishes.append(recipe)
+				dish_targets[recipe.id] = candidate_target
 		if not valid_dishes.is_empty():
 			eligible.append(candidate)
 			dish_options[candidate.id] = valid_dishes
+			targets[candidate.id] = dish_targets
 	var fresh: Array[WeeklyChallenge] = []
 	for candidate: WeeklyChallenge in eligible:
 		if candidate.id != previous_challenge_id:
@@ -97,15 +109,16 @@ func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 	if eligible.is_empty():
 		return false
 	var selected: WeeklyChallenge = eligible[random.randi_range(0, eligible.size() - 1)]
-	var frozen_target: int = selected.target_at_level(owner_level)
-	if frozen_target < 1:
-		return false
+	var frozen_target: int = 0
 	var frozen_dish: RecipeDef = null
 	if selected.kind == WeeklyChallenge.Kind.SELL_DISH:
 		var selected_dishes: Array[RecipeDef] = dish_options.get(selected.id, []) as Array[RecipeDef]
 		if selected_dishes.is_empty():
 			return false
 		frozen_dish = selected_dishes[random.randi_range(0, selected_dishes.size() - 1)]
+		frozen_target = targets[selected.id][frozen_dish.id]
+	else:
+		frozen_target = targets[selected.id]
 	var frozen_text: String = selected.display_text(frozen_target,
 		frozen_dish.display_name.strip_edges() if frozen_dish != null else "")
 	if frozen_text.is_empty():
@@ -127,14 +140,16 @@ func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 
 
 func begin_legacy_week(day: int, owner_level: int, pool: WeeklyChallengePool,
-		enabled_menu: Array[RecipeDef], random: RandomNumberGenerator) -> bool:
+		enabled_menu: Array[RecipeDef], random: RandomNumberGenerator,
+		history: BusinessHistory = null, seats: int = 0) -> bool:
 	if day < 1 or day > MAX_DAY or status != Status.EMPTY \
 			or not challenge_id.is_empty():
 		return false
 	var week_start: int = ((day - 1) / WEEK_DAYS) * WEEK_DAYS + 1
 	var candidate: WeeklyChallengeState = WeeklyChallengeState.new()
 	candidate.previous_challenge_id = previous_challenge_id
-	if not candidate.begin_week(week_start, owner_level, pool, enabled_menu, random):
+	if not candidate.begin_week(week_start, owner_level, pool, enabled_menu, random,
+			history, seats, week_start + WEEK_DAYS - day):
 		return false
 	candidate.last_evaluated_day = day - 1
 	previous_challenge_id = candidate.previous_challenge_id
@@ -151,6 +166,25 @@ func begin_legacy_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 	progress = 0
 	last_evaluated_day = candidate.last_evaluated_day
 	return true
+
+
+## Day one opens before the shop has any results. Keep the morning draw,
+## then use the first completed service to size it before applying progress.
+func size_first_week(pool: WeeklyChallengePool, observation: MilestoneDay, seats: int) -> void:
+	if pool == null or not is_active() or start_day != 1 or last_evaluated_day != 0 \
+			or observation == null or observation.day != 1 or not observation.is_valid():
+		return
+	var definition: WeeklyChallenge = pool.by_id(challenge_id)
+	if definition == null or definition.kind != kind or definition.reward_cash != reward_cash:
+		return
+	var first_day: Array[Dictionary] = [{"served": observation.served_today,
+		"lost": observation.lost_today, "weekly_profit": observation.operating_profit,
+		"good_reviews": observation.good_reviews_today, "dishes_sold": observation.dishes_sold}]
+	var sized: int = pool.shop_target(definition, first_day, seats, WEEK_DAYS, dish_id)
+	var sized_text: String = definition.display_text(sized, dish_name)
+	if not sized_text.is_empty():
+		target = sized
+		text = sized_text
 
 
 func apply_day(observation: MilestoneDay) -> Dictionary:

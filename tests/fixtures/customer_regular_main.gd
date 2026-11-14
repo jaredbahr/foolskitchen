@@ -30,6 +30,7 @@ class MainCustomer extends CustomerAgent:
 	func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisit:
 		var visit: ReviewVisit = ReviewVisit.new()
 		visit.served = paid
+		visit.was_seated = _reached_dining_seat
 		visit.closing = leave_reason == &"closing"
 		visit.queue_wait_fraction = float(maxi(0, _queue_wait)) / float(maxi(1, queue_patience))
 		visit.food_wait_fraction = float(maxi(0, _food_wait)) / float(maxi(1, food_patience))
@@ -115,7 +116,9 @@ class MainRestaurant extends RestaurantSim:
 class MainBook extends ReputationBook:
 	func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes,
 			random: RandomNumberGenerator, vibe_tuning: VibeTuning = VIBE_TUNING) -> Dictionary:
-		if visit == null or visit.closing or tuning == null or not tuning.is_valid() \
+		# Apply the review eligibility rule shared by both types of guest (#491).
+		if visit == null or visit.closing or (not visit.was_seated and not visit.served) \
+				or tuning == null or not tuning.is_valid() \
 				or quotes == null or random == null:
 			return {}
 		if random.randf() >= tuning.review_chance:

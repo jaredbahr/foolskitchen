@@ -143,6 +143,9 @@ var patio_floor_mesh: MeshInstance3D
 var _has_patio: bool = false
 var room_dressing: RoomDressing
 var neighbourhood_dressing: NeighbourhoodDressing
+## The active site's street (#425); Main sets it before show_world() and every new
+## dressing builds from it. Null means the starter street.
+var street_preset: StreetPreset
 ## Separate from the actual delivery/service lot: maximum future building land.
 var _neighbourhood_reserve: Rect2i = Rect2i()
 var weather_view: WeatherView
@@ -308,6 +311,7 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	neighbourhood_dressing = NeighbourhoodDressing.new()
 	neighbourhood_dressing.name = "NeighbourhoodDressing"
 	neighbourhood_dressing.set_meta("shop_geometry", true)
+	neighbourhood_dressing.use_preset(street_preset if street_preset != null else StreetPreset.starter())
 	add_child(neighbourhood_dressing)
 	_build_terrain()
 	weather_view = WeatherView.new()

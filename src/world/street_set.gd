@@ -2,9 +2,10 @@ class_name StreetSet
 extends Resource
 ## The buildings of one street (#422): palettes, roof shapes, heights, fences and
 ## the little businesses that stand in the row beside the player's lot. Like
-## GroundSkin it is the street preset's swappable half: a seaside street (#425)
-## supplies its own set and NeighbourhoodBuildings builds it the same way.
-## `standard()` is the first street: warm swatches, cottages and a baker's row.
+## GroundSkin it is one half of a StreetPreset (#425): a seaside street supplies
+## its own set in its preset and NeighbourhoodBuildings builds it the same way.
+## The starter street's set (warm swatches, cottages and a baker's row) is data
+## in data/streets/starter.tres; `standard()` returns a copy of it.
 
 enum Roof { GABLE_FRONT, GABLE_SIDE, HIP, PYRAMID, SHED, FLAT, FALSE_FRONT }
 enum Fence { PICKET, HEDGE, WALL, RAIL }
@@ -52,78 +53,9 @@ enum Fence { PICKET, HEDGE, WALL, RAIL }
 @export_range(0.0, 30.0) var sign_sway_degrees: float = 9.0
 
 
-static func _swatch(id: String) -> Color:
-	return (load("res://data/swatches/%s.tres" % id) as SwatchDef).color
-
-
+## A fresh copy of the starter street's set (data/streets/starter.tres), safe to change.
 static func standard() -> StreetSet:
-	var set: StreetSet = StreetSet.new()
-	var cream: Color = _swatch("cream")
-	var butter: Color = _swatch("butter")
-	var peach: Color = _swatch("peach")
-	var blush: Color = _swatch("blush")
-	var mint: Color = _swatch("mint")
-	var sky: Color = _swatch("powder_blue")
-	var sand: Color = _swatch("sand")
-	var rose: Color = _swatch("dusty_rose")
-	var oat: Color = _swatch("oat")
-	var terracotta: Color = _swatch("terracotta")
-	var brick: Color = _swatch("brick")
-	var slate: Color = _swatch("slate_blue")
-	var walnut: Color = _swatch("walnut")
-	var plum: Color = _swatch("plum")
-	var moss: Color = _swatch("moss")
-	var teal: Color = _swatch("teal")
-	var honey: Color = _swatch("honey")
-	var coral: Color = _swatch("coral")
-	var navy: Color = _swatch("navy")
-	var milk: Color = _swatch("milk")
-	var tomato: Color = _swatch("tomato")
-	var tangerine: Color = _swatch("tangerine")
-	set.wall_colors = [cream, butter, peach, blush, mint, sky, sand, oat, rose.lightened(0.25)]
-	# Softer, warm and pastel roofs, so the player's own shop is the strongest colour on the street.
-	set.roof_colors = [terracotta.lightened(0.2), butter.darkened(0.14), _swatch("sage").lightened(0.15), teal.lightened(0.4),
-		_swatch("lilac").darkened(0.12), oat.darkened(0.22), rose.lightened(0.1), peach.darkened(0.2)]
-	set.door_colors = [terracotta, teal, honey, slate, coral, plum.lightened(0.15), moss]
-	set.hedge_colors = [moss.lightened(0.08), _swatch("leaf"), _swatch("sage").darkened(0.1), _swatch("forest").lightened(0.1)]
-	set.bloom_colors = [butter, rose, cream, coral, honey, sky]
-	set.trim = milk
-	set.glass = slate.lerp(sky, 0.35)
-	set.stone = _swatch("pebble")
-	set.path = sand.lerp(cream, 0.4)
-	set.wood = walnut.lightened(0.12)
-	set.soil = walnut.darkened(0.22)
-	set.laundry_colors = [milk, blush, butter, sky, mint, coral.lightened(0.2)]
-	set.play_colors = [tomato.lightened(0.1), tangerine, butter, teal.lightened(0.1), sky.darkened(0.1), coral]
-	set.window_glows = [Color(1.0, 0.82, 0.46), Color(1.0, 0.74, 0.38), Color(1.0, 0.88, 0.58)]
-	set.house_roofs = [Roof.GABLE_FRONT, Roof.GABLE_SIDE, Roof.HIP, Roof.PYRAMID]
-	set.shop_roofs = [Roof.GABLE_SIDE, Roof.SHED, Roof.FLAT, Roof.FALSE_FRONT]
-	set.house_heights = [1.45, 1.65, 1.85]
-	set.shop_heights = [1.7, 1.95, 2.2]
-	set.fences = [Fence.PICKET, Fence.HEDGE, Fence.WALL, Fence.RAIL]
-	set.shops = [
-		ShopStyle.make(&"bakery", butter, terracotta, cream, oat, terracotta, ShopStyle.Accent.CRATE),
-		ShopStyle.make(&"florist", mint, moss.lightened(0.1), cream, blush, teal, ShopStyle.Accent.BUCKETS),
-		ShopStyle.make(&"toy_shop", sky, tangerine, butter, cream, tomato.lightened(0.12), ShopStyle.Accent.TOYS),
-		ShopStyle.make(&"pet_shop", _swatch("lilac").lightened(0.35), teal, cream, oat, coral, ShopStyle.Accent.PETS),
-		ShopStyle.make(&"sweet_shop", blush, rose, cream, butter, plum.lightened(0.2), ShopStyle.Accent.JARS),
-		ShopStyle.make(&"tea_room", cream, navy.lightened(0.25), milk, sand, coral, ShopStyle.Accent.TABLE),
-	]
-	set.furniture = [
-		StreetPropSpec.make(StreetPropSpec.Kind.BUS_STOP, 1, StreetPropSpec.Zone.KERB),
-		StreetPropSpec.make(StreetPropSpec.Kind.POSTBOX, 1, StreetPropSpec.Zone.KERB),
-		StreetPropSpec.make(StreetPropSpec.Kind.HYDRANT, 1, StreetPropSpec.Zone.KERB),
-		StreetPropSpec.make(StreetPropSpec.Kind.BIKE_RACK, 1, StreetPropSpec.Zone.WALL),
-		StreetPropSpec.make(StreetPropSpec.Kind.BENCH, 2, StreetPropSpec.Zone.WALL),
-		StreetPropSpec.make(StreetPropSpec.Kind.TREE_PLANTER, 4, StreetPropSpec.Zone.KERB),
-		StreetPropSpec.make(StreetPropSpec.Kind.BIN, 2, StreetPropSpec.Zone.WALL),
-	]
-	set.metal = _swatch("pewter")
-	set.signal_red = tomato
-	set.bin_colors = [teal.darkened(0.1), moss, slate]
-	set.bird_colors = [walnut.lightened(0.2), slate.lightened(0.3), tangerine.lerp(walnut, 0.35)]
-	set.leaf_colors = [honey, tangerine, _swatch("leaf"), coral.lightened(0.1)]
-	return set
+	return StreetPreset.starter().buildings.duplicate_deep(Resource.DEEP_DUPLICATE_ALL) as StreetSet
 
 
 ## A string that changes whenever anything in the set does; used in cache keys.

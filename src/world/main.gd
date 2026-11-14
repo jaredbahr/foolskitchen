@@ -49,8 +49,9 @@ const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
 const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
-## The opening-week goal chain (#494): paid goals that guide the first days.
-const OPENING_WEEK: OpeningWeekSet = preload("res://data/balance/opening_week.tres")
+## The paid goal chains (#494 Opening week, #514 Week 2): goals that guide
+## the first weeks, one chain after another.
+const GOAL_CHAINS: GoalChainSequence = preload("res://data/balance/goal_chains.tres")
 const HOURS_TUNING: OpeningHoursTuning = preload("res://data/balance/hours.tres")
 const SITE_HOURS_VERSION: int = 1
 const HOURS_RESET_NOTE: String = "Saved opening hours were outside the limits; reset to the default hours"
@@ -142,9 +143,9 @@ var milestones: MilestoneTracker = MilestoneTracker.new()
 var milestone_catalogue: MilestoneSet = MILESTONES
 ## One frozen weekly objective; progress is applied only from close summaries.
 var weekly_challenge: WeeklyChallengeState = WeeklyChallengeState.new()
-## The opening-week chain's progress (#494); global, like the career goals.
+## The goal chains' progress (#494, #514); global, like the career goals.
 var opening_week: OpeningWeek = OpeningWeek.ended()
-var opening_week_catalogue: OpeningWeekSet = OPENING_WEEK
+var goal_chains: GoalChainSequence = GOAL_CHAINS
 ## Zero is one plate; the two purchased levels carry two and four.
 var tray_level: int = 0
 ## Whether the active site's lease is expanded (D30). Per site (FK-087): it is
@@ -195,12 +196,11 @@ var _loaded_opening_week: OpeningWeek = null
 ## This morning's tables and servers, for "Grow together" (#494). Never saved:
 ## each morning (and a site switch) takes it again before any edit.
 var _opening_baseline: Dictionary = {}
-## Decor pieces (floor and wall) at the last opening, or at the session's
-## first morning; -1 until taken. "Place a decor item" pays at an opening
-## with more, so a buy undone or sold first pays nothing (#494).
-var _decor_at_open: int = -1
-## The site _decor_at_open was counted at: a switch counts afresh.
-var _decor_site: StringName = &""
+## `_opening_counts()` at the last opening, or at the session's first morning;
+## empty until taken, and taken afresh on another site. "Place a decor item",
+## "Lay 6 new floor tiles" and "Place a four-seat or round table" pay at an
+## opening with more, so a buy undone or sold first pays nothing (#494, #514).
+var _last_open_counts: Dictionary = {}
 var _loaded_tray_level: int = 0
 var _loaded_lease_expanded: bool = false
 ## The saved "site_hours" section (FK-087), staged; empty when the save has none.
@@ -435,6 +435,9 @@ func _bind_world_presentation() -> void:
 		if _loaded_layout != null else _base_layout
 	var maximum_lease: ShopLayout = _lease_for(presentation_base).layout_for(presentation_base, 2)
 	var maximum_reserve: Rect2i = ShopFootprint.from_layout(maximum_lease).lot.merge(lot)
+	# The street outside is the active site's lot's preset (#425): the home lot and
+	# a lot without one get the starter street.
+	view.street_preset = StreetPreset.for_site(site_book, content)
 	view.show_world(world, maximum_reserve)
 	# A new dressing starts at day: light its lamps now, not a frame later.
 	if view.neighbourhood_dressing != null and world.clock != null:
@@ -568,6 +571,9 @@ func _bind_world_presentation() -> void:
 		_property_panel.buy_requested.connect(_on_property_buy_requested)
 	_site_card = $Overlay/SiteCard
 	_site_card.hide()
+	_on_site_card_visibility_changed()
+	if not _site_card.visibility_changed.is_connected(_on_site_card_visibility_changed):
+		_site_card.visibility_changed.connect(_on_site_card_visibility_changed)
 	_service_event_card = $Overlay/ServiceEventCard
 	_service_event_card.close()
 	if not _service_event_card.choice_picked.is_connected(_on_service_event_choice):
@@ -1061,7 +1067,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		if code == KEY_F12 and PhotoMode.available():
+		if code == KEY_F12 and PhotoMode.available() and not is_site_card_visible():
 			if not Clock.text_entry_has_focus() and world != null:
 				_take_photo_key(photo, key)
 			return
@@ -3027,11 +3033,11 @@ func _new_game() -> void:
 	_loaded_weekly_challenge = null
 	service_events = _new_service_events()
 	_loaded_service_events = null
-	# Every new career game gets the opening week; Creative has no money goals.
-	opening_week = OpeningWeek.ended() if GameMode.is_creative() else OpeningWeek.new()
+	# Every new career game gets the goal chains; Creative has no money goals.
+	opening_week = OpeningWeek.ended() if GameMode.is_creative() else OpeningWeek.starting(goal_chains)
 	_loaded_opening_week = null
 	_opening_baseline.clear()
-	_decor_at_open = -1
+	_last_open_counts.clear()
 	_milestones_reached_today.clear()
 	_milestone_award_day = 0
 	_milestone_xp_today = 0
@@ -3133,7 +3139,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_weekly_challenge = null
 	_loaded_service_events = null
 	_loaded_opening_week = null
-	_decor_at_open = -1
+	_last_open_counts.clear()
 	_loaded_tray_level = 0
 	_loaded_lease_expanded = false
 	_loaded_site_hours = {}
@@ -3420,10 +3426,11 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 		service_events = _loaded_service_events if _loaded_service_events != null \
 			else _new_service_events()
 		_loaded_service_events = null
-		# A save from before the chain joins it only while still in the week;
-		# this morning's setup ends a finished or overdue chain.
+		# A save from before the chains joins the Opening week while still in
+		# it; this morning's setup ends a finished or overdue chain and starts
+		# the next one whose window still holds today (Week 2, #514).
 		opening_week = _loaded_opening_week if _loaded_opening_week != null \
-			else OpeningWeek.legacy_for_day(Clock.sim.day, opening_week_catalogue)
+			else OpeningWeek.legacy_for_day(Clock.sim.day, goal_chains)
 		if GameMode.is_creative():
 			opening_week = OpeningWeek.ended()
 		_loaded_opening_week = null
@@ -4158,9 +4165,13 @@ func _plan_morning_booking() -> void:
 	for recipe: RecipeDef in menu_settings.enabled_recipes():
 		if sim.menu.has(recipe):
 			menu_ids.append(recipe.id)
-	group_booking.plan_offer(Clock.sim.day, owner_progress.effective_level(), menu_ids,
+	var level: int = owner_progress.effective_level()
+	var seats: int = 0
+	if level >= group_booking.tuning.unlock_level and not menu_ids.is_empty() and not group_booking.has_active_booking():
+		seats = DiningSeats.booking_capacity(world.grid, group_booking.tuning.min_party_size)
+	group_booking.plan_offer(Clock.sim.day, level, menu_ids,
 		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
-		GameState.rng.bind(&"bookings"))
+		GameState.rng.bind(&"bookings"), seats)
 	_refresh_booking_offer()
 
 
@@ -4294,7 +4305,8 @@ func _plan_service_events() -> void:
 	if sim == null or service_events == null or not service_events_active():
 		return
 	service_events.plan_day(Clock.sim.day, GameState.master_seed, _service_event_context(),
-		Clock.sim.display_open_minute, Clock.sim.display_close_minute, _service_event_blocked_minutes())
+		Clock.sim.display_open_minute, Clock.sim.display_close_minute, _service_event_blocked_minutes(),
+		String(Economy.active_site))
 
 
 func _check_service_event() -> void:
@@ -4424,7 +4436,30 @@ func service_event_refusal(choice: ServiceEventChoice, entry: Dictionary) -> Str
 	var need: int = choice.cash_needed() + stock_cost
 	if need > 0 and not Economy.can_spend_without_loan(need):
 		return ServiceEventText.NOT_ENOUGH_CASH
+	if choice.send_home and not can_send_home(StringName(entry.get("staff_id", ""))):
+		var names: Dictionary = entry.get("names", {})
+		return ServiceEventText.nobody_covers(String(names.get("staff", "")))
 	return ""
+
+
+## Whether `member_id` may go home now (#506): the doors are open, they are on
+## the floor and not already leaving, and someone else still covers their
+## role: a cleaner always (the servers mop), anyone else only while another
+## worker in the same role stays. The last cook or server never goes.
+func can_send_home(member_id: StringName) -> bool:
+	if sim == null or not Clock.sim.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return false
+	var worker: StaffAgent = sim.employee(member_id)
+	if worker == null or worker.going_home:
+		return false
+	if worker.role == &"cleaner":
+		return true
+	for agent: SimAgent in sim.world.all_agents():
+		var other: StaffAgent = agent as StaffAgent
+		if other != null and other != worker and not other is OwnerAgent and other.role == worker.role \
+				and not other.going_home:
+			return true
+	return false
 
 
 func _service_event_stock_cost(choice: ServiceEventChoice, entry: Dictionary) -> int:
@@ -4437,11 +4472,17 @@ func _service_event_stock_cost(choice: ServiceEventChoice, entry: Dictionary) ->
 func _apply_service_event_buzz() -> void:
 	if sim == null or service_events == null:
 		return
-	var factor: float = service_events.arrival_factor(Clock.sim.day, String(Economy.active_site))
+	var site: String = String(Economy.active_site)
+	var factor: float = service_events.arrival_factor(Clock.sim.day, site)
 	if factor == 1.0:
 		return
 	sim.event_arrival_factor *= factor
-	world.log_event(ServiceEventText.buzz_line(factor))
+	var buzz: float = service_events.next_day_factor(Clock.sim.day, site)
+	if buzz != 1.0:
+		world.log_event(ServiceEventText.buzz_line(buzz))
+	# Multi-day nudges (#506) each name their card.
+	for boost: Dictionary in service_events.boosts_on(Clock.sim.day, site):
+		world.log_event(ServiceEventText.later_line(String(boost["title"]), int(boost["percent"])))
 
 
 func _service_event_unit_cost(entry: Dictionary) -> int:
@@ -4496,6 +4537,8 @@ func _apply_service_event(outcome: Dictionary) -> bool:
 		staff_roster.adjust_mood(StringName(entry.get("staff_id", "")), choice.staff_mood)
 	if choice.clean_spots:
 		sim.clean_all_spots()
+	if choice.send_home:
+		sim.send_home(StringName(entry.get("staff_id", "")))
 	return true
 
 
@@ -5773,6 +5816,10 @@ func set_site_card_visible(value: bool) -> bool:
 	return true
 
 
+func _on_site_card_visibility_changed() -> void:
+	$HUD.set_site_card_blocks_repayment(is_site_card_visible())
+
+
 func is_site_card_visible() -> bool:
 	return _site_card != null and _site_card.visible
 
@@ -5851,7 +5898,7 @@ func _milestone_observation(operating_profit: int) -> MilestoneDay:
 
 
 func _begin_weekly_challenge_if_needed() -> void:
-	if weekly_challenge == null or Clock.sim == null or menu_settings == null:
+	if weekly_challenge == null or Clock.sim == null or menu_settings == null or sim == null:
 		return
 	var day: int = Clock.sim.day
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -5859,12 +5906,12 @@ func _begin_weekly_challenge_if_needed() -> void:
 		if weekly_challenge.start_day == day and not weekly_challenge.challenge_id.is_empty():
 			return
 		weekly_challenge.begin_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"))
+			GameState.rng(&"weekly"), business_history, sim.seat_count())
 	elif weekly_challenge.status == WeeklyChallengeState.Status.EMPTY:
 		# Saves made before this section existed begin a fresh challenge for the
 		# remaining days of the current week, without inventing earlier progress.
 		weekly_challenge.begin_legacy_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"))
+			GameState.rng(&"weekly"), business_history, sim.seat_count())
 
 
 func _refresh_goals(force: bool = false) -> void:
@@ -5880,7 +5927,7 @@ func _refresh_goals(force: bool = false) -> void:
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
 		"day": Clock.sim.day, "career_tier": owner_progress.career_tier,
 		"collections": _collection_progress_snapshot(vibe_result.collection_result),
-		"opening": opening_week.to_dict(), "served": sim.served_today}
+		"opening": opening_week.to_dict(), "opening_values": _opening_values()}
 	if force or snapshot != _goals_snapshot:
 		# A Creative game (FK-141) hides career goals, the weekly goal, the
 		# tier ladder and money records; collections and guest records stay.
@@ -5890,11 +5937,8 @@ func _refresh_goals(force: bool = false) -> void:
 		_goals_panel.set_career_tier_line("" if creative else CAREER_TIERS.goal_text(owner_progress.career_tier))
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content, not creative))
 		_goals_panel.set_collections(vibe_result.collection_result)
-		var opening_values: Dictionary[int, float] = {
-			OpeningGoal.Condition.SERVED_TODAY: float(sim.served_today),
-			OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY: float(_five_star_reviews_today())}
-		_goals_panel.set_opening_week(null if creative else opening_week, opening_week_catalogue,
-			opening_values, Clock.sim.day)
+		_goals_panel.set_opening_week(null if creative else opening_week, _chain_set(),
+			snapshot["opening_values"], Clock.sim.day)
 		_goals_snapshot = snapshot.duplicate(true)
 
 
@@ -6242,6 +6286,7 @@ func _on_loan_repayment_requested(amount: int, repay_all: bool) -> void:
 	var phase: SimClock.Phase = Clock.sim.phase
 	if not _started or display_only or world == null or Clock.attached_world != world \
 			or is_haggle_active() or is_owner_picker_visible() or is_settings_visible() or is_shortcuts_visible() \
+			or is_site_card_visible() \
 			or (phase != SimClock.Phase.MORNING and phase != SimClock.Phase.CLOSED):
 		return
 	if repay_all:
@@ -6338,7 +6383,7 @@ func _begin_morning() -> void:
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
 	_menu_panel.set_viral_notice(ViralReviewText.morning(viral_review.factor(Clock.sim.day)))
-	sim.start_day()
+	sim.start_day(owner_progress.effective_tier())
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.
 	sim.inspection.plan_day(Clock.sim.day, owner_progress.effective_level(), Clock.sim.open_ticks,
@@ -7197,6 +7242,11 @@ func _charge_closing_costs() -> void:
 		if agent is StaffAgent and not agent is OwnerAgent:
 			# Paid by the hour: the default day keeps the exact daily wage.
 			Economy.add_cash(-OpeningHours.wage_for_day((agent as StaffAgent).wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
+	# A worker sent home early by a service event (#506) is off the floor but
+	# paid the full day, the same as everyone else.
+	for member: StaffMember in staff_roster.members():
+		if sim.sent_home_today.has(member.id) and sim.employee(member.id) == null:
+			Economy.add_cash(-OpeningHours.wage_for_day(member.wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
 	# Managers have no worker in the world (no floor work) but are paid the
 	# same way (FK-087). A roster without one charges exactly as before.
 	for member: StaffMember in staff_roster.members():
@@ -7334,6 +7384,7 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 	if signature_state != null:
 		signature_state.record_sale(order.recipe_id)
 	_observe_opening_state()
+	_observe_opening_party(customer)
 	_refresh_goals()
 
 
@@ -7441,7 +7492,8 @@ func _on_service_closed(day: int) -> void:
 	# (test_loan_session). A new non-operating category that can be booked
 	# before the close must be added here as well as to DayReport.
 	for category: StringName in [Ledger.BOOKING_DEPOSIT, Ledger.BOOKING_REFUND,
-			Ledger.OPENING_WEEK_BONUS, Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.LOT_PURCHASE, Ledger.RENOVATION,
+			Ledger.OPENING_WEEK_BONUS, Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.AWAY_SITE_WAGES,
+			Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 			Ledger.EARLY_LOAN_REPAYMENT]:
 		operating_profit -= int(day_movements.get(category, 0))
 	# A closed day still evaluates the weekly goal (its saved day must follow
@@ -7451,7 +7503,7 @@ func _on_service_closed(day: int) -> void:
 	# tier climb: everything is already unlocked.
 	var career: bool = not GameMode.is_creative()
 	if career:
-		_award_weekly_challenge(closing_observation)
+		_award_weekly_challenge(closing_observation, business_day)
 	# Owner XP, goals and the tier climb are business-day rewards only.
 	career = career and business_day
 	staff_roster.close_growth_day()
@@ -7545,9 +7597,11 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 		Economy.add_cash(staged.cash_reward, Ledger.MILESTONE_BONUS)
 
 
-func _award_weekly_challenge(observation: MilestoneDay) -> void:
+func _award_weekly_challenge(observation: MilestoneDay, business_day: bool) -> void:
+	var first_week_pool: WeeklyChallengePool = WEEKLY_CHALLENGES if business_day and observation.day == 1 else null
+	var seats: int = sim.seat_count() if first_week_pool != null else 0
 	var staged: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(
-		weekly_challenge, observation, Economy.cash)
+		weekly_challenge, observation, Economy.cash, first_week_pool, seats)
 	if staged == null:
 		return
 	weekly_challenge = staged.state
@@ -7558,64 +7612,103 @@ func _award_weekly_challenge(observation: MilestoneDay) -> void:
 	_weekly_challenge_report_line = staged.report_text
 
 
-## Morning setup for the opening week (#494): retire a finished or overdue
-## chain (that state joins this morning's autosave) and note the tables and
-## servers "Grow together" compares against at opening.
+## Morning setup for the goal chains (#494, #514): retire a finished or
+## overdue chain, start the next one whose window holds today (that state
+## joins this morning's autosave) and note the tables and servers "Grow
+## together" compares against at opening.
 func _begin_opening_week_morning() -> void:
-	if opening_week.end_if_due(Clock.sim.day, opening_week_catalogue):
-		world.log_event("The opening week is over: the usual goals carry on in Goals")
+	var ending: OpeningWeekSet = _chain_set()
+	if opening_week.end_if_due(Clock.sim.day, ending) and ending != null:
+		world.log_event(OpeningWeekText.ended_line(ending))
+	if GameMode.is_creative():
+		opening_week = OpeningWeek.ended()
+	if opening_week.advance(Clock.sim.day, goal_chains):
+		var starting: OpeningWeekSet = _chain_set()
+		world.log_event(OpeningWeekText.started_line(starting))
+		$HUD.queue_toast(OpeningWeekText.started_line(starting))
+		_refresh_goals(true)
 	_opening_baseline = _opening_counts()
-	if _decor_at_open < 0 or _decor_site != _opening_baseline["site"]:
-		_decor_at_open = int(_opening_baseline["decor"])
-		_decor_site = _opening_baseline["site"]
+	if _last_open_counts.is_empty() or _last_open_counts["site"] != _opening_baseline["site"]:
+		_last_open_counts = _opening_baseline.duplicate(true)
 	_refresh_opening_tracker()
 
 
-## Tables (by item category) and hired servers right now, with the morning
-## and site they belong to.
+## The running chain's authored set, or null when none runs.
+func _chain_set() -> OpeningWeekSet:
+	return opening_week.current(goal_chains) if opening_week != null else null
+
+
+## Tables (by item category), decor, bought floor cells, placed items by id
+## and hired staff by role right now, with the morning and site they belong to.
 func _opening_counts() -> Dictionary:
 	var tables: int = 0
+	var decor: int = shop_editor.decor.count() if shop_editor != null else 0
+	var items: Dictionary[StringName, int] = {}
 	if world != null:
 		for placed: PlacedItem in world.grid.items():
 			var definition: ItemDef = placed.def as ItemDef
-			if definition != null and definition.category == ItemDef.Category.TABLE:
+			if definition == null:
+				continue
+			items[definition.id] = items.get(definition.id, 0) + 1
+			if definition.category == ItemDef.Category.TABLE:
 				tables += 1
-	var decor: int = shop_editor.decor.count() if shop_editor != null else 0
-	if world != null:
-		for placed: PlacedItem in world.grid.items():
-			var item_def: ItemDef = placed.def as ItemDef
-			if item_def != null and item_def.category == ItemDef.Category.DECOR:
+			elif definition.category == ItemDef.Category.DECOR:
 				decor += 1
-	var servers: int = 0
+	var roles: Dictionary[StringName, int] = {}
 	if staff_roster != null:
 		for member: StaffMember in staff_roster.members():
-			if member.role == &"server":
-				servers += 1
+			roles[member.role] = roles.get(member.role, 0) + 1
 	return {"day": Clock.sim.day if Clock.sim != null else 0,
-		"site": site_book.active_id if site_book != null else &"", "tables": tables, "servers": servers, "decor": decor}
+		"site": site_book.active_id if site_book != null else &"", "tables": tables,
+		"servers": roles.get(&"server", 0), "decor": decor, "items": items, "roles": roles,
+		"floor": shop_editor.bought_floor().size() if shop_editor != null else 0}
+
+
+## How many of `ids` a counts row holds.
+static func _items_counted(counts: Dictionary, ids: Array[StringName]) -> int:
+	var total: int = 0
+	var items: Dictionary = counts.get("items", {})
+	for id: StringName in ids:
+		total += int(items.get(id, 0))
+	return total
 
 
 ## Reports one observation to the chain and pays every goal it newly meets.
-func _observe_opening(condition: int, value: float) -> void:
+## With `goal_id`, only that goal (conditions whose goals carry their own
+## items, station or role).
+func _observe_opening(condition: int, value: float, goal_id: StringName = &"") -> void:
 	if opening_week == null or not opening_week.is_active() or GameMode.is_creative() or not _started:
 		return
-	var met: Array[OpeningGoal] = opening_week.observe(condition, value, opening_week_catalogue)
+	var chain: OpeningWeekSet = _chain_set()
+	var met: Array[OpeningGoal] = opening_week.observe(condition, value, chain, goal_id)
 	if met.is_empty():
 		return
 	for goal: OpeningGoal in met:
 		# Each goal is its own ledger movement, paid the moment it is met.
 		if goal.reward_cash > 0:
 			Economy.add_cash(goal.reward_cash, Ledger.OPENING_WEEK_BONUS, goal.title)
-		var line: String = OpeningWeekText.met_line(goal)
+		var line: String = OpeningWeekText.met_line(chain, goal)
 		world.log_event(line)
 		_opening_toast(line)
 	Sounds.play(&"milestone")
-	if opening_week.all_done(opening_week_catalogue):
-		opening_week.end_if_due(Clock.sim.day, opening_week_catalogue)
-		world.log_event(OpeningWeekText.COMPLETE_LINE)
-		_opening_toast(OpeningWeekText.COMPLETE_LINE)
+	if opening_week.all_done(chain):
+		opening_week.end_if_due(Clock.sim.day, chain)
+		world.log_event(OpeningWeekText.complete_line(chain))
+		_opening_toast(OpeningWeekText.complete_line(chain))
 	_refresh_opening_tracker()
 	_refresh_goals(true)
+
+
+## The running chain's goals of one condition (for per-goal observations).
+func _chain_goals(condition: int) -> Array[OpeningGoal]:
+	var result: Array[OpeningGoal] = []
+	var chain: OpeningWeekSet = _chain_set()
+	if chain == null or opening_week == null or not opening_week.is_active():
+		return result
+	for goal: OpeningGoal in chain.goals:
+		if goal.condition == condition and not opening_week.is_completed(goal.id):
+			result.append(goal)
+	return result
 
 
 ## Goals met at the close would toast under the evening report, so hold them
@@ -7627,9 +7720,10 @@ func _opening_toast(line: String) -> void:
 		$HUD.queue_toast(line)
 
 
-## The goals that follow the shop's live state while it is open: drinks on
-## the menu, guests served and the owner on the floor. Nothing counts in the
-## morning, so a purchase undone before opening never pays.
+## The goals that follow the shop's live state while it is open: drinks and
+## dishes from a station on the menu, guests served and the owner on the
+## floor. Nothing counts in the morning, so a purchase undone before opening
+## never pays.
 func _observe_opening_state() -> void:
 	if opening_week == null or not opening_week.is_active() or sim == null or menu_settings == null:
 		return
@@ -7639,6 +7733,14 @@ func _observe_opening_state() -> void:
 			if recipe.is_drink():
 				drinks += 1
 		_observe_opening(OpeningGoal.Condition.DRINK_ON_MENU, float(drinks))
+		for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.DISH_AT_STATION):
+			var dishes: int = 0
+			for recipe: RecipeDef in menu_settings.enabled_recipes():
+				for step: RecipeStep in recipe.steps:
+					if step != null and step.station_type == goal.station_type:
+						dishes += 1
+						break
+			_observe_opening(OpeningGoal.Condition.DISH_AT_STATION, float(dishes), goal.id)
 		_observe_opening(OpeningGoal.Condition.SERVED_TODAY, float(sim.served_today))
 		var owner: OwnerAgent = sim.owner_agent()
 		if owner != null and owner.current_mode() == &"floor":
@@ -7646,22 +7748,40 @@ func _observe_opening_state() -> void:
 
 
 ## At opening, "Grow together" holds when this morning added both a table
-## and a server that are still there: removing either first undoes it. Decor
-## counts against the last opening the same way; drinks by the live menu.
+## and a server that are still there: removing either first undoes it. Decor,
+## floor cells and the named tables count against the last opening the same
+## way; the lease and hired roles by what is there; drinks by the live menu.
 func _observe_opening_at_open() -> void:
 	if opening_week == null or not opening_week.is_active():
 		return
 	var now: Dictionary = _opening_counts()
-	if _decor_at_open >= 0 and _decor_site == now["site"] and int(now["decor"]) > _decor_at_open:
-		_observe_opening(OpeningGoal.Condition.DECOR_PLACED, 1.0)
-	_decor_at_open = int(now["decor"])
-	_decor_site = now["site"]
+	if not _last_open_counts.is_empty() and _last_open_counts["site"] == now["site"]:
+		if int(now["decor"]) > int(_last_open_counts["decor"]):
+			_observe_opening(OpeningGoal.Condition.DECOR_PLACED, 1.0)
+		_observe_opening(OpeningGoal.Condition.FLOOR_ADDED,
+			float(int(now["floor"]) - int(_last_open_counts["floor"])))
+		for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.ITEM_PLACED):
+			_observe_opening(OpeningGoal.Condition.ITEM_PLACED,
+				float(_items_counted(now, goal.item_ids) - _items_counted(_last_open_counts, goal.item_ids)), goal.id)
+	_last_open_counts = now.duplicate(true)
 	if not _opening_baseline.is_empty() and _opening_baseline["day"] == now["day"] \
 			and _opening_baseline["site"] == now["site"] \
 			and int(now["tables"]) > int(_opening_baseline["tables"]) \
 			and int(now["servers"]) > int(_opening_baseline["servers"]):
 		_observe_opening(OpeningGoal.Condition.GROW_TOGETHER, 1.0)
+	if lease_expanded:
+		_observe_opening(OpeningGoal.Condition.LEASE_EXPANDED, 1.0)
+	var roles: Dictionary = now["roles"]
+	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.STAFF_ROLE):
+		_observe_opening(OpeningGoal.Condition.STAFF_ROLE, float(roles.get(goal.role, 0)), goal.id)
 	_observe_opening_state()
+
+
+## A guest of a seated party paid: "Seat a group" counts the party's size
+## (pairs, or a booked party, #514).
+func _observe_opening_party(customer: CustomerAgent) -> void:
+	if customer != null and customer.party != null and customer.party.seated:
+		_observe_opening(OpeningGoal.Condition.GROUP_SEATED, float(customer.party.size()))
 
 
 ## Five-star reviews written so far today (owner XP and the opening week).
@@ -7673,18 +7793,38 @@ func _five_star_reviews_today() -> int:
 	return count
 
 
-## The close checks the served and five-star goals, then adds the chain's
-## waiting XP to tonight's owner award (career business days only, like career goals).
+## Guests who left today for one of a CALM_DAY_STARS goal's reasons.
+func _turned_away_today(goal: OpeningGoal) -> int:
+	var count: int = 0
+	for reason: StringName in goal.leave_reasons:
+		count += int(sim.leave_reasons_today.get(reason, 0))
+	return count
+
+
+## The live value of a CALM_DAY_STARS goal: the rating as the HUD shows it
+## (one decimal), or -1 once more than `max_turned_away` guests left today
+## for its reasons.
+func _calm_day_value(goal: OpeningGoal) -> float:
+	if _turned_away_today(goal) > goal.max_turned_away:
+		return -1.0
+	return roundf(reputation.average() * 10.0) / 10.0
+
+
+## The close checks the served, five-star and calm-day goals, then adds the
+## chain's waiting XP to tonight's owner award (career business days only,
+## like career goals).
 func _close_opening_week(day: int) -> void:
 	# A guest who pays on the closing tick pays after the phase turned CLOSED,
 	# so the live check missed them: count today's guests once more here.
 	_observe_opening(OpeningGoal.Condition.SERVED_TODAY, float(sim.served_today))
 	_observe_opening(OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY, float(_five_star_reviews_today()))
+	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.CALM_DAY_STARS):
+		_observe_opening(OpeningGoal.Condition.CALM_DAY_STARS, maxf(0.0, _calm_day_value(goal)), goal.id)
 	if opening_week.pending_xp <= 0:
 		return
 	var bonus: Dictionary = owner_progress.award_bonus(opening_week.pending_xp)
 	if bonus.is_empty():
-		world.log_event("Opening week XP could not be added today")
+		world.log_event("Week goal XP could not be added today")
 		return
 	var xp: int = opening_week.take_pending_xp()
 	_opening_week_xp_today = xp
@@ -7701,10 +7841,31 @@ func _refresh_opening_tracker() -> void:
 	if not has_node(^"HUD"):
 		return
 	var lines: Array[String] = []
-	if opening_week != null and opening_week.is_active() and not GameMode.is_creative():
-		for goal: OpeningGoal in opening_week.shown(opening_week_catalogue):
+	var chain: OpeningWeekSet = _chain_set()
+	if opening_week != null and opening_week.is_active() and chain != null and not GameMode.is_creative():
+		for goal: OpeningGoal in opening_week.shown(chain):
 			lines.append(OpeningWeekText.tracker_line(goal))
-	$HUD.set_opening_week(lines)
+	$HUD.set_opening_week(lines, chain.title if chain != null else "")
+
+
+## The Goals card's live values by condition: today's guests and five-star
+## reviews, floor cells since the last opening and the calm-day rating.
+func _opening_values() -> Dictionary[int, float]:
+	var values: Dictionary[int, float] = {}
+	if opening_week == null or not opening_week.is_active() or sim == null:
+		return values
+	# Today's counts clear when the shop opens, so before then they still hold
+	# yesterday's: show a fresh day in the morning.
+	var morning: bool = Clock.sim != null and Clock.sim.phase == SimClock.Phase.MORNING
+	values[OpeningGoal.Condition.SERVED_TODAY] = 0.0 if morning else float(sim.served_today)
+	values[OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY] = 0.0 if morning else float(_five_star_reviews_today())
+	var now_floor: int = shop_editor.bought_floor().size() if shop_editor != null else 0
+	if not _last_open_counts.is_empty() and site_book != null and _last_open_counts["site"] == site_book.active_id:
+		values[OpeningGoal.Condition.FLOOR_ADDED] = float(maxi(0, now_floor - int(_last_open_counts["floor"])))
+	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.CALM_DAY_STARS):
+		values[OpeningGoal.Condition.CALM_DAY_STARS] = roundf(reputation.average() * 10.0) / 10.0 \
+			if morning else _calm_day_value(goal)
+	return values
 
 
 ## Only authored display names enter the public level-up banner. Content

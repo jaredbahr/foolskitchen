@@ -202,7 +202,7 @@ func test_booking_deposit_is_excluded_at_close_and_full_bill_enters_operating_pr
 	assert_eq(Economy.ledger.to_dict(), settled_books, "repeat close cannot post a second sale")
 
 
-func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close() -> void:
+func test_unfulfilled_booking_refunds_once_without_a_review_at_service_close() -> void:
 	var main: Node = await _start(false)
 	_fresh_books(10000)
 	var booking: GroupBooking = _accepted_booking()
@@ -220,8 +220,8 @@ func test_unfulfilled_booking_refunds_once_with_one_bad_review_at_service_close(
 	var report: DayReport = main.get("shown_report") as DayReport
 	assert_eq(report.booking_lines.size(), 1)
 	assert_eq(report.booking_lines[0], "Booking: the birthday group couldn't be seated. Deposit refunded.")
-	assert_eq(report.review_cards.size(), 1)
-	assert_eq(report.review_cards[0]["stars"], 1)
+	assert_eq(report.review_cards.size(), 0)
+	assert_eq(report.reputation_before, report.reputation_after)
 	var ledger_after_close: Dictionary = Economy.ledger.to_dict()
 	main.call("_on_service_closed", 2)
 	assert_eq(Economy.ledger.to_dict(), ledger_after_close)
@@ -330,7 +330,10 @@ func test_unseatable_scheduled_party_expires_patience_then_refunds_through_real_
 	main.set("group_booking", booking)
 	sim.configure_booking(booking)
 	main.call("_plan_morning_booking")
-	assert_false(booking.offer.is_empty(), "the eligible morning gets a real offer")
+	assert_true(booking.offer.is_empty(), "the starter layout cannot offer a six-person booking")
+	# Model an existing accepted booking from before the seating gate.
+	assert_false(booking.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260,
+		GameState.rng.bind(&"bookings"), 6).is_empty())
 	booking.offer["slot_minute"] = 690
 	main.call("_refresh_booking_offer")
 	var accept: Button = main.get_node("Overlay/MenuPanel/Panel/Content/BookingOffer/Buttons/Accept") as Button
@@ -362,12 +365,11 @@ func test_unseatable_scheduled_party_expires_patience_then_refunds_through_real_
 	assert_true(booking.booking["effects"].has(String(GroupBooking.EFFECT_NO_SEAT)))
 	var result: Dictionary = sim.booking_review_results.get(booking_id, {})
 	assert_true(result.get("no_seat", false))
-	assert_eq(result.get("stars", 0), 1)
-	assert_eq(result.get("weight", 0), 1)
+	assert_false(result.has("stars"))
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.BOOKING_REFUND, 0), -deposit)
 	assert_eq(Economy.ledger.day_totals(2).get(Ledger.SALE, 0), 0)
 	assert_eq(sim.booking_report_lines.size(), 1)
-	assert_eq(sim.reviews_today.size(), 1)
+	assert_eq(sim.reviews_today.size(), 0)
 	_close(main)
 
 
@@ -515,6 +517,45 @@ func test_repayment_and_property_escape_preserve_each_panel_close_path() -> void
 	assert_eq(Economy.cash, 40)
 	assert_eq(Economy.loan.principal, 150)
 	assert_eq(_saved_text(), original)
+
+
+func test_site_card_blocks_loan_repayment_on_morning_and_new_site_prompt() -> void:
+	var main: Node = await _start()
+	_fresh_books(200, 150)
+	main.call("_refresh_loan_hud")
+	var book: SiteBook = main.get("site_book") as SiteBook
+	assert_true(book.add_site(&"second", &"town_fixer_upper", "Second", Clock.sim.day, {}))
+	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
+	var trigger: Button = hud.get_node("Top/Row/Loan/OpenRepayment") as Button
+	var repayment: PanelContainer = hud.get_node("LoanPopover/Panel") as PanelContainer
+	var starting_cash: int = Economy.cash
+	var starting_principal: int = Economy.loan.principal
+	var starting_entries: Array[Dictionary] = Economy.ledger.entries_for_day(Clock.day)
+
+	trigger.pressed.emit()
+	assert_true(repayment.visible)
+	assert_true(main.call("set_site_card_visible", true), "the morning selector is available")
+	assert_false(repayment.visible, "the site card dismisses the higher HUD layer")
+	assert_false(trigger.visible, "the obscured repayment trigger is hidden")
+	hud.loan_repayment_requested.emit(25, false)
+	assert_eq(Economy.cash, starting_cash)
+	assert_eq(Economy.loan.principal, starting_principal)
+	assert_eq(Economy.ledger.entries_for_day(Clock.day), starting_entries)
+	main.call("set_site_card_visible", false)
+	assert_true(trigger.visible, "the trigger returns when the morning selector closes")
+
+	trigger.pressed.emit()
+	assert_true(repayment.visible)
+	assert_true(main.call("offer_new_site", &"second"), "the post-purchase prompt can be shown")
+	assert_true(main.call("is_site_card_visible"))
+	assert_false(repayment.visible, "the post-purchase prompt dismisses repayment")
+	assert_false(trigger.visible, "the direct prompt show path also blocks repayment")
+	hud.loan_repayment_requested.emit(25, false)
+	assert_eq(Economy.cash, starting_cash)
+	assert_eq(Economy.loan.principal, starting_principal)
+	assert_eq(Economy.ledger.entries_for_day(Clock.day), starting_entries)
+	main.call("set_site_card_visible", false)
+	assert_true(trigger.visible)
 
 
 func test_hud_full_repayment_unlocks_trays_and_rejects_stale_full_payment() -> void:
@@ -826,7 +867,7 @@ func _accepted_booking() -> GroupBooking:
 	var model: GroupBooking = GroupBooking.new(tuning)
 	var provider: Callable = func() -> RandomNumberGenerator:
 		return random
-	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
+	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider, tuning.max_party_size).is_empty())
 	assert_false(model.accept_offer(1).is_empty())
 	return model
 
@@ -841,7 +882,7 @@ func _offered_booking() -> GroupBooking:
 	var model: GroupBooking = GroupBooking.new(tuning)
 	var provider: Callable = func() -> RandomNumberGenerator:
 		return random
-	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
+	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider, tuning.max_party_size).is_empty())
 	return model
 
 

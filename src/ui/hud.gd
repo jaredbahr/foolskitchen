@@ -56,6 +56,7 @@ var _creative_tag: Label
 var _loan_principal: int = 0
 var _loan_repay_share: float = 0.0
 var _loan_daily_interest: float = 0.0
+var _site_card_blocks_repayment: bool = false
 var _reputation_label: Label
 var _owner_level_label: Label
 var _owner_xp_bar: ProgressBar
@@ -164,8 +165,9 @@ func queue_toast(text: String) -> void:
 	_show_collection_toast()
 
 
-## The opening-week tracker: one short line per shown goal; none hides it.
-func set_opening_week(lines: Array[String]) -> void:
+## The goal-chain tracker (#494, #514): the running chain's title over one
+## short line per shown goal; no lines hides it.
+func set_opening_week(lines: Array[String], title: String = "") -> void:
 	if _opening_panel == null and lines.is_empty():
 		return
 	if _opening_panel == null:
@@ -195,7 +197,7 @@ func set_opening_week(lines: Array[String]) -> void:
 	if not lines.is_empty():
 		var heading: Label = Label.new()
 		heading.name = "Heading"
-		heading.text = OpeningWeekText.TITLE
+		heading.text = title
 		heading.add_theme_font_size_override(&"font_size", 15)
 		heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_opening_rows.add_child(heading)
@@ -209,6 +211,14 @@ func set_opening_week(lines: Array[String]) -> void:
 			_opening_rows.add_child(row)
 	_opening_panel.visible = not lines.is_empty()
 	_layout_opening_week()
+
+
+## The tracker's heading now, empty when hidden (tests and captures).
+func opening_week_title() -> String:
+	if _opening_panel == null or not _opening_panel.visible:
+		return ""
+	var heading: Label = _opening_rows.get_node_or_null(^"Heading") as Label
+	return heading.text if heading != null else ""
 
 
 ## Lines the tracker shows now (tests and captures).
@@ -524,6 +534,16 @@ func set_loan_state(principal: int, repay_share: float, daily_interest: float) -
 		_render_loan()
 
 
+## Site selection and post-purchase prompts take priority over the loan HUD.
+## Main owns the modal state and reports it whenever the card is shown/hidden.
+func set_site_card_blocks_repayment(blocked: bool) -> void:
+	if _site_card_blocks_repayment == blocked:
+		return
+	_site_card_blocks_repayment = blocked
+	if _loan_label != null:
+		_render_loan()
+
+
 func _render_loan() -> void:
 	var balance: String = Fmt.money(_loan_principal)
 	_loan_label.text = "Loan %s" % balance
@@ -545,7 +565,7 @@ func _render_loan() -> void:
 
 func _can_repay_loan() -> bool:
 	var phase: SimClock.Phase = Clock.sim.phase
-	return _loan_label.visible and not _haggle_active \
+	return _loan_label.visible and not _site_card_blocks_repayment and not _haggle_active \
 		and (phase == SimClock.Phase.MORNING or phase == SimClock.Phase.CLOSED)
 
 

@@ -29,10 +29,18 @@ func has_active_booking() -> bool:
 ## Rolls once for an eligible morning. Ineligible calls do not fetch the named
 ## stream, which keeps lower-level runs and shops without a menu unchanged.
 func plan_offer(day: int, owner_level: int, menu_ids: Array[StringName],
-		open_minute: int, close_minute: int, random_provider: Callable) -> Dictionary:
-	if day < 1 or not tuning.is_valid() or has_active_booking() or planned_day == day:
+		open_minute: int, close_minute: int, random_provider: Callable, seating_capacity: int) -> Dictionary:
+	if day < 1 or not tuning.is_valid() or has_active_booking():
 		return offer.duplicate(true)
-	if owner_level < tuning.unlock_level or menu_ids.is_empty() or not random_provider.is_valid():
+	var maximum_party: int = mini(tuning.max_party_size, seating_capacity)
+	if planned_day == day:
+		if int(offer.get("party_size", 0)) > maximum_party:
+			offer.clear()
+		return offer.duplicate(true)
+	# A previously unaccepted offer expires even if today's shop is ineligible.
+	offer.clear()
+	if owner_level < tuning.unlock_level or menu_ids.is_empty() or not random_provider.is_valid() \
+			or maximum_party < tuning.min_party_size:
 		return {}
 	var slots: Array[int] = _valid_slots(open_minute, close_minute)
 	if slots.is_empty():
@@ -42,9 +50,8 @@ func plan_offer(day: int, owner_level: int, menu_ids: Array[StringName],
 		return {}
 	planned_day = day
 	if random.randf() >= tuning.offer_chance:
-		offer.clear()
 		return {}
-	var size: int = random.randi_range(tuning.min_party_size, tuning.max_party_size)
+	var size: int = random.randi_range(tuning.min_party_size, maximum_party)
 	var occasion: String = tuning.occasions[random.randi_range(0, tuning.occasions.size() - 1)]
 	var recipe: StringName = menu_ids[random.randi_range(0, menu_ids.size() - 1)]
 	var slot: int = slots[random.randi_range(0, slots.size() - 1)]
