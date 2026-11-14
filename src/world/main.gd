@@ -4132,9 +4132,13 @@ func _plan_morning_booking() -> void:
 	for recipe: RecipeDef in menu_settings.enabled_recipes():
 		if sim.menu.has(recipe):
 			menu_ids.append(recipe.id)
-	group_booking.plan_offer(Clock.sim.day, owner_progress.effective_level(), menu_ids,
+	var level: int = owner_progress.effective_level()
+	var seats: int = 0
+	if level >= group_booking.tuning.unlock_level and not menu_ids.is_empty() and not group_booking.has_active_booking():
+		seats = DiningSeats.booking_capacity(world.grid, group_booking.tuning.min_party_size)
+	group_booking.plan_offer(Clock.sim.day, level, menu_ids,
 		Clock.sim.display_open_minute, Clock.sim.display_close_minute,
-		GameState.rng.bind(&"bookings"))
+		GameState.rng.bind(&"bookings"), seats)
 	_refresh_booking_offer()
 
 
@@ -6312,7 +6316,7 @@ func _begin_morning() -> void:
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
 	_menu_panel.set_viral_notice(ViralReviewText.morning(viral_review.factor(Clock.sim.day)))
-	sim.start_day()
+	sim.start_day(owner_progress.effective_tier())
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.
 	sim.inspection.plan_day(Clock.sim.day, owner_progress.effective_level(), Clock.sim.open_ticks,
