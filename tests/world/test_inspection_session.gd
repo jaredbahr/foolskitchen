@@ -73,6 +73,43 @@ func _inspect_today() -> void:
 	_main.call("run_ticks", 6000)
 
 
+func test_live_service_alerts_are_forwarded_once_and_keep_headless_speed() -> void:
+	_start()
+	var restaurant: RestaurantSim = _sim()
+	var events: Array[String] = []
+	var dish: Callable = _record_alert.bind(events)
+	var inspector: Callable = _record_alert.bind("Inspector", events)
+	var angry: Callable = _record_alert.bind("Angry guest", events)
+	EventBus.dish_sold_out.connect(dish)
+	EventBus.health_inspector_arrived.connect(inspector)
+	EventBus.guest_left_angry.connect(angry)
+	assert_true(_main.call("stock_set_auto", &"soup_stock", false))
+	assert_true(Economy.stock.take(&"soup_stock", Economy.stock.count(&"soup_stock")))
+	restaurant.inspection.planned_day = Clock.sim.day
+	restaurant.inspection.planned_tick = 1
+	assert_true(Clock.sim.start_service())
+	Clock.set_speed(4)
+	_main.call("run_ticks", 2)
+	assert_eq(events, ["Tomato soup", "Inspector"])
+	assert_not_null(restaurant.inspector)
+	var entry: Vector2i = restaurant.world.grid.entries()[0]
+	var guest: CustomerAgent = restaurant.add_customer(entry, RandomNumberGenerator.new())
+	assert_not_null(guest)
+	if guest != null:
+		guest.leave_reason = &"waited_too_long"
+		restaurant.record_departure(guest)
+		restaurant.record_departure(guest)
+	assert_eq(events, ["Tomato soup", "Inspector", "Angry guest"])
+	assert_eq(Clock.speed, 4)
+	EventBus.dish_sold_out.disconnect(dish)
+	EventBus.health_inspector_arrived.disconnect(inspector)
+	EventBus.guest_left_angry.disconnect(angry)
+
+
+func _record_alert(message: String, events: Array[String]) -> void:
+	events.append(message)
+
+
 func test_a_game_below_level_three_never_creates_the_stream() -> void:
 	_start()
 	for day: int in 12:

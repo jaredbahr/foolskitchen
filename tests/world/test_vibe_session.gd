@@ -372,7 +372,7 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	assert_true(main.call("set_build_active", true))
 	var catalogue: BuildCatalogue = main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	var meter: VibeMeter = catalogue.vibe_meter
-	assert_eq(catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter"), meter)
+	assert_eq(catalogue.get_node("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter"), meter)
 	var reputation: Label = main.get_node("HUD/Top/Row/Reputation") as Label
 	var width: float = reputation.get_combined_minimum_size().x
 	for _refresh: int in 3:
@@ -395,14 +395,14 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 			main.get_node("HUD").call("refresh")
 			await _frames(3)
 			var panel: Control = catalogue.get_node("Panel") as Control
-			var scroll: ScrollContainer = catalogue.get_node("Panel/Margin/Rows/Scroll") as ScrollContainer
+			var toolbars: Control = catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
 			var viewport: Rect2 = window.get_visible_rect()
 			assert_true(viewport.grow(0.5).encloses(panel.get_global_rect()))
 			assert_true(panel.size.y <= maxf(96.0, viewport.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE) + 0.5)
 			var native: Dictionary = meter.view_state()
 			assert_true(meter.is_visible_in_tree())
-			assert_true(scroll.get_global_rect().grow(0.5).encloses(native["caption_rect"]))
-			assert_true(scroll.get_global_rect().grow(0.5).encloses(native["bar_rect"]))
+			assert_true(toolbars.get_global_rect().grow(0.5).encloses(native["caption_rect"]), "the pinned readout (#499)")
+			assert_true(toolbars.get_global_rect().grow(0.5).encloses(native["bar_rect"]))
 			assert_almost_eq(native["value"], (main.get("vibe_result") as VibeModel.Result).score, 0.0001)
 			assert_true(native["tooltip"].contains("Decor"))
 			assert_true(native["tooltip"].contains("Variety"))

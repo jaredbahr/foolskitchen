@@ -144,7 +144,7 @@ func test_existing_panel_heading_paths_gain_one_icon_and_paint_uses_made_brush()
 	menu.free()
 	var catalogue: BuildCatalogue = load("res://src/ui/build_catalogue.tscn").instantiate() as BuildCatalogue
 	catalogue.set_paint_visible(false)
-	var title: Label = catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label
+	var title: Label = catalogue.get_node("Panel/Margin/Rows/Toolbars/Title") as Label
 	_assert_heading(title, "menuGrid.png")
 	var furniture_minimum: Vector2 = title.get_combined_minimum_size()
 	catalogue.set_paint_visible(true)
