@@ -816,6 +816,8 @@ func test_saved_startup_replaces_initial_world_before_final_controller_clock_bin
 	var provisional: SimWorld = _world()
 	_viewport.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_disable_frame_drivers()
 	assert_true(_world() != provisional)
 	assert_true(_world().clock == Clock.sim)
@@ -879,6 +881,8 @@ func test_shared_layers_wait_for_normal_morning_save_then_reload_with_poses_pain
 	_main.set("save_slot", SLOT)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_disable_frame_drivers()
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
@@ -1311,6 +1315,8 @@ func _start(with_saves: bool = false) -> void:
 	_main.set("save_slot", SLOT)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_disable_frame_drivers()
 	await _frames(3)
 	assert_true(_main.is_inside_tree())

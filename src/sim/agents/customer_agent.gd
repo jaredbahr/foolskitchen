@@ -38,6 +38,8 @@ var table_item_id: int = 0
 ## Physical members captured at booking; never saved or recomputed on departure.
 var booked_table_ids: Array[int] = []
 var seat_cell: Vector2i = SimGrid.NO_CELL
+## A held seat is only a reservation until the guest reaches it.
+var _reached_dining_seat: bool = false
 ## A temporary bench booking while QUEUED. It never becomes a dining order.
 var waiting_item_id: int = 0
 var waiting_cell: Vector2i = SimGrid.NO_CELL
@@ -435,7 +437,7 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 				and extra_order.state == Order.State.DELIVERED \
 				and not visit.consumed_recipe_ids.has(extra_order.recipe_id):
 			visit.consumed_recipe_ids.append(extra_order.recipe_id)
-	visit.was_seated = seat_cell != SimGrid.NO_CELL
+	visit.was_seated = _reached_dining_seat
 	visit.closing = leave_reason == &"closing"
 	visit.queue_wait_fraction = float(maxi(0, _queue_wait)) / float(maxi(1, queue_patience))
 	visit.food_wait_fraction = float(maxi(0, _food_wait)) / float(maxi(1, food_patience))
@@ -462,6 +464,16 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 ## Waiting for a table or for the meal, inside and not off at the restroom.
 func is_waiting_in_shop() -> bool:
 	return (state == State.QUEUED or state == State.ORDERING or state == State.WAITING_FOOD) and not away()
+
+
+## A service event's nudge (#495): `ticks` more (or fewer) patience for both
+## waits. A cut never leaves less than `floor_ticks` of the current wait, so
+## no guest walks out on the spot.
+func nudge_patience(ticks: int, floor_ticks: int) -> void:
+	if ticks == 0 or state == State.LEAVING or state == State.LEFT:
+		return
+	queue_patience = maxi(queue_patience + ticks, mini(queue_patience, _queue_wait + floor_ticks))
+	food_patience = maxi(food_patience + ticks, mini(food_patience, _food_wait + floor_ticks))
 
 
 ## One waiting tick handed back (so patience lasts a little longer) now and
@@ -636,6 +648,8 @@ func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
 ## Arrived at the seat (alone or as a seated party): start ordering.
 func sit_down(world: SimWorld, sim: RestaurantSim) -> void:
 	state = State.ORDERING
+	if not counter_visit or counter_stage != Counter.AT_COUNTER:
+		_reached_dining_seat = true
 	if world.grid.is_outdoor_floor(seat_cell) and sim.visit_tuning != null and sim.visit_tuning.is_valid():
 		food_patience = _type_patience(food_patience, sim.visit_tuning.patio_patience_multiplier)
 	_post_order_task(world, sim)
@@ -831,6 +845,7 @@ func _counter_to_dest(world: SimWorld, sim: RestaurantSim) -> void:
 		return
 	if _move(world, seat_cell) and cell == seat_cell:
 		counter_stage = Counter.DONE
+		_reached_dining_seat = not takeaway
 		clear_path()
 
 

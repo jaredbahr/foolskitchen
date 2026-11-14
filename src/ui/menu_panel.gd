@@ -16,6 +16,7 @@ signal lease_requested()
 ## The one-time morning cat adoption (#119); the session checks and charges it.
 signal cat_adoption_requested()
 signal quit_to_title_requested()
+signal close_requested()
 ## Morning opening-hours request (FK-083); the session checks the limits.
 signal hours_requested(open_minute: int, close_minute: int)
 
@@ -86,8 +87,12 @@ var _bulk_controls: Dictionary[String, Button] = {}
 
 
 func _ready() -> void:
-	# Keep every header control reachable when HUD notices leave a short panel.
+	# The card's own scroll is only a fallback for very short windows (150%
+	# UI on a small screen); at normal sizes nothing overflows it (#497).
 	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
+	# One wheel step everywhere, and the wheel works over the whole card.
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Body/Scroll as ScrollContainer,
+		[$Panel/Content/Body/DetailScroll as ScrollContainer] as Array[ScrollContainer], $Panel as ScrollContainer)
 	refresh()
 	_fit_width()
 
@@ -612,6 +617,10 @@ func _on_settings_pressed() -> void:
 
 func _on_quit_to_title_pressed() -> void:
 	quit_to_title_requested.emit()
+
+
+func _on_close_pressed() -> void:
+	close_requested.emit()
 
 
 func _on_goals_pressed() -> void:

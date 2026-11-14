@@ -38,12 +38,12 @@ func _process(_delta: float) -> void:
 	if not _review_ready:
 		return
 	_review_frames += 1
-	var section: Control = _report.get_node_or_null("Panel/Scroll/Content/DemandForecast") as Control
+	var section: Control = _report.get_node_or_null("Panel/Column/Scroll/Content/DemandForecast") as Control
 	if section == null:
 		_review_fail("Tomorrow's crowd section is missing")
 		return
 	if _review_frames == 10:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		scroll.ensure_control_visible(section)
 	elif _review_frames == 25:
 		_review_validate(section)
@@ -64,7 +64,7 @@ func _review_validate(section: Control) -> void:
 	var summary: Label = section.get_node("Summary") as Label
 	var factors: Label = section.get_node("Factors") as Label
 	var explanation: Label = section.get_node("Explanation") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var expected_count: String = str(int(forecast["expected_guests"]))
 	if not _report.is_visible_in_tree() or not section.is_visible_in_tree() \
 			or heading.text != "Tomorrow's crowd" or not summary.text.contains(expected_count + " guests expected") \

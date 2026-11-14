@@ -64,7 +64,7 @@ func _process(_delta: float) -> void:
 		if not set_goals_visible(false):
 			_records_fail("the ordinary Goals close did not restore the report")
 	elif _records_frame == 55:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		scroll.ensure_control_visible(_report.get_node("%RecordNotices") as Control)
 	elif _records_frame == 75:
 		RenderingServer.frame_post_draw.connect(_records_validate.bind(false), CONNECT_ONE_SHOT)
@@ -72,7 +72,7 @@ func _process(_delta: float) -> void:
 
 func _records_validate(goals: bool) -> void:
 	var scroll: ScrollContainer = (_goals_panel.get_node("Panel/Content/Scroll") if goals \
-		else _report.get_node("Panel/Scroll")) as ScrollContainer
+		else _report.get_node("Panel/Column/Scroll")) as ScrollContainer
 	var controls: Array[Control] = []
 	var texts: Array[String] = []
 	if goals:

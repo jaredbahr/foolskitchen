@@ -98,7 +98,7 @@ func _process(_delta: float) -> void:
 		_review_fail("Business trend section is missing")
 		return
 	if _review_frames == 10:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		scroll.ensure_control_visible(section)
 	elif _review_frames >= 25:
 		# screenshot.gd saves its frame60 PNG and sidecar in this same signal.
@@ -113,7 +113,7 @@ func _review_validate() -> void:
 	var heading: Label = _report.get_node("%BusinessTrendHeading") as Label
 	var summary: Label = _report.get_node("%BusinessTrendSummary") as Label
 	var chart: BusinessTrendChart = _report.get_node("%BusinessTrendChart") as BusinessTrendChart
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var drawing: Dictionary = chart.review_snapshot()
 	var rows: Array[Dictionary] = _review_history.slice(maxi(0, _review_history.size() - _review_range))
 	var days: Array[int] = []

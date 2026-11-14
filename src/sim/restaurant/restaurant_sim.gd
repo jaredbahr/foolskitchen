@@ -98,6 +98,10 @@ var critic: FoodCritic = FoodCritic.new()
 var critic_rng_provider: Callable
 ## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
 var critic_result: Dictionary = {}
+## Service event nudges for the rest of today (#495); 1.0 leaves every
+## arrival and patience exactly as before. start_day resets both.
+var event_arrival_factor: float = 1.0
+var event_patience_multiplier: float = 1.0
 var served_today: int = 0
 ## Optional morning offer; absent callers keep their original prices and picks.
 var daily_special: DailySpecial = null
@@ -304,6 +308,8 @@ func start_day() -> void:
 	booking_report_lines.clear()
 	_booking_visits_today.clear()
 	_booking_party_sizes.clear()
+	event_arrival_factor = 1.0
+	event_patience_multiplier = 1.0
 	critic_result = {}
 	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
 	sold_out_today.clear()
@@ -467,6 +473,45 @@ func _record_inspection(facts: Dictionary) -> void:
 	inspection.record(world.clock.day, result)
 	world.log_event("Health inspection: grade %s" % String(result["grade"]))
 	inspection_done.emit(result.duplicate(true))
+
+
+## A service event's patience nudge for every guest in the shop now (#495).
+## A cut keeps at least 10 s of each guest's current wait.
+func nudge_guest_patience(seconds: int) -> int:
+	var nudged: int = 0
+	for customer: CustomerAgent in customers():
+		customer.nudge_patience(seconds * SimClock.TICKS_PER_SECOND, 10 * SimClock.TICKS_PER_SECOND)
+		nudged += 1
+	return nudged
+
+
+## A service event's review (#495): one plain score in the rolling window,
+## counted with today's reviews so the evening count, the average and the
+## reputation change agree. `quote` names the card.
+func record_event_review(stars: int, quote: String) -> Dictionary:
+	if review_book == null:
+		return {}
+	var result: Dictionary = review_book.record_event_review(stars)
+	if result.is_empty():
+		return {}
+	var row: Dictionary = {"stars": result["stars"], "quote": quote,
+		"before": result["before"], "after": result["after"]}
+	reviews_today.append(row)
+	review_recorded.emit(row.duplicate())
+	return row
+
+
+## A service event's clean sweep (#495): every dirty spot on the floor goes.
+func clean_all_spots() -> int:
+	if cleanliness == null:
+		return 0
+	var cleaned: int = 0
+	for cell: Vector2i in cleanliness.spots():
+		if cleanliness.clear_spot(cell):
+			cleaned += 1
+	if clean_tasks != null:
+		clean_tasks.sync_spots()
+	return cleaned
 
 
 ## Uses `random` for arrivals (the spawner and future guests). The game session
@@ -775,7 +820,8 @@ func arrival_rate() -> float:
 	var base: float = 1.0
 	if visit_tuning != null and visit_tuning.is_valid() and world != null:
 		base = visit_tuning.arrival_rate(visit_kinds(), world.clock.display_minutes())
-	return base * demand_factor
+	var rate: float = base * demand_factor
+	return rate * event_arrival_factor if event_arrival_factor != 1.0 else rate
 
 
 ## Event multiplier is sampled from the authoritative simulation clock each
@@ -1023,6 +1069,9 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		customer.queue_patience = _vibe_patience(customer.queue_patience, _vibe_result.patience_multiplier)
 		customer.food_patience = _vibe_patience(customer.food_patience, _vibe_result.patience_multiplier)
 		customer.vibe_review_bonus = _vibe_result.raw_review_bonus
+		if event_patience_multiplier != 1.0:
+			customer.queue_patience = maxi(1, roundi(customer.queue_patience * event_patience_multiplier))
+			customer.food_patience = maxi(1, roundi(customer.food_patience * event_patience_multiplier))
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
 	if publish:
@@ -1303,7 +1352,7 @@ func record_departure(customer: CustomerAgent) -> void:
 				finalize_booking_review(customer.party.booking_id, false)
 		elif customer.is_critic():
 			# Only a critic who sat down and ordered writes the weighted review.
-			if customer.order != null and customer.leave_reason != &"removed":
+			if (visit.was_seated or visit.served) and customer.order != null and reason != &"removed":
 				_record_critic_review(visit)
 		else:
 			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
@@ -1316,8 +1365,8 @@ func record_departure(customer: CustomerAgent) -> void:
 
 
 ## Booked members are replaced by exactly one weighted booking review when the
-## complete group has departed. A service-close fallback can create one bad
-## no-seat review when no party ever arrived.
+## complete group has departed. An unseated booking still needs a settlement
+## result so the deposit can be refunded, including the service-close fallback.
 func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> Dictionary:
 	if booking_id <= 0 or booking_review_results.has(booking_id) \
 			or review_book == null or review_tuning == null or review_quotes == null or review_rng == null:
@@ -1326,16 +1375,19 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 	for value: Variant in _booking_visits_today.get(booking_id, []):
 		if value is ReviewVisit:
 			visits.append(value as ReviewVisit)
-	if visits.is_empty() and fallback_no_seat:
-		var missed: ReviewVisit = ReviewVisit.new()
-		missed.served = false
-		missed.was_seated = false
-		visits.append(missed)
-	if visits.is_empty():
+	if visits.is_empty() and not fallback_no_seat:
 		return {}
 	var no_seat: bool = true
 	for visit: ReviewVisit in visits:
 		no_seat = no_seat and not visit.was_seated
+	if no_seat:
+		var occasion: String = "reserved"
+		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
+			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
+		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
+		var unseated: Dictionary = {"no_seat": true}
+		booking_review_results[booking_id] = unseated.duplicate()
+		return unseated
 	var expected_members: int = _booking_party_sizes.get(booking_id, 0)
 	if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
 		expected_members = int(group_booking.booking.get("party_size", expected_members))
@@ -1345,17 +1397,12 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 		review_rng, booking_tuning, expected_members)
 	if result.is_empty():
 		return {}
-	result["no_seat"] = no_seat
+	result["no_seat"] = false
 	booking_review_results[booking_id] = result.duplicate(true)
 	var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]}
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
-	if no_seat:
-		var occasion: String = "reserved"
-		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
-			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
-		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
 	return result.duplicate(true)
 
 

@@ -153,7 +153,7 @@ func test_the_evening_report_names_the_grade_and_worst_findings() -> void:
 	assert_eq(saved.inspection_lines, report.inspection_lines)
 	var screen: Node = _main.get_node("Overlay/EveningReport") if _main.has_node("Overlay/EveningReport") else null
 	if screen != null:
-		var label: Label = screen.get_node_or_null("Panel/Scroll/Content/Inspection") as Label
+		var label: Label = screen.get_node_or_null("Panel/Column/Scroll/Content/Inspection") as Label
 		assert_not_null(label)
 		assert_true(label.visible)
 		assert_true(label.text.begins_with("Health inspection: grade "))

@@ -164,12 +164,12 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 		"Standing coat rack", "Subway tiles walls", "Tomato melt recipe", "Two-seat bench", "Wine recipe"] as Array[String],
 		"the level-up banner lists every available level-two unlock")
 	var panel: Control = first.get_node("Overlay/EveningReport") as Control
-	var banner: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
-	var unlocks: Label = panel.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
+	var banner: Label = panel.get_node("Panel/Column/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
+	var unlocks: Label = panel.get_node("Panel/Column/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	assert_true(banner.visible)
 	assert_eq(banner.text, "Level up! Level 2 reached")
 	assert_eq(unlocks.text, "Unlocked: A-frame sign, Bar fries recipe, Corner cabinet, Fish & chips recipe, Four-seat table, Freezer, Fries recipe, Fryer, Mountain print, Potted plant, Rectangular rug, Round table, Rounded chair, Shop name sign, Side table, Side table with a square lamp, Small tiles floor, Square floor lamp, Square rug, Standing coat rack, Subway tiles walls, Tomato melt recipe, Two-seat bench, Wine recipe")
-	var xp_rows: GridContainer = panel.get_node("Panel/Scroll/Content/OwnerXPRows") as GridContainer
+	var xp_rows: GridContainer = panel.get_node("Panel/Column/Scroll/Content/OwnerXPRows") as GridContainer
 	assert_eq(xp_rows.get_child_count(), 8, "the native report shows four labelled XP sources")
 	assert_eq((xp_rows.get_child(7) as Label).text, "+%d XP" % report.owner_xp_breakdown["total_xp"])
 	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
@@ -427,7 +427,7 @@ func test_level_four_banner_names_both_new_floors() -> void:
 	assert_eq([report.owner_level_before, report.owner_level_after], [3, 4])
 	assert_true(report.owner_unlocks.has("Hex tiles floor"))
 	assert_true(report.owner_unlocks.has("Terracotta pavers floor"))
-	var banner: Label = main.get_node("Overlay/EveningReport/Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
+	var banner: Label = main.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	assert_true(banner.visible)
 	assert_true(banner.text.contains("Hex tiles floor"))
 	assert_true(banner.text.contains("Terracotta pavers floor"))

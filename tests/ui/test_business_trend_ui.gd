@@ -212,7 +212,7 @@ func test_section_follows_team_and_chart_fits_native_report_widths() -> void:
 		_host.size = dimensions
 		for frame: int in 3:
 			await (Engine.get_main_loop() as SceneTree).process_frame
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		var chart: BusinessTrendChart = _chart()
 		assert_true(chart.size.x > 0.0)
 		assert_true(chart.size.x <= scroll.size.x + 0.5)

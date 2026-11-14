@@ -172,6 +172,9 @@ func test_real_main_fixture_shows_goals_then_uses_real_close_and_read_only_evide
 
 func test_goals_fit_below_unchanged_hud_after_resize() -> void:
 	var main: Node = await _start_main()
+	# Career goals' fit is measured without the opening-week card (#494),
+	# which leads Goals in a real first week and scrolls them down.
+	main.set("opening_week", OpeningWeek.ended())
 	assert_true(main.call("set_goals_visible", true))
 	var panel: Control = main.get_node("Overlay/GoalsPanel/Panel") as Control
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ServiceEventTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/events/service_event_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+min_per_day = 1
+max_per_day = 2
+second_card_percent = 50
+opening_margin_minutes = 45
+closing_margin_minutes = 60
+clear_minutes = 20
+min_gap_minutes = 90
+step_minutes = 5
