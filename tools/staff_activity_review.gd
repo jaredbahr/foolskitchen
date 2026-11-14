@@ -5,9 +5,11 @@ extends "res://src/world/main.gd"
 ## The run closes days until one from MIN_REVIEW_DAY on naturally recommends a
 ## cook, up to REVIEW_DAYS. No single fixed day is used: any change to service
 ## timing or demand (#263, #505, #508, #510, #511) moves which days cross the
-## cook threshold, but most days from day two on do. For one commit the run is
-## the same on every machine (#518). A result that differs from CI means the
-## branch is behind main: CI tests the pull request merged with main.
+## cook threshold, but most days from day two on do. For one commit and the
+## pinned Godot build, a cloud container and hosted CI give the same run
+## (#518; other operating systems were not compared). A result that differs
+## from CI first means the branch is behind main: CI tests the pull request
+## merged with main.
 const MIN_REVIEW_DAY: int = 2
 const REVIEW_DAYS: int = 10
 const REVIEW_SETUP: String = "expanded_tables"
