@@ -2407,6 +2407,12 @@ func _process(_delta: float) -> bool:
 			if not String(_site_card_fixture.get("error", "")).is_empty():
 				_fail_capture(String(_site_card_fixture["error"]))
 				return true
+		if _report_requested and not _report_slowest_requested and "opening_week" in _main:
+			# The report capture checks that the first review cards sit at the
+			# top of the closing report. The opening-week (#494) income and XP
+			# rows lengthen a real first-week report, so retire the chain here.
+			_main.set("opening_week", OpeningWeek.ended())
+			_main.call("_refresh_opening_tracker")
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)
