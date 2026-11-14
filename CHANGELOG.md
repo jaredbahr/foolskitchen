@@ -227,7 +227,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
-- A new test plays three days, starts a new game with the same seed and checks that every saved part of the game starts exactly as on a first boot, so nothing from the last game can leak into the next. (#528)
+- A new test plays two days, starts a new game with the same seed and checks that every saved part of the game starts exactly as on a first boot, so nothing from the last game can leak into the next. (#528)
 - The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
 - Run visual review captures in two parallel jobs and verify every requested frame. (#479)

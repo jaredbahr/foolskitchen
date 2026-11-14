@@ -3,11 +3,13 @@ extends TestCase
 ## replace Main with a fresh instance, but the autoloads (Clock, GameState,
 ## Economy, SaveSystem, Preferences) and static state live on. So a system that
 ## keeps state outside Main, or that Main forgets to reset, leaks last game's
-## state into the next one. This plays three real days, starts a new game with
+## state into the next one. This plays two real days, starts a new game with
 ## the same seed and compares every registered save section with a first boot.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
-const PLAYED_DAYS: int = 3
+## Two days: enough for every daily system (reports, goals, stock, staff, events)
+## to change, while keeping the suite inside the hosted 25-minute limit.
+const PLAYED_DAYS: int = 2
 ## Real ticks a service day may take before the test calls it stuck.
 const MAX_BATCHES: int = 30
 
@@ -41,7 +43,7 @@ func test_a_new_game_after_played_days_matches_a_first_boot() -> void:
 		assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED, "day %d closes" % Clock.sim.day)
 		assert_true(Clock.sim.next_day(), "the next morning starts")
 	var played: Dictionary = _capture_all()
-	assert_true(played != first, "three played days changed the game, so the comparison means something")
+	assert_true(played != first, "the played days changed the game, so the comparison means something")
 	_close()
 	_start()
 	var second: Dictionary = _capture_all()
