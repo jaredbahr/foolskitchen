@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=24 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -16,6 +16,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
 [ext_resource type="PackedScene" path="res://src/ui/property_panel.tscn" id="13_property"]
 [ext_resource type="PackedScene" path="res://src/ui/site_card.tscn" id="13_site_card"]
+[ext_resource type="PackedScene" path="res://src/ui/service_event_card.tscn" id="13_event_card"]
 [ext_resource type="PackedScene" path="res://src/ui/stock_panel.tscn" id="14_stock"]
 [ext_resource type="PackedScene" path="res://src/world/lighting_rig.tscn" id="13_lighting"]
 
@@ -66,6 +67,8 @@ layer = 10
 [node name="PropertyPanel" parent="Overlay" instance=ExtResource("13_property")]
 
 [node name="SiteCard" parent="Overlay" instance=ExtResource("13_site_card")]
+
+[node name="ServiceEventCard" parent="Overlay" instance=ExtResource("13_event_card")]
 
 [node name="QuitToTitle" type="ConfirmationDialog" parent="Overlay"]
 title = "Quit to title"

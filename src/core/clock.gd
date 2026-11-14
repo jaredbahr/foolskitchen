@@ -138,6 +138,11 @@ func _process(delta: float) -> void:
 		if sim.phase != SimClock.Phase.OPEN and sim.phase != SimClock.Phase.LAST_ORDERS:
 			_accumulator = 0.0
 			break
+		if speed == 0:
+			# A tick paused the game (a service event card, #495): stop on that
+			# exact tick and keep only the sub-tick fraction for the picture.
+			_accumulator = fmod(_accumulator, 1.0)
+			break
 		if attached_world != null and attached_world.clock == sim:
 			if tick_driver.is_valid():
 				tick_driver.call()

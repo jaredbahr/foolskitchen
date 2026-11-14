@@ -9,6 +9,8 @@ signal show_guide_requested
 
 const PLAY_GRID_LABEL: String = "Show floor grid while playing"
 const BUILD_GRID_LABEL: String = "Show floor grid in Build"
+const SERVICE_EVENTS_LABEL: String = "Service events"
+const SERVICE_EVENTS_TIP: String = "Small choice cards during service. The game pauses until you pick."
 const WHATS_NEW_SCENE: PackedScene = preload("res://src/ui/whats_new_panel.tscn")
 const SAVE_DELAY: float = 0.5
 const VIEW_MARGIN: float = 12.0
@@ -39,6 +41,7 @@ var _whats_new: WhatsNewPanel
 @onready var _edge_pan: CheckButton = %EdgePanToggle
 @onready var _play_grid: CheckButton = %PlayGridToggle
 @onready var _build_grid: CheckButton = %BuildGridToggle
+@onready var _service_events: CheckButton = %ServiceEventsToggle
 @onready var _whats_new_button: Button = %WhatsNewButton
 @onready var _version_label: Label = %VersionLabel
 @onready var _status: Label = %Status
@@ -72,6 +75,9 @@ func _ready() -> void:
 	_build_grid.text = BUILD_GRID_LABEL
 	_play_grid.toggled.connect(_on_play_grid_toggled)
 	_build_grid.toggled.connect(_on_build_grid_toggled)
+	_service_events.text = SERVICE_EVENTS_LABEL
+	_service_events.tooltip_text = SERVICE_EVENTS_TIP
+	_service_events.toggled.connect(_on_service_events_toggled)
 	_close.pressed.connect(_on_close_pressed)
 	# One wheel step everywhere, and the wheel works over the whole card (#497).
 	PanelScroll.attach(self, _panel, _scroll)
@@ -143,6 +149,7 @@ func refresh() -> void:
 	_edge_pan.set_pressed_no_signal(_preferences.edge_pan_enabled)
 	_play_grid.set_pressed_no_signal(_preferences.play_grid_enabled)
 	_build_grid.set_pressed_no_signal(_preferences.build_grid_enabled)
+	_service_events.set_pressed_no_signal(_preferences.service_events_enabled)
 	_status.text = "Changes are saved automatically."
 	_layout_card()
 
@@ -247,6 +254,10 @@ func _on_fullscreen_toggled(value: bool) -> void:
 
 func _on_edge_pan_toggled(value: bool) -> void:
 	_record(_preferences != null and _preferences.set_edge_pan_enabled(value))
+
+
+func _on_service_events_toggled(value: bool) -> void:
+	_record(_preferences != null and _preferences.set_service_events_enabled(value))
 
 
 func _on_play_grid_toggled(value: bool) -> void:
