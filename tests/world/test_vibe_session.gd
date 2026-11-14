@@ -372,7 +372,7 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	assert_true(main.call("set_build_active", true))
 	var catalogue: BuildCatalogue = main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	var meter: VibeMeter = catalogue.vibe_meter
-	assert_eq(catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter"), meter)
+	assert_eq(catalogue.get_node("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter"), meter)
 	var reputation: Label = main.get_node("HUD/Top/Row/Reputation") as Label
 	var width: float = reputation.get_combined_minimum_size().x
 	for _refresh: int in 3:
