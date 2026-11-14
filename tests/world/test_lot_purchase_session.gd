@@ -477,6 +477,47 @@ func test_the_card_holds_build_and_owner_keys() -> void:
 	assert_eq(_pick(&"second").text, "Close Build first")
 	assert_true(_pick(&"second").disabled)
 
+
+func test_photo_keys_wait_for_the_site_choice() -> void:
+	_start()
+	_owner().career_tier = 3
+	_set_cash(20000)
+	assert_true(_main.call("set_property_visible", true))
+	_buy_button(FIXER).pressed.emit()
+	assert_true(_card().is_prompting())
+	_assert_photo_keys_leave_site_choice_visible()
+	_press_key(KEY_ESCAPE)
+	assert_false(_main.call("is_site_card_visible"), "Escape declines the purchase prompt")
+	assert_eq(_book().active_id, SiteBook.HOME_ID)
+	assert_true(_main.call("is_property_visible"), "declining returns to the market")
+
+	_main.call("set_property_visible", false)
+	assert_true(_main.call("set_site_card_visible", true))
+	assert_false(_card().is_prompting())
+	_assert_photo_keys_leave_site_choice_visible()
+	_press_key(KEY_ESCAPE)
+	assert_false(_main.call("is_site_card_visible"), "Escape keeps the current restaurant")
+	assert_eq(_book().active_id, SiteBook.HOME_ID)
+
+
+func _assert_photo_keys_leave_site_choice_visible() -> void:
+	var photo: PhotoMode = _main.get_node("PhotoMode") as PhotoMode
+	for shift: bool in [false, true]:
+		_press_key(KEY_F12, shift)
+		assert_false(photo.held, "photo keys do not enter held mode under the site choice")
+		assert_false(photo.capture_pending(), "photo keys do not start a capture under the site choice")
+		assert_true(_card().is_visible_in_tree(), "the site choice stays visible")
+
+
+func _press_key(code: Key, shift: bool = false) -> void:
+	var key: InputEventKey = InputEventKey.new()
+	key.keycode = code
+	key.physical_keycode = code
+	key.pressed = true
+	key.shift_pressed = shift
+	_main.call("_unhandled_input", key)
+
+
 func test_the_card_never_shows_with_one_site() -> void:
 	_start()
 	assert_false(_main.call("is_site_card_visible"))

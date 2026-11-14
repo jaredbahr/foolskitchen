@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Desktop photo shortcuts wait until you've answered the morning restaurant choice or the prompt after buying a lot. (#483)
 - In the morning, the Staff panel's "Send to…" button moves an employee to another of your restaurants. They keep their skills, trait, pay, mood and history, and there is no fee and no severance pay. Each restaurant keeps its last cook and server, a full team of six takes nobody else, and a manager you send to a restaurant that has no manager running it takes it over (one that already has a running manager is greyed out). A manager working at a restaurant now runs it while you are away, from the moment you leave it. Moved staff start work there the next time you go. (#488)
 - Food and plates are 50% larger, so dishes read clearly on tables, in servers' hands and on the pass. Server trays are bigger and plates are spaced out to match. (#487)
 - Every restaurant you buy now pays its lot's daily rent, from the day you buy it: while you work there, while you are away, and on renovation days. Every lot can also expand its lease once from the morning Menu, for that lot's own price and higher daily rent, giving it more land to build on. A manager can only run a restaurant once you have run it yourself for at least a day; until then it stays closed and pays its rent. (#482)
