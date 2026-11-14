@@ -5,10 +5,14 @@ extends TestCase
 ## keeps state outside Main, or that Main forgets to reset, leaks last game's
 ## state into the next one. This plays two real days, starts a new game with
 ## the same seed and compares every registered save section with a first boot.
+## It covers registered save sections only: autoload state that is never saved
+## is not compared.
 
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 ## Two days: enough for every daily system (reports, goals, stock, staff, events)
-## to change, while keeping the suite inside the hosted 25-minute limit.
+## to change, while keeping the suite inside the hosted 25-minute limit. Weekly-only
+## state (the weekly challenge rollover, week 2 goals) does not turn over in two
+## days, so a leak there would not show here.
 const PLAYED_DAYS: int = 2
 ## Real ticks a service day may take before the test calls it stuck.
 const MAX_BATCHES: int = 30
@@ -33,7 +37,8 @@ func after_each() -> void:
 func test_a_new_game_after_played_days_matches_a_first_boot() -> void:
 	_start()
 	var first: Dictionary = _capture_all()
-	assert_true(first.size() >= 30, "every registered section is compared (%d)" % first.size())
+	assert_true(first.size() > 0 and first.size() == SaveSystem.keys().size(),
+		"every registered section is compared (%d)" % first.size())
 	for day: int in PLAYED_DAYS:
 		assert_true(Clock.sim.start_service(), "day %d opens" % Clock.sim.day)
 		var batches: int = 0
@@ -45,6 +50,8 @@ func test_a_new_game_after_played_days_matches_a_first_boot() -> void:
 	var played: Dictionary = _capture_all()
 	assert_true(played != first, "the played days changed the game, so the comparison means something")
 	_close()
+	# The title's New game route: ask for a Career game, then a fresh Main.
+	GameMode.request_new_game(false)
 	_start()
 	var second: Dictionary = _capture_all()
 	assert_eq(second.keys(), first.keys(), "the same sections are registered")
