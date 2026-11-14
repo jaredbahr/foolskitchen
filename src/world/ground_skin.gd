@@ -19,6 +19,13 @@ extends Resource
 @export var leaf_dark: Color = Color.WHITE
 @export var leaf_light: Color = Color.WHITE
 @export var flowers: Array[Color] = []
+## The near and far pavement (a seaside boardwalk, say). Fully transparent, the
+## default, keeps the shared grey paving, so the starter street is untouched. It is
+## a tint, and the warm key light multiplies it: a pale greige lights up as sandy timber.
+@export var pavement: Color = Color(0.0, 0.0, 0.0, 0.0)
+## Boardwalk seams: thin lines across the near and far pavement, one plank apart.
+## Fully transparent, the default, draws none.
+@export var plank_seam: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## Share of trees that are pines in the meadow and in the tree line.
 @export_range(0.0, 1.0) var pine_share: float = 0.18
 @export_range(0.0, 1.0) var ring_pine_share: float = 0.32
@@ -35,4 +42,4 @@ static func standard() -> GroundSkin:
 ## A string that changes whenever any colour or knob does; used in cache keys.
 func signature() -> String:
 	return var_to_str([grass, patch_light, patch_dark, lawn, forest, lane, lane_edge, trunk, leaf_dark,
-		leaf_light, flowers, pine_share, ring_pine_share, tree_density, flower_density])
+		leaf_light, flowers, pine_share, ring_pine_share, tree_density, flower_density, pavement, plank_seam])
