@@ -291,22 +291,142 @@ func test_closing_a_day_needs_a_reason() -> void:
 	assert_eq(Clock.sim.opening_refusal, "")
 
 
-func test_the_lease_upgrade_is_offered_only_at_the_home_lot() -> void:
+func _site_total(day: int, site: StringName, category: StringName) -> int:
+	var total: int = 0
+	for entry: Dictionary in Economy.ledger.entries_for_day(day, site):
+		if entry["category"] == category:
+			total += int(entry["amount"])
+	return total
+
+
+func _lease_offer() -> Control:
+	return _main.get_node("Overlay/MenuPanel/Panel/Content/LeaseOffer") as Control
+
+
+func test_a_bought_lot_pays_its_rent_from_purchase_away_and_active_normal_and_expanded() -> void:
 	_start()
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(FIXER)
+	var home_rent: int = _main.call("_home_rent")
 	_owner().career_tier = 3
 	_set_cash(100000)
-	assert_eq(_main.call("lease_refusal"), "", "home can expand at Tier 2+")
-	assert_true(_book().add_site(&"second", &"second_lot", "Second", Clock.sim.day,
-		SaveSystem.capture_sections(SiteSections.PER_SITE)))
-	assert_true(_main.call("switch_site", &"second"))
-	assert_eq(_main.call("lease_refusal"), "Only your first restaurant can expand its lease for now")
-	var cash: int = Economy.cash
-	assert_false(_main.call("lease_buy"), "a bought site cannot buy the home lease (#465)")
-	assert_eq(Economy.cash, cash)
-	assert_false(_main.get("lease_expanded"))
+	var bought_day: int = Clock.sim.day
+	assert_true(_main.call("buy_lot", FIXER))
+	# Away on the day it is bought, still renovating: its own rent, booked to it.
+	var report: DayReport = _play_to_close()
+	assert_eq(_site_total(bought_day, FIXER, Ledger.AWAY_SITE_RENT), -lot.daily_rent,
+		"rent runs from the day it is bought, renovating or not")
+	assert_eq(_site_total(bought_day, SiteBook.HOME_ID, Ledger.RENT), -home_rent, "home pays as before")
+	assert_true(report.away_site_lines[0].begins_with("Old Mill Street (closed): rent -$%d" % lot.daily_rent),
+		report.away_site_lines[0])
+	_next_morning()
+	# Active, on a renovation day closed with "Close for today": its own rent.
+	assert_true(_main.call("switch_site", FIXER))
+	var day: int = Clock.sim.day
+	assert_true(_main.call("close_for_today"))
+	assert_eq(_site_total(day, FIXER, Ledger.RENT), -lot.daily_rent, "a renovation day pays rent")
+	assert_eq(_site_total(day, SiteBook.HOME_ID, Ledger.AWAY_SITE_RENT), -home_rent,
+		"the away home pays its own rent")
+	_next_morning()
+	# Expanded: the lot's expanded rent, active and then away.
+	assert_true(_main.call("lease_buy"))
+	assert_true(_main.get("lease_expanded"))
+	day = Clock.sim.day
+	assert_true(_main.call("close_for_today"))
+	assert_eq(_site_total(day, FIXER, Ledger.RENT), -lot.expanded_daily_rent, "active and expanded")
+	_next_morning()
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	day = Clock.sim.day
+	_play_to_close()
+	assert_eq(_site_total(day, FIXER, Ledger.AWAY_SITE_RENT), -lot.expanded_daily_rent, "away and expanded")
+	assert_eq(_site_total(day, SiteBook.HOME_ID, Ledger.RENT), -home_rent, "the home lease is its own")
+
+
+func test_a_lot_site_offers_and_sells_its_own_expansion() -> void:
+	_start()
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(FIXER)
+	_owner().career_tier = 3
+	_set_cash(100000)
+	assert_true(_main.call("buy_lot", FIXER))
+	assert_true(_main.call("switch_site", FIXER))
+	assert_eq(_main.call("lease_refusal"), "", "every lot can expand (#465)")
 	assert_true(_main.call("set_menu_visible", true))
-	assert_false((_main.get_node("Overlay/MenuPanel/Panel/Content/LeaseOffer") as Control).visible,
-		"no lease offer on the Menu")
+	assert_true(_lease_offer().visible, "the lease offer shows at the lot")
+	assert_eq((_lease_offer().get_node("Cost") as Label).text,
+		"Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
+			Fmt.money(lot.expansion_price), Fmt.money(lot.expanded_daily_rent)], "the lot's own numbers")
+	var editor: ShopEditor = _main.get("shop_editor")
+	var before: Rect2i = editor.footprint().lot
+	var cash: int = Economy.cash
+	var day: int = Clock.sim.day
+	assert_true(_main.call("lease_buy"))
+	assert_eq(Economy.cash, cash - lot.expansion_price)
+	assert_eq(_site_total(day, FIXER, Ledger.UPGRADES), -lot.expansion_price, "booked to the lot's site")
+	var grown: Rect2i = editor.footprint().lot
+	assert_eq(grown.position, before.position - Vector2i(lot.expansion_west, lot.expansion_north))
+	assert_eq(grown.size, before.size + Vector2i(lot.expansion_west + lot.expansion_east, lot.expansion_north),
+		"the lot's own margins grow")
+	assert_eq(grown, ShopFootprint.from_layout(lot.lease_upgrade(null).layout_for(lot.base_layout, 2)).lot)
+	assert_eq(_main.call("lease_refusal"), "Your lease is already upgraded")
+	assert_false(_main.call("lease_buy"))
+	assert_false(_lease_offer().visible, "no second offer")
+	# The site keeps its own expanded lease through a switch and back.
+	assert_true(_main.call("set_menu_visible", false))
+	_next_morning_from_closed_day()
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_false(_main.get("lease_expanded"), "home's lease is its own")
+	assert_eq(_main.call("lease_refusal"), "", "home still offers its own lease")
+	var home: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
+	assert_true(_main.call("_lease_for", _main.get("_base_layout")) == home, "home keeps its own terms")
+	_jump_a_morning()
+	assert_true(_main.call("switch_site", FIXER))
+	assert_true(_main.get("lease_expanded"))
+	assert_eq((_main.get("shop_editor") as ShopEditor).footprint().lot, grown, "the grown lot comes back")
+
+
+func test_a_managed_lot_with_no_days_of_its_own_pays_its_rent() -> void:
+	_start()
+	_play_to_close()
+	_next_morning()
+	# A first close at home gives a closing reputation; lift it past the lock.
+	(_main.get("reputation") as ReputationBook)._scores.assign([5, 5, 5, 5, 5])
+	_owner().career_tier = 3
+	_set_cash(100000)
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(SEASIDE)
+	assert_eq(_main.call("lot_purchase_refusal", SEASIDE), "")
+	assert_true(_main.call("buy_lot", SEASIDE))
+	assert_eq(_book().renovation_days_left(SEASIDE), 0, "move-in ready")
+	assert_true(_main.call("switch_site", SEASIDE))
+	# A Manager hired and assigned there, then the owner goes home.
+	var data: Dictionary = (_main.get("staff_roster") as StaffRoster).to_dict()
+	var manager: StaffMember = StaffMember.new()
+	manager.id = &"candidate_manager"
+	manager.display_name = "Morgan"
+	manager.role = StaffMember.MANAGER
+	manager.skill = 3
+	manager.wage = preload("res://data/balance/tier1_economy.tres").staff_wage(StaffMember.MANAGER, 3)
+	var pool: Array = data["candidates"]
+	if pool.size() >= StaffRoster.CANDIDATE_COUNT:
+		pool.pop_back()
+	pool.append(manager.to_dict())
+	var roster: StaffRoster = StaffRoster.new(preload("res://data/balance/tier1_economy.tres"))
+	assert_true(roster.from_dict(JSON.parse_string(JSON.stringify(data))))
+	_main.set("staff_roster", roster)
+	assert_true(_main.call("staff_hire", manager.id))
+	assert_true(_main.call("assign_site_manager", manager.id))
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_eq(_book().manager(SEASIDE), manager.id)
+	var day: int = Clock.sim.day
+	var report: DayReport = _play_to_close()
+	assert_eq(_site_total(day, SEASIDE, Ledger.AWAY_SITE_RENT), -lot.daily_rent,
+		"no days of its own to go on: closed, and it pays its rent")
+	assert_eq(_site_total(day, SEASIDE, Ledger.AWAY_SITE_INCOME), 0, "and earns nothing")
+	assert_eq(report.away_site_lines[0],
+		"Seaside Cliff (closed until you run it for a day): rent -$%d" % lot.daily_rent)
+
+
+func _next_morning_from_closed_day() -> void:
+	assert_true(_main.call("close_for_today"))
+	_next_morning()
 
 
 func test_buying_asks_to_go_there_today() -> void:
