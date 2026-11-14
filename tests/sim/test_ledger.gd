@@ -389,14 +389,14 @@ func test_site_ids_round_trip_and_bad_ids_are_refused() -> void:
 	assert_false(Ledger.is_valid_site(&"Home"))
 
 
-## The four site-money categories never count as a site's operating profit.
+## Site-money categories never count as a site's operating profit.
 func test_site_money_categories_are_non_operating() -> void:
-	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT,
+	for category: StringName in [Ledger.AWAY_SITE_INCOME, Ledger.AWAY_SITE_RENT, Ledger.AWAY_SITE_WAGES,
 			Ledger.LOT_PURCHASE, Ledger.RENOVATION]:
 		assert_true(DayReport.NON_OPERATING_CATEGORIES.has(category), String(category))
 	var report: DayReport = DayReport.new()
 	report.income = {Ledger.SALE: 100, Ledger.AWAY_SITE_INCOME: 500}
-	report.costs = {Ledger.WAGES: 20, Ledger.AWAY_SITE_RENT: 40, Ledger.LOT_PURCHASE: 900,
+	report.costs = {Ledger.WAGES: 20, Ledger.AWAY_SITE_RENT: 40, Ledger.AWAY_SITE_WAGES: 55, Ledger.LOT_PURCHASE: 900,
 		Ledger.RENOVATION: 300}
 	assert_eq(report.operating_profit(), 80)
 
