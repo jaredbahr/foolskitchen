@@ -4337,8 +4337,13 @@ func _report_capture_valid(world: SimWorld) -> bool:
 			return false
 		var rect: Rect2 = native.get_global_rect()
 		if not native.is_visible_in_tree() or rect.size.x <= 0.0 or rect.size.y <= 0.0 \
-				or rect.position.x < viewport.position.x - 1.0 or rect.end.x > viewport.end.x + 1.0 \
-				or rect.position.y < viewport.position.y - 1.0 or rect.end.y > viewport.end.y + 1.0:
+				or rect.position.x < viewport.position.x - 1.0 or rect.end.x > viewport.end.x + 1.0:
+			return false
+		# Only the default first-day report must show the cards unscrolled. A
+		# scene fixture such as the profit review closes a later day, where
+		# level-up, tier and milestone callouts sit above the reviews.
+		if _scene_path == "res://src/world/main.tscn" and (rect.position.y < viewport.position.y - 1.0 \
+				or rect.end.y > viewport.end.y + 1.0):
 			return false
 	return true
 
