@@ -21,6 +21,8 @@ var _collection_result: CollectionModel.Result
 
 
 func _ready() -> void:
+	# One wheel step everywhere, and the wheel works over the whole card (#497).
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer)
 	_render()
 	_render_records()
 

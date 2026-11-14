@@ -15,7 +15,7 @@ mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
-[node name="Panel" type="ScrollContainer" parent="."]
+[node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
 anchor_left = 0.5
 anchor_right = 0.5
@@ -27,8 +27,6 @@ offset_bottom = -12.0
 clip_contents = true
 mouse_filter = 0
 mouse_force_pass_scroll_events = false
-horizontal_scroll_mode = 0
-follow_focus = true
 
 [node name="Content" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -37,10 +35,26 @@ size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="Title" type="Label" parent="Panel/Content"]
+custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "Stock"
+
+[node name="Close" type="Button" parent="Panel/Content/Title"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -110.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 0
+focus_mode = 0
+text = "Close"
 
 [node name="Status" type="Label" parent="Panel/Content"]
 unique_name_in_owner = true
@@ -157,11 +171,3 @@ layout_mode = 2
 size_flags_vertical = 0
 focus_mode = 0
 text = "Cancel order"
-
-[node name="Close" type="Button" parent="Panel/Content/Footer"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(110, 0)
-layout_mode = 2
-size_flags_vertical = 0
-focus_mode = 0
-text = "Close"

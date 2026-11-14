@@ -165,8 +165,8 @@ func _show_report_special() -> void:
 	if not _unchanged(_closed_snapshot) or _closed_report != shown_report.to_dict():
 		_review_fail("the actual closing report changed before its view was shown")
 		return
-	var special: Label = _report.get_node("Panel/Scroll/Content/DailySpecial") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var special: Label = _report.get_node("Panel/Column/Scroll/Content/DailySpecial") as Label
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	if special == null or scroll == null or not _report.visible:
 		_review_fail("the actual evening report special line is unavailable")
 		return
@@ -175,8 +175,8 @@ func _show_report_special() -> void:
 
 func _validate_evening_report() -> void:
 	var report: DayReport = shown_report
-	var special: Label = _report.get_node("Panel/Scroll/Content/DailySpecial") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var special: Label = _report.get_node("Panel/Column/Scroll/Content/DailySpecial") as Label
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var rect: Rect2 = special.get_global_rect() if special != null else Rect2()
 	var burger_count: int = int(report.dishes_sold.get(BURGER_ID, 0)) if report != null else 0
 	if Clock.sim.phase != SimClock.Phase.CLOSED or report == null or not _report.is_visible_in_tree() \

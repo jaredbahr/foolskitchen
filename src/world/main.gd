@@ -518,6 +518,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.hours_requested.connect(_on_hours_requested)
 	if not _menu_panel.quit_to_title_requested.is_connected(request_quit_to_title):
 		_menu_panel.quit_to_title_requested.connect(request_quit_to_title)
+	if not _menu_panel.close_requested.is_connected(_on_menu_close_requested):
+		_menu_panel.close_requested.connect(_on_menu_close_requested)
 	_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 	_goals_panel = $Overlay/GoalsPanel
 	_dismiss_goals()
@@ -861,6 +863,8 @@ func _wire_session() -> bool:
 func _connect_session() -> void:
 	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):
 		_report.connect(&"next_day_pressed", _on_next_day_pressed)
+	if not _report.is_connected(&"close_requested", _on_report_close_requested):
+		_report.connect(&"close_requested", _on_report_close_requested)
 	sim.customer_paid.connect(_on_customer_paid)
 	if not sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.connect(_on_vibe_customer_left)
@@ -1041,6 +1045,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_staff_visible(false)
 			elif is_stock_visible():
 				set_stock_visible(false)
+			elif _report.visible:
+				_on_report_close_requested()
 			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0 \
 					or _inspect_panel.selected_menu_board_anchor != WallFaces.NO_FACE:
 				clear_selection()
@@ -4552,6 +4558,17 @@ func _on_staff_job_priority_requested(id: StringName, job: StringName, value: in
 
 func _on_staff_close_requested() -> void:
 	set_staff_visible(false)
+
+
+func _on_menu_close_requested() -> void:
+	set_menu_visible(false)
+
+
+## The report's Close and Esc only hide it (#497). Next day stays on the top
+## bar, and closing Staff, Stock or Goals in the evening brings it back.
+func _on_report_close_requested() -> void:
+	_report.hide()
+	refresh_hints()
 
 
 ## Station definitions decide availability; temporary path/stock problems do not

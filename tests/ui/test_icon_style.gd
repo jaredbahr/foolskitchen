@@ -159,10 +159,10 @@ func test_existing_panel_heading_paths_gain_one_icon_and_paint_uses_made_brush()
 	var report: Control = load("res://src/ui/evening_report.tscn").instantiate() as Control
 	report.call("show_report", DayReport.new())
 	report.call("show_report", DayReport.new())
-	_assert_heading(report.get_node("Panel/Scroll/Content/Header") as Label, "leaderboardsSimple.png")
-	_assert_heading(report.get_node("Panel/Scroll/Content/ReviewHeading") as Label, "star.png")
-	_assert_heading(report.get_node("Panel/Scroll/Content/GuestHeading") as Label, "singleplayer.png")
-	assert_eq((report.get_node("Panel/Scroll/Content/NextDay") as Button).text, "Next day")
+	_assert_heading(report.get_node("Panel/Column/Scroll/Content/Header") as Label, "leaderboardsSimple.png")
+	_assert_heading(report.get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label, "star.png")
+	_assert_heading(report.get_node("Panel/Column/Scroll/Content/GuestHeading") as Label, "singleplayer.png")
+	assert_eq((report.get_node("Panel/Column/Scroll/Content/NextDay") as Button).text, "Next day")
 	report.free()
 
 

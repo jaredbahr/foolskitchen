@@ -50,7 +50,8 @@ var _armed_throw: StringName = &""
 
 
 func _ready() -> void:
-	$Panel.add_theme_stylebox_override("panel", SHARED_THEME.get_stylebox("panel", "PanelContainer"))
+	# One wheel step everywhere, and the wheel works over the whole card (#497).
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer)
 	refresh()
 
 

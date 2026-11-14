@@ -244,7 +244,7 @@ func test_return_actions_fit_menu_and_settings_at_1280_and_150_percent() -> void
 		await _tree().process_frame
 	var settings_panel: Control = main.get_node("Overlay/SettingsPanel/Panel") as Control
 	var settings_quit: Button = main.get_node("Overlay/SettingsPanel/Panel/Column/QuitToTitleButton") as Button
-	var close: Button = main.get_node("Overlay/SettingsPanel/Panel/Column/CloseButton") as Button
+	var close: Button = main.get_node("Overlay/SettingsPanel/Panel/Column/TitleBar/CloseButton") as Button
 	assert_true(settings_panel.get_global_rect().encloses(settings_quit.get_global_rect()))
 	assert_true(settings_panel.get_global_rect().encloses(close.get_global_rect()))
 	assert_true(window.get_visible_rect().encloses(settings_panel.get_global_rect()))

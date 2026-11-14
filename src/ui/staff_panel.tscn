@@ -15,7 +15,7 @@ mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
-[node name="Panel" type="ScrollContainer" parent="."]
+[node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
 anchor_left = 0.5
 anchor_right = 0.5
@@ -27,8 +27,6 @@ offset_bottom = -12.0
 clip_contents = true
 mouse_filter = 0
 mouse_force_pass_scroll_events = false
-horizontal_scroll_mode = 0
-follow_focus = true
 
 [node name="Content" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -84,6 +82,14 @@ vertical_alignment = 1
 [node name="OwnerLook" type="Button" parent="Panel/Content/Title/Owner"]
 unique_name_in_owner = true
 layout_mode = 2
+
+[node name="Close" type="Button" parent="Panel/Content/Title/Owner"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+mouse_filter = 0
+focus_mode = 0
+text = "Close"
 
 [node name="MorningNotices" type="VBoxContainer" parent="Panel/Content/Scroll/List"]
 visible = false
@@ -263,15 +269,6 @@ layout_mode = 2
 focus_mode = 0
 text = "Buy"
 
-[node name="Close" type="Button" parent="Panel/Content"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(110, 0)
-layout_mode = 2
-size_flags_horizontal = 8
-mouse_filter = 0
-focus_mode = 0
-text = "Close"
-
-[connection signal="pressed" from="Panel/Content/Close" to="." method="_on_close_pressed"]
+[connection signal="pressed" from="Panel/Content/Title/Owner/Close" to="." method="_on_close_pressed"]
 [connection signal="pressed" from="Panel/Content/Scroll/List/TraysRow/TraysBuy" to="." method="_on_trays_buy_pressed"]
 [connection signal="pressed" from="Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy" to="." method="_on_big_trays_buy_pressed"]
