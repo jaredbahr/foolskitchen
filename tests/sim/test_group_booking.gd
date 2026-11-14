@@ -28,7 +28,7 @@ func _certain_tuning() -> BookingTuning:
 func _offer(seed_value: int = 316) -> GroupBooking:
 	var model: GroupBooking = GroupBooking.new(_certain_tuning())
 	var menu: Array[StringName] = [&"burger", &"soup", &"grilled_cheese"]
-	assert_false(model.plan_offer(1, 2, menu, 11 * 60, 21 * 60, _provider(seed_value)).is_empty())
+	assert_false(model.plan_offer(1, 2, menu, 11 * 60, 21 * 60, _provider(seed_value), TUNING.max_party_size).is_empty())
 	return model
 
 
@@ -56,9 +56,9 @@ func test_level_gate_empty_menu_and_no_slot_never_fetch_rng() -> void:
 	var model: GroupBooking = GroupBooking.new(_certain_tuning())
 	var provider: Callable = _provider(9)
 	_provider_calls = 0
-	assert_true(model.plan_offer(1, 1, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
-	assert_true(model.plan_offer(1, 2, [] as Array[StringName], 660, 1260, provider).is_empty())
-	assert_true(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 1200, 1260, provider).is_empty())
+	assert_true(model.plan_offer(1, 1, [&"burger"] as Array[StringName], 660, 1260, provider, TUNING.max_party_size).is_empty())
+	assert_true(model.plan_offer(1, 2, [] as Array[StringName], 660, 1260, provider, TUNING.max_party_size).is_empty())
+	assert_true(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 1200, 1260, provider, TUNING.max_party_size).is_empty())
 	assert_eq(_provider_calls, 0)
 	assert_eq(model.planned_day, 0, "an ineligible morning does not consume its daily roll")
 
@@ -75,19 +75,39 @@ func test_offer_is_deterministic_idempotent_and_requires_a_usable_quarter_hour()
 	assert_true(TUNING.occasions.has(String(first.offer["occasion"])))
 	assert_true([&"burger", &"soup", &"grilled_cheese"].has(StringName(first.offer["recipe_id"])))
 	_provider_calls = 0
-	first.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, _provider(202))
+	first.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, _provider(202), TUNING.max_party_size)
 	assert_eq(_provider_calls, 0, "the morning is never re-rolled after its first offer")
 	var edge: GroupBooking = GroupBooking.new(_certain_tuning())
 	var edge_offer: Dictionary = edge.plan_offer(1, 2, [&"burger"] as Array[StringName],
-		667, 855, _provider(41))
+		667, 855, _provider(41), TUNING.max_party_size)
 	assert_eq(edge_offer["slot_minute"], 750, "open 11:07 plus 75-minute hold rounds up to 12:30")
 	assert_eq(855 - int(edge_offer["slot_minute"]) - TUNING.slot_minutes, 90,
 		"the only slot leaves exactly 90 minutes after the whole slot")
 	var too_short: GroupBooking = GroupBooking.new(_certain_tuning())
 	_provider_calls = 0
 	assert_true(too_short.plan_offer(1, 2, [&"burger"] as Array[StringName],
-		667, 854, _provider(42)).is_empty())
+		667, 854, _provider(42), TUNING.max_party_size).is_empty())
 	assert_eq(_provider_calls, 0, "a window too short for one legal slot never fetches RNG")
+
+
+func test_offers_fit_seating_and_unaccepted_oversized_offers_expire() -> void:
+	var menu: Array[StringName] = [&"burger"]
+	var too_small: GroupBooking = GroupBooking.new(_certain_tuning())
+	_provider_calls = 0
+	assert_true(too_small.plan_offer(1, 2, menu, 660, 1260, _provider(1), 5).is_empty())
+	assert_eq(_provider_calls, 0)
+	for capacity: int in range(6, 10):
+		for seed_value: int in range(32):
+			var model: GroupBooking = GroupBooking.new(_certain_tuning())
+			var offer: Dictionary = model.plan_offer(1, 2, menu, 660, 1260,
+				_provider(seed_value), capacity)
+			var size: int = int(offer.get("party_size", 0))
+			assert_true(size >= 6 and size <= capacity)
+			assert_eq(offer["guest_seeds"].size(), size)
+			var draws: int = _provider_calls
+			assert_true(model.plan_offer(1, 2, menu, 660, 1260, _provider(99), 5).is_empty())
+			assert_true(model.accept_offer(1).is_empty())
+			assert_eq(_provider_calls, draws)
 
 
 func test_offer_odds_are_about_one_in_four() -> void:
@@ -95,7 +115,7 @@ func test_offer_odds_are_about_one_in_four() -> void:
 	for seed: int in range(1, 401):
 		var model: GroupBooking = GroupBooking.new(TUNING)
 		if not model.plan_offer(seed, 2, [&"burger"] as Array[StringName], 660, 1260,
-				_provider(seed * 7919)).is_empty():
+				_provider(seed * 7919), TUNING.max_party_size).is_empty():
 			offered += 1
 	assert_true(offered >= 70 and offered <= 130, "observed offers: %d/400" % offered)
 
@@ -108,7 +128,7 @@ func test_accept_decline_and_only_one_accepted_booking() -> void:
 	assert_eq(accepted["service_day"], 2)
 	assert_eq(accepted["deposit_amount"], int(accepted["party_size"]) * TUNING.deposit_per_guest)
 	assert_true(model.has_active_booking())
-	assert_true(model.plan_offer(2, 2, [&"burger"] as Array[StringName], 660, 1260, _provider(5)).is_empty())
+	assert_true(model.plan_offer(2, 2, [&"burger"] as Array[StringName], 660, 1260, _provider(5), TUNING.max_party_size).is_empty())
 	assert_eq(model.booking["booking_id"], 1)
 	var declined: GroupBooking = _offer(55)
 	assert_true(declined.decline_offer(1))
@@ -469,7 +489,7 @@ func _accepted_for_service_slot(slot_minute: int, party_size: int) -> GroupBooki
 	tuned.offer_chance = 1.0
 	var model: GroupBooking = GroupBooking.new(tuned)
 	var offer: Dictionary = model.plan_offer(1, 2, [&"burger"] as Array[StringName],
-		maxi(slot_minute - tuned.hold_before_minutes, 0), slot_minute + 120, _provider(921))
+		maxi(slot_minute - tuned.hold_before_minutes, 0), slot_minute + 120, _provider(921), party_size)
 	assert_false(offer.is_empty())
 	# Pin the slot after a valid deterministic offer; model validation is covered
 	# separately and these scenarios exercise the integration clock path.
