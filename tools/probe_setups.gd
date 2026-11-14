@@ -7,7 +7,7 @@ extends RefCounted
 static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
-		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter", "patio"]
+		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter", "patio", "opening_week"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -55,6 +55,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _curb_appeal(main)
 		"patio":
 			return _patio(main)
+		"opening_week":
+			return _opening_week(main)
 		"expanded_staffed":
 			# #85: grow the floor and hire for it, the player's "expand" move.
 			return _expand_with_tables(main) and _add_staff(main, &"cook", 3) and _add_staff(main, &"server", 3)
@@ -73,6 +75,40 @@ static func morning(name: String, main: Node) -> bool:
 			return _enable(main, [&"burger", &"grilled_cheese", &"fries", &"coffee"])
 		"bar":
 			return _enable(main, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"])
+		"opening_week":
+			return _opening_week(main)
+	return true
+
+
+## #494: a player following the opening-week goals through real, paid
+## commands. Day 1: prices up about 10%, a floor lamp, the owner on the floor.
+## Day 2: a drinks shelf (beer goes on the menu). Day 3: a table and a hired
+## server on the same morning. Later mornings change nothing.
+static func _opening_week(main: Node) -> bool:
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var editor: ShopEditor = main.get("shop_editor") as ShopEditor
+	if sim == null or settings == null or editor == null:
+		return false
+	match sim.world.clock.day:
+		1:
+			for recipe: RecipeDef in settings.enabled_recipes():
+				if not main.call("menu_set_price", recipe.id, settings.ten_percent_price(recipe.id, 1)):
+					return false
+			return main.call("shop_buy", &"lamp_floor_round", Vector2i(1, 5), 0) \
+				and editor.last_check.unreachable.is_empty() and sim.assign_owner(&"floor")
+		2:
+			return main.call("shop_buy", &"drinks_shelf", Vector2i(12, 1), 2) \
+				and editor.last_check.unreachable.is_empty()
+		3:
+			if not main.call("shop_buy", &"table_2", Vector2i(3, 12), 0) \
+					or not editor.last_check.unreachable.is_empty():
+				return false
+			for member: StaffMember in (main.get("staff_roster") as StaffRoster).candidates():
+				if member.role == &"server":
+					return main.call("staff_hire", member.id)
+			# No server applied this morning: the probe hires a skill-3 one.
+			return _add_staff(main, &"server", 3)
 	return true
 
 
