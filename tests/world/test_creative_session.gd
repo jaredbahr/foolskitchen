@@ -92,7 +92,7 @@ func test_every_unlock_is_open_on_day_one() -> void:
 	var sim: RestaurantSim = main.get("sim")
 	assert_eq(sim.customer_level, level, "every guest type and event uses the open level")
 	assert_true(sim.inspection.tuning.unlock_level <= level)
-	assert_true(sim.critic.tuning.unlock_level <= level)
+	assert_true(sim.critic.tuning.unlock_tier <= progress.effective_tier())
 
 
 func test_money_never_moves_through_building_stock_hiring_and_a_full_day() -> void:

@@ -467,12 +467,12 @@ func test_real_kitchen_party_gets_three_individual_orders_payments_and_reviews()
 		sim.kitchen.plates.clean + sim.kitchen.plates.dirty + sim.kitchen.plates.in_use)
 
 
-func test_pairs_arrive_alone_below_their_party_level_with_single_guest_draws() -> void:
+func test_level_two_pairs_and_locked_level_one_use_the_expected_arrival_draws() -> void:
 	var catalogue: CustomerTypeCatalogue = CustomerTypeCatalogue.new()
 	catalogue.types = [TYPES.find_type(&"regular")]
 	assert_eq(catalogue.types[0].party_unlock_level, 5)
 	for seed_value: int in [3, 11, 23, 57]:
-		for level: int in [1, 4, 5, 6]:
+		for level: int in [1, 2, 4, 5, 6]:
 			var sim: RestaurantSim = _empty_service(seed_value)
 			assert_not_null(sim.world.grid.place_def(TABLE, Vector2i(4, 5)))
 			assert_true(sim.configure_customer_types(catalogue, level))
@@ -481,7 +481,7 @@ func test_pairs_arrive_alone_below_their_party_level_with_single_guest_draws() -
 			CustomerTypePicker.choose(catalogue, level, sim.review_book.average(), oracle)
 			oracle.randi_range(0, 0)
 			# Locked: exactly main's single guest (one private seed, then the gap).
-			var drawn: int = oracle.randi_range(1, 2) if level >= 5 else 1
+			var drawn: int = oracle.randi_range(1, 2) if level >= 2 else 1
 			for member: int in drawn:
 				oracle.randi()
 			oracle.randi_range(100000, 100000)

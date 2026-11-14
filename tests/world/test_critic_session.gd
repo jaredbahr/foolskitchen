@@ -71,8 +71,11 @@ func _morning(day: int) -> void:
 	_main.call("_begin_morning")
 
 
-func test_below_level_two_no_critic_stream_is_ever_created() -> void:
+func test_high_owner_level_below_tier_five_never_creates_the_critic_stream() -> void:
 	_start()
+	_level(20)
+	_progress().career_tier = 4
+	_always()
 	for day: int in range(2, 12):
 		_morning(day)
 	assert_false(_sim().critic.pending)
@@ -81,9 +84,10 @@ func test_below_level_two_no_critic_stream_is_ever_created() -> void:
 		"shops that cannot have a critic never create the stream")
 
 
-func test_level_two_rolls_the_morning_once_from_the_named_stream() -> void:
+func test_tier_five_rolls_the_morning_once_from_the_named_stream() -> void:
 	_start()
-	_level(CRITIC.unlock_level)
+	_level(20)
+	_progress().career_tier = CRITIC.unlock_tier
 	_always()
 	_morning(2)
 	assert_true(_sim().critic.pending)
@@ -98,7 +102,8 @@ func test_level_two_rolls_the_morning_once_from_the_named_stream() -> void:
 
 func test_the_cooldown_and_todays_plan_survive_the_morning_save() -> void:
 	_start(true)
-	_level(CRITIC.unlock_level)
+	_level(20)
+	_progress().career_tier = CRITIC.unlock_tier
 	_always()
 	_morning(4)
 	var tells: Array[StringName] = _sim().critic.tells.duplicate()
@@ -113,8 +118,8 @@ func test_the_cooldown_and_todays_plan_survive_the_morning_save() -> void:
 	_start(true)
 	assert_eq(Clock.sim.day, 5)
 	assert_eq(_sim().critic.last_visit_day, 4, "mid-week, the cooldown is kept")
-	assert_false(_sim().critic.can_visit(8, 2))
-	assert_true(_sim().critic.can_visit(9, 2))
+	assert_false(_sim().critic.can_visit(8, CRITIC.unlock_tier))
+	assert_true(_sim().critic.can_visit(9, CRITIC.unlock_tier))
 
 
 func test_an_old_save_without_a_critic_section_loads() -> void:

@@ -304,6 +304,7 @@ func _assert_regular_golden(seed: int) -> void:
 	var single: CustomerType = TYPES.find_type(&"regular").duplicate() as CustomerType
 	single.party_size_min = 1
 	single.party_size_max = 1
+	single.pair_unlock_level = 0
 	regular.types = [single]
 	assert_true(typed.configure_customer_types(regular, 4))
 	for sim: RestaurantSim in [legacy, typed]:
