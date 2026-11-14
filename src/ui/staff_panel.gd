@@ -274,8 +274,6 @@ func priority_button_for(id: StringName, job: StringName) -> Button:
 	return buttons.get(job) as Button
 
 
-## These cells are independent of growth/candidate cards: a roster refresh must
-## retain an unchanged native button between mouse-down and mouse-up.
 func _on_staff_scrolled(_value: float) -> void:
 	_update_pinned_headings()
 
@@ -292,12 +290,11 @@ func _update_pinned_headings() -> void:
 	var first: Label = grid.get_child(0) as Label
 	var viewport_top: float = scroll.get_global_rect().position.y
 	var first_rect: Rect2 = first.get_global_rect()
-	var bottom: float = grid.get_global_rect().end.y
+	var grid_rect: Rect2 = grid.get_global_rect()
 	var height: float = first_rect.size.y
-	pinned.visible = first_rect.position.y < viewport_top and bottom > viewport_top + height
+	pinned.visible = first_rect.position.y < viewport_top and grid_rect.end.y > viewport_top + height
 	if not pinned.visible:
 		return
-	var grid_rect: Rect2 = grid.get_global_rect()
 	pinned.global_position = Vector2(grid_rect.position.x, viewport_top)
 	pinned.size = Vector2(grid_rect.size.x, height)
 	for index: int in grid.columns:
@@ -307,6 +304,8 @@ func _update_pinned_headings() -> void:
 		_pinned_headings[index].size = Vector2(rect.size.x, height)
 
 
+## A roster refresh must retain an unchanged priority button between
+## mouse-down and mouse-up.
 func _refresh_priorities() -> void:
 	var section: VBoxContainer = %Priorities as VBoxContainer
 	var grid: GridContainer = %PriorityGrid as GridContainer

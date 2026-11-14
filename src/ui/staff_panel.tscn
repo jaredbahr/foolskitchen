@@ -247,7 +247,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
-text = "Trays â€” $60"
+text = "Trays — $60"
 
 [node name="TraysBuy" type="Button" parent="Panel/Content/Scroll/List/TraysRow"]
 unique_name_in_owner = true
@@ -264,7 +264,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
-text = "Big trays â€” $150"
+text = "Big trays — $150"
 
 [node name="BigTraysBuy" type="Button" parent="Panel/Content/Scroll/List/BigTraysRow"]
 unique_name_in_owner = true
