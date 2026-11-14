@@ -70,6 +70,7 @@ CAPTURE_FRAMES = {
         "regulars-review": (12, 90),
         "food-critic": (12, 90),
         "rush-hour": (12, 90),
+        "service-event": (60,),
         "paint": (60,),
         "floors-review": (12, 30),
         "seafood-floor": (30,),
