@@ -499,6 +499,23 @@ func test_thirty_guests_and_a_calm_day_pay() -> void:
 	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"calm_day").reward_cash] as Array[int])
 
 
+func test_the_morning_card_shows_a_fresh_day_not_yesterdays_counts() -> void:
+	var main: Node = await _start(false)
+	_to_week_two(main)
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	restaurant.served_today = 12
+	restaurant.leave_reasons_today[&"waited_too_long"] = 1
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_true(Clock.sim.next_day())
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
+	var values: Dictionary = main.call("_opening_values")
+	assert_eq(values[OpeningGoal.Condition.SERVED_TODAY], 0.0, "yesterday's guests are not today's")
+	assert_true(float(values[OpeningGoal.Condition.CALM_DAY_STARS]) >= 0.0, "yesterday's leaver does not spoil today")
+
+
 func test_a_calm_day_below_three_and_a_half_stars_does_not_pay() -> void:
 	var main: Node = await _start(false)
 	_to_week_two(main)

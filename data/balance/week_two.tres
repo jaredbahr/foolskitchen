@@ -37,7 +37,7 @@ item_ids = Array[StringName]([&"table_4", &"round_table"])
 [sub_resource type="Resource" id="goal_4"]
 script = ExtResource("2_goal")
 id = &"fried_dish"
-title = "Put a fried dish on the menu"
+title = "Add a fried dish"
 description = "Buy a fryer, then put fries or another fried dish on the menu. It counts once you open with it on."
 condition = 10
 target = 1.0

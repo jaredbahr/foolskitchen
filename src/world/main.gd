@@ -7777,13 +7777,17 @@ func _opening_values() -> Dictionary[int, float]:
 	var values: Dictionary[int, float] = {}
 	if opening_week == null or not opening_week.is_active() or sim == null:
 		return values
-	values[OpeningGoal.Condition.SERVED_TODAY] = float(sim.served_today)
-	values[OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY] = float(_five_star_reviews_today())
+	# Today's counts clear when the shop opens, so before then they still hold
+	# yesterday's: show a fresh day in the morning.
+	var morning: bool = Clock.sim != null and Clock.sim.phase == SimClock.Phase.MORNING
+	values[OpeningGoal.Condition.SERVED_TODAY] = 0.0 if morning else float(sim.served_today)
+	values[OpeningGoal.Condition.FIVE_STAR_REVIEWS_TODAY] = 0.0 if morning else float(_five_star_reviews_today())
 	var now_floor: int = shop_editor.bought_floor().size() if shop_editor != null else 0
 	if not _last_open_counts.is_empty() and site_book != null and _last_open_counts["site"] == site_book.active_id:
 		values[OpeningGoal.Condition.FLOOR_ADDED] = float(maxi(0, now_floor - int(_last_open_counts["floor"])))
 	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.CALM_DAY_STARS):
-		values[OpeningGoal.Condition.CALM_DAY_STARS] = _calm_day_value(goal)
+		values[OpeningGoal.Condition.CALM_DAY_STARS] = roundf(reputation.average() * 10.0) / 10.0 \
+			if morning else _calm_day_value(goal)
 	return values
 
 
