@@ -30,6 +30,7 @@ Each line ends with its PR number.
 - Staff at your other restaurants still draw their wages when those restaurants stay closed. Their wages appear next to their rent in the evening report. (#512)
 - Click the loan amount in the top bar to repay some or all of your debt before opening or after closing. (#462)
 - On desktop, press F12 to save a photo of your shop without the interface, or Shift+F12 to hide the interface while you frame a shot. (#475)
+- Settings can pause service when a dish sells out, the health inspector arrives or a guest leaves angry. (#478)
 - Menu shows the price estimate only after a dish unlocks. (#469)
 - From Tier 3, a Property button in the morning Menu opens the property market: three lots for a second restaurant (a big fixer-upper in town, a seaside cliff with fresh catch and a skyscraper rooftop bar), cheapest first, each with its price, size, rent, what expanding it would cost, its usual guests and perks, and what it still needs if it is locked. It is for browsing and saving up: the Buy button says "Coming soon". (#470)
 - Desktop photo shortcuts wait until you've answered the morning restaurant choice or the prompt after buying a lot. (#483)
