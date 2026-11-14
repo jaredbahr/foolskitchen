@@ -13,12 +13,13 @@ func before_each() -> void:
 func test_authored_data_and_invalid_tuning() -> void:
 	var tuning: RegularsTuning = RegularCast.DEFAULT_TUNING
 	assert_true(tuning.is_valid())
-	assert_eq(tuning.min_day, 6)
+	assert_eq(tuning.min_day, 4)
+	assert_eq(tuning.min_vibe, 0.5)
 	assert_true(tuning.cast_cap >= 6 and tuning.cast_cap <= 10)
 	var bad: RegularsTuning = tuning.duplicate(true) as RegularsTuning
-	bad.min_day = 5
+	bad.min_day = 3
 	assert_false(bad.is_valid())
-	bad.min_day = 6
+	bad.min_day = tuning.min_day
 	bad.favourite_happiness = NAN
 	assert_false(bad.is_valid())
 	bad.favourite_happiness = 0.08
@@ -29,7 +30,7 @@ func test_authored_data_and_invalid_tuning() -> void:
 func test_empty_cast_before_promotion_uses_no_rng_or_provider_calls() -> void:
 	var cast: RegularCast = RegularCast.new()
 	var initial: int = _rng.state
-	for visit_day: int in range(1, 6):
+	for visit_day: int in range(1, cast.tuning.min_day):
 		cast.begin_day(visit_day)
 		assert_null(_observe(cast, "cohort", visit_day))
 		assert_null(cast.due_regular(visit_day))
@@ -62,11 +63,11 @@ func test_stars_and_vibe_thresholds_are_live_promotion_gates() -> void:
 	var cast: RegularCast = RegularCast.new()
 	assert_null(_observe(cast, "cohort", 1))
 	assert_null(_observe(cast, "cohort", 6, &"regular", true, 0.8, 2.49, 2.0))
-	assert_null(_observe(cast, "cohort", 7, &"regular", true, 0.8, 3.0, 0.99))
+	assert_null(_observe(cast, "cohort", 7, &"regular", true, 0.8, 3.0, cast.tuning.min_vibe - 0.01))
 	assert_eq(_requests, 0)
 	assert_false(cast.can_promote("cohort", 8, NAN, 5.0))
 	assert_false(cast.can_promote("cohort", 8, 5.0, INF))
-	assert_not_null(_observe(cast, "cohort", 8, &"regular", true, 0.8, 2.5, 1.0))
+	assert_not_null(_observe(cast, "cohort", 8, &"regular", true, 0.8, 2.5, cast.tuning.min_vibe))
 
 
 func test_cast_cap_unique_names_and_fixed_looks() -> void:
