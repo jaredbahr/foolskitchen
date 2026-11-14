@@ -1,0 +1,90 @@
+[gd_resource type="Resource" script_class="OpeningWeekSet" load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/opening_week_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://src/sim/progression/opening_goal.gd" id="2_goal"]
+
+[sub_resource type="Resource" id="goal_1"]
+script = ExtResource("2_goal")
+id = &"change_price"
+title = "Change a dish's price"
+description = "Open the Menu and move any dish's price up or down."
+condition = 0
+target = 1.0
+reward_cash = 40
+reward_xp = 5
+
+[sub_resource type="Resource" id="goal_2"]
+script = ExtResource("2_goal")
+id = &"place_decor"
+title = "Place a decor item"
+description = "In Buy, place a lamp, a rug or wall art. Guests like a nice room."
+condition = 1
+target = 1.0
+reward_cash = 40
+reward_xp = 5
+
+[sub_resource type="Resource" id="goal_3"]
+script = ExtResource("2_goal")
+id = &"serve_15"
+title = "Serve 15 guests in a day"
+description = "Keep the tables turning: 15 happy, paying guests in one day."
+condition = 2
+target = 15.0
+reward_cash = 60
+reward_xp = 10
+
+[sub_resource type="Resource" id="goal_4"]
+script = ExtResource("2_goal")
+id = &"drink_on_menu"
+title = "Put a drink on the menu"
+description = "Buy a drinks shelf: beer goes on the menu by itself."
+condition = 3
+target = 1.0
+reward_cash = 100
+reward_xp = 10
+
+[sub_resource type="Resource" id="goal_5"]
+script = ExtResource("2_goal")
+id = &"owner_on_floor"
+title = "Work the floor yourself"
+description = "Select yourself and choose Floor (F) while the shop is open."
+condition = 4
+target = 1.0
+reward_cash = 40
+reward_xp = 5
+
+[sub_resource type="Resource" id="goal_6"]
+script = ExtResource("2_goal")
+id = &"grow_together"
+title = "Grow together"
+description = "On the same morning, add a table and hire a server. More seats need more hands."
+condition = 5
+target = 1.0
+reward_cash = 150
+reward_xp = 15
+
+[sub_resource type="Resource" id="goal_7"]
+script = ExtResource("2_goal")
+id = &"serve_25"
+title = "Serve 25 guests in a day"
+description = "With the extra table and server, serve 25 guests in one day."
+condition = 2
+target = 25.0
+reward_cash = 80
+reward_xp = 10
+
+[sub_resource type="Resource" id="goal_8"]
+script = ExtResource("2_goal")
+id = &"reach_35_stars"
+title = "Reach 3.5 stars"
+description = "End a day with your rating at 3.5 stars or better."
+condition = 6
+target = 3.5
+reward_cash = 100
+reward_xp = 10
+
+[resource]
+script = ExtResource("1_set")
+goals = Array[ExtResource("2_goal")]([SubResource("goal_1"), SubResource("goal_2"), SubResource("goal_3"), SubResource("goal_4"), SubResource("goal_5"), SubResource("goal_6"), SubResource("goal_7"), SubResource("goal_8")])
+last_day = 7
+shown_goals = 3
