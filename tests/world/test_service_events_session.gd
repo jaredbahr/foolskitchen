@@ -474,3 +474,185 @@ func test_blogger_buzz_is_its_own_nudge_at_its_own_site() -> void:
 	for line: String in sim.world.event_log:
 		logged = logged or line.contains("food blogger")
 	assert_true(logged, "the Today log names it")
+
+
+## #506: a second cook joins the starter team this morning (mood 2, so a
+## cheer-up shows), and the roster and the floor both know them.
+func _add_second_cook() -> StaffMember:
+	var roster: StaffRoster = _main.get("staff_roster")
+	var member: StaffMember = StaffMember.new()
+	member.id = &"test_cook_2"
+	member.display_name = "Pip"
+	member.role = &"cook"
+	member.skill = 3
+	member.wage = 40
+	member.trait_id = &"careful"
+	assert_true(roster.accept_transfer(member))
+	roster.adjust_mood(member.id, -1)
+	assert_true(_sim().set_staff_roster(roster.members()))
+	return member
+
+
+func _leave_early_for(member: StaffMember) -> Dictionary:
+	var events: ServiceEvents = _events()
+	events.day = Clock.sim.day
+	events.schedule = [{"id": "leave_early", "minute": 0, "shown": false,
+		"names": {"staff": member.display_name}, "staff_id": String(member.id),
+		"staff_role": String(member.role), "ingredient_id": ""}]
+	var entry: Dictionary = events.due(Clock.sim.display_minutes())
+	_main.call("_show_service_event_card", entry)
+	assert_true(_card().visible)
+	return entry
+
+
+func _mood(id: StringName) -> int:
+	for member: StaffMember in (_main.get("staff_roster") as StaffRoster).members():
+		if member.id == id:
+			return member.growth_state().mood
+	return -1
+
+
+func test_off_you_go_sends_the_worker_home_until_tomorrow() -> void:
+	_start(true, true)
+	var member: StaffMember = _add_second_cook()
+	var sim: RestaurantSim = _sim()
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 900)
+	var worker: StaffAgent = sim.employee(member.id)
+	assert_not_null(worker)
+	var worker_id: int = worker.id
+	var served_before: int = sim.served_today
+	_leave_early_for(member)
+	assert_false(_card().choice_buttons()[0].disabled, "another cook covers, so Pip may go")
+	assert_true(_main.call("service_event_pick", 0))
+	assert_true(worker.going_home, "Pip stops taking work")
+	assert_eq(_mood(member.id), 3, "and cheers up")
+	# They finish (or hand back) what they hold and walk out.
+	var guard: int = 0
+	while sim.employee(member.id) != null and guard < 3000:
+		_main.call("run_ticks", 1)
+		guard += 1
+	assert_null(sim.employee(member.id), "Pip walked out")
+	assert_true(sim.sent_home_today.has(member.id))
+	for task: SimTask in sim.world.board.claimed_tasks():
+		assert_ne(task.claimed_by, worker_id, "nothing is left claimed by someone gone")
+	# Nothing is stuck: the rest of the team keeps serving to the close.
+	_finish_day()
+	assert_true(sim.served_today > served_before, "service went on without Pip")
+	assert_true(sim.orders.has_state(Order.State.PLACED) == false and sim.orders.has_state(Order.State.READY) == false,
+		"no order waits forever")
+	for task: SimTask in sim.world.board.claimed_tasks():
+		assert_ne(task.claimed_by, worker_id)
+	# Still paid: the day's wages are everyone's full wage.
+	var wages: int = 0
+	for person: StaffMember in (_main.get("staff_roster") as StaffRoster).members():
+		wages += OpeningHours.wage_for_day(person.wage, Clock.sim, _main.get("HOURS_TUNING"))
+	assert_eq(int(Economy.ledger.day_totals(1).get(Ledger.WAGES, 0)), -wages, "Pip is paid the whole day")
+	# Back the next morning, at their post, and the morning save keeps them.
+	assert_true(Clock.sim.next_day())
+	var back: StaffAgent = sim.employee(member.id)
+	assert_not_null(back, "Pip is back the next morning")
+	assert_false(back.going_home)
+	assert_eq(back.cell, sim.staff_spawns[&"cook"])
+	assert_true(sim.sent_home_today.is_empty())
+	assert_eq(SaveSystem.save_game(SLOT), OK)
+	_close()
+	_start(true, true)
+	assert_eq(Clock.sim.day, 2)
+	assert_not_null(_sim().employee(member.id), "a reload has Pip on the team")
+	assert_false(_sim().employee(member.id).going_home)
+	assert_eq(_mood(member.id), 3, "the cheer-up was kept")
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 600)
+	assert_not_null(_sim().employee(member.id), "and working")
+
+
+func test_a_reload_mid_day_replays_the_send_home() -> void:
+	_start(true, true)
+	var member: StaffMember = _add_second_cook()
+	assert_eq(SaveSystem.save_game(SLOT), OK)
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 300)
+	_leave_early_for(member)
+	assert_true(_main.call("service_event_pick", 0))
+	_main.call("run_ticks", 600)
+	# Quitting before the next morning keeps nothing of today: the morning
+	# save has Pip on the team, not sent home.
+	_close()
+	_start(true, true)
+	assert_eq(Clock.sim.day, 1)
+	assert_not_null(_sim().employee(member.id))
+	assert_false(_sim().employee(member.id).going_home)
+	assert_true(_sim().sent_home_today.is_empty())
+	assert_eq(_mood(member.id), 2, "the morning's mood, before the card")
+
+
+func test_the_last_cook_is_never_sent_home() -> void:
+	_open_service()
+	var roster: StaffRoster = _main.get("staff_roster")
+	var cook: StaffMember = null
+	for person: StaffMember in roster.members():
+		if person.role == &"cook":
+			cook = person
+	assert_false(_events().can_show(_events().definition(&"leave_early"), 1,
+		_main.call("_service_event_context")), "the starter pair never gets the card")
+	_leave_early_for(cook)
+	var button: Button = _card().choice_buttons()[0]
+	assert_true(button.disabled, "the only cook cannot go")
+	assert_true((button.get_node("Lines/Preview") as Label).text.begins_with("Nobody can cover for"))
+	assert_false(_main.call("service_event_pick", 0))
+	assert_false(_sim().employee(cook.id).going_home)
+	assert_true(_main.call("service_event_pick", 1), "Not today is always there")
+
+
+## #506 gamble: the bet lands the same way when the day is replayed.
+func test_double_or_nothing_does_not_reroll_on_reload() -> void:
+	var results: Array = []
+	for attempt: int in 2:
+		_start(true, true)
+		if attempt == 0:
+			assert_eq(SaveSystem.save_game(SLOT), OK)
+		assert_true(Clock.sim.start_service())
+		_main.call("run_ticks", 300)
+		_set_cash(200)
+		var events: ServiceEvents = _events()
+		events.day = Clock.sim.day
+		events.schedule = [{"id": "speed_bet", "minute": 0, "shown": false, "names": {},
+			"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+		_main.call("_show_service_event_card", events.due(Clock.sim.display_minutes()))
+		assert_true(_main.call("service_event_pick", 0))
+		results.append([events.answered[0]["result"], Economy.cash])
+		_close()
+	assert_eq(results[0], results[1], "the reload lands the bet the same way")
+	assert_true(results[0][1] in [225, 175], "double or nothing: +$25 or -$25")
+
+
+## #506 chain: the blogger's review comes back three days later, after a reload.
+func test_the_blogger_review_comes_back_after_a_reload() -> void:
+	_start(true, true)
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 10)
+	var events: ServiceEvents = _events()
+	events.day = Clock.sim.day
+	events.schedule = [{"id": "food_blogger", "minute": 0, "shown": false, "names": {},
+		"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+	_main.call("_show_service_event_card", events.due(Clock.sim.display_minutes()))
+	assert_true(_main.call("service_event_pick", 0))
+	assert_eq(int(events.follow_ups[0]["day"]), 4)
+	_finish_day()
+	assert_true(Clock.sim.next_day())
+	# The morning save carries the waiting card into a reloaded game.
+	assert_eq(SaveSystem.save_game(SLOT), OK)
+	_close()
+	_start(true, true)
+	assert_eq(Clock.sim.day, 2)
+	assert_eq(_events().follow_ups.size(), 1, "the review waits in the save")
+	for day: int in [2, 3]:
+		assert_true(Clock.sim.start_service(), "day %d opens" % day)
+		for entry: Dictionary in _events().schedule:
+			assert_ne(entry["id"], "blogger_review", "day %d is too soon" % day)
+		_finish_day()
+		assert_true(Clock.sim.next_day())
+	assert_true(Clock.sim.start_service())
+	assert_eq(_events().schedule[0]["id"], "blogger_review", "day 4 brings the review")
+	assert_true(_events().follow_ups.is_empty())

@@ -4275,7 +4275,8 @@ func _plan_service_events() -> void:
 	if sim == null or service_events == null or not service_events_active():
 		return
 	service_events.plan_day(Clock.sim.day, GameState.master_seed, _service_event_context(),
-		Clock.sim.display_open_minute, Clock.sim.display_close_minute, _service_event_blocked_minutes())
+		Clock.sim.display_open_minute, Clock.sim.display_close_minute, _service_event_blocked_minutes(),
+		String(Economy.active_site))
 
 
 func _check_service_event() -> void:
@@ -4405,7 +4406,30 @@ func service_event_refusal(choice: ServiceEventChoice, entry: Dictionary) -> Str
 	var need: int = choice.cash_needed() + stock_cost
 	if need > 0 and not Economy.can_spend_without_loan(need):
 		return ServiceEventText.NOT_ENOUGH_CASH
+	if choice.send_home and not can_send_home(StringName(entry.get("staff_id", ""))):
+		var names: Dictionary = entry.get("names", {})
+		return ServiceEventText.nobody_covers(String(names.get("staff", "")))
 	return ""
+
+
+## Whether `member_id` may go home now (#506): the doors are open, they are on
+## the floor and not already leaving, and someone else still covers their
+## role: a cleaner always (the servers mop), anyone else only while another
+## worker in the same role stays. The last cook or server never goes.
+func can_send_home(member_id: StringName) -> bool:
+	if sim == null or not Clock.sim.phase in [SimClock.Phase.OPEN, SimClock.Phase.LAST_ORDERS]:
+		return false
+	var worker: StaffAgent = sim.employee(member_id)
+	if worker == null or worker.going_home:
+		return false
+	if worker.role == &"cleaner":
+		return true
+	for agent: SimAgent in sim.world.all_agents():
+		var other: StaffAgent = agent as StaffAgent
+		if other != null and other != worker and not other is OwnerAgent and other.role == worker.role \
+				and not other.going_home:
+			return true
+	return false
 
 
 func _service_event_stock_cost(choice: ServiceEventChoice, entry: Dictionary) -> int:
@@ -4418,11 +4442,17 @@ func _service_event_stock_cost(choice: ServiceEventChoice, entry: Dictionary) ->
 func _apply_service_event_buzz() -> void:
 	if sim == null or service_events == null:
 		return
-	var factor: float = service_events.arrival_factor(Clock.sim.day, String(Economy.active_site))
+	var site: String = String(Economy.active_site)
+	var factor: float = service_events.arrival_factor(Clock.sim.day, site)
 	if factor == 1.0:
 		return
 	sim.event_arrival_factor *= factor
-	world.log_event(ServiceEventText.buzz_line(factor))
+	var buzz: float = service_events.next_day_factor(Clock.sim.day, site)
+	if buzz != 1.0:
+		world.log_event(ServiceEventText.buzz_line(buzz))
+	# Multi-day nudges (#506) each name their card.
+	for boost: Dictionary in service_events.boosts_on(Clock.sim.day, site):
+		world.log_event(ServiceEventText.later_line(String(boost["title"]), int(boost["percent"])))
 
 
 func _service_event_unit_cost(entry: Dictionary) -> int:
@@ -4477,6 +4507,8 @@ func _apply_service_event(outcome: Dictionary) -> bool:
 		staff_roster.adjust_mood(StringName(entry.get("staff_id", "")), choice.staff_mood)
 	if choice.clean_spots:
 		sim.clean_all_spots()
+	if choice.send_home:
+		sim.send_home(StringName(entry.get("staff_id", "")))
 	return true
 
 
@@ -7183,6 +7215,11 @@ func _charge_closing_costs() -> void:
 		if agent is StaffAgent and not agent is OwnerAgent:
 			# Paid by the hour: the default day keeps the exact daily wage.
 			Economy.add_cash(-OpeningHours.wage_for_day((agent as StaffAgent).wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
+	# A worker sent home early by a service event (#506) is off the floor but
+	# paid the full day, the same as everyone else.
+	for member: StaffMember in staff_roster.members():
+		if sim.sent_home_today.has(member.id) and sim.employee(member.id) == null:
+			Economy.add_cash(-OpeningHours.wage_for_day(member.wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
 	# Managers have no worker in the world (no floor work) but are paid the
 	# same way (FK-087). A roster without one charges exactly as before.
 	for member: StaffMember in staff_roster.members():

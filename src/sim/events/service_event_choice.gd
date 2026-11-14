@@ -20,6 +20,8 @@ extends Resource
 @export var day_arrivals_percent: int = 0
 ## Tomorrow's arrivals change by this percent (it joins tomorrow's demand).
 @export var tomorrow_arrivals_percent: int = 0
+## How many days, from tomorrow, that nudge lasts (#506: pay now, gain later).
+@export_range(1, 7) var tomorrow_days: int = 1
 ## Positive: buy this many of the event's ingredient at stock_price_percent of
 ## its list price. Negative: use this many of it from the shelves.
 @export var stock_units: int = 0
@@ -28,6 +30,13 @@ extends Resource
 @export_range(-1, 1) var staff_mood: int = 0
 ## Every dirty spot on the floor is cleaned at once.
 @export var clean_spots: bool = false
+## The event's staff member goes home for the rest of today, still paid, and
+## is back tomorrow (#506). Needs the spare_staff requirement.
+@export var send_home: bool = false
+## A later card this choice sets up (#506 chain events): that event comes up
+## follow_up_days later, at the same shop, with this card's names.
+@export var follow_up: StringName = &""
+@export_range(1, 14) var follow_up_days: int = 3
 ## Chance (percent) that the risk outcome below happens as well.
 @export_range(0, 100) var risk_percent: int = 0
 ## Replaces `result` when the risk happens.
@@ -75,4 +84,10 @@ func errors(who: String) -> PackedStringArray:
 		found.append("%s: risk effects need a risk chance" % who)
 	if risk_stock_lost_percent > 0 and stock_units <= 0:
 		found.append("%s: only bought stock can go bad" % who)
+	if tomorrow_days < 1 or tomorrow_days > 7:
+		found.append("%s: a later nudge lasts 1-7 days" % who)
+	if tomorrow_days > 1 and tomorrow_arrivals_percent == 0:
+		found.append("%s: a multi-day nudge needs a percent" % who)
+	if not follow_up.is_empty() and (follow_up_days < 1 or follow_up_days > 14):
+		found.append("%s: a follow-up comes 1-14 days later" % who)
 	return found

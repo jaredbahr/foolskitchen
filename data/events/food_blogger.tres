@@ -6,9 +6,10 @@
 [sub_resource type="Resource" id="Choice_1"]
 script = ExtResource("2_choice")
 label = "Seat them now"
-result = "They skipped the queue, ate everything and posted it all. Expect curious faces tomorrow."
+result = "They skipped the queue, ate everything and posted it all. Expect curious faces tomorrow, and a review soon."
 guest_patience_seconds = -15
 tomorrow_arrivals_percent = 8
+follow_up = &"blogger_review"
 
 [sub_resource type="Resource" id="Choice_2"]
 script = ExtResource("2_choice")
