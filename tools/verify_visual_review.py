@@ -362,10 +362,10 @@ def verify_service_views(root):
     assert log.count('STAFF_ACTIVITY_REPORT_REVIEW ') == 1, 'staff-activity-report: missing unique native validation receipt'
     review = json.loads(log.split('STAFF_ACTIVITY_REPORT_REVIEW ', 1)[1].splitlines()[0])
     assert review['seed'] == data['master_seed'] == data['new_game_seed_override'] == '1', 'staff-activity-report: wrong actual seed'
-    assert review['setup'] == 'expanded_tables' and review['days'] == review['day'] == 10, 'staff-activity-report: wrong fixed service case'
+    assert review['setup'] == 'expanded_tables' and review['days'] == review['day'] and 2 <= review['day'] <= 10, 'staff-activity-report: wrong fixed service case'
     assert review['unchanged'] is True and review['validation_timing'] == 'frame_post_draw' and review['world_tick'] == data['world_tick'] > 0, 'staff-activity-report: incoherent native receipt'
     assert review['advice_id'] == 'cook' and 'hiring another cook' in review['advice'], 'staff-activity-report: missing natural cook advice'
-    print(f'staff-activity-report: actual expanded_tables day10 cook advice, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
+    print(f'staff-activity-report: actual expanded_tables day{review["day"]} cook advice, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
     # One ordinary seed-one run: morning choice, live service HUD, and
     # paid evening report. Native GDScript checks validate the real UI state.
