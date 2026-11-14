@@ -14,7 +14,8 @@ func test_record_reads_paid_food_profit_cash_and_reputation_without_mutating_rep
 	_history.record(report)
 	assert_eq(_history.summaries(), [{"day": 1, "served": 8, "lost": 2,
 		"dish_profit": 45, "dish_profit_recorded": true, "cash_change": 80,
-		"reputation": 4.25}])
+		"reputation": 4.25, "weekly_profit": 30, "good_reviews": 0,
+		"no_table": 0, "dishes_sold": {}}])
 	assert_eq(report.to_dict(), before, "history is a read-only consumer of the closing report")
 
 
@@ -96,7 +97,8 @@ func test_capture_has_version_and_only_lightweight_summary_fields() -> void:
 	var saved: Dictionary = _history.capture()
 	assert_eq(saved, {"version": 1, "days": [{"day": 1, "served": 8, "lost": 2,
 		"dish_profit": "45", "dish_profit_recorded": true, "cash_change": "80",
-		"reputation": 4.25}]})
+		"reputation": 4.25, "weekly_profit": "30", "good_reviews": 0,
+		"no_table": 0, "dishes_sold": {}}]})
 	var restored: BusinessHistory = BusinessHistory.new()
 	var decoded: Dictionary = JSON.parse_string(JSON.stringify(saved))
 	assert_true(restored.restore(decoded), "whole JSON floats restore to typed runtime counts")
@@ -113,6 +115,24 @@ func test_missing_legacy_history_and_explicit_empty_section_clear_successfully()
 	_history.record(_report(1))
 	assert_true(_history.restore({"version": 1, "days": []}))
 	assert_eq(_history.capture(), {"version": 1, "days": []})
+
+
+func test_weekly_measurements_round_trip_and_malformed_rows_are_atomic() -> void:
+	var report: DayReport = _report(1)
+	report.leave_reasons = {&"no_table": 1, &"waited_too_long": 1}
+	report.dishes_sold = {&"tea": 3}
+	report.review_cards = [{"stars": 3}, {"stars": 4}, {"stars": 5}]
+	_history.record(report)
+	var snapshot: Dictionary = _history.capture()
+	var restored: BusinessHistory = BusinessHistory.new()
+	assert_true(restored.restore(JSON.parse_string(JSON.stringify(snapshot))))
+	assert_eq(restored.capture(), snapshot)
+	assert_eq(restored.recent()[0]["dishes_sold"], {"tea": 3})
+	assert_eq(restored.recent()[0]["good_reviews"], 2)
+	assert_eq(restored.recent()[0]["no_table"], 1)
+	snapshot["days"][0]["no_table"] = 3
+	assert_false(restored.restore(snapshot))
+	assert_eq(restored.recent(), _history.recent())
 
 
 func test_malformed_present_sections_fail_without_clearing_existing_history() -> void:

@@ -95,4 +95,7 @@ reward_cash = 150
 
 [resource]
 script = ExtResource("1_pool")
+recent_stretch = 0.15
+guests_per_seat_per_day = 4
+max_recent_no_table_losses = 1
 challenges = Array[ExtResource("2_challenge")]([SubResource("challenge_serve_1"), SubResource("challenge_serve_2"), SubResource("challenge_profit_1"), SubResource("challenge_profit_2"), SubResource("challenge_clean_1"), SubResource("challenge_clean_2"), SubResource("challenge_reviews_1"), SubResource("challenge_reviews_2"), SubResource("challenge_dish_1"), SubResource("challenge_dish_2")])

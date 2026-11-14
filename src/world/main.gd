@@ -5825,7 +5825,7 @@ func _milestone_observation(operating_profit: int) -> MilestoneDay:
 
 
 func _begin_weekly_challenge_if_needed() -> void:
-	if weekly_challenge == null or Clock.sim == null or menu_settings == null:
+	if weekly_challenge == null or Clock.sim == null or menu_settings == null or sim == null:
 		return
 	var day: int = Clock.sim.day
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
@@ -5833,12 +5833,12 @@ func _begin_weekly_challenge_if_needed() -> void:
 		if weekly_challenge.start_day == day and not weekly_challenge.challenge_id.is_empty():
 			return
 		weekly_challenge.begin_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"))
+			GameState.rng(&"weekly"), business_history, sim.seat_count())
 	elif weekly_challenge.status == WeeklyChallengeState.Status.EMPTY:
 		# Saves made before this section existed begin a fresh challenge for the
 		# remaining days of the current week, without inventing earlier progress.
 		weekly_challenge.begin_legacy_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"))
+			GameState.rng(&"weekly"), business_history, sim.seat_count())
 
 
 func _refresh_goals(force: bool = false) -> void:
@@ -7425,7 +7425,7 @@ func _on_service_closed(day: int) -> void:
 	# tier climb: everything is already unlocked.
 	var career: bool = not GameMode.is_creative()
 	if career:
-		_award_weekly_challenge(closing_observation)
+		_award_weekly_challenge(closing_observation, business_day)
 	# Owner XP, goals and the tier climb are business-day rewards only.
 	career = career and business_day
 	staff_roster.close_growth_day()
@@ -7519,9 +7519,11 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 		Economy.add_cash(staged.cash_reward, Ledger.MILESTONE_BONUS)
 
 
-func _award_weekly_challenge(observation: MilestoneDay) -> void:
+func _award_weekly_challenge(observation: MilestoneDay, business_day: bool) -> void:
+	var first_week_pool: WeeklyChallengePool = WEEKLY_CHALLENGES if business_day and observation.day == 1 else null
+	var seats: int = sim.seat_count() if first_week_pool != null else 0
 	var staged: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(
-		weekly_challenge, observation, Economy.cash)
+		weekly_challenge, observation, Economy.cash, first_week_pool, seats)
 	if staged == null:
 		return
 	weekly_challenge = staged.state
