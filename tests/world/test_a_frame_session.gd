@@ -230,6 +230,8 @@ func _start(with_saves: bool = false) -> void:
 	_main.set("new_game_seed_override", 240)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_editor().set_owner_level(6)
 	Economy.add_cash(2000, Ledger.OTHER)
 	_main.set_process(false)

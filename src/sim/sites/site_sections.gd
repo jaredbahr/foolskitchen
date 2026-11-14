@@ -16,6 +16,8 @@ const GLOBAL: PackedStringArray = [
 	"game_mode",
 	# Service event cooldowns (#495) follow the owner, wherever he works.
 	"service_events",
+	# The opening-week goal chain (#494) is the owner's first week, not a site's.
+	"opening_week",
 ]
 
 const PER_SITE: PackedStringArray = [

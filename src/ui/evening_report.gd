@@ -14,6 +14,7 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.EARLY_LOAN_REPAYMENT: Ledger.EARLY_REPAYMENT_NOTE,
 	Ledger.MILESTONE_BONUS: "Milestone bonus",
 	Ledger.WEEKLY_CHALLENGE_BONUS: "Weekly challenge",
+	Ledger.OPENING_WEEK_BONUS: "Opening week goals",
 	Ledger.BOOKING_DEPOSIT: "Booking deposit",
 	Ledger.BOOKING_REFUND: "Booking refund",
 	Ledger.AWAY_SITE_INCOME: "Income from your other restaurants",
@@ -472,6 +473,9 @@ func _fill_owner_progress(report: DayReport) -> void:
 		var milestone_xp: int = DayReport.milestone_xp(report.owner_xp_breakdown.get("milestone_xp", -1))
 		if milestone_xp > 0:
 			_add_row(_owner_xp_rows, "Career goals", "+%d XP" % milestone_xp)
+		var opening_xp: int = DayReport.milestone_xp(report.owner_xp_breakdown.get("opening_week_xp", -1))
+		if opening_xp > 0:
+			_add_row(_owner_xp_rows, "Opening week goals", "+%d XP" % opening_xp)
 		_add_row(_owner_xp_rows, "Total", "+%d XP" % int(report.owner_xp_breakdown.get("total_xp", 0)))
 	_owner_unlocks.visible = not report.owner_unlocks.is_empty() or not report.owner_tips.is_empty()
 	var lines: PackedStringArray = []

@@ -106,6 +106,11 @@ var _collection_toast_queue: Array[Dictionary] = []
 var _collection_toast_panel: PanelContainer
 var _collection_toast_label: Label
 var _collection_toast_timer: Timer
+## The small opening-week tracker (#494), built on first use.
+var _opening_panel: PanelContainer
+var _opening_rows: VBoxContainer
+## Narrow enough to clear the Goals panel's right edge at 1600 px.
+const OPENING_WIDTH: float = 260.0
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -133,6 +138,7 @@ func set_booking_status(text: String) -> void:
 	_booking_status.text = text
 	_booking_status.get_parent().visible = not text.is_empty()
 	_layout_booking_status()
+	_layout_opening_week()
 
 
 func queue_collection_toast(collection_id: StringName, text: String) -> void:
@@ -140,6 +146,84 @@ func queue_collection_toast(collection_id: StringName, text: String) -> void:
 		return
 	_collection_toast_queue.append({"id": collection_id, "text": text})
 	_show_collection_toast()
+
+
+## A plain notice in the same toast slot (the opening week, #494). It never
+## reports a collection as shown.
+func queue_toast(text: String) -> void:
+	if text.strip_edges().is_empty():
+		return
+	_collection_toast_queue.append({"id": &"", "text": text})
+	_show_collection_toast()
+
+
+## The opening-week tracker: one short line per shown goal; none hides it.
+func set_opening_week(lines: Array[String]) -> void:
+	if _opening_panel == null and lines.is_empty():
+		return
+	if _opening_panel == null:
+		_opening_panel = PanelContainer.new()
+		_opening_panel.name = "OpeningWeek"
+		_opening_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		_opening_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		_opening_panel.offset_left = -OPENING_WIDTH - 12.0
+		_opening_panel.offset_right = -12.0
+		_opening_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_opening_panel.theme = (get_node("Top") as Control).theme
+		var style: StyleBox = _opening_panel.theme.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
+		style.set_content_margin(SIDE_LEFT, 12.0)
+		style.set_content_margin(SIDE_RIGHT, 12.0)
+		style.set_content_margin(SIDE_TOP, 6.0)
+		style.set_content_margin(SIDE_BOTTOM, 8.0)
+		_opening_panel.add_theme_stylebox_override("panel", style)
+		add_child(_opening_panel)
+		_opening_rows = VBoxContainer.new()
+		_opening_rows.name = "Rows"
+		_opening_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_opening_rows.add_theme_constant_override(&"separation", 1)
+		_opening_panel.add_child(_opening_rows)
+	for child: Node in _opening_rows.get_children():
+		_opening_rows.remove_child(child)
+		child.free()
+	if not lines.is_empty():
+		var heading: Label = Label.new()
+		heading.name = "Heading"
+		heading.text = OpeningWeekText.TITLE
+		heading.add_theme_font_size_override(&"font_size", 15)
+		heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_opening_rows.add_child(heading)
+		for index: int in lines.size():
+			var row: Label = Label.new()
+			row.name = "Goal%d" % index
+			row.text = lines[index]
+			row.add_theme_font_size_override(&"font_size", 14)
+			row.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_opening_rows.add_child(row)
+	_opening_panel.visible = not lines.is_empty()
+	_layout_opening_week()
+
+
+## Lines the tracker shows now (tests and captures).
+func opening_week_lines() -> Array[String]:
+	var lines: Array[String] = []
+	if _opening_panel == null or not _opening_panel.visible:
+		return lines
+	for child: Node in _opening_rows.get_children():
+		if child.name != &"Heading":
+			lines.append((child as Label).text)
+	return lines
+
+
+## Top right under the header, below a booking card when one shows.
+func _layout_opening_week() -> void:
+	if _opening_panel == null or not is_inside_tree():
+		return
+	var target_y: float = _notices_bottom() + 10.0
+	if _booking_status != null and (_booking_status.get_parent() as Control).visible:
+		target_y = (_booking_status.get_parent() as Control).offset_bottom + 8.0
+	_opening_panel.offset_top = target_y
+	_opening_panel.offset_bottom = target_y + _opening_panel.get_combined_minimum_size().y
 
 
 func clear_collection_toasts() -> void:
@@ -185,7 +269,8 @@ func _show_collection_toast() -> void:
 	_collection_toast_label.text = notice["text"]
 	_collection_toast_panel.visible = true
 	_collection_toast_timer.start()
-	collection_toast_shown.emit(StringName(notice["id"]))
+	if not StringName(notice["id"]).is_empty():
+		collection_toast_shown.emit(StringName(notice["id"]))
 
 
 func _on_collection_toast_timeout() -> void:
@@ -581,6 +666,7 @@ func _on_header_resized() -> void:
 	_layout_menu_notice()
 	_layout_build_hints()
 	_layout_booking_status()
+	_layout_opening_week()
 	_layout_loan_repayment()
 	var bottom: float = _notices_bottom()
 	if not is_equal_approx(bottom, _header_bottom):
