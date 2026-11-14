@@ -30,7 +30,6 @@ def knob(name,fill,edge,size=24):
     save(im,name,size,size)
 knob("slider_grabber.png",CREAM,INK)
 knob("slider_grabber_hover.png",(232,160,104),INK)
-knob("slider_grabber_pressed.png",ACCENT,INK)
 knob("slider_grabber_disabled.png",FADE,MID)
 def arrow(name,col,w=16,h=16):
     im=Image.new("RGBA",(w*S,h*S),(0,0,0,0)); d=ImageDraw.Draw(im)
