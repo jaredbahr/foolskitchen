@@ -22,7 +22,7 @@ One grid cell is 0.5 units. Uniform scale only: never stretch or squash a model 
 |---|---|---|
 | Furniture Kit | **×1.1** | a kitchen module is about one cell deep (0.5); a chair seat is about 0.27 high |
 | Mini Characters | **×1.1** (same as furniture) | a person is about 0.74 high; kit proportions are kept |
-| Food Kit | **×0.22** (tuning range 0.18–0.26, set once in one constant) | a dinner plate is about 0.2 wide on a 0.92 table |
+| Food Kit | **×0.33** (tuning range 0.28–0.38, set once in one constant; was 0.22 until #480 made food read too small) | a dinner plate is about 0.3 wide on a 0.92 table |
 | Walls (our own, painted) | height **1.4** | about Kenney's wall (1.29) × 1.1 |
 
 - **Origin:** Furniture Kit models have their origin at a back corner. Centre each one on its item footprint, on the floor (y = 0).

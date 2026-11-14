@@ -1824,9 +1824,8 @@ func _sync_agents() -> void:
 			created.set_meta(&"courier", agent is CourierAgent)
 			created.set_meta("shop_geometry", true)
 			created.set_meta("unsupported_role", not frame.look_supported)
-			# Keep FK-079's exact tray shape. Its size beside Mini Characters is
-			# an open visual gate pending one coordinated uniform presentation scale.
-			var tray: MeshInstance3D = _box(Vector3(0.68, 0.045, 0.38), Color("b89568"))
+			# The tray holds four food-scale plates (FoodPresentation.TRAY_SIZE).
+			var tray: MeshInstance3D = _box(FoodPresentation.TRAY_SIZE, Color("b89568"))
 			tray.name = "Tray"
 			tray.visible = false
 			created.add_child(tray)
@@ -1848,7 +1847,7 @@ func _sync_agents() -> void:
 		node.visible = not frame.hidden
 		var tray: MeshInstance3D = node.get_node("Tray") as MeshInstance3D
 		tray.visible = frame.show_tray and (ready_person or not frame.look_supported)
-		tray.position = frame.tray_anchor if ready_person else Vector3(0.0, 0.02, -0.48)
+		tray.position = frame.tray_anchor + FoodPresentation.TRAY_FORWARD if ready_person else Vector3(0.0, 0.02, -0.48)
 		_show_held_crates(node, frame, ready_person)
 		_show_notebook(node, frame, ready_person)
 		_apply_fade(node, frame.fade)
