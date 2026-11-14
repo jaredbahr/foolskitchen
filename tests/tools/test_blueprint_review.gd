@@ -71,6 +71,8 @@ func _start() -> void:
 	_main.set("use_saves", false)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_main.set_process(false)
 	Clock.set_speed(0)
 

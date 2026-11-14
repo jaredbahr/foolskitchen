@@ -42,6 +42,8 @@ func _start(with_saves: bool) -> Node:
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")  # the test runner never delivers _ready()
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(main)
 	return main
 
 
@@ -120,7 +122,7 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	assert_eq(shown_report.slowest_seller_snapshot, closing_snapshot,
 		"the ordinary service_closed presentation carries the same closing eligibility")
 	var slowest: Dictionary = shown_report.slowest_dish_details()
-	var slowest_label: Label = report.get_node("Panel/Scroll/Content/SlowestSeller") as Label
+	var slowest_label: Label = report.get_node("Panel/Column/Scroll/Content/SlowestSeller") as Label
 	assert_eq(slowest_label.visible, not slowest.is_empty(),
 		"the native report shows a row exactly when its real closed-day snapshot can select one")
 	if not slowest.is_empty():
@@ -187,8 +189,8 @@ func test_full_day_charges_costs_and_shows_report() -> void:
 	var totals_after_close: Dictionary = Economy.ledger.day_totals(1).duplicate(true)
 	var shown: DayReport = main.get("shown_report") as DayReport
 	var shown_snapshot: Dictionary = shown.to_dict()
-	var banner: Label = report.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
-	var unlocks: Label = report.get_node("Panel/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
+	var banner: Label = report.get_node("Panel/Column/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label
+	var unlocks: Label = report.get_node("Panel/Column/Scroll/Content/LevelUpCallout/OwnerUnlocks") as Label
 	var banner_visible: bool = banner.visible
 	var banner_text: String = banner.text
 	var unlocks_visible: bool = unlocks.visible

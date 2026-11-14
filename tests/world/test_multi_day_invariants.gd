@@ -210,7 +210,7 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	var known_categories: Array[StringName] = [Ledger.SALE, Ledger.TIP, Ledger.INGREDIENTS,
 		Ledger.WAGES, Ledger.RENT, Ledger.UPGRADES, Ledger.OTHER, Ledger.BREAKAGES,
 		Ledger.BANK_LOAN, Ledger.LOAN_INTEREST, Ledger.LOAN_REPAYMENT, Ledger.MILESTONE_BONUS,
-		Ledger.WEEKLY_CHALLENGE_BONUS, Ledger.CAT_FOOD]
+		Ledger.WEEKLY_CHALLENGE_BONUS, Ledger.CAT_FOOD, Ledger.OPENING_WEEK_BONUS]
 	for category: StringName in totals:
 		assert_true(known_categories.has(category), "day %d: every flow has a known ledger category" % day)
 	var weekly_bonus: int = int(totals.get(Ledger.WEEKLY_CHALLENGE_BONUS, 0))
@@ -271,7 +271,7 @@ func _assert_closed_books(main: Node, day: int) -> void:
 	for category: StringName in totals:
 		if category != Ledger.BANK_LOAN and category != Ledger.LOAN_INTEREST \
 				and category != Ledger.LOAN_REPAYMENT and category != Ledger.MILESTONE_BONUS \
-				and category != Ledger.WEEKLY_CHALLENGE_BONUS:
+				and category != Ledger.WEEKLY_CHALLENGE_BONUS and category != Ledger.OPENING_WEEK_BONUS:
 			operating_profit += int(totals[category])
 	assert_eq(shown.purchase_basis_operating_profit(), operating_profit,
 		"progression and financing retain the original purchase-basis business result")

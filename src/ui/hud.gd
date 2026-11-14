@@ -28,6 +28,11 @@ signal settings_pressed()
 ## A site that cannot open this morning (renovating or still hiring, #464)
 ## ends the day without a service instead.
 signal close_day_requested()
+## Next day at closing. Main finalizes the day's books first (#497); without a
+## listener (a standalone HUD) the clock is advanced directly.
+signal next_day_requested()
+## Shows the evening report again after its Close or Esc hid it (#497).
+signal report_requested()
 signal header_layout_changed()
 signal collection_toast_shown(collection_id: StringName)
 
@@ -86,6 +91,8 @@ var _build_warning: String = ""
 var _build_state: int = BuildMode.State.IDLE
 var _build_tool: int = BuildMode.Tool.HAND
 var _menu_button: Button
+var _report_button: Button
+var _report_hidden: bool = false
 var _staff_button: Button
 var _stock_button: Button
 var _sold_out_label: Label
@@ -105,6 +112,11 @@ var _collection_toast_queue: Array[Dictionary] = []
 var _collection_toast_panel: PanelContainer
 var _collection_toast_label: Label
 var _collection_toast_timer: Timer
+## The small opening-week tracker (#494), built on first use.
+var _opening_panel: PanelContainer
+var _opening_rows: VBoxContainer
+## Narrow enough to clear the Goals panel's right edge at 1600 px.
+const OPENING_WIDTH: float = 260.0
 
 
 func bind_preferences(model: SettingsPreferences) -> void:
@@ -132,6 +144,7 @@ func set_booking_status(text: String) -> void:
 	_booking_status.text = text
 	_booking_status.get_parent().visible = not text.is_empty()
 	_layout_booking_status()
+	_layout_opening_week()
 
 
 func queue_collection_toast(collection_id: StringName, text: String) -> void:
@@ -139,6 +152,84 @@ func queue_collection_toast(collection_id: StringName, text: String) -> void:
 		return
 	_collection_toast_queue.append({"id": collection_id, "text": text})
 	_show_collection_toast()
+
+
+## A plain notice in the same toast slot (the opening week, #494). It never
+## reports a collection as shown.
+func queue_toast(text: String) -> void:
+	if text.strip_edges().is_empty():
+		return
+	_collection_toast_queue.append({"id": &"", "text": text})
+	_show_collection_toast()
+
+
+## The opening-week tracker: one short line per shown goal; none hides it.
+func set_opening_week(lines: Array[String]) -> void:
+	if _opening_panel == null and lines.is_empty():
+		return
+	if _opening_panel == null:
+		_opening_panel = PanelContainer.new()
+		_opening_panel.name = "OpeningWeek"
+		_opening_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		_opening_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		_opening_panel.offset_left = -OPENING_WIDTH - 12.0
+		_opening_panel.offset_right = -12.0
+		_opening_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_opening_panel.theme = (get_node("Top") as Control).theme
+		var style: StyleBox = _opening_panel.theme.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
+		style.set_content_margin(SIDE_LEFT, 12.0)
+		style.set_content_margin(SIDE_RIGHT, 12.0)
+		style.set_content_margin(SIDE_TOP, 6.0)
+		style.set_content_margin(SIDE_BOTTOM, 8.0)
+		_opening_panel.add_theme_stylebox_override("panel", style)
+		add_child(_opening_panel)
+		_opening_rows = VBoxContainer.new()
+		_opening_rows.name = "Rows"
+		_opening_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_opening_rows.add_theme_constant_override(&"separation", 1)
+		_opening_panel.add_child(_opening_rows)
+	for child: Node in _opening_rows.get_children():
+		_opening_rows.remove_child(child)
+		child.free()
+	if not lines.is_empty():
+		var heading: Label = Label.new()
+		heading.name = "Heading"
+		heading.text = OpeningWeekText.TITLE
+		heading.add_theme_font_size_override(&"font_size", 15)
+		heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_opening_rows.add_child(heading)
+		for index: int in lines.size():
+			var row: Label = Label.new()
+			row.name = "Goal%d" % index
+			row.text = lines[index]
+			row.add_theme_font_size_override(&"font_size", 14)
+			row.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_opening_rows.add_child(row)
+	_opening_panel.visible = not lines.is_empty()
+	_layout_opening_week()
+
+
+## Lines the tracker shows now (tests and captures).
+func opening_week_lines() -> Array[String]:
+	var lines: Array[String] = []
+	if _opening_panel == null or not _opening_panel.visible:
+		return lines
+	for child: Node in _opening_rows.get_children():
+		if child.name != &"Heading":
+			lines.append((child as Label).text)
+	return lines
+
+
+## Top right under the header, below a booking card when one shows.
+func _layout_opening_week() -> void:
+	if _opening_panel == null or not is_inside_tree():
+		return
+	var target_y: float = _notices_bottom() + 10.0
+	if _booking_status != null and (_booking_status.get_parent() as Control).visible:
+		target_y = (_booking_status.get_parent() as Control).offset_bottom + 8.0
+	_opening_panel.offset_top = target_y
+	_opening_panel.offset_bottom = target_y + _opening_panel.get_combined_minimum_size().y
 
 
 func clear_collection_toasts() -> void:
@@ -184,7 +275,8 @@ func _show_collection_toast() -> void:
 	_collection_toast_label.text = notice["text"]
 	_collection_toast_panel.visible = true
 	_collection_toast_timer.start()
-	collection_toast_shown.emit(StringName(notice["id"]))
+	if not StringName(notice["id"]).is_empty():
+		collection_toast_shown.emit(StringName(notice["id"]))
 
 
 func _on_collection_toast_timeout() -> void:
@@ -252,6 +344,8 @@ func refresh() -> void:
 		_paint_button.pressed.connect(_on_paint_pressed)
 		_menu_button = get_node("Top/Row/Menu") as Button
 		_menu_button.pressed.connect(_on_menu_pressed)
+		_report_button = get_node("Top/Row/Report") as Button
+		_report_button.pressed.connect(_on_report_pressed)
 		_staff_button = get_node("Top/Row/Staff") as Button
 		_staff_button.pressed.connect(_on_staff_pressed)
 		_stock_button = get_node("Top/Row/Stock") as Button
@@ -302,6 +396,8 @@ func refresh() -> void:
 		_hint_viewport.size_changed.connect(_layout_build_hints)
 	_refresh_build_controls()
 	_menu_button.disabled = Clock.sim.phase != SimClock.Phase.MORNING
+	_report_button.visible = _report_hidden and Clock.sim.phase == SimClock.Phase.CLOSED
+	_report_button.disabled = _haggle_active
 	_menu_button.tooltip_text = "Choose today's menu and prices" if not _menu_button.disabled else "Menu changes are available in the morning."
 	_stock_button.disabled = false
 	_stock_button.tooltip_text = "Check your storage, order ingredients and set auto-reorder"
@@ -580,6 +676,7 @@ func _on_header_resized() -> void:
 	_layout_menu_notice()
 	_layout_build_hints()
 	_layout_booking_status()
+	_layout_opening_week()
 	_layout_loan_repayment()
 	var bottom: float = _notices_bottom()
 	if not is_equal_approx(bottom, _header_bottom):
@@ -733,7 +830,7 @@ func _on_settings_pressed() -> void:
 func _style_header() -> void:
 	var roles: Dictionary[String, StringName] = {"Speed0": &"pause", "Speed1": &"speed_1",
 		"Speed2": &"speed_2", "Speed4": &"speed_4", "Build": &"build", "Menu": &"menu",
-		"Staff": &"chef", "Paint": &"paint", "Context": &"open_shop", "Settings": &"settings", "Stock": &"stock"}
+		"Staff": &"chef", "Paint": &"paint", "Context": &"open_shop", "Report": &"report", "Settings": &"settings", "Stock": &"stock"}
 	for child: Node in (get_node("Top/Row") as Container).get_children():
 		var button: Button = child as Button
 		if button == null:
@@ -1038,8 +1135,23 @@ func _on_context_pressed() -> void:
 		if Clock.sim.start_service():
 			Clock.set_speed(_preferences.default_open_speed if _preferences != null else 1)
 	elif Clock.sim.phase == SimClock.Phase.CLOSED:
-		Clock.sim.next_day()
+		if next_day_requested.get_connections().is_empty():
+			Clock.sim.next_day()
+		else:
+			next_day_requested.emit()
 	refresh()
+
+
+## Main says whether a closed day's report exists but is hidden.
+func set_report_hidden(value: bool) -> void:
+	if _report_hidden == value:
+		return
+	_report_hidden = value
+	refresh()
+
+
+func _on_report_pressed() -> void:
+	report_requested.emit()
 
 
 func _on_cash_changed(new_cash: int, delta: int, _reason: StringName) -> void:

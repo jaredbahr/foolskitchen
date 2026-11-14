@@ -54,6 +54,25 @@ The HUD gear opens Settings during any day phase and pauses the clock. Closing
 restores the previous speed, including pause. Escape closes Settings, dismisses
 an active edit/panel/selection first, or opens Settings when none is active.
 
+**Panel scrolling (#497):** every panel (Menu, Staff, Stock, Goals, Property,
+the evening report, Settings, the Build catalogue) attaches `PanelScroll`
+(`src/ui/panel_scroll.gd`) with its card, its one main scroll area and any
+extra area (Menu's dish detail). A wheel notch is always `WHEEL_STEP` (110 px);
+a wheel anywhere over the card scrolls the area under it, else the main one;
+the helper takes the wheel from each control's `gui_input` before the control
+sees it, so sliders and choices never change while scrolling. PgUp/PgDn/
+Home/End scroll the open panel unless a text field has focus. Menu, Staff and
+Stock keep their card-wide ScrollContainer only as a fallback for very short
+windows (150% UI on 1280x720 with HUD notices); it takes the wheel only while
+it really overflows. Every panel but the Build catalogue (closed by leaving
+Build) has Close at the top right of its header;
+the report's Close (and Esc) only hide it; the top bar then shows a Report
+button (`HUD.report_requested` -> `Main.show_closed_report`), and the top bar's
+Next day goes through `HUD.next_day_requested` -> `Main._on_next_day_pressed`
+so the day's history row records the final books. Dropdown popups keep their
+own wheel, and page keys are ignored while a dialog or a later panel covers
+the card's centre (`PanelScroll.is_covered`).
+
 **Build version and What's new (#433):** `tools/export.sh` stamps every export
 before it runs Godot: `build_info/version.txt` (the tag from
 `GITHUB_REF_NAME` on a `vX.Y.Z` build, or `FK_VERSION`; any other build such as
@@ -3175,6 +3194,27 @@ at the next existing morning autosave only. Title Settings hides that run-specif
 action. `use_saves = false` and title backdrops suppress guide presentation unless
 a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
 for the single first-morning capture in the existing visual-review job.
+
+### Opening week (#494)
+
+`OpeningWeek` (`src/sim/progression/opening_week.gd`) is the pure chain state;
+`OpeningWeekSet` / `OpeningGoal` are the authored data in
+`data/balance/opening_week.tres`. Main reports observations through one
+`_observe_opening(condition, value)` and pays each newly met goal at once with
+`Ledger.OPENING_WEEK_BONUS` (non-operating; subtracted from the close's profit
+basis like booking advances). Hooks: `menu_set_price` (a real change),
+`_on_customer_paid` and owner assignment (drinks on the menu, served today,
+owner on the floor, only while open or in last orders), and opening: Grow
+together (TABLE-category items and hired servers both above the counts
+`_begin_morning` noted, same day and site), decor (DECOR items plus hung wall
+decor above the count at the last opening, same site) and drinks. Checking
+these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks today's guests served and five-star reviews,
+then adds the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
+in the report. The `opening_week` save section (version 1: status, completed
+ids, pending XP) joins only the morning autosave; a missing section means a
+save from before the chain, which joins only on day 7 or earlier.
+`_begin_morning` ends a finished or overdue chain before the autosave. Tests of
+other features that check exact books call `TestCase.retire_opening_week`.
 
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe

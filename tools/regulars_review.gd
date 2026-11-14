@@ -118,7 +118,7 @@ func _process(_delta: float) -> void:
 		shown_report = build_report(Clock.sim.day)
 		_report.call(&"show_report", shown_report)
 	elif _fixture_frame == 70:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		var summary: Label = _report.get("regulars_summary") as Label
 		scroll.ensure_control_visible(summary)
 	elif _fixture_frame == 80:
@@ -168,7 +168,7 @@ func _assert_recognition() -> void:
 
 func _assert_report() -> void:
 	var summary: Label = _report.get("regulars_summary") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	if shown_report == null or not _report.is_visible_in_tree() or summary == null \
 			or not summary.is_visible_in_tree() or shown_report.regulars_lines.size() != 3 \
 			or not summary.text.contains("Came: " + _fixture_profile.display_name) \
