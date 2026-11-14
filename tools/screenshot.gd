@@ -4342,8 +4342,13 @@ func _report_capture_valid(world: SimWorld) -> bool:
 			return false
 		var rect: Rect2 = native.get_global_rect()
 		if not native.is_visible_in_tree() or rect.size.x <= 0.0 or rect.size.y <= 0.0 \
-				or rect.position.x < viewport.position.x - 1.0 or rect.end.x > viewport.end.x + 1.0 \
-				or rect.position.y < viewport.position.y - 1.0 or rect.end.y > viewport.end.y + 1.0:
+				or rect.position.x < viewport.position.x - 1.0 or rect.end.x > viewport.end.x + 1.0:
+			return false
+		# The profit review closes day 3, where level-up, tier and milestone
+		# callouts sit above the reviews, and checks its own scroll bounds;
+		# every other report capture must show the cards unscrolled.
+		if _scene_path != "res://tools/profit_review.tscn" and (rect.position.y < viewport.position.y - 1.0 \
+				or rect.end.y > viewport.end.y + 1.0):
 			return false
 	return true
 
