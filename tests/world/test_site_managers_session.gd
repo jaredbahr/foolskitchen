@@ -171,7 +171,7 @@ func test_a_managed_home_site_earns_at_the_second_sites_close() -> void:
 	assert_eq(int(history[0]["day"]), day)
 	assert_eq(int(history[0]["cash_change"]), report.profit(), "the second site's history leaves it out")
 	assert_eq(report.profit(), Economy.ledger.day_profit(day, &"second"))
-	var award: Dictionary = _main.get("_owner_award_today")
+	var award: Dictionary = (_main.get("day_notes") as DayNotes).owner_award
 	var tuning: ProgressionTuning = _owner().tuning
 	if not award.is_empty():
 		assert_eq(int(award["profit_xp"]), maxi(0, _operating(day, &"second")) / tuning.profit_step

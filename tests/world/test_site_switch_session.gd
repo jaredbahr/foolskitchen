@@ -383,7 +383,7 @@ func test_a_switch_keeps_each_sites_morning_books() -> void:
 		"the home site's morning stays in its books after the close")
 	# The close's operating profit (owner XP) is the arriving site's alone.
 	var operating: int = _operating(day, &"second")
-	var award: Dictionary = _main.get("_owner_award_today")
+	var award: Dictionary = (_main.get("day_notes") as DayNotes).owner_award
 	var tuning: ProgressionTuning = (_main.get("owner_progress") as OwnerProgress).tuning
 	assert_true(operating >= tuning.profit_step, "the arriving site made a profit to tell apart")
 	assert_eq(int(award["profit_xp"]), maxi(0, operating) / tuning.profit_step * tuning.profit_step_xp)
