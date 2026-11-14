@@ -47,19 +47,19 @@ func _run_days(model: ServiceEvents, seed_value: int, days: int, context: Dictio
 	return shown
 
 
-func test_pool_loads_eleven_valid_cards_from_data() -> void:
+func test_pool_loads_every_valid_card_from_data() -> void:
 	var definitions: Array[ServiceEventDef] = _definitions()
-	# "Can I leave early?" waits for a real send-home (#506).
-	assert_eq(definitions.size(), 11)
+	# #506 brought back "Can I leave early?" and added four sharper cards.
+	assert_eq(definitions.size(), 16)
 	var ids: Array[StringName] = []
 	for definition: ServiceEventDef in definitions:
 		ids.append(definition.id)
 		assert_true(definition.choices.size() >= 2 and definition.choices.size() <= 3, "%s has 2-3 choices" % definition.id)
 	for id: StringName in [&"off_menu", &"supplier_van", &"busker", &"spilled_drink", &"food_blogger",
 			&"power_flicker", &"regular_birthday", &"neighbour_complaint", &"kids_drawing",
-			&"rain_umbrellas", &"critic_rumour"]:
+			&"rain_umbrellas", &"critic_rumour", &"leave_early", &"speed_bet", &"flyers",
+			&"rude_guest", &"blogger_review"]:
 		assert_true(ids.has(id), "%s is in the pool" % id)
-	assert_false(ids.has(&"leave_early"), "the leave-early card is out until send-home exists")
 
 
 func test_every_card_keeps_a_free_choice() -> void:
@@ -307,3 +307,165 @@ func test_every_choice_has_a_plain_preview() -> void:
 	var busker: ServiceEventChoice = _model().definition(&"busker").choices[0]
 	assert_eq(ServiceEventText.preview(busker), "-$15, guests more patient today, more walk-ins today")
 	assert_eq(ServiceEventText.preview(_model().definition(&"busker").choices[1]), ServiceEventText.NOTHING)
+
+
+## #506: a card only a follow-up brings is never drawn by itself.
+func test_follow_up_only_cards_are_never_drawn_alone() -> void:
+	for seed_value: int in range(1, 6):
+		var model: ServiceEvents = _model()
+		for day: int in range(1, 41):
+			model.begin_morning(day)
+			for entry: Dictionary in model.plan_day(day, seed_value, _rich(), OPEN, CLOSE):
+				assert_ne(entry["id"], "blogger_review", "seed %d day %d" % [seed_value, day])
+			model.end_service()
+
+
+func _blogger_on(model: ServiceEvents, on_day: int) -> Dictionary:
+	model.begin_morning(on_day)
+	model.day = on_day
+	model.schedule = [{"id": "food_blogger", "minute": 700, "shown": false, "names": {},
+		"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+	model.due(700)
+	return model.pick(0, 1, "home")
+
+
+## #506 chain events: "Seat them now" brings the review three days later, at
+## the same shop, and the waiting card survives a save.
+func test_a_follow_up_comes_back_on_its_day_after_a_reload() -> void:
+	var model: ServiceEvents = _model()
+	_blogger_on(model, 6)
+	assert_eq(model.follow_ups.size(), 1)
+	assert_eq(int(model.follow_ups[0]["day"]), 9)
+	model.end_service()
+	var loaded: ServiceEvents = _model()
+	assert_true(loaded.from_dict(JSON.parse_string(JSON.stringify(model.to_dict()))))
+	assert_eq(loaded.follow_ups, model.follow_ups, "the waiting card is saved")
+	for day: int in [7, 8]:
+		loaded.begin_morning(day)
+		for entry: Dictionary in loaded.plan_day(day, 1, _rich(), OPEN, CLOSE, [], "home"):
+			assert_ne(entry["id"], "blogger_review", "not before its day")
+		loaded.end_service()
+	loaded.begin_morning(9)
+	var elsewhere: ServiceEvents = _model()
+	assert_true(elsewhere.from_dict(loaded.to_dict()))
+	for entry: Dictionary in elsewhere.plan_day(9, 1, _rich(), OPEN, CLOSE, [], "site_2"):
+		assert_ne(entry["id"], "blogger_review", "it comes back at the shop it began at")
+	var plan: Array[Dictionary] = loaded.plan_day(9, 1, _rich(), OPEN, CLOSE, [], "home")
+	assert_eq(plan[0]["id"], "blogger_review", "the review takes the day's first slot")
+	assert_true(loaded.follow_ups.is_empty(), "and is used up")
+	assert_eq(String(loaded.card_text(plan[0])["title"]), "The review is out")
+
+
+func test_an_overdue_follow_up_waits_then_expires() -> void:
+	var model: ServiceEvents = _model()
+	_blogger_on(model, 2)
+	model.end_service()
+	# Days 5-10 never plan here (another shop, closed days): it still waits.
+	model.begin_morning(11)
+	assert_eq(model.follow_ups.size(), 1)
+	assert_eq(model.plan_day(11, 1, _rich(), OPEN, CLOSE, [], "home")[0]["id"], "blogger_review")
+	_blogger_on(model, 20)
+	model.end_service()
+	model.begin_morning(23 + ServiceEvents.FOLLOW_UP_GRACE_DAYS + 1)
+	assert_true(model.follow_ups.is_empty(), "long overdue, it is dropped unused")
+
+
+## #506 gamble: double or nothing, decided by the seeded roll, so replaying
+## the day after a reload lands the same way.
+func test_double_or_nothing_is_seeded() -> void:
+	var event: ServiceEventDef = _model().definition(&"speed_bet")
+	var bet: ServiceEventChoice = event.choices[0]
+	assert_eq(bet.risk_percent, 50)
+	assert_eq(bet.cash, 25)
+	assert_eq(bet.cash + bet.risk_cash, -25, "a loss costs what a win pays")
+	assert_eq(bet.cash_needed(), 25, "the stake must be in the till")
+	var wins: int = 0
+	for day: int in range(1, 401):
+		if not ServiceEvents.risk_hit(bet, 7, day, event.id, 0):
+			wins += 1
+	assert_true(wins > 160 and wins < 240, "about half win, got %d of 400" % wins)
+	for day: int in range(1, 30):
+		var first: ServiceEvents = _model()
+		first.begin_morning(day)
+		var morning: Dictionary = JSON.parse_string(JSON.stringify(first.to_dict()))
+		var outcomes: Array = []
+		for model: ServiceEvents in [first, _model()]:
+			if model != first:
+				assert_true(model.from_dict(morning))
+			model.day = day
+			model.schedule = [{"id": "speed_bet", "minute": 700, "shown": false, "names": {},
+				"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+			model.due(700)
+			var outcome: Dictionary = model.pick(0, 7)
+			outcomes.append([outcome["risk"], outcome["result"]])
+		assert_eq(outcomes[0], outcomes[1], "day %d: a reload never rerolls" % day)
+
+
+## #506 pay now, gain later: a week of flyers nudges five days from tomorrow,
+## at that shop only, and every nudge together stays within 20%.
+func test_a_multi_day_nudge_lasts_its_days() -> void:
+	var model: ServiceEvents = _model()
+	model.begin_morning(4)
+	model.day = 4
+	model.schedule = [{"id": "flyers", "minute": 700, "shown": false, "names": {},
+		"staff_id": "", "staff_role": "", "ingredient_id": ""}]
+	model.due(700)
+	model.pick(0, 1, "home")
+	assert_almost_eq(model.arrival_factor(4, "home"), 1.0, 0.0001, "not today")
+	for day: int in range(5, 10):
+		assert_almost_eq(model.arrival_factor(day, "home"), 1.08, 0.0001, "day %d" % day)
+	assert_almost_eq(model.arrival_factor(10, "home"), 1.0, 0.0001, "five days only")
+	assert_almost_eq(model.arrival_factor(6, "site_2"), 1.0, 0.0001, "only at this shop")
+	var loaded: ServiceEvents = _model()
+	assert_true(loaded.from_dict(JSON.parse_string(JSON.stringify(model.to_dict()))))
+	assert_almost_eq(loaded.arrival_factor(7, "home"), 1.08, 0.0001, "the nudge is saved")
+	for extra: int in 3:
+		loaded.boosts.append({"from": 5, "to": 9, "percent": 8, "site": "home", "title": "Test"})
+	assert_almost_eq(loaded.arrival_factor(7, "home"), 1.0 + ServiceEvents.MAX_ARRIVAL_SWING, 0.0001,
+		"stacked nudges are capped")
+	loaded.begin_morning(10)
+	assert_true(loaded.boosts.is_empty(), "spent nudges are forgotten")
+	var preview: String = ServiceEventText.preview(model.definition(&"flyers").choices[0])
+	assert_eq(preview, "-$40, more guests for 5 days")
+
+
+## #506: "Can I leave early?" only asks about someone a teammate covers.
+func test_leave_early_needs_someone_to_cover() -> void:
+	var model: ServiceEvents = _model()
+	var leave: ServiceEventDef = model.definition(&"leave_early")
+	var pair: Dictionary = _rich()
+	assert_false(model.can_show(leave, 1, pair), "the only cook and the only server both stay")
+	var cleaner: Dictionary = _rich()
+	(cleaner["staff"] as Array).append({"id": "cy", "name": "Cy", "role": "cleaner"})
+	assert_true(model.can_show(leave, 1, cleaner), "the servers mop while a cleaner is off")
+	var two_cooks: Dictionary = _rich()
+	(two_cooks["staff"] as Array).append({"id": "di", "name": "Di", "role": "cook"})
+	assert_eq(ServiceEvents.covered_staff(two_cooks).size(), 2, "both cooks cover each other")
+	for seed_value: int in range(1, 40):
+		var entry: Dictionary = model._entry(leave, 700, seed_value, 3, cleaner)
+		assert_eq(entry["staff_id"], "cy", "never the last cook or server")
+	var off: ServiceEventChoice = leave.choices[0]
+	assert_true(off.send_home and off.staff_mood == 1 and off.is_free())
+	assert_eq(ServiceEventText.preview(off, {"staff": "Cy"}), "Cy cheers up, Cy goes home, still paid")
+	assert_eq(leave.choices[1].staff_mood, -1)
+
+
+func test_new_effects_are_validated() -> void:
+	var event: ServiceEventDef = _model().definition(&"leave_early").duplicate(true)
+	event.requires = [&"staff"]
+	var problems: PackedStringArray = event.errors()
+	assert_true(Array(problems).any(func(text: String) -> bool: return text.contains("spare_staff")),
+		"sending someone home needs a teammate to cover: %s" % str(problems))
+	var blogger: ServiceEventDef = _model().definition(&"food_blogger").duplicate(true)
+	blogger.choices[0].follow_up = &"food_blogger"
+	assert_true(Array(blogger.errors()).any(func(text: String) -> bool: return text.contains("follow itself")))
+	var choice: ServiceEventChoice = ServiceEventChoice.new()
+	choice.label = "Test"
+	choice.result = "Tested"
+	choice.tomorrow_days = 3
+	assert_true(choice.errors("x").size() > 0, "a multi-day nudge needs a percent")
+	var staff_vs_guest: ServiceEventDef = _model().definition(&"rude_guest")
+	assert_true(staff_vs_guest.choices[0].cash < 0 and staff_vs_guest.choices[0].staff_mood == -1,
+		"siding with the guest costs a refund and a sulk")
+	assert_true(staff_vs_guest.choices[1].review_stars == 1 and staff_vs_guest.choices[1].staff_mood == 1,
+		"backing the worker costs a one-star review")
