@@ -3221,26 +3221,49 @@ action. `use_saves = false` and title backdrops suppress guide presentation unle
 a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
 for the single first-morning capture in the existing visual-review job.
 
-### Opening week (#494)
+### Opening week (#494) and Week 2 (#514): goal chains
 
-`OpeningWeek` (`src/sim/progression/opening_week.gd`) is the pure chain state;
-`OpeningWeekSet` / `OpeningGoal` are the authored data in
-`data/balance/opening_week.tres`. Main reports observations through one
-`_observe_opening(condition, value)` and pays each newly met goal at once with
-`Ledger.OPENING_WEEK_BONUS` (non-operating; subtracted from the close's profit
-basis like booking advances). Hooks: `menu_set_price` (a real change),
-`_on_customer_paid` and owner assignment (drinks on the menu, served today,
-owner on the floor, only while open or in last orders), and opening: Grow
+`OpeningWeek` (`src/sim/progression/opening_week.gd`) is the pure state of the
+goal chains: the running chain's id, its start day, its completed goal ids,
+the status (ACTIVE, ENDED: over and the next starts at the next morning,
+FINISHED: none left) and pending XP. `GoalChainSequence`
+(`data/balance/goal_chains.tres`) lists the chains in order; each
+`OpeningWeekSet` (`opening_week.tres`, `week_two.tres`) has an id (saved; never
+rename), a title (card, tracker, paid lines), `days` (it runs that many days
+from its start) and ordered `OpeningGoal`s. Goals with their own parameter
+(`item_ids`, `station_type`, `role`, `leave_reasons`) are observed one goal at a
+time (`observe(..., goal_id)`). `_begin_morning` ends a finished or overdue
+chain, then `advance` starts the next whose window holds today: it starts today
+but never later than its natural window (`natural_start`: day 8 for Week 2), so
+an old save joins late with the days that remain, or skips it.
+
+Main reports observations through one `_observe_opening(condition, value,
+goal_id)` and pays each newly met goal at once with `Ledger.OPENING_WEEK_BONUS`
+(non-operating; subtracted from the close's profit basis like booking
+advances; "Week goals" in the report). Hooks: `menu_set_price` (a real change),
+`_on_customer_paid` and owner assignment (drinks and dishes from a station on
+the menu, served today, owner on the floor, only while open or in last orders;
+a paying guest of a seated party of 2+ for "Seat a group"), and opening: Grow
 together (TABLE-category items and hired servers both above the counts
-`_begin_morning` noted, same day and site), decor (DECOR items plus hung wall
-decor above the count at the last opening, same site) and drinks. Checking
-these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks today's guests served and five-star reviews,
-then adds the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
-in the report. The `opening_week` save section (version 1: status, completed
-ids, pending XP) joins only the morning autosave; a missing section means a
-save from before the chain, which joins only on day 7 or earlier.
-`_begin_morning` ends a finished or overdue chain before the autosave. Tests of
-other features that check exact books call `TestCase.retire_opening_week`.
+`_begin_morning` noted, same day and site), decor, bought floor cells
+(`ShopEditor.bought_floor()`) and the named tables above `_last_open_counts`
+(the counts at the last opening, or the session's first morning, same site),
+the lease (`lease_expanded`) and hired roles as they stand. Checking these at
+opening means a buy undone or sold before opening pays nothing. The career
+business-day close checks today's guests served, five-star reviews and the calm
+day (the rating rounded to one decimal, as the HUD shows it, zero if more than
+`max_turned_away` guests, here 0, left for a reason in `leave_reasons`, here
+`waited_too_long`), then adds the waiting
+XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp` in the report.
+
+The global `opening_week` save section is version 2: `chain`, `start_day`,
+`status` (active, ended, finished), completed ids and pending XP; it joins only
+the morning autosave. Version 1 (#494, the Opening week alone) decodes as the
+first chain from day 1, and the load's morning hands an ended one over to
+Week 2 inside its window. A missing section means a save from before the
+chains (`legacy_for_day`). An unknown chain id retires quietly. Creative games
+and tools use `OpeningWeek.ended()` (FINISHED). Tests of other features that
+check exact books call `TestCase.retire_opening_week`, which retires every chain.
 
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
