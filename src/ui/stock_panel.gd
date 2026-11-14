@@ -330,7 +330,7 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	top.add_child(identity)
 	var title: Label = _add_label(identity, "Name")
 	var count: Label = _add_label(top, "Count")
-	count.custom_minimum_size.x = 120.0
+	count.custom_minimum_size.x = 100.0
 	count.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var season: Label = _add_label(identity, "Season")
@@ -354,7 +354,7 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 		parts["cart%+d" % step] = more
 	var detail: HBoxContainer = _add_line(row, "Reorder")
 	# Leave room for both scrollbars without widening the existing card.
-	detail.add_theme_constant_override("separation", 20)
+	detail.add_theme_constant_override("separation", 14)
 	var throw: Button = _add_button(detail, "Throw", "Throw out")
 	throw.pressed.connect(_on_throw_pressed.bind(id))
 	throw.custom_minimum_size.x = 150.0
