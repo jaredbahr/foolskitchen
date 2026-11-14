@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1_critic")
-unlock_level = 2
+unlock_tier = 5
 cooldown_days = 5
 daily_chance = 0.2
 review_weight = 3

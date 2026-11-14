@@ -288,7 +288,7 @@ func patio_keeping_up() -> bool:
 
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
-func start_day() -> void:
+func start_day(career_tier: int = 1) -> void:
 	# Daily weather can close patio seats without a layout edit. Indoor-only
 	# shops retain their existing cache and exact morning behavior.
 	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
@@ -311,7 +311,7 @@ func start_day() -> void:
 	event_arrival_factor = 1.0
 	event_patience_multiplier = 1.0
 	critic_result = {}
-	critic.plan_day(world.clock.day, customer_level, critic_rng_provider)
+	critic.plan_day(world.clock.day, career_tier, critic_rng_provider)
 	sold_out_today.clear()
 	service_stockouts_today.clear()
 	_service_menu_count = -1

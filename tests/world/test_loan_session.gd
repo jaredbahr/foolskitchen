@@ -330,7 +330,10 @@ func test_unseatable_scheduled_party_expires_patience_then_refunds_through_real_
 	main.set("group_booking", booking)
 	sim.configure_booking(booking)
 	main.call("_plan_morning_booking")
-	assert_false(booking.offer.is_empty(), "the eligible morning gets a real offer")
+	assert_true(booking.offer.is_empty(), "the starter layout cannot offer a six-person booking")
+	# Model an existing accepted booking from before the seating gate.
+	assert_false(booking.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260,
+		GameState.rng.bind(&"bookings"), 6).is_empty())
 	booking.offer["slot_minute"] = 690
 	main.call("_refresh_booking_offer")
 	var accept: Button = main.get_node("Overlay/MenuPanel/Panel/Content/BookingOffer/Buttons/Accept") as Button
@@ -826,7 +829,7 @@ func _accepted_booking() -> GroupBooking:
 	var model: GroupBooking = GroupBooking.new(tuning)
 	var provider: Callable = func() -> RandomNumberGenerator:
 		return random
-	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
+	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider, tuning.max_party_size).is_empty())
 	assert_false(model.accept_offer(1).is_empty())
 	return model
 
@@ -841,7 +844,7 @@ func _offered_booking() -> GroupBooking:
 	var model: GroupBooking = GroupBooking.new(tuning)
 	var provider: Callable = func() -> RandomNumberGenerator:
 		return random
-	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider).is_empty())
+	assert_false(model.plan_offer(1, 2, [&"burger"] as Array[StringName], 660, 1260, provider, tuning.max_party_size).is_empty())
 	return model
 
 

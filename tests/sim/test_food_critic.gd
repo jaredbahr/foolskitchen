@@ -24,10 +24,10 @@ func _provider(seed_value: int) -> Callable:
 		return random
 
 
-func _days(critic: FoodCritic, level: int, provider: Callable, count: int) -> Array[Dictionary]:
+func _days(critic: FoodCritic, tier: int, provider: Callable, count: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for day: int in range(1, count + 1):
-		critic.plan_day(day, level, provider)
+		critic.plan_day(day, tier, provider)
 		if critic.pending:
 			critic.mark_arrived(day)
 			out.append({"day": day, "tells": critic.tells.duplicate(), "at": critic.arrival_permille})
@@ -36,7 +36,7 @@ func _days(critic: FoodCritic, level: int, provider: Callable, count: int) -> Ar
 
 func test_data_is_valid_and_has_the_specified_defaults() -> void:
 	assert_true(CRITIC.is_valid())
-	assert_eq(CRITIC.unlock_level, 2)
+	assert_eq(CRITIC.unlock_tier, 5)
 	assert_eq(CRITIC.cooldown_days, 5)
 	assert_almost_eq(CRITIC.daily_chance, 0.2)
 	assert_eq(CRITIC.review_weight, 3)
@@ -45,35 +45,49 @@ func test_data_is_valid_and_has_the_specified_defaults() -> void:
 	assert_almost_eq(CRITIC.linger_multiplier, 1.2)
 
 
-func test_no_critic_before_level_two_and_the_stream_is_not_touched() -> void:
+func test_no_critic_before_tier_five_and_the_stream_is_not_touched() -> void:
 	var critic: FoodCritic = FoodCritic.new(_always())
 	_draws = 0
-	var days: Array[Dictionary] = _days(critic, 1, _provider(1), 60)
+	var days: Array[Dictionary] = _days(critic, 4, _provider(1), 60)
 	assert_eq(days.size(), 0)
 	assert_eq(_draws, 0, "the named stream is created only once a critic can appear")
 	assert_eq(critic.last_visit_day, 0)
-	days = _days(FoodCritic.new(_always()), 2, _provider(1), 3)
+	days = _days(FoodCritic.new(_always()), CRITIC.unlock_tier, _provider(1), 3)
 	assert_eq(days.size(), 1)
 	assert_true(_draws > 0)
 
 
+func test_old_pending_morning_plan_is_discarded_below_tier_five() -> void:
+	var original: FoodCritic = FoodCritic.new(_always())
+	original.plan_day(8, 5, _provider(6))
+	assert_true(original.pending)
+	var restored: FoodCritic = FoodCritic.new(_always())
+	assert_true(restored.from_dict(original.to_dict()))
+	_draws = 0
+	restored.plan_day(8, 4, _provider(7))
+	assert_false(restored.pending)
+	assert_false(restored.due(3600, 3600))
+	assert_eq(restored.rolled_day, 0)
+	assert_eq(_draws, 0)
+
+
 func test_at_most_one_critic_in_five_days() -> void:
 	var critic: FoodCritic = FoodCritic.new(_always())
-	var days: Array[Dictionary] = _days(critic, 4, _provider(7), 200)
+	var days: Array[Dictionary] = _days(critic, CRITIC.unlock_tier, _provider(7), 200)
 	assert_true(days.size() >= 30, "with a certain chance they come every fifth day")
 	for index: int in range(1, days.size()):
 		assert_true(int(days[index]["day"]) - int(days[index - 1]["day"]) >= 5)
 	# The real chance: still never closer than five days.
-	days = _days(FoodCritic.new(CRITIC), 4, _provider(8), 400)
+	days = _days(FoodCritic.new(CRITIC), CRITIC.unlock_tier, _provider(8), 400)
 	assert_true(days.size() > 5 and days.size() < 80)
 	for index: int in range(1, days.size()):
 		assert_true(int(days[index]["day"]) - int(days[index - 1]["day"]) >= 5)
 
 
 func test_same_seed_gives_the_same_days_and_tells() -> void:
-	var first: Array[Dictionary] = _days(FoodCritic.new(CRITIC), 3, _provider(303), 300)
-	var second: Array[Dictionary] = _days(FoodCritic.new(CRITIC), 3, _provider(303), 300)
-	var other: Array[Dictionary] = _days(FoodCritic.new(CRITIC), 3, _provider(304), 300)
+	var first: Array[Dictionary] = _days(FoodCritic.new(CRITIC), CRITIC.unlock_tier, _provider(303), 300)
+	var second: Array[Dictionary] = _days(FoodCritic.new(CRITIC), CRITIC.unlock_tier, _provider(303), 300)
+	var other: Array[Dictionary] = _days(FoodCritic.new(CRITIC), CRITIC.unlock_tier, _provider(304), 300)
 	assert_true(first.size() > 5)
 	assert_eq(first, second)
 	assert_ne(first, other)
@@ -86,16 +100,16 @@ func test_same_seed_gives_the_same_days_and_tells() -> void:
 func test_a_day_is_rolled_once_and_odd_hours_are_odd() -> void:
 	var critic: FoodCritic = FoodCritic.new(_always())
 	var provider: Callable = _provider(5)
-	critic.plan_day(1, 2, provider)
+	critic.plan_day(1, CRITIC.unlock_tier, provider)
 	var plan: Array[StringName] = critic.tells.duplicate()
 	_draws = 0
-	critic.plan_day(1, 2, provider)
+	critic.plan_day(1, CRITIC.unlock_tier, provider)
 	assert_eq(_draws, 0, "reloading the morning does not redraw")
 	assert_eq(critic.tells, plan)
 	var odd: int = 0
 	for day: int in range(1, 400, 5):
 		var other: FoodCritic = FoodCritic.new(_always())
-		other.plan_day(day, 2, _provider(day))
+		other.plan_day(day, CRITIC.unlock_tier, _provider(day))
 		if other.has_tell(FoodCritic.ODD_HOUR):
 			odd += 1
 			assert_true(other.arrival_permille <= CRITIC.early_arrival_permille.y \
@@ -108,7 +122,7 @@ func test_a_day_is_rolled_once_and_odd_hours_are_odd() -> void:
 
 func test_the_cooldown_survives_save_and_load_mid_week() -> void:
 	var critic: FoodCritic = FoodCritic.new(_always())
-	critic.plan_day(1, 2, _provider(11))
+	critic.plan_day(1, CRITIC.unlock_tier, _provider(11))
 	assert_true(critic.pending)
 	assert_eq(critic.last_visit_day, 0, "the cooldown starts on arrival, not at the roll")
 	# A saved morning plan is kept and not redrawn.
@@ -118,7 +132,7 @@ func test_the_cooldown_survives_save_and_load_mid_week() -> void:
 	assert_true(kept.pending)
 	assert_eq(kept.tells, critic.tells)
 	_draws = 0
-	kept.plan_day(1, 2, _provider(99))
+	kept.plan_day(1, CRITIC.unlock_tier, _provider(99))
 	assert_eq(_draws, 0)
 	# After they arrive, mid-week saves keep the five-day cooldown.
 	critic.mark_arrived(1)
@@ -127,9 +141,9 @@ func test_the_cooldown_survives_save_and_load_mid_week() -> void:
 	assert_true(restored.from_dict(saved))
 	assert_eq(restored.last_visit_day, 1)
 	for day: int in range(2, 6):
-		restored.plan_day(day, 2, _provider(99))
+		restored.plan_day(day, CRITIC.unlock_tier, _provider(99))
 		assert_false(restored.pending, "day %d is inside the cooldown" % day)
-	restored.plan_day(6, 2, _provider(99))
+	restored.plan_day(6, CRITIC.unlock_tier, _provider(99))
 	assert_true(restored.pending)
 	assert_false(FoodCritic.new().from_dict({"version": 1}))
 	var bad: Dictionary = saved.duplicate()
@@ -139,9 +153,9 @@ func test_the_cooldown_survives_save_and_load_mid_week() -> void:
 
 func test_a_day_without_a_fitting_arrival_costs_no_cooldown() -> void:
 	var critic: FoodCritic = FoodCritic.new(_always())
-	critic.plan_day(1, 2, _provider(3))
+	critic.plan_day(1, CRITIC.unlock_tier, _provider(3))
 	assert_true(critic.pending)
-	critic.plan_day(2, 2, _provider(3))
+	critic.plan_day(2, CRITIC.unlock_tier, _provider(3))
 	assert_eq(critic.last_visit_day, 0)
 	assert_true(critic.pending, "tomorrow rolls again, with no cooldown")
 
@@ -289,7 +303,7 @@ func test_a_day_with_a_critic_brings_one_disguised_solo_guest_and_one_review() -
 	sim.set_customer_level(2)
 	sim.critic.tuning = _always()
 	sim.critic_rng_provider = _provider(52)
-	sim.start_day()
+	sim.start_day(CRITIC.unlock_tier)
 	assert_true(sim.critic.pending)
 	var critics: Array[CustomerAgent] = []
 	sim.world.clock.start_service()
@@ -400,7 +414,7 @@ func test_a_critic_is_seated_cooked_served_and_paid_through_normal_ticks() -> vo
 	sim.spawner.min_gap = 80
 	sim.spawner.max_gap = 160
 	var kitchen: FakeKitchen = FakeKitchen.new(sim)
-	sim.start_day()
+	sim.start_day(CRITIC.unlock_tier)
 	assert_true(sim.critic.pending)
 	var size: int = sim.review_book.scores().size()
 	var seen: CustomerAgent = null
@@ -422,7 +436,7 @@ func test_a_critic_is_seated_cooked_served_and_paid_through_normal_ticks() -> vo
 	assert_eq(sim.critic.last_visit_day, 1)
 
 
-func test_below_level_two_the_streams_match_a_run_without_the_critic_system() -> void:
+func test_below_tier_five_the_streams_match_a_run_without_the_critic_system() -> void:
 	var with_critic: Dictionary = _three_days(false)
 	var without: Dictionary = _three_days(true)
 	assert_eq(with_critic["draws"], 0, "the critic stream is never touched")
@@ -444,7 +458,7 @@ func _three_days(disabled: bool) -> Dictionary:
 	var kitchen: FakeKitchen = FakeKitchen.new(sim)
 	var served: int = 0
 	for _day: int in 3:
-		sim.start_day()
+		sim.start_day(4)
 		sim.world.clock.start_service()
 		for _tick: int in 4501:
 			sim.advance()

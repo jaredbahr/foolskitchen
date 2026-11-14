@@ -89,6 +89,27 @@ static func largest_usable_capacity(grid: SimGrid, from_cell: Vector2i = SimGrid
 	return largest
 
 
+## Tomorrow's booking has to fit one reachable group. Keep two seats for
+## walk-ins when the layout allows it without excluding the minimum party.
+static func booking_capacity(grid: SimGrid, minimum_party: int) -> int:
+	var entries: Array[Vector2i] = grid.entries()
+	if entries.is_empty():
+		return 0
+	var total: int = 0
+	var largest: int = 0
+	var seen: Dictionary[int, bool] = {}
+	for table: PlacedItem in grid.items():
+		var group_id: int = grid.dining_group_id(table.id)
+		if group_id == 0 or seen.has(group_id):
+			continue
+		seen[group_id] = true
+		var seats: int = usable_cells(grid, table, entries[0]).size()
+		total += seats
+		if grid.dining_group_members(table.id).size() > 1:
+			largest = maxi(largest, seats)
+	return mini(largest, maxi(minimum_party, total - 2))
+
+
 ## Nominal joined capacity excludes internal seams; standalone authored blocked
 ## seats retain their established warning semantics.
 static func nominal_capacity(grid: SimGrid, table: PlacedItem) -> int:
