@@ -4,9 +4,11 @@ extends Resource
 ## how many, and whether it stands against the shop fronts or along the kerb.
 ## A StreetSet lists these, so a seaside street (#425) swaps the whole prop list
 ## (lifebuoys and lobster pots for planters and postboxes) without touching the
-## planner or the meshes.
+## planner or the meshes: rope bollards, a lifebuoy, crates of catch and bunting
+## are the seaside street's (data/streets/seaside.tres).
 
-enum Kind { TREE_PLANTER, BENCH, BIN, BIKE_RACK, HYDRANT, BUS_STOP, POSTBOX }
+## New kinds go on the end: presets store the number.
+enum Kind { TREE_PLANTER, BENCH, BIN, BIKE_RACK, HYDRANT, BUS_STOP, POSTBOX, ROPE_BOLLARD, LIFEBUOY, CATCH_CRATES, BUNTING }
 ## KERB props stand along the kerb side of the pavement, WALL props against the shop fronts.
 enum Zone { KERB, WALL }
 
@@ -39,6 +41,14 @@ static func size_of(prop_kind: Kind) -> Vector3:
 			return Vector3(0.2, 0.28, 0.2)
 		Kind.BUS_STOP:
 			return Vector3(2.0, 1.1, 0.8)
+		Kind.ROPE_BOLLARD:
+			return Vector3(0.3, 0.4, 0.3)
+		Kind.LIFEBUOY:
+			return Vector3(0.5, 0.64, 0.16)
+		Kind.CATCH_CRATES:
+			return Vector3(0.66, 0.4, 0.42)
+		Kind.BUNTING:
+			return Vector3(1.9, 1.0, 0.14)
 		_:
 			return Vector3(0.28, 0.54, 0.28)
 
@@ -52,5 +62,7 @@ static func spacing_of(prop_kind: Kind) -> float:
 			return 5.0
 		Kind.BIN:
 			return 4.5
+		Kind.ROPE_BOLLARD:
+			return 2.6
 		_:
 			return 8.0

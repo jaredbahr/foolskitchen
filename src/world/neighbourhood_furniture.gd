@@ -189,6 +189,14 @@ func _prop(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 			_hydrant(pen)
 		StreetPropSpec.Kind.BUS_STOP:
 			_bus_stop(pen, item)
+		StreetPropSpec.Kind.ROPE_BOLLARD:
+			_bollard(pen)
+		StreetPropSpec.Kind.LIFEBUOY:
+			_lifebuoy(pen)
+		StreetPropSpec.Kind.CATCH_CRATES:
+			_catch_crates(pen, item)
+		StreetPropSpec.Kind.BUNTING:
+			_bunting(pen, item)
 		_:
 			_postbox(pen)
 
@@ -302,6 +310,98 @@ func _bus_stop(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 	pen.box(Vector3(pole_x - 0.08, 0.95, 0.2), Vector3(pole_x + 0.08, 1.01, 0.27), street.trim)
 
 
+## A short chunky timber post with a coil of rope round its neck.
+func _bollard(pen: NeighbourhoodBuildings.Pen) -> void:
+	var wood: Color = street.wood.lightened(0.08)
+	var rope: Color = street.path.lightened(0.1)
+	_drum(pen, 0.0, 0.0, 0.0, 0.36, 0.125, 0.11, 8, wood)
+	_drum(pen, 0.0, 0.0, 0.36, 0.4, 0.138, 0.13, 8, wood.lightened(0.18))
+	_drum(pen, 0.0, 0.0, 0.17, 0.215, 0.14, 0.14, 8, rope)
+	_drum(pen, 0.0, 0.0, 0.225, 0.27, 0.136, 0.136, 8, rope.lightened(0.12))
+	_drum(pen, 0.0, 0.0, 0.28, 0.32, 0.128, 0.128, 8, rope)
+	pen.box(Vector3(0.11, 0.0, -0.03), Vector3(0.2, 0.03, 0.06), rope)
+
+
+## A red and white ring hung on a little timber stand, face to the street.
+func _lifebuoy(pen: NeighbourhoodBuildings.Pen) -> void:
+	var wood: Color = street.wood
+	for x: float in [-0.21, 0.21]:
+		pen.box(Vector3(x - 0.03, 0.0, -0.03), Vector3(x + 0.03, 0.6, 0.03), wood)
+	pen.box(Vector3(-0.24, 0.57, -0.035), Vector3(0.24, 0.63, 0.035), wood.lightened(0.14))
+	pen.box(Vector3(-0.25, 0.0, -0.07), Vector3(0.25, 0.03, 0.07), wood.darkened(0.2))
+	var ring: Array[Color] = [street.signal_red, street.trim]
+	var centre: Vector2 = Vector2(0.0, 0.34)
+	var outer: float = 0.19
+	var inner: float = 0.1
+	for index: int in 8:
+		var a0: float = TAU * (float(index) + 0.5) / 8.0
+		var a1: float = TAU * (float(index) + 1.5) / 8.0
+		var colour: Color = ring[index % 2]
+		var o0: Vector3 = Vector3(centre.x + cos(a0) * outer, centre.y + sin(a0) * outer, 0.035)
+		var o1: Vector3 = Vector3(centre.x + cos(a1) * outer, centre.y + sin(a1) * outer, 0.035)
+		var i0: Vector3 = Vector3(centre.x + cos(a0) * inner, centre.y + sin(a0) * inner, 0.035)
+		var i1: Vector3 = Vector3(centre.x + cos(a1) * inner, centre.y + sin(a1) * inner, 0.035)
+		pen.quad(i0, o0, o1, i1, Vector3.BACK, colour)
+		var back: Vector3 = Vector3(0.0, 0.0, -0.045)
+		pen.quad(o0 + back, o1 + back, i1 + back, i0 + back, Vector3.FORWARD, colour.darkened(0.12))
+		var mid_o: Vector3 = (o0 + o1) * 0.5 - Vector3(centre.x, centre.y, 0.0)
+		pen.quad(o0, o1, o1 + back, o0 + back, mid_o, colour.darkened(0.06))
+		var mid_i: Vector3 = Vector3(centre.x, centre.y, 0.0) - (i0 + i1) * 0.5
+		pen.quad(i0, i1, i1 + back, i0 + back, Vector3(mid_i.x, mid_i.y, 0.0), colour.darkened(0.1))
+
+
+## Slatted crates, one stacked on another, heaped with the day's catch on ice.
+func _catch_crates(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
+	_crate(pen, item, -0.33, -0.02, 0.0, 0.2, 0)
+	_crate(pen, item, 0.0, 0.31, 0.0, 0.18, 1)
+	_crate(pen, item, 0.02, 0.29, 0.18, 0.16, 2)
+
+
+func _crate(pen: NeighbourhoodBuildings.Pen, item: Placed, x0: float, x1: float, y0: float, height: float, which: int) -> void:
+	var wood: Color = street.wood.lightened(0.1)
+	var fish: Array[Color] = [street.glass.lightened(0.3), street.bloom_colors[0].lightened(0.1), street.glass.lerp(street.trim, 0.45)]
+	var spin: float = _r(item.seed_value, 8 + which) * TAU
+	var top: float = y0 + height
+	pen.box(Vector3(x0, y0, -0.19), Vector3(x1, top, 0.19), wood)
+	pen.box(Vector3(x0 - 0.012, top - 0.04, -0.2), Vector3(x1 + 0.012, top, 0.2), wood.lightened(0.14))
+	pen.box(Vector3(x0 - 0.008, y0 + 0.05, 0.19), Vector3(x1 + 0.008, y0 + 0.065, 0.2), wood.darkened(0.3))
+	pen.box(Vector3(x0 - 0.008, y0 + height * 0.62, 0.19), Vector3(x1 + 0.008, y0 + height * 0.62 + 0.015, 0.2), wood.darkened(0.3))
+	var middle: float = (x0 + x1) * 0.5
+	pen.lump(Vector3(middle, top, 0.0), (x1 - x0) * 0.46, 0.07, 0.16, spin, street.trim, street.glass.lightened(0.5))
+	for index: int in 2:
+		var tone: Color = fish[(index + which + item.seed_value) % fish.size()]
+		pen.lump(Vector3(middle + (-0.065 if index == 0 else 0.07), top + 0.045, -0.04 + 0.08 * float(index)),
+			0.085, 0.045, 0.045, spin + float(index) * 1.3, tone.lightened(0.1), tone.darkened(0.15))
+
+
+## Two posts and a drooping string of little flags between them.
+func _bunting(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
+	var wood: Color = street.wood
+	var span: float = 0.84
+	for x: float in [-span, span]:
+		pen.box(Vector3(x - 0.04, 0.0, -0.04), Vector3(x + 0.04, 0.09, 0.04), wood.darkened(0.2))
+		pen.box(Vector3(x - 0.025, 0.09, -0.025), Vector3(x + 0.025, 0.96, 0.025), wood)
+		pen.box(Vector3(x - 0.035, 0.96, -0.035), Vector3(x + 0.035, 0.99, 0.035), wood.lightened(0.16))
+	var colours: Array[Color] = street.play_colors
+	var first: int = item.seed_value
+	var last_point: Vector3 = Vector3(-span, 0.93, 0.0)
+	var steps: int = 8
+	for step: int in range(1, steps + 1):
+		var t: float = float(step) / float(steps)
+		var point: Vector3 = Vector3(-span + 2.0 * span * t, 0.93 - 0.14 * 4.0 * t * (1.0 - t), 0.0)
+		pen.quad(last_point, point, point + Vector3(0.0, -0.026, 0.0), last_point + Vector3(0.0, -0.026, 0.0), Vector3.BACK, street.path)
+		pen.quad(last_point, point, point + Vector3(0.0, -0.026, 0.0), last_point + Vector3(0.0, -0.026, 0.0), Vector3.FORWARD, street.path)
+		if step < steps:
+			var tone: Color = colours[(first + step) % colours.size()]
+			var drop: Vector3 = Vector3(0.0, -0.026, 0.0)
+			var left: Vector3 = point + drop + Vector3(-0.1, 0.0, 0.0)
+			var right: Vector3 = point + drop + Vector3(0.1, 0.0, 0.0)
+			var tip: Vector3 = point + Vector3(0.0, -0.27, 0.0)
+			pen.tri(left, right, tip, Vector3.BACK, tone)
+			pen.tri(left + Vector3(0.0, 0.0, -0.004), right + Vector3(0.0, 0.0, -0.004), tip + Vector3(0.0, 0.0, -0.004), Vector3.FORWARD, tone.darkened(0.1))
+		last_point = point
+
+
 # --- baked shadows ----------------------------------------------------------
 
 func _shadow(soup: NeighbourhoodGround.Soup, item: Placed, y: float, shift: float, light_shift: Vector2) -> void:
@@ -321,9 +421,15 @@ func _shadow(soup: NeighbourhoodGround.Soup, item: Placed, y: float, shift: floa
 			_push_corners(points, rect, light_shift * 0.96)
 			points.append(Vector2(item.u + 0.9, item.v + 0.22))
 			points.append(Vector2(item.u + 0.9, item.v + 0.22) + light_shift * 0.9)
-		StreetPropSpec.Kind.BIN, StreetPropSpec.Kind.HYDRANT:
+		StreetPropSpec.Kind.BUNTING:
+			# Only the two posts reach the ground.
+			for post: float in [-0.84, 0.84]:
+				var foot: Vector2 = Vector2(item.u + post, item.v)
+				_emit_hull(soup, _post_shadow(foot, light_shift, height), y, shift)
+			return
+		StreetPropSpec.Kind.BIN, StreetPropSpec.Kind.HYDRANT, StreetPropSpec.Kind.ROPE_BOLLARD:
 			var centre: Vector2 = Vector2(item.u, item.v)
-			var radius: float = 0.12 if item.kind == StreetPropSpec.Kind.BIN else 0.09
+			var radius: float = 0.09 if item.kind == StreetPropSpec.Kind.HYDRANT else 0.12
 			for index: int in 8:
 				var angle: float = TAU * float(index) / 8.0
 				points.append(centre + Vector2(cos(angle), sin(angle)) * radius)
@@ -332,6 +438,12 @@ func _shadow(soup: NeighbourhoodGround.Soup, item: Placed, y: float, shift: floa
 			rect = rect.grow(-0.02)
 			_push_corners(points, rect, light_shift * height * 0.8)
 	_emit_hull(soup, points, y, shift)
+
+
+func _post_shadow(foot: Vector2, light_shift: Vector2, height: float) -> PackedVector2Array:
+	var points: PackedVector2Array = PackedVector2Array()
+	_push_corners(points, Rect2(foot - Vector2(0.04, 0.04), Vector2(0.08, 0.08)), light_shift * height * 0.8)
+	return points
 
 
 func _push_corners(points: PackedVector2Array, rect: Rect2, push: Vector2) -> void:

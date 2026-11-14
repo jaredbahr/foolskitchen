@@ -42,6 +42,10 @@ const ROAD_START: float = 3.405
 const ROAD_END: float = 5.805
 const FAR_START: float = 5.905
 const FAR_DEPTH: float = 2.20
+## Boardwalk seams (GroundSkin.plank_seam): one plank wide, a hair above the paving.
+const PLANK_STEP: float = 0.32
+const PLANK_SEAM: float = 0.022
+const PLANK_LIFT: float = 0.004
 
 ## Far street and ground meshes by street signature, shared by every dressing
 ## (a new game or a loaded save re-uses them instead of re-batching ~100k triangles).
@@ -213,6 +217,9 @@ func rebuild() -> void:
 		if bounds.size.y >= paving_box.size.y * 0.9:
 			_paving_top = bounds.end.y
 			break
+	# A street may lay its own pavement colour (a boardwalk); none keeps the grey paving.
+	if ground_skin.pavement.a > 0.0:
+		paving.set_body_tint(ground_skin.pavement)
 	var road_prop: PropView = _made_prop("road_segment")
 	var road_box: AABB = road_prop.get_combined_aabb()
 	var count: int = ceili((maxf(absf(_local_reserve.position.x), absf(_local_reserve.end.x)) + SIDE_MARGIN) * 2.0 / road_box.size.x)
@@ -229,6 +236,7 @@ func rebuild() -> void:
 	_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
 	_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
 	_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
+	_build_planks()
 	road_prop.free()
 	if not patio.is_empty():
 		paving.set_body_tint(patio_color())
@@ -404,6 +412,37 @@ func _add_batch(batch: NeighbourhoodMeshBatch, label: String, category: String) 
 	_static_meshes.append(mesh)
 
 
+## The seams of a boardwalk (GroundSkin.plank_seam): thin lines across the near and
+## far pavement, one plank apart, out to the street's visual ends. None when the
+## street has no boardwalk. One flat, lit, vertex-coloured mesh.
+func _build_planks() -> void:
+	if ground_skin.plank_seam.a <= 0.0:
+		return
+	var soup: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var planks: int = int(floorf(_visual_half * 2.0 / PLANK_STEP))
+	var bands: Array[Vector2] = [Vector2(PAVING_START, PAVING_START + PAVING_DEPTH), Vector2(FAR_START, FAR_START + FAR_DEPTH)]
+	for band: Vector2 in bands:
+		for index: int in planks:
+			var u: float = -_visual_half + (float(index) + 0.5) * PLANK_STEP
+			var corners: Array[Vector2] = [Vector2(u - PLANK_SEAM * 0.5, _shift + band.x), Vector2(u + PLANK_SEAM * 0.5, _shift + band.x),
+				Vector2(u + PLANK_SEAM * 0.5, _shift + band.y), Vector2(u - PLANK_SEAM * 0.5, _shift + band.y)]
+			soup.flat(corners, _paving_top + PLANK_LIFT, ground_skin.plank_seam)
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	material.disable_receive_shadows = true
+	var mesh: MeshInstance3D = MeshInstance3D.new()
+	mesh.name = "PlankSeams"
+	mesh.mesh = soup.to_mesh()
+	mesh.material_override = material
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.transform = _frame
+	_groups["Pavement"].add_child(mesh)
+	_static_meshes.append(mesh)
+
+
 func _build_road(source: PropView, bounds: AABB, count: int) -> void:
 	var crossing: PropView = _made_prop("crossing_segment")
 	var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
@@ -517,7 +556,7 @@ func _build_patio_edge(cells: Array[Vector2i]) -> void:
 ## Built once per street frame (see far_root) and kept across rebuilds.
 func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_box: AABB,
 		count: int, far_count: int) -> void:
-	var key: Array = [_frame, _street_half, _shift, _paving_top, far_count]
+	var key: Array = [_frame, _street_half, _shift, _paving_top, far_count, ground_skin.pavement]
 	if key == _far_key and far_root.get_child_count() > 0:
 		far_root.transform = _frame
 		return
