@@ -398,7 +398,8 @@ func _bind_world_presentation() -> void:
 	# The actual service/delivery lot above keeps its existing semantics.
 	var presentation_base: ShopLayout = _base_for_saved_shop({"layout_id": _loaded_layout.save_layout_id}) \
 		if _loaded_layout != null else _base_layout
-	var maximum_reserve: Rect2i = ShopFootprint.from_layout(LEASE.layout_for(presentation_base, 2)).lot.merge(lot)
+	var maximum_lease: ShopLayout = _lease_for(presentation_base).layout_for(presentation_base, 2)
+	var maximum_reserve: Rect2i = ShopFootprint.from_layout(maximum_lease).lot.merge(lot)
 	view.show_world(world, maximum_reserve)
 	# A new dressing starts at day: light its lamps now, not a frame later.
 	if view.neighbourhood_dressing != null and world.clock != null:
@@ -3158,7 +3159,7 @@ func _validate_staged_sections(with_globals: bool) -> StagedSite:
 		return _refuse_staged(with_globals, "Saved rush hour does not fit its opening hours")
 	var layout: ShopLayout = _loaded_layout
 	if layout == null:
-		layout = LEASE.layout_for(base, 2 if staged.lease_expanded else 1)
+		layout = _lease_for(base).layout_for(base, 2 if staged.lease_expanded else 1)
 		# The template's west table now stands turned for an aisle (#320); in
 		# this save's day it stood in a row of seats that shut the kitchen off.
 		layout.aisle_moved = 1
@@ -3760,34 +3761,39 @@ func _on_plates_changed(clean: int, total: int, dirty: int, in_use: int) -> void
 
 
 func _lease_layout() -> ShopLayout:
-	return LEASE.layout_for(_base_layout, 2 if lease_expanded else 1)
+	return _lease_for(_base_layout).layout_for(_base_layout, 2 if lease_expanded else 1)
+
+
+## The lease terms for a shop built on `base` (#465): a bought lot's own
+## expansion (its price, expanded rent and margins, LotDef.lease_upgrade),
+## else the home lease. Keyed by the authored base, so a load or switch
+## that has not yet installed its site reads the right terms.
+func _lease_for(base: ShopLayout) -> LeaseUpgrade:
+	if base != null and content != null:
+		for lot: LotDef in content.lots():
+			if lot.base_layout == base:
+				return lot.lease_upgrade(LEASE)
+	return LEASE
 
 
 func lease_refusal() -> String:
-	if not _lease_at_home():
-		return PropertyText.LEASE_HOME_ONLY_LINE
-	return LEASE.refusal(owner_progress, lease_expanded, Clock.sim.phase, Economy.spendable(),
-		Economy.loan.principal)
-
-
-## The lease upgrade is the home lot's (D30) until each lot's own expansion
-## and rent are charged (#465): a bought site is never offered it.
-func _lease_at_home() -> bool:
-	return site_book.lot_id(site_book.active_id) == SiteBook.HOME_LOT
+	return _lease_for(_base_layout).refusal(owner_progress, lease_expanded, Clock.sim.phase,
+		Economy.spendable(), Economy.loan.principal)
 
 
 func _refresh_lease_offer() -> void:
 	_refresh_cat_offer()
 	if _menu_panel == null:
 		return
-	if not _lease_at_home() or not LEASE.offered(owner_progress, lease_expanded, Clock.sim.phase):
+	var lease: LeaseUpgrade = _lease_for(_base_layout)
+	if not lease.offered(owner_progress, lease_expanded, Clock.sim.phase):
 		_menu_panel.set_lease_offer(false, "", "", "")
 		return
 	_menu_panel.set_lease_offer(true,
 		"More land to expand, free." if GameMode.is_creative()
 		else "Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
-			Fmt.money(LEASE.deposit), Fmt.money(LEASE.daily_rent)],
-		RestockBudgetWarning.text(Economy.spendable(), LEASE.deposit, build_restock_estimate()), lease_refusal())
+			Fmt.money(lease.deposit), Fmt.money(lease.daily_rent)],
+		RestockBudgetWarning.text(Economy.spendable(), lease.deposit, build_restock_estimate()), lease_refusal())
 
 
 ## A single morning transaction, included only in the next normal autosave.
@@ -3795,7 +3801,8 @@ func lease_buy() -> bool:
 	if not _started or shop_editor == null or not lease_refusal().is_empty():
 		_refresh_lease_offer()
 		return false
-	var layout: ShopLayout = LEASE.layout_for(_base_layout, 2)
+	var lease: LeaseUpgrade = _lease_for(_base_layout)
+	var layout: ShopLayout = lease.layout_for(_base_layout, 2)
 	if not shop_editor.grow_lot(layout):
 		return false
 	lease_expanded = true
@@ -3804,7 +3811,7 @@ func lease_buy() -> bool:
 	if sim.dock != null:
 		sim.dock.lot = lot
 	# Existing build history remains valid: it contains built cells, not a lease.
-	Economy.add_cash(-LEASE.deposit, Ledger.UPGRADES, "lease_deposit")
+	Economy.add_cash(-lease.deposit, Ledger.UPGRADES, "lease_deposit")
 	_refresh_menu_catalogue()
 	if _build_ready:
 		build_mode.refresh()
@@ -4220,7 +4227,7 @@ func _restore_shop(data: Dictionary) -> bool:
 	var expanded: Variant = data.get("lease_expanded", owner_progress.property_tier == 2)
 	if not expanded is bool:
 		return false
-	var template: ShopLayout = LEASE.layout_for(base, 2 if expanded else 1)
+	var template: ShopLayout = _lease_for(base).layout_for(base, 2 if expanded else 1)
 	var layout: ShopLayout = ShopEditor.from_dict(data, template, content, errors)
 	if layout == null:
 		return false
@@ -6611,10 +6618,13 @@ func _charge_closing_costs() -> void:
 		if member.role == StaffMember.MANAGER:
 			Economy.add_cash(-OpeningHours.wage_for_day(member.wage, Clock.sim, HOURS_TUNING), Ledger.WAGES)
 	# The active site pays its own lot's rent: the home lease rule on the home
-	# lot (one-site play, unchanged), nothing yet on a lot with no rent data.
-	var rent: int = AwaySites.lot_rent(site_book.lot_id(site_book.active_id), _home_rent())
+	# lot (one-site play, unchanged), else its LotDef's rent, expanded or not
+	# (#465), on every close: a service, a renovation day or "Close for today".
+	var lot: StringName = site_book.lot_id(site_book.active_id)
+	var rent: int = AwaySites.lot_rent(lot, _home_rent(), content.lot(lot) if content != null else null,
+		lease_expanded)
 	if rent == AwaySites.UNKNOWN_RENT:
-		push_warning("No rent is known for this site's lot yet; none charged")
+		push_warning("This site's lot is missing from the game's data; no rent charged")
 		rent = 0
 	if rent > 0:
 		Economy.add_cash(-rent, Ledger.RENT)
@@ -6644,15 +6654,21 @@ func _close_away_sites(day: int) -> void:
 	_away_site_lines.clear()
 	if site_book.site_count() < 2:
 		return
+	# Planned before the countdown: today was still a renovation day at a
+	# fixer-upper that finishes tonight (closed, paying rent).
+	var lots: Array[LotDef] = []
+	if content != null:
+		lots = content.lots()
+	var plans: Array[Dictionary] = AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
+		BOOKING_TUNING, lots)
 	# A day of renovation done at every fixer-upper (docs/TECH.md "Limits and
 	# renovation"), before tonight's lines say how much is left.
 	var ready: Array[StringName] = site_book.count_down_renovations()
-	for plan: Dictionary in AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
-			BOOKING_TUNING):
+	for plan: Dictionary in plans:
 		var site: StringName = plan["site"]
 		var label: String = AwaySites.display_name(site_book, site)
 		if not bool(plan["rent_known"]):
-			push_warning("No rent is known for the lot of an inactive site; none was charged")
+			push_warning("An inactive site's lot is missing from the game's data; no rent was charged")
 		if plan.has("bookings"):
 			if not site_book.set_frozen_section(site, "bookings", plan["bookings"]):
 				push_warning("An inactive site's lapsed booking could not be recorded; not refunded")
