@@ -11,6 +11,14 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 ## Up next: the build queue (reset 2026-11-07)
 Codex is back (2026-11-07). **Codex: take the `worker-ready` issues below from the top**, skipping any whose **Depends on** hasn't merged and any that already has an open PR or a claim comment (see `AGENTS.md`). Claude reviews every PR before merge.
 
+**Wave 0, early game and panels (Jared, 2026-11-14): take these first.** A 15-day audit found days 1-5 dull; these fix what players feel first.
+1. `codex` #491 Reviews: a guest who never got a table leaves no review
+2. `codex` #490 Weekly challenges: size targets to the shop
+3. `codex` #492 Critic at Tier 5, and booking offers that fit your seats
+4. `codex` #493 Regulars reachable with a little decor; pairs of guests from level 2
+5. `codex` #500 Menu and Stock panels: one scroll area, compact rows (depends on #497)
+6. `codex` #501 Goals, Staff, evening report and Settings: compact rows (depends on #497)
+
 **Wave 1 (`worker-ready`):** `codex` = Codex takes it; `both` = Codex may try, Claude takes over if it fails twice.
 1. `codex` #323 Business trend: 7 or 30 days (small; a good first issue)
 2. `codex` #316 Group bookings
