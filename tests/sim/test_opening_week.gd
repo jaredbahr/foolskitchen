@@ -146,7 +146,7 @@ func test_week_two_is_authored_and_pays_about_seven_hundred() -> void:
 	assert_eq(WEEK_TWO.days, 7)
 	assert_eq(WEEK_TWO.shown_goals, 3)
 	assert_eq(_ids(WEEK_TWO.goals), [&"bigger_lease", &"lay_floor", &"big_table", &"fried_dish",
-		&"hire_cleaner", &"seat_group", &"serve_35", &"calm_day"] as Array[StringName], "the approved order")
+		&"hire_cleaner", &"seat_group", &"serve_30", &"calm_day"] as Array[StringName], "the approved order")
 	var rewards: Array[int] = []
 	for goal: OpeningGoal in WEEK_TWO.goals:
 		rewards.append(goal.reward_cash)
@@ -158,8 +158,9 @@ func test_week_two_is_authored_and_pays_about_seven_hundred() -> void:
 	assert_eq(WEEK_TWO.by_id(&"hire_cleaner").role, &"cleaner")
 	assert_eq(WEEK_TWO.by_id(&"calm_day").leave_reasons, [&"no_table"] as Array[StringName])
 	assert_eq(WEEK_TWO.by_id(&"calm_day").target, 3.5)
+	assert_eq(WEEK_TWO.by_id(&"calm_day").max_turned_away, 2, "at most two turned away (Jared)")
 	assert_eq(WEEK_TWO.by_id(&"lay_floor").target, 6.0)
-	assert_eq(WEEK_TWO.by_id(&"serve_35").target, 35.0)
+	assert_eq(WEEK_TWO.by_id(&"serve_30").target, 30.0)
 	assert_eq(WEEK_TWO.by_id(&"seat_group").target, 2.0)
 
 
@@ -171,7 +172,7 @@ func test_each_week_two_goal_triggers_from_its_own_condition_and_pays_once() -> 
 		[&"fried_dish", OpeningGoal.Condition.DISH_AT_STATION, 1.0],
 		[&"hire_cleaner", OpeningGoal.Condition.STAFF_ROLE, 1.0],
 		[&"seat_group", OpeningGoal.Condition.GROUP_SEATED, 2.0],
-		[&"serve_35", OpeningGoal.Condition.SERVED_TODAY, 35.0],
+		[&"serve_30", OpeningGoal.Condition.SERVED_TODAY, 30.0],
 		[&"calm_day", OpeningGoal.Condition.CALM_DAY_STARS, 3.5],
 	]
 	for row: Array in cases:
@@ -190,7 +191,7 @@ func test_week_two_thresholds() -> void:
 	var observations: Array[Array] = [
 		[OpeningGoal.Condition.FLOOR_ADDED, 5.0, &""],
 		[OpeningGoal.Condition.GROUP_SEATED, 1.0, &""],
-		[OpeningGoal.Condition.SERVED_TODAY, 34.0, &""],
+		[OpeningGoal.Condition.SERVED_TODAY, 29.0, &""],
 		[OpeningGoal.Condition.CALM_DAY_STARS, 3.4, &"calm_day"],
 		[OpeningGoal.Condition.CALM_DAY_STARS, 0.0, &"calm_day"],
 		[OpeningGoal.Condition.LEASE_EXPANDED, 0.0, &""],
@@ -221,7 +222,10 @@ func test_goal_parameters_are_validated() -> void:
 	goal = WEEK_TWO.by_id(&"calm_day").duplicate() as OpeningGoal
 	goal.target = 5.5
 	assert_false(goal.is_valid(), "no rating above five stars")
-	goal = WEEK_TWO.by_id(&"serve_35").duplicate() as OpeningGoal
+	goal.target = 3.5
+	goal.max_turned_away = -1
+	assert_false(goal.is_valid(), "a negative allowance is invalid")
+	goal = WEEK_TWO.by_id(&"serve_30").duplicate() as OpeningGoal
 	goal.target = 3.5
 	assert_false(goal.is_valid(), "only a rating may be fractional")
 	var broken: OpeningWeekSet = WEEK_TWO.duplicate() as OpeningWeekSet

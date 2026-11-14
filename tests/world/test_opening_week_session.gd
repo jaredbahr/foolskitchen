@@ -467,34 +467,35 @@ func test_a_seated_group_counts_when_it_pays() -> void:
 	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"seat_group").reward_cash] as Array[int])
 
 
-func test_thirty_five_guests_and_a_calm_day_pay() -> void:
+func test_thirty_guests_and_a_calm_day_pay() -> void:
 	var main: Node = await _start(false)
 	_to_week_two(main)
 	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
 	var stars: ReputationBook = main.get("reputation") as ReputationBook
-	# Day 8: 4.0 stars, but a guest found no table.
+	# Day 8: 4.0 stars, but three guests found no table.
 	for i: int in 5:
 		stars.record_event_review(5)
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	restaurant.served_today = 34
+	restaurant.served_today = 29
 	main.call("_observe_opening_state")
-	assert_false(_state(main).is_completed(&"serve_35"))
-	restaurant.served_today = 35
+	assert_false(_state(main).is_completed(&"serve_30"))
+	restaurant.served_today = 30
 	main.call("_observe_opening_state")
-	assert_true(_state(main).is_completed(&"serve_35"), "35 guests in a day")
-	restaurant.leave_reasons_today[&"no_table"] = 1
+	assert_true(_state(main).is_completed(&"serve_30"), "30 guests in a day")
+	restaurant.leave_reasons_today[&"no_table"] = 3
 	main.call("run_ticks", 3)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
-	assert_false(_state(main).is_completed(&"calm_day"), "a guest turned away spoils the day")
-	# Day 9: nobody turned away, still 4.0 stars.
+	assert_false(_state(main).is_completed(&"calm_day"), "three guests turned away spoil the day")
+	# Day 9: two turned away is still calm enough, still 4.0 stars.
 	assert_true(Clock.sim.next_day())
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	restaurant.leave_reasons_today[&"waited_too_long"] = 2
+	restaurant.leave_reasons_today[&"no_table"] = 2
+	restaurant.leave_reasons_today[&"waited_too_long"] = 4
 	main.call("run_ticks", 3)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
-	assert_true(_state(main).is_completed(&"calm_day"), "other reasons for leaving do not spoil it")
+	assert_true(_state(main).is_completed(&"calm_day"), "two turned away, and other reasons for leaving, still count")
 	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"calm_day").reward_cash] as Array[int])
 
 
@@ -510,20 +511,20 @@ func test_a_calm_day_below_three_and_a_half_stars_does_not_pay() -> void:
 func test_week_two_progress_survives_the_morning_save_and_reload() -> void:
 	var main: Node = await _start(true)
 	_to_week_two(main)
-	_state(main).observe(OpeningGoal.Condition.SERVED_TODAY, 35.0, WEEK_TWO)
+	_state(main).observe(OpeningGoal.Condition.SERVED_TODAY, 30.0, WEEK_TWO)
 	_next_morning(main)
 	assert_eq(Clock.sim.day, 9)
 	var row: Dictionary = _document()["data"]["opening_week"]
 	assert_eq(int(row["version"]), 2)
 	assert_eq(row["chain"], "week_two")
 	assert_eq(int(row["start_day"]), 8)
-	assert_eq(row["completed"], ["serve_35"])
+	assert_eq(row["completed"], ["serve_30"])
 	_close(main)
 	main = await _start(true)
 	assert_eq(Clock.sim.day, 9, "the morning save loaded")
 	assert_true(_state(main).is_active())
 	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO)
-	assert_eq(_state(main).completed_ids(), [&"serve_35"] as Array[StringName])
+	assert_eq(_state(main).completed_ids(), [&"serve_30"] as Array[StringName])
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
 	assert_eq(hud.call("opening_week_title"), "Week 2")
 	(main.get("sim") as RestaurantSim).served_today = 40

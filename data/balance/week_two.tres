@@ -68,24 +68,25 @@ reward_xp = 5
 
 [sub_resource type="Resource" id="goal_7"]
 script = ExtResource("2_goal")
-id = &"serve_35"
-title = "Serve 35 guests in a day"
-description = "A full house: serve 35 guests in one day. The bigger room and more hands help."
+id = &"serve_30"
+title = "Serve 30 guests in a day"
+description = "A full house: serve 30 guests in one day. The bigger room and more hands help."
 condition = 2
-target = 35.0
+target = 30.0
 reward_cash = 100
 reward_xp = 10
 
 [sub_resource type="Resource" id="goal_8"]
 script = ExtResource("2_goal")
 id = &"calm_day"
-title = "3.5 stars, nobody turned away"
-description = "End a day at 3.5 stars or more with no guest leaving because there was no table."
+title = "A calm 3.5-star day"
+description = "End a day at 3.5 stars or more with at most 2 guests turned away because there was no table."
 condition = 13
 target = 3.5
 reward_cash = 130
 reward_xp = 15
 leave_reasons = Array[StringName]([&"no_table"])
+max_turned_away = 2
 
 [resource]
 script = ExtResource("1_set")

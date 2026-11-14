@@ -7712,12 +7712,20 @@ func _five_star_reviews_today() -> int:
 	return count
 
 
-## The live value of a CALM_DAY_STARS goal: the rating as the HUD shows it
-## (one decimal), or -1 once a guest left today for one of its reasons.
-func _calm_day_value(goal: OpeningGoal) -> float:
+## Guests who left today for one of a CALM_DAY_STARS goal's reasons.
+func _turned_away_today(goal: OpeningGoal) -> int:
+	var count: int = 0
 	for reason: StringName in goal.leave_reasons:
-		if int(sim.leave_reasons_today.get(reason, 0)) > 0:
-			return -1.0
+		count += int(sim.leave_reasons_today.get(reason, 0))
+	return count
+
+
+## The live value of a CALM_DAY_STARS goal: the rating as the HUD shows it
+## (one decimal), or -1 once more than `max_turned_away` guests left today
+## for its reasons.
+func _calm_day_value(goal: OpeningGoal) -> float:
+	if _turned_away_today(goal) > goal.max_turned_away:
+		return -1.0
 	return roundf(reputation.average() * 10.0) / 10.0
 
 

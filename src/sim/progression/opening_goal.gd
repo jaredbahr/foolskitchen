@@ -32,8 +32,9 @@ enum Condition {
 	STAFF_ROLE,
 	## A seated party of this many guests or more ate and paid.
 	GROUP_SEATED,
-	## At the close, the star rating (as the HUD rounds it) when no guest left
-	## for a reason in `leave_reasons` today; otherwise zero.
+	## At the close, the star rating (as the HUD rounds it) when at most
+	## `max_turned_away` guests left for a reason in `leave_reasons` today;
+	## otherwise zero.
 	CALM_DAY_STARS,
 }
 
@@ -61,6 +62,8 @@ const LAST_CONDITION: int = Condition.CALM_DAY_STARS
 @export var role: StringName = &""
 ## CALM_DAY_STARS: leave reasons that spoil the day (for example no_table).
 @export var leave_reasons: Array[StringName] = []
+## CALM_DAY_STARS: how many such guests the day may lose and still count.
+@export_range(0, 1000, 1) var max_turned_away: int = 0
 
 
 func is_valid() -> bool:
@@ -82,5 +85,5 @@ func is_valid() -> bool:
 				return false
 		Condition.CALM_DAY_STARS:
 			# A star rating: fractions allowed, never above five stars.
-			return target <= 5.0 and not leave_reasons.has(&"")
+			return target <= 5.0 and not leave_reasons.has(&"") and max_turned_away >= 0
 	return target <= 1000000.0 and floorf(target) == target

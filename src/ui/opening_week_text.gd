@@ -43,9 +43,9 @@ static func progress_line(goal: OpeningGoal, value: float) -> String:
 		OpeningGoal.Condition.FLOOR_ADDED:
 			return "Since the last opening: %d / %d tiles" % [floori(current), floori(goal.target)]
 		OpeningGoal.Condition.CALM_DAY_STARS:
-			# The live value is the rating, or -1 once a guest was turned away today.
+			# The live value is the rating, or -1 once too many were turned away today.
 			if is_finite(value) and value < 0.0:
-				return "A guest was turned away today"
+				return "More than %d guests turned away today" % goal.max_turned_away
 			return "Now: %.1f stars" % (value if is_finite(value) else 0.0)
 	return ""
 
