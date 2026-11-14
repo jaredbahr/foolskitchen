@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- Keep large cash balances on one HUD row and show the full amount on hover. (#520)
+- Keep large cash balances on one HUD row and show the full amount on hover. (#521)
 - Guests who leave before getting a table no longer leave a review. Their walkouts still appear in the evening report. (#508)
 - Service events: one or two small choice cards now pop up during every service day, from day 1. A busker by the door, a spilled drink, a food blogger who wants to skip the queue, a van selling suspiciously cheap stock and more. The game pauses until you pick (click a choice or press 1, 2 or 3), and each choice shows what it will do. A choice you can't afford, or whose stock won't fit or isn't on your shelves, is greyed out with the reason, and there is always a free choice. The effects are small: a few dollars, a review, a little more or less patience, a stock bargain that may be a bad batch. Each card and your choice go in the evening report. You can turn them off in Settings ("Service events"). (#505)
 - Menus and settings controls match the cream and brown look. Scrollbars are wider and easier to grab, with a gap so right-aligned numbers no longer touch them. Volume sliders have a filled track and a round handle, drop-down lists open as cream panels with a clear highlight, on/off settings are switches, and disabled buttons (like Redo with nothing to redo) look faded. (#504)
