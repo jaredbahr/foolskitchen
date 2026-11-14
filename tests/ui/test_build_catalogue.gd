@@ -63,7 +63,7 @@ func test_paint_chips_are_named_round_and_request_selected_swatch() -> void:
 	sage.pressed.emit()
 	assert_eq(_catalogue.selected_swatch_id, &"sage")
 	assert_eq(_swatch_requests, [&"sage"] as Array[StringName])
-	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).text,
+	assert_eq((_catalogue.get_node("Panel/Margin/Rows/Toolbars/Title") as Label).text,
 		"Paint | Sage - Click a wall, floor or item")
 	var outline: StyleBoxFlat = _catalogue.theme.get_stylebox("normal", "Button") as StyleBoxFlat
 	var selected_style: StyleBoxFlat = sage.get_theme_stylebox("normal") as StyleBoxFlat
@@ -88,10 +88,10 @@ func test_hidden_scene_uses_shared_theme_and_only_panel_consumes_input() -> void
 	var scroll: ScrollContainer = _scroll()
 	assert_eq(scroll.mouse_filter, Control.MOUSE_FILTER_STOP)
 	assert_false(scroll.mouse_force_pass_scroll_events)
-	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_AUTO)
+	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED, "only the cards scroll, and only up and down (#499)")
 	assert_eq(scroll.vertical_scroll_mode, ScrollContainer.SCROLL_MODE_AUTO)
-	for path: String in ["Panel/Margin", "Panel/Margin/Rows", "Panel/Margin/Rows/Scroll/Content",
-		"Panel/Margin/Rows/Scroll/Content/Title", "Panel/Margin/Rows/Scroll/Content/Items"]:
+	for path: String in ["Panel/Margin", "Panel/Margin/Rows", "Panel/Margin/Rows/Toolbars", "Panel/Margin/Rows/Scroll/Content",
+		"Panel/Margin/Rows/Toolbars/Title", "Panel/Margin/Rows/Scroll/Content/Items"]:
 		assert_eq((_catalogue.get_node(path) as Control).mouse_filter, Control.MOUSE_FILTER_IGNORE)
 
 
@@ -166,7 +166,7 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	assert_almost_eq(panel.position.x, 12.0)
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
 	assert_false(_scroll().get_h_scroll_bar().visible)
-	assert_false((_catalogue.get_node("Panel/Margin/Rows/Scroll/Content/Title") as Label).visible,
+	assert_false((_catalogue.get_node("Panel/Margin/Rows/Toolbars/Title") as Label).visible,
 		"outside Paint the Build/Buy and room tabs name the page")
 
 
@@ -194,8 +194,12 @@ func test_single_item_catalogue_uses_a_compact_strip() -> void:
 	await _mount(Vector2(1600.0, 900.0))
 	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
 	var content: Control = _scroll().get_node("Content") as Control
+	var toolbars: Control = _catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
 	var padding: Vector2 = panel.get_theme_stylebox("panel").get_minimum_size()
-	assert_eq(panel.size, content.get_combined_minimum_size() + padding)
+	var rows: VBoxContainer = _catalogue.get_node("Panel/Margin/Rows") as VBoxContainer
+	assert_eq(panel.size.y, toolbars.get_combined_minimum_size().y + rows.get_theme_constant("separation")
+		+ content.get_combined_minimum_size().y + padding.y, "pinned toolbars plus the one card, no spare rows")
+	assert_eq(_scroll().size.y, content.get_combined_minimum_size().y)
 	assert_true(panel.size.x < _host.size.x * 0.8, "a short catalogue leaves the remaining viewport empty")
 	assert_false(_scroll().get_h_scroll_bar().visible)
 	assert_false(_scroll().get_v_scroll_bar().visible)
@@ -325,7 +329,7 @@ func test_native_mouse_down_refresh_up_requests_once() -> void:
 	assert_false(button.is_pressed())
 
 
-func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_widths() -> void:
+func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_sizes() -> void:
 	for index: int in range(30):
 		_content.definitions.append(_definition(StringName("item_%02d" % index), "Furniture %02d" % index, index))
 	_catalogue.bind_content(_content)
@@ -334,7 +338,8 @@ func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_widths()
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	var panel: Control = _catalogue.get_node("Panel") as Control
 	var scroll: ScrollContainer = _scroll()
-	for bounds: Vector2 in [Vector2(900.0, 640.0), Vector2(640.0, 120.0), Vector2(360.0, 100.0)]:
+	# The smallest views the stretch settings allow: 1600x900 at 150% UI scale.
+	for bounds: Vector2 in [Vector2(900.0, 640.0), Vector2(1066.0, 600.0)]:
 		_host.size = bounds
 		await tree.process_frame
 		await tree.process_frame
@@ -343,8 +348,8 @@ func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_widths()
 		assert_almost_eq(panel.get_rect().end.y, bounds.y - 12.0)
 		assert_true(panel.position.y >= 12.0)
 		assert_true(panel.size.x <= minf(BuildCatalogue.MAX_PANEL_WIDTH, bounds.x - 24.0))
-		assert_true(panel.size.y <= bounds.y - 24.0)
 		assert_true(panel.size.y <= maxf(96.0, bounds.y * BuildCatalogue.PANEL_HEIGHT_SHARE) + 0.5)
+		assert_false(scroll.get_h_scroll_bar().visible, "the catalogue never scrolls sideways (#499)")
 		var vertical: VScrollBar = scroll.get_v_scroll_bar()
 		assert_true(vertical.visible, "a long card grid scrolls vertically inside its bounded panel")
 		assert_true(vertical.max_value > vertical.page)
@@ -352,16 +357,46 @@ func test_bottom_grid_stays_bounded_and_long_catalogue_scrolls_at_small_widths()
 		await tree.process_frame
 		assert_true(scroll.scroll_vertical > 0)
 		assert_true((scroll.get_node("Content") as Control).position.y < 0.0)
-		if bounds.x <= 360.0:
-			var horizontal: HScrollBar = scroll.get_h_scroll_bar()
-			assert_true(horizontal.visible, "tiny windows retain readable category buttons through scrolling")
-			assert_true(horizontal.max_value > horizontal.page)
-			scroll.scroll_horizontal = ceili(horizontal.max_value)
-			await tree.process_frame
-			assert_true(scroll.scroll_horizontal > 0)
-			assert_true((scroll.get_node("Content") as Control).position.x < 0.0)
+		scroll.scroll_vertical = 0
 	assert_eq(_catalogue.item_buttons.size(), 30)
 	assert_true(_requests.is_empty())
+
+
+func test_long_catalogue_scrolls_only_its_cards_under_pinned_toolbars() -> void:
+	for index: int in range(40):
+		_content.definitions.append(_definition(StringName("item_%02d" % index), "Furniture %02d" % index, index))
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	await _mount(Vector2(1600.0, 900.0))
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var scroll: ScrollContainer = _scroll()
+	var toolbars: Control = _catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	assert_false(scroll.is_ancestor_of(toolbars), "the toolbars sit outside the scroll")
+	assert_true(panel.position.y > _host.size.y * 0.5, "the panel stays below the screen centre")
+	var card: Button = _catalogue.item_buttons[&"item_00"]
+	var rows_shown: float = (scroll.size.y + BuildCatalogue.CARD_GAP) / (card.size.y + BuildCatalogue.CARD_GAP)
+	assert_true(rows_shown >= 1.5 and rows_shown <= float(BuildCatalogue.VISIBLE_ROWS) + 0.01,
+		"rows shown: %s" % rows_shown)
+	assert_true(scroll.get_v_scroll_bar().visible)
+	assert_false(scroll.get_h_scroll_bar().visible)
+	var pinned: Dictionary = {}
+	for control: Control in [toolbars, _catalogue.mode_buttons[BuildCatalogue.BUY],
+			_catalogue.category_buttons[&"walls"], _catalogue.sort_button, _catalogue.vibe_meter]:
+		pinned[control] = control.get_global_rect()
+	# Wheel over the toolbars and over the cards: only the cards move.
+	for point: Vector2 in [_catalogue.sort_button.get_global_rect().get_center(), card.get_global_rect().get_center()]:
+		var start: int = scroll.scroll_vertical
+		await _wheel(point, MOUSE_BUTTON_WHEEL_DOWN)
+		assert_eq(scroll.scroll_vertical - start, PanelScroll.WHEEL_STEP, "a wheel notch at %s scrolls the cards" % point)
+		for control: Control in pinned:
+			assert_eq(control.get_global_rect(), pinned[control], "%s never moves with the wheel" % control.name)
+	scroll.scroll_vertical = ceili(scroll.get_v_scroll_bar().max_value)
+	await tree.process_frame
+	for control: Control in pinned:
+		assert_eq(control.get_global_rect(), pinned[control], "%s stays put at the bottom of the list" % control.name)
+	assert_true(_requests.is_empty(), "the wheel buys nothing")
+
 
 func test_only_bottom_panel_blocks_native_world_clicks() -> void:
 	_content.definitions = [_definition(&"fixture", "Fixture", 10)]
@@ -541,6 +576,24 @@ func _mouse(position: Vector2, pressed: bool) -> void:
 	event.pressed = pressed
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.push_input(event, true)
+
+
+func _wheel(position: Vector2, button: MouseButton) -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var move: InputEventMouseMotion = InputEventMouseMotion.new()
+	move.position = position
+	move.global_position = position
+	tree.root.push_input(move, true)
+	for down: bool in [true, false]:
+		var wheel: InputEventMouseButton = InputEventMouseButton.new()
+		wheel.button_index = button
+		wheel.position = position
+		wheel.global_position = position
+		wheel.pressed = down
+		wheel.factor = 1.0
+		tree.root.push_input(wheel, true)
+	await tree.process_frame
+	await tree.process_frame
 
 
 func _scroll() -> ScrollContainer:
