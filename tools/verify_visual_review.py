@@ -22,6 +22,7 @@ CAPTURE_FRAMES = {
         "quarter-2": (60,),
         "quarter-3": (60,),
         "neighbourhood-street": (60,),
+        "seaside-street": (60,),
         "inspect-guest": (60,),
         "debug-busy": (60,),
         "owner-kitchen": (60,),
