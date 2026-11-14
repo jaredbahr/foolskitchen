@@ -16,6 +16,10 @@ func record(report: DayReport) -> void:
 	if report == null:
 		return
 	var recorded: bool = report.operating_profit_recorded()
+	var good_reviews: int = 0
+	for card: Dictionary in report.review_cards:
+		if int(card.get("stars", 0)) >= 4:
+			good_reviews += 1
 	var row: Dictionary = _clean_row({
 		"day": report.day,
 		"served": report.customers_served,
@@ -24,6 +28,10 @@ func record(report: DayReport) -> void:
 		"dish_profit_recorded": recorded,
 		"cash_change": report.profit(),
 		"reputation": report.reputation_after,
+		"weekly_profit": report.purchase_basis_operating_profit(),
+		"good_reviews": good_reviews,
+		"no_table": int(report.leave_reasons.get(&"no_table", 0)),
+		"dishes_sold": report.dishes_sold,
 	})
 	if row.is_empty():
 		return
@@ -57,6 +65,8 @@ func capture() -> Dictionary:
 	for row: Dictionary in days:
 		row["dish_profit"] = str(row["dish_profit"])
 		row["cash_change"] = str(row["cash_change"])
+		if row.has("weekly_profit"):
+			row["weekly_profit"] = str(row["weekly_profit"])
 	return {"version": SAVE_VERSION, "days": days}
 
 
@@ -107,9 +117,27 @@ static func _clean_row(value: Dictionary) -> Dictionary:
 	if not is_finite(stars) or stars < 0.0 or stars > 5.0:
 		return {}
 	var recorded: bool = value["dish_profit_recorded"]
-	return {"day": int(value["day"]), "served": int(value["served"]),
+	var row: Dictionary = {"day": int(value["day"]), "served": int(value["served"]),
 		"lost": int(value["lost"]), "dish_profit": int(dish) if recorded else 0,
 		"dish_profit_recorded": recorded, "cash_change": int(cash), "reputation": stars}
+	# Existing history rows have none of these measurements. Leave them absent
+	# so an old save does not become a week of zero sales or zero walkouts.
+	if value.has("weekly_profit") or value.has("good_reviews") or value.has("no_table") or value.has("dishes_sold"):
+		var weekly_profit: Variant = _money(value.get("weekly_profit"))
+		if weekly_profit == null or not _whole(value.get("good_reviews"), 0) \
+				or not _whole(value.get("no_table"), 0, row["lost"]) or not value.get("dishes_sold") is Dictionary:
+			return {}
+		var dishes: Dictionary[String, int] = {}
+		for key: Variant in value["dishes_sold"]:
+			if not (key is String or key is StringName) or str(key).is_empty() \
+					or not _whole(value["dishes_sold"][key], 0):
+				return {}
+			dishes[str(key)] = int(value["dishes_sold"][key])
+		row["weekly_profit"] = int(weekly_profit)
+		row["good_reviews"] = int(value["good_reviews"])
+		row["no_table"] = int(value["no_table"])
+		row["dishes_sold"] = dishes
+	return row
 
 
 static func _whole(value: Variant, minimum: int, maximum: int = MAX_EXACT_INTEGER) -> bool:

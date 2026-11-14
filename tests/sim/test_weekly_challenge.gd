@@ -62,6 +62,93 @@ func test_rotation_is_day_one_then_every_seventh_morning_without_repeating() -> 
 		"a rotation cannot move backwards")
 
 
+func test_week_two_draws_use_the_shop_history_and_leave_no_impossible_clean_goal() -> void:
+	var starter: BusinessHistory = _shop_history(21, 34, 8, 4, 5)
+	var bigger: BusinessHistory = _shop_history(42, 68, 16, 8, 5)
+	var tea: RecipeDef = _recipe(&"tea", "Tea")
+	var unsold: RecipeDef = _recipe(&"new_dish", "New dish")
+	var menu: Array[RecipeDef] = [tea, unsold]
+	var kinds: Dictionary[int, bool] = {}
+	for seed_value: int in range(100):
+		var first: WeeklyChallengeState = WeeklyChallengeState.new()
+		var replay: WeeklyChallengeState = WeeklyChallengeState.new()
+		var larger: WeeklyChallengeState = WeeklyChallengeState.new()
+		var random: RandomNumberGenerator = _rng()
+		var same: RandomNumberGenerator = _rng()
+		var large_random: RandomNumberGenerator = _rng()
+		random.seed = seed_value
+		same.seed = seed_value
+		large_random.seed = seed_value
+		assert_true(first.begin_week(8, 12, POOL, menu, random, starter, 6))
+		assert_true(replay.begin_week(8, 1, POOL, menu, same, starter, 6))
+		assert_eq(replay.to_dict(), first.to_dict(), "owner level does not size the draw")
+		assert_eq(random.state, same.state)
+		assert_true(larger.begin_week(8, 12, POOL, menu, large_random, bigger, 12))
+		assert_eq(larger.challenge_id, first.challenge_id)
+		assert_true(larger.target > first.target)
+		assert_eq(first.reward_cash, POOL.by_id(first.challenge_id).reward_cash)
+		kinds[first.kind] = true
+		match first.kind:
+			WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
+				assert_eq(first.target, 24)
+			WeeklyChallenge.Kind.OPERATING_PROFIT:
+				assert_eq(first.target, 274)
+			WeeklyChallenge.Kind.GOOD_REVIEWS:
+				assert_eq(first.target, 64)
+			WeeklyChallenge.Kind.SELL_DISH:
+				assert_eq(first.dish_id, &"tea")
+				assert_eq(first.target, 32)
+	assert_eq(kinds.size(), 4)
+	assert_false(kinds.has(WeeklyChallenge.Kind.NO_LOSS_DAYS))
+
+
+func test_remaining_days_and_recent_history_set_cumulative_targets() -> void:
+	var history: BusinessHistory = _shop_history(21, 34, 8, 4, 0)
+	var profit: WeeklyChallengePool = _pool([POOL.by_id(&"earn_weekly_profit")])
+	var state: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(state.begin_legacy_week(11, 9, profit, [], _rng(), history, 6))
+	assert_eq(state.target, 156)
+	assert_eq(state.last_evaluated_day, 10)
+	var clean: WeeklyChallengePool = _pool([POOL.by_id(&"lose_no_guests_five_days")])
+	var clean_state: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(clean_state.begin_week(8, 9, clean, [], _rng(), history, 6))
+	assert_eq(clean_state.target, 5)
+
+
+func test_first_service_sizes_the_morning_draw_without_a_second_rng_draw() -> void:
+	var profit: WeeklyChallengePool = _pool([POOL.by_id(&"earn_weekly_profit")])
+	var state: WeeklyChallengeState = WeeklyChallengeState.new()
+	var random: RandomNumberGenerator = _rng()
+	assert_true(state.begin_week(1, 1, profit, [], random, BusinessHistory.new(), 6))
+	assert_eq(state.target, 100)
+	var random_state: int = random.state
+	var first: MilestoneDay = _day(1, 21, 0, 34)
+	state.size_first_week(profit, first, 6)
+	assert_eq(state.target, 274)
+	assert_eq(state.text, "Earn $274 operating profit this week")
+	assert_eq(state.reward_cash, 75)
+	assert_eq(random.state, random_state)
+	assert_false(bool(state.apply_day(first)["completed"]))
+	state.size_first_week(profit, _day(1, 21, 0, 60), 6)
+	assert_eq(state.target, 274)
+
+
+func _shop_history(served: int, profit: int, reviews: int, tea: int, losses: int) -> BusinessHistory:
+	var history: BusinessHistory = BusinessHistory.new()
+	for day: int in range(1, 9):
+		var report: DayReport = DayReport.new()
+		report.day = day
+		report.customers_served = served * (10 if day == 1 else 1)
+		report.customers_lost = losses
+		report.leave_reasons = {&"no_table": losses}
+		report.income = {Ledger.SALE: profit}
+		report.dishes_sold = {&"tea": tea}
+		for _review: int in reviews:
+			report.review_cards.append({"stars": 4})
+		history.record(report)
+	return history
+
+
 func test_serve_goal_keeps_the_weekly_max_and_completes_once() -> void:
 	var state: WeeklyChallengeState = _started(WeeklyChallenge.Kind.SERVE_IN_ONE_DAY, 10)
 	var first: Dictionary = state.apply_day(_day(1, 12))
