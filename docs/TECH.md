@@ -54,6 +54,25 @@ The HUD gear opens Settings during any day phase and pauses the clock. Closing
 restores the previous speed, including pause. Escape closes Settings, dismisses
 an active edit/panel/selection first, or opens Settings when none is active.
 
+**Panel scrolling (#497):** every panel (Menu, Staff, Stock, Goals, Property,
+the evening report, Settings, the Build catalogue) attaches `PanelScroll`
+(`src/ui/panel_scroll.gd`) with its card, its one main scroll area and any
+extra area (Menu's dish detail). A wheel notch is always `WHEEL_STEP` (110 px);
+a wheel anywhere over the card scrolls the area under it, else the main one;
+the helper takes the wheel from each control's `gui_input` before the control
+sees it, so sliders and choices never change while scrolling. PgUp/PgDn/
+Home/End scroll the open panel unless a text field has focus. Menu, Staff and
+Stock keep their card-wide ScrollContainer only as a fallback for very short
+windows (150% UI on 1280x720 with HUD notices); it takes the wheel only while
+it really overflows. Every panel but the Build catalogue (closed by leaving
+Build) has Close at the top right of its header;
+the report's Close (and Esc) only hide it; the top bar then shows a Report
+button (`HUD.report_requested` -> `Main.show_closed_report`), and the top bar's
+Next day goes through `HUD.next_day_requested` -> `Main._on_next_day_pressed`
+so the day's history row records the final books. Dropdown popups keep their
+own wheel, and page keys are ignored while a dialog or a later panel covers
+the card's centre (`PanelScroll.is_covered`).
+
 **Build version and What's new (#433):** `tools/export.sh` stamps every export
 before it runs Godot: `build_info/version.txt` (the tag from
 `GITHUB_REF_NAME` on a `vX.Y.Z` build, or `FK_VERSION`; any other build such as

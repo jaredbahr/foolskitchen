@@ -158,7 +158,7 @@ func test_actual_evening_report_replaces_forecast_without_mutating_snapshot() ->
 	var before: Dictionary = report.to_dict()
 	view.call("show_report", report)
 	view.call("show_report", report)
-	var section: Control = view.get_node("Panel/Scroll/Content/DemandForecast") as Control
+	var section: Control = view.get_node("Panel/Column/Scroll/Content/DemandForecast") as Control
 	assert_true(section.visible)
 	assert_eq((section.get_node("Heading") as Label).text, "Tomorrow's crowd")
 	assert_eq((section.get_node("Summary") as Label).text, "About 28 guests expected (demand +20%)")

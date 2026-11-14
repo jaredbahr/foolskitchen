@@ -384,8 +384,8 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	# summary accessible without removing finance, review or progression rows.
 	var report: Control = main.get_node("Overlay/EveningReport") as Control
 	report.call("show_report", main.call("build_report", Clock.sim.day))
-	var summary: Label = report.get_node("Panel/Scroll/Content/VibeSummary") as Label
-	var report_scroll: ScrollContainer = report.get_node("Panel/Scroll") as ScrollContainer
+	var summary: Label = report.get_node("Panel/Column/Scroll/Content/VibeSummary") as Label
+	var report_scroll: ScrollContainer = report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var window: Window = (Engine.get_main_loop() as SceneTree).root
 	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
 		window.size = physical_size
@@ -422,15 +422,15 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	assert_true(main.call("set_build_active", true))
 	assert_true(meter.visible)
 	report.call("show_report", main.call("build_report", Clock.sim.day))
-	assert_true((report.get_node("Panel/Scroll/Content/VibeSummary") as Label).text.begins_with("Vibe: Modern"))
-	assert_true((report.get_node("Panel/Scroll/Content/Profit") as Label).text.contains("operating profit"))
+	assert_true((report.get_node("Panel/Column/Scroll/Content/VibeSummary") as Label).text.begins_with("Vibe: Modern"))
+	assert_true((report.get_node("Panel/Column/Scroll/Content/Profit") as Label).text.contains("operating profit"))
 
 
 func test_departure_signal_fixture_attributes_arrival_theme_not_later_repaint_and_resets_each_morning() -> void:
 	var main: Node = await _start()
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	assert_true(sim.customer_left.is_connected(Callable(main, "_on_vibe_customer_left")))
-	var line: Label = main.get_node("Overlay/EveningReport/Panel/Scroll/Content/VibeSummary") as Label
+	var line: Label = main.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content/VibeSummary") as Label
 	assert_eq(line.text, "", "a neutral room with no experienced bonus has no nightly vibe line")
 	assert_false(line.visible)
 	var before: Dictionary = _side_effects()
@@ -458,7 +458,7 @@ func test_departure_signal_fixture_attributes_arrival_theme_not_later_repaint_an
 func test_report_hides_rounded_zero_and_notices_experienced_theme_without_claiming_a_good_review() -> void:
 	var main: Node = await _start()
 	var report: Control = main.get_node("Overlay/EveningReport") as Control
-	var line: Label = report.get_node("Panel/Scroll/Content/VibeSummary") as Label
+	var line: Label = report.get_node("Panel/Column/Scroll/Content/VibeSummary") as Label
 	var before: Dictionary = _side_effects()
 	var result: VibeModel.Result = VibeModel.Result.new()
 	result.valid = true

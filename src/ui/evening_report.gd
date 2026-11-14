@@ -2,6 +2,8 @@ extends Control
 ## Standalone closing report. Integration supplies data and handles Next day.
 
 signal next_day_pressed
+## The header Close: Main hides the report, as Esc does (#497).
+signal close_requested
 
 const LOAN_INTRODUCTION: String = "The bank covered your shortfall. It'll take a share of your profits until it's paid back."
 const MONEY_LABELS: Dictionary = {
@@ -86,6 +88,8 @@ var _trend_buttons: Array[Button] = []
 
 func _ready() -> void:
 	_bind_nodes()
+	# One wheel step everywhere, and the wheel works over the whole card (#497).
+	PanelScroll.attach(self, $Panel as Control, $Panel/Column/Scroll as ScrollContainer)
 	_on_report_resized()
 	if not _report_shown:
 		show_report(DayReport.new())
@@ -101,7 +105,7 @@ func show_report(report: DayReport) -> void:
 	var viral: Label = %ViralReviewLine
 	viral.text = report.viral_line
 	viral.visible = not report.viral_line.is_empty()
-	(get_node("Panel/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
+	(get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label).text = "Reviews of %s" % report.restaurant_name
 	_header.text = "Day %d: Closed" % report.day
 	if report.operating_profit_recorded():
 		var operating_profit: int = report.operating_profit()
@@ -159,7 +163,7 @@ func show_report(report: DayReport) -> void:
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
 	_cleanliness.visible = not report.cleanliness_label.is_empty()
-	var mishaps: Label = get_node_or_null("Panel/Scroll/Content/Mishaps") as Label
+	var mishaps: Label = get_node_or_null("Panel/Column/Scroll/Content/Mishaps") as Label
 	if mishaps == null:
 		mishaps = Label.new()
 		mishaps.name = "Mishaps"
@@ -168,7 +172,7 @@ func show_report(report: DayReport) -> void:
 		_cleanliness.get_parent().move_child(mishaps, _cleanliness.get_index() + 1)
 	mishaps.text = report.mishaps_text
 	mishaps.visible = not report.mishaps_text.is_empty()
-	var inspection: Label = get_node_or_null("Panel/Scroll/Content/Inspection") as Label
+	var inspection: Label = get_node_or_null("Panel/Column/Scroll/Content/Inspection") as Label
 	if inspection == null:
 		inspection = Label.new()
 		inspection.name = "Inspection"
@@ -177,7 +181,7 @@ func show_report(report: DayReport) -> void:
 		mishaps.get_parent().move_child(inspection, mishaps.get_index() + 1)
 	inspection.text = "\n".join(PackedStringArray(report.inspection_lines))
 	inspection.visible = not report.inspection_lines.is_empty()
-	var bookings: Label = get_node_or_null("Panel/Scroll/Content/Bookings") as Label
+	var bookings: Label = get_node_or_null("Panel/Column/Scroll/Content/Bookings") as Label
 	if bookings == null and not report.booking_lines.is_empty():
 		bookings = Label.new()
 		bookings.name = "Bookings"
@@ -187,7 +191,7 @@ func show_report(report: DayReport) -> void:
 	if bookings != null:
 		bookings.text = "\n".join(PackedStringArray(report.booking_lines))
 		bookings.visible = not report.booking_lines.is_empty()
-	var rush_hour: Label = get_node_or_null("Panel/Scroll/Content/RushHour") as Label
+	var rush_hour: Label = get_node_or_null("Panel/Column/Scroll/Content/RushHour") as Label
 	if rush_hour == null:
 		rush_hour = Label.new()
 		rush_hour.name = "RushHour"
@@ -273,7 +277,7 @@ func set_vibe(result: VibeModel.Result, experienced_theme_label: String = "") ->
 
 ## "Takeaways: N" under the guest bar, only on days the order counter sold any.
 func _show_takeaways(count: int) -> void:
-	var label: Label = get_node_or_null("Panel/Scroll/Content/Takeaways") as Label
+	var label: Label = get_node_or_null("Panel/Column/Scroll/Content/Takeaways") as Label
 	if label == null:
 		label = Label.new()
 		label.name = "Takeaways"
@@ -328,7 +332,7 @@ func _bind_nodes() -> void:
 	_daily_special.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_daily_special.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_daily_special.hide()
-	var special_content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	var special_content: VBoxContainer = get_node("Panel/Column/Scroll/Content") as VBoxContainer
 	special_content.add_child(_daily_special)
 	special_content.move_child(_daily_special, _slowest_seller.get_index() + 1)
 	_guests = %Guests
@@ -340,7 +344,7 @@ func _bind_nodes() -> void:
 	_reputation = %Reputation
 	_reviews = %ReviewRows
 	_owner_level = %OwnerLevel
-	_owner_callout = get_node("Panel/Scroll/Content/LevelUpCallout") as HBoxContainer
+	_owner_callout = get_node("Panel/Column/Scroll/Content/LevelUpCallout") as HBoxContainer
 	_owner_level_up = %OwnerLevelUp
 	_career_tier_up = %CareerTierUp
 	_owner_xp_rows = %OwnerXPRows
@@ -349,7 +353,7 @@ func _bind_nodes() -> void:
 	_milestone_rows = %MilestoneRows
 	(%TeamHeading as Label).text = StaffAdviceText.TEAM_HEADING
 	IconStyle.decorate_label(%TeamHeading as Label, &"staff")
-	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	var content: VBoxContainer = get_node("Panel/Column/Scroll/Content") as VBoxContainer
 	regulars_summary = Label.new()
 	regulars_summary.name = "RegularsSummary"
 	regulars_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -412,7 +416,7 @@ func _bind_nodes() -> void:
 		_trend_buttons.append(button)
 	IconStyle.decorate_label(_header, &"report")
 	for path: String in ["ReviewHeading", "GuestHeading", "ReasonHeading", "LowStockHeading", "OwnerHeading"]:
-		IconStyle.decorate_label(get_node("Panel/Scroll/Content/" + path) as Label,
+		IconStyle.decorate_label(get_node("Panel/Column/Scroll/Content/" + path) as Label,
 			&"reputation" if path == "ReviewHeading" else (&"staff" if path == "GuestHeading"
 				else (&"stock" if path == "LowStockHeading" else &"report")))
 	IconStyle.configure_button(next_day, &"next_day", "Next day", "Begin the next morning", IconCatalogue.PANEL_SIZE)
@@ -438,8 +442,8 @@ func _slowest_seller_text(report: DayReport) -> String:
 func _on_report_resized() -> void:
 	if not is_inside_tree():
 		return
-	var finances: HBoxContainer = get_node("Panel/Scroll/Content/Finances") as HBoxContainer
-	var content: VBoxContainer = get_node("Panel/Scroll/Content") as VBoxContainer
+	var finances: HBoxContainer = get_node("Panel/Column/Scroll/Content/Finances") as HBoxContainer
+	var content: VBoxContainer = get_node("Panel/Column/Scroll/Content") as VBoxContainer
 	var target: Node = finances if size.x >= 1100.0 else content
 	if _stock_summary.get_parent() != target:
 		_stock_summary.reparent(target, false)
@@ -483,7 +487,7 @@ func _fill_owner_progress(report: DayReport) -> void:
 func _apply_creative() -> void:
 	if not GameMode.is_creative():
 		return
-	var content: Node = get_node("Panel/Scroll/Content")
+	var content: Node = get_node("Panel/Column/Scroll/Content")
 	for path: String in ["Profit", "Finances", "LoanNotice", "CashChange", "MilestoneHeading",
 			"MilestoneRows", "WeeklyChallengeLine", "BusinessTrendSection", "LevelUpCallout",
 			"CareerTierUp", "OwnerHeading", "OwnerLevel", "OwnerXPRows", "AwaySites"]:
@@ -605,3 +609,7 @@ func _recorded_money(amount: int, recorded: bool) -> String:
 
 func _on_next_day_pressed() -> void:
 	next_day_pressed.emit()
+
+
+func _on_close_pressed() -> void:
+	close_requested.emit()

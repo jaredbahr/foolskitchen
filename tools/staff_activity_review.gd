@@ -80,8 +80,8 @@ func _process(_delta: float) -> void:
 		_review_fail("Your team section is missing")
 		return
 	if _review_frames == 10:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
-		var reasons: Control = _report.get_node("Panel/Scroll/Content/ReasonHeading") as Control
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+		var reasons: Control = _report.get_node("Panel/Column/Scroll/Content/ReasonHeading") as Control
 		scroll.scroll_vertical = maxi(0, roundi(reasons.position.y))
 	elif _review_frames == 25:
 		RenderingServer.frame_post_draw.connect(_review_validate, CONNECT_ONE_SHOT)
@@ -104,8 +104,8 @@ func _review_validate() -> void:
 	var heading: Label = _report.get_node("%TeamHeading") as Label
 	var rows: VBoxContainer = _report.get_node("%TeamActivityRows") as VBoxContainer
 	var advice: Label = _report.get_node("%TeamAdvice") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
-	var reasons_heading: Label = _report.get_node("Panel/Scroll/Content/ReasonHeading") as Label
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var reasons_heading: Label = _report.get_node("Panel/Column/Scroll/Content/ReasonHeading") as Label
 	var reasons: GridContainer = _report.get_node("%ReasonRows") as GridContainer
 	if heading.text != StaffAdviceText.TEAM_HEADING \
 			or advice.text != StaffAdviceText.recommendation(advice_id):

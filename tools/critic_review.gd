@@ -117,7 +117,7 @@ func _process(_delta: float) -> void:
 		shown_report = build_report(Clock.sim.day)
 		_report.call(&"show_report", shown_report)
 	elif _frame == 70:
-		var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+		var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 		scroll.ensure_control_visible(_report.get("critic_summary") as Label)
 	elif _frame == 80:
 		_assert_report()
@@ -139,7 +139,7 @@ func _assert_inspector() -> void:
 func _assert_report() -> void:
 	var heading: Label = _report.get("critic_heading") as Label
 	var summary: Label = _report.get("critic_summary") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	if shown_report == null or not _report.is_visible_in_tree() or summary == null \
 			or not summary.is_visible_in_tree() or shown_report.critic_lines.size() != 3 \
 			or heading.text != "A food critic visited today" or not summary.text.contains("(5 stars)") \

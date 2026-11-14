@@ -83,7 +83,7 @@ func test_forecast_reuses_existing_factor_without_storing_or_inventing_a_score()
 	var view: Control = REPORT.instantiate() as Control
 	_nodes.append(view)
 	view.call("show_report", report)
-	var factors: Label = view.get_node("Panel/Scroll/Content/DemandForecast/Factors") as Label
+	var factors: Label = view.get_node("Panel/Column/Scroll/Content/DemandForecast/Factors") as Label
 	assert_true(factors.text.contains("Curb appeal +4%"))
 	assert_false(factors.text.contains("/ 100"), "the forecast records a factor, not a curb score")
 	assert_eq(report.to_dict(), before)

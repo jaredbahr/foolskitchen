@@ -48,9 +48,9 @@ func _process(delta: float) -> void:
 	if _review_frame == 30:
 		_capture_real_service_report()
 	elif _review_frame == 42:
-		var rush_label: Control = _report.get_node_or_null("Panel/Scroll/Content/RushHour") as Control
+		var rush_label: Control = _report.get_node_or_null("Panel/Column/Scroll/Content/RushHour") as Control
 		if rush_label != null:
-			(_report.get_node("Panel/Scroll") as ScrollContainer).ensure_control_visible(rush_label)
+			(_report.get_node("Panel/Column/Scroll") as ScrollContainer).ensure_control_visible(rush_label)
 
 
 func _capture_real_service_report() -> void:

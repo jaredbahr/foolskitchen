@@ -111,8 +111,8 @@ func test_advice_wraps_inside_real_narrow_report_without_horizontal_overflow() -
 	for _frame: int in 4:
 		await (Engine.get_main_loop() as SceneTree).process_frame
 	var advice: Label = _report.get_node("%TeamAdvice") as Label
-	var scroll: ScrollContainer = _report.get_node("Panel/Scroll") as ScrollContainer
-	var content: Control = _report.get_node("Panel/Scroll/Content") as Control
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var content: Control = _report.get_node("Panel/Column/Scroll/Content") as Control
 	assert_eq(advice.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART)
 	assert_true(advice.size.x > 0.0)
 	assert_true(content.size.x <= scroll.size.x + 0.5)
