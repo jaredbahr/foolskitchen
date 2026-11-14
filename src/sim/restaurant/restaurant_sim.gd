@@ -1352,7 +1352,7 @@ func record_departure(customer: CustomerAgent) -> void:
 				finalize_booking_review(customer.party.booking_id, false)
 		elif customer.is_critic():
 			# Only a critic who sat down and ordered writes the weighted review.
-			if customer.order != null and customer.leave_reason != &"removed":
+			if (visit.was_seated or visit.served) and customer.order != null and reason != &"removed":
 				_record_critic_review(visit)
 		else:
 			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
@@ -1365,8 +1365,8 @@ func record_departure(customer: CustomerAgent) -> void:
 
 
 ## Booked members are replaced by exactly one weighted booking review when the
-## complete group has departed. A service-close fallback can create one bad
-## no-seat review when no party ever arrived.
+## complete group has departed. An unseated booking still needs a settlement
+## result so the deposit can be refunded, including the service-close fallback.
 func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> Dictionary:
 	if booking_id <= 0 or booking_review_results.has(booking_id) \
 			or review_book == null or review_tuning == null or review_quotes == null or review_rng == null:
@@ -1375,16 +1375,19 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 	for value: Variant in _booking_visits_today.get(booking_id, []):
 		if value is ReviewVisit:
 			visits.append(value as ReviewVisit)
-	if visits.is_empty() and fallback_no_seat:
-		var missed: ReviewVisit = ReviewVisit.new()
-		missed.served = false
-		missed.was_seated = false
-		visits.append(missed)
-	if visits.is_empty():
+	if visits.is_empty() and not fallback_no_seat:
 		return {}
 	var no_seat: bool = true
 	for visit: ReviewVisit in visits:
 		no_seat = no_seat and not visit.was_seated
+	if no_seat:
+		var occasion: String = "reserved"
+		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
+			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
+		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
+		var unseated: Dictionary = {"no_seat": true}
+		booking_review_results[booking_id] = unseated.duplicate()
+		return unseated
 	var expected_members: int = _booking_party_sizes.get(booking_id, 0)
 	if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
 		expected_members = int(group_booking.booking.get("party_size", expected_members))
@@ -1394,17 +1397,12 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 		review_rng, booking_tuning, expected_members)
 	if result.is_empty():
 		return {}
-	result["no_seat"] = no_seat
+	result["no_seat"] = false
 	booking_review_results[booking_id] = result.duplicate(true)
 	var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]}
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
-	if no_seat:
-		var occasion: String = "reserved"
-		if group_booking != null and int(group_booking.booking.get("booking_id", 0)) == booking_id:
-			occasion = String(group_booking.booking.get("occasion", "Reserved")).strip_edges().to_lower()
-		booking_report_lines.append("Booking: the %s group couldn't be seated. Deposit refunded." % occasion)
 	return result.duplicate(true)
 
 

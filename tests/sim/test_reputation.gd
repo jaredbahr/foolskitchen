@@ -29,6 +29,7 @@ func test_unserved_is_one_star_and_closing_gives_no_review_or_rng_draw() -> void
 	assert_eq(random.state, state)
 	assert_eq(ReputationBook.score_visit(visit, tune), 0)
 	visit.closing = false
+	visit.was_seated = true
 	assert_eq(ReputationBook.score_visit(visit, tune), 1)
 	var result: Dictionary = book.record_visit(visit, tune, QUOTES, random)
 	assert_eq(result["stars"], 1)
@@ -185,6 +186,7 @@ func test_virtual_reviews_age_out_and_arrival_curve_has_data_endpoints() -> void
 	assert_eq(book.arrival_multiplier(TUNING), 1.2)
 	var low: ReputationBook = ReputationBook.new()
 	var unserved: ReviewVisit = ReviewVisit.new()
+	unserved.was_seated = true
 	for _index: int in range(30):
 		low.record_visit(unserved, tune, QUOTES, random)
 	assert_eq(low.average(), 1.0)

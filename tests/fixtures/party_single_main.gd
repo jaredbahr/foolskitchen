@@ -141,6 +141,8 @@ class MainCustomer extends CustomerAgent:
 			if not set_destination(world.grid, seat_cell):
 				_requeue(world, sim)
 		elif result == MoveResult.ARRIVED and cell == seat_cell:
+			# Capture arrival for the current review eligibility rule (#491).
+			_reached_dining_seat = true
 			state = State.ORDERING
 			_post_order_task(world, sim)
 
