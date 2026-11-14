@@ -278,7 +278,7 @@ var _weekly_challenge_report_line: String = ""
 var _opening_week_xp_today: int = 0
 var _opening_week_xp_day: int = 0
 ## Opening week toasts raised while the evening report covers the toast area;
-## shown when the player moves on to the next day.
+## shown when the next morning begins.
 var _held_opening_toasts: Array[String] = []
 var _report: Control
 var _inspect_panel: InspectPanel
@@ -5856,6 +5856,11 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	# Opening-week toasts held under last night's report show now, whichever
+	# button started the day.
+	for line: String in _held_opening_toasts:
+		$HUD.queue_toast(line)
+	_held_opening_toasts.clear()
 	daily_special.begin_morning(Clock.sim.day)
 	_apply_menu(sim, menu_settings)
 	_record_notice_day = 0
@@ -7363,9 +7368,6 @@ func _on_next_day_pressed() -> void:
 			and _closed_day != Clock.sim.day:
 		business_history.record(build_report(Clock.sim.day))
 	Clock.sim.next_day()
-	for line: String in _held_opening_toasts:
-		$HUD.queue_toast(line)
-	_held_opening_toasts.clear()
 
 
 ## Read-only presentation snapshot: all dishes, even those missing equipment.

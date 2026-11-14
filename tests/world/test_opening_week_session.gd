@@ -198,8 +198,21 @@ func test_a_guest_paid_on_the_closing_tick_counts_and_close_toasts_wait() -> voi
 	assert_true(_state(main).is_completed(&"serve_15"), "the close counts today's guests")
 	var held: Array[String] = main.get("_held_opening_toasts")
 	assert_true(held.size() >= 2, "toasts met under the evening report wait for the next day")
-	main.call("_on_next_day_pressed")
+	var expected: Array[String] = held.duplicate()
+	var hud: Node = main.get_node("HUD")
+	# The top bar's Next day calls the clock directly, not the report's button.
+	Clock.sim.next_day()
+	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 	assert_true((main.get("_held_opening_toasts") as Array[String]).is_empty())
+	# The first toast is on screen; the rest wait in the HUD's queue.
+	var texts: Array[String] = []
+	var shown: Label = hud.get("_collection_toast_label") as Label
+	if shown != null:
+		texts.append(shown.text)
+	for entry: Dictionary in hud.get("_collection_toast_queue"):
+		texts.append(String(entry["text"]))
+	for line: String in expected:
+		assert_true(texts.has(line), "held toast reaches the HUD in the morning: %s" % line)
 
 
 func test_progress_survives_the_morning_save_and_reload() -> void:
