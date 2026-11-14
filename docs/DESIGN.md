@@ -123,6 +123,14 @@ Every street is a "cutesy but fun" frame around the shop. Not playable yet (pati
 - **Second location (the friend's request):** unlocks at Tier 3 and needs a hired Manager for the site you leave (D24, #164). Buy a new lot (size, street, rent and guest mix differ) and design it from a bare shell. Switch between sites in the morning. The one you're not at runs in the simplified background sim, and both feed the same bank account. Tier 6 grows this into a chain with managers.
 - **No running out of things to do:** the late game has no end state. A chain to grow, rotating weekly challenges, a collection of every recipe, item and theme, and sandbox mode.
 
+### 4.5b Early game: the opening week (#494)
+The starter makes about $50 to $70 a day from $300, and the first expansion only pays when tables and staff grow together (D16). The opening week teaches that, and pays for it.
+- **A paid goal chain** (`data/balance/opening_week.tres`), about $600 over days 1 to 5. Each goal pays cash and a little XP the moment it is met (decor, a drink and Grow together are checked at opening, so a purchase undone first pays nothing), as its own ledger line ("Opening week goals"), with a toast and a log line. The XP joins that evening's report.
+- **The goals, in order:** change a dish's price; place a decor item; serve 15 guests in a day; put a drink on the menu (a drinks shelf); work the floor as the owner during service; **grow together**: on the same morning add a table (any item in the Table category) and hire a server, both still there at opening; serve 25 guests in a day; get five 5-star reviews in one day (a stretch that rewards good service; a passive start already sits above 3.5 stars, and 4 stars was out of reach in week 1).
+- **Shown three at a time**, in chain order, in an "Opening week" card that leads Goals and in a small tracker under the top bar. A goal met before it shows still pays.
+- **Never fails, never repeats:** goals carry over between days; each pays once. The chain ends when every goal is done or on the morning after day 7, and the usual career goals carry on. No randomness.
+- **Saves:** new career games get it; saves from before it join only if still on day 7 or earlier; Creative has none.
+
 ### 4.6 Mini-games (start with 3)
 | Mini-game | Trigger | Reward | If skipped |
 |---|---|---|---|

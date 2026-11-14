@@ -3176,6 +3176,27 @@ action. `use_saves = false` and title backdrops suppress guide presentation unle
 a review tool explicitly sets `guide_for_tools`. `tools/hints_review.tscn` opts in
 for the single first-morning capture in the existing visual-review job.
 
+### Opening week (#494)
+
+`OpeningWeek` (`src/sim/progression/opening_week.gd`) is the pure chain state;
+`OpeningWeekSet` / `OpeningGoal` are the authored data in
+`data/balance/opening_week.tres`. Main reports observations through one
+`_observe_opening(condition, value)` and pays each newly met goal at once with
+`Ledger.OPENING_WEEK_BONUS` (non-operating; subtracted from the close's profit
+basis like booking advances). Hooks: `menu_set_price` (a real change),
+`_on_customer_paid` and owner assignment (drinks on the menu, served today,
+owner on the floor, only while open or in last orders), and opening: Grow
+together (TABLE-category items and hired servers both above the counts
+`_begin_morning` noted, same day and site), decor (DECOR items plus hung wall
+decor above the count at the last opening, same site) and drinks. Checking
+these at opening means a buy undone or sold before opening pays nothing. The career business-day close checks today's guests served and five-star reviews,
+then adds the waiting XP via `OwnerProgress.award_bonus`, shown as `opening_week_xp`
+in the report. The `opening_week` save section (version 1: status, completed
+ids, pending XP) joins only the morning autosave; a missing section means a
+save from before the chain, which joins only on day 7 or earlier.
+`_begin_morning` ends a finished or overdue chain before the autosave. Tests of
+other features that check exact books call `TestCase.retire_opening_week`.
+
 ### 2.5 Testing
 Dish quality explanations (FK-063): `DishQuality.breakdown()` snapshots the recipe
 base, role skill factor, cooking trait and distinct preparation station bonuses,

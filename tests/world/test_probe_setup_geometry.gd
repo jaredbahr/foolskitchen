@@ -116,6 +116,8 @@ func _start(with_saves: bool) -> void:
 	_main.set("new_game_seed_override", 1)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
+	# Free construction is measured in exact cash: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	_main.set_process(false)
 	(_main.get_node("CameraRig") as CameraRig).set_process(false)
 	(_main.get_node("ShopView") as ShopView).set_process(false)
@@ -141,7 +143,8 @@ func test_roomier_all_setups_apply_before_service() -> void:
 
 func _assert_all_setups(original: bool) -> void:
 	var profiles: Array[String] = ProbeSetups.names()
-	assert_eq(profiles.size(), 19)
+	assert_eq(profiles.size(), 20)
+	assert_true(profiles.has("opening_week"))
 	assert_true(profiles.has("coffee_counter"))
 	assert_true(profiles.has("patio"))
 	assert_true(profiles.has("expanded_staffed"))

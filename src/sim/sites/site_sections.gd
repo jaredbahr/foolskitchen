@@ -14,6 +14,8 @@ const GLOBAL: PackedStringArray = [
 	"collection_toasts", "sites",
 	# Career or Creative (FK-141) belongs to the whole game, not one site.
 	"game_mode",
+	# The opening-week goal chain (#494) is the owner's first week, not a site's.
+	"opening_week",
 ]
 
 const PER_SITE: PackedStringArray = [

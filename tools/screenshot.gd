@@ -914,6 +914,12 @@ static func prepare_milestone_review(main: Node, context_root: Node) -> Dictiona
 			or not main.has_method("set_menu_visible") or not main.has_method("is_goals_visible"):
 		fixture["error"] = "milestone review requires fresh paused unsaved Main at day-one morning"
 		return fixture
+	# This capture reviews the career goals' layout. The opening-week card
+	# (#494) leads Goals during a real first week and pushes them down, so the
+	# fixture retires the chain first; nothing it pays happens in this capture.
+	if "opening_week" in main:
+		main.set("opening_week", OpeningWeek.ended())
+		main.call("_refresh_opening_tracker")
 	if not main.call("set_menu_visible", true) or not menu.visible:
 		fixture["error"] = "milestone review could not open the native morning Menu"
 		return fixture
@@ -2401,6 +2407,12 @@ func _process(_delta: float) -> bool:
 			if not String(_site_card_fixture.get("error", "")).is_empty():
 				_fail_capture(String(_site_card_fixture["error"]))
 				return true
+		if _report_requested and not _report_slowest_requested and "opening_week" in _main:
+			# The report capture checks that the first review cards sit at the
+			# top of the closing report. The opening-week (#494) income and XP
+			# rows lengthen a real first-week report, so retire the chain here.
+			_main.set("opening_week", OpeningWeek.ended())
+			_main.call("_refresh_opening_tracker")
 		if _open:
 			(clock.get("sim") as SimClock).start_service()
 		clock.call("set_speed", _speed)

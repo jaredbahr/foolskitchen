@@ -80,6 +80,8 @@ func test_two_legacy_manual_stock_days_match_recorded_snapshot() -> void:
 	_main.set("new_game_seed_override", 7)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
+	# Exact books for this feature: no opening-week rewards (#494).
+	retire_opening_week(_main)
 	var rows: Array = []
 	for day: int in range(2):
 		assert_true(Clock.sim.start_service())

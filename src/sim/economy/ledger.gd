@@ -15,6 +15,8 @@ const EARLY_LOAN_REPAYMENT: StringName = &"early_loan_repayment"
 const EARLY_REPAYMENT_NOTE: String = "Loan repaid early"
 const MILESTONE_BONUS: StringName = &"milestone_bonus"
 const WEEKLY_CHALLENGE_BONUS: StringName = &"weekly_challenge_bonus"
+## Opening-week goal rewards (#494): one entry per goal, booked when it is met.
+const OPENING_WEEK_BONUS: StringName = &"opening_week_bonus"
 const BREAKAGES: StringName = &"breakages"
 const CAT_FOOD: StringName = &"cat_food"
 ## Customer advances are cash movements, never earned operating income.

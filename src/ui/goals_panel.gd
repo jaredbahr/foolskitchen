@@ -18,6 +18,10 @@ var _active_ids: Array[StringName] = []
 var _completed_known_ids: Array[StringName] = []
 var _record_lines: Array[String] = ["Finish a service day to start your records."]
 var _collection_result: CollectionModel.Result
+var _opening_week: OpeningWeek
+var _opening_catalogue: OpeningWeekSet
+## Live values by OpeningGoal.Condition, for progress lines.
+var _opening_values: Dictionary[int, float] = {}
 
 
 func _ready() -> void:
@@ -61,6 +65,27 @@ func set_goals(catalogue: MilestoneSet, completed_ids: Array[StringName],
 	_render()
 
 
+## The opening-week card (#494). Main owns the chain; a null or ended chain
+## shows no card.
+func set_opening_week(state: OpeningWeek, catalogue: OpeningWeekSet,
+		values: Dictionary[int, float], day: int) -> void:
+	_opening_week = state
+	_opening_catalogue = catalogue
+	_opening_values = values.duplicate()
+	_day = day
+	_render()
+
+
+## Ids of the opening-week goals on the card, in order (tests and captures).
+func opening_goal_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	if _opening_week == null:
+		return ids
+	for goal: OpeningGoal in _opening_week.shown(_opening_catalogue):
+		ids.append(goal.id)
+	return ids
+
+
 ## Independent collection display; the session computes progress and owns all state.
 func set_collections(result: CollectionModel.Result) -> void:
 	_collection_result = result
@@ -97,12 +122,23 @@ func _render() -> void:
 		previous_weekly.free()
 	_clear_rows(active_rows)
 	_clear_rows(completed_rows)
+	var previous_opening: Node = (%List as VBoxContainer).get_node_or_null("OpeningWeek")
+	if previous_opening != null:
+		previous_opening.get_parent().remove_child(previous_opening)
+		previous_opening.free()
 	var weekly_card: Control = _make_weekly_card() if _weekly_challenge != null \
 		and _weekly_challenge.status != WeeklyChallengeState.Status.EMPTY else null
 	if weekly_card != null:
 		var rows: VBoxContainer = %List as VBoxContainer
 		rows.add_child(weekly_card)
 		rows.move_child(weekly_card, 0)
+	# The opening week leads the panel while it runs.
+	var opening_card: Control = _make_opening_card()
+	if opening_card != null:
+		var list: VBoxContainer = %List as VBoxContainer
+		list.add_child(opening_card)
+		list.move_child(opening_card, 0)
+		weekly_card = opening_card if weekly_card == null else weekly_card
 	_active_ids.clear()
 	_completed_known_ids.clear()
 	active_heading.visible = false
@@ -169,7 +205,8 @@ func _render_collections() -> void:
 	var empty_state: Label = %EmptyState as Label
 	empty_state.visible = _active_ids.is_empty() and _completed_known_ids.is_empty() \
 		and rows.get_child_count() == 0 and (_weekly_challenge == null \
-		or _weekly_challenge.status == WeeklyChallengeState.Status.EMPTY)
+		or _weekly_challenge.status == WeeklyChallengeState.Status.EMPTY) \
+		and (_opening_week == null or not _opening_week.is_active())
 
 
 func _make_weekly_card() -> Control:
@@ -227,6 +264,70 @@ func _make_weekly_card() -> Control:
 	var reward: Label = _add_label(details, "Reward", "Cash reward: $%d" % challenge.reward_cash)
 	for label: Label in [progress, days_left, reward]:
 		label.add_theme_font_size_override(&"font_size", 16)
+	return card
+
+
+func _make_opening_card() -> Control:
+	if _opening_week == null or not _opening_week.is_active() or _opening_catalogue == null \
+			or not _opening_catalogue.is_valid():
+		return null
+	var shown: Array[OpeningGoal] = _opening_week.shown(_opening_catalogue)
+	if shown.is_empty():
+		return null
+	var card: PanelContainer = PanelContainer.new()
+	card.name = "OpeningWeek"
+	card.theme = SHARED_THEME
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var panel_style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
+	if panel_style is StyleBoxFlat:
+		(panel_style as StyleBoxFlat).content_margin_top = 9.0
+		(panel_style as StyleBoxFlat).content_margin_bottom = 9.0
+	card.add_theme_stylebox_override(&"panel", panel_style)
+	var body: VBoxContainer = VBoxContainer.new()
+	body.name = "Body"
+	body.add_theme_constant_override(&"separation", 2)
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(body)
+	var header: HBoxContainer = HBoxContainer.new()
+	header.name = "Header"
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(header)
+	var title: Label = _add_label(header, "Title", OpeningWeekText.TITLE)
+	title.add_theme_font_size_override(&"font_size", 20)
+	var done: int = 0
+	for goal: OpeningGoal in _opening_catalogue.goals:
+		if _opening_week.is_completed(goal.id):
+			done += 1
+	var status: Label = _add_label(header, "Status", "%d / %d done   %s" % [done,
+		_opening_catalogue.goals.size(), OpeningWeekText.days_left(_day, _opening_catalogue.last_day)])
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	status.add_theme_font_size_override(&"font_size", 16)
+	for index: int in shown.size():
+		var goal: OpeningGoal = shown[index]
+		var row: VBoxContainer = VBoxContainer.new()
+		row.name = "Goal%d" % index
+		row.set_meta(&"goal_id", goal.id)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_theme_constant_override(&"separation", 0)
+		body.add_child(row)
+		var line: HBoxContainer = HBoxContainer.new()
+		line.name = "Line"
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(line)
+		var name_label: Label = _add_label(line, "Title", "□ " + goal.title)
+		name_label.add_theme_font_size_override(&"font_size", 18)
+		var reward: Label = _add_label(line, "Reward", "$%d" % goal.reward_cash)
+		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		reward.size_flags_horizontal = Control.SIZE_SHRINK_END
+		reward.add_theme_font_size_override(&"font_size", 18)
+		var detail: String = goal.description
+		var progress: String = OpeningWeekText.progress_line(goal, _opening_values.get(goal.condition, 0.0))
+		if not progress.is_empty():
+			detail += "  " + progress
+		var description: Label = _add_label(row, "Description", detail)
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		description.add_theme_font_size_override(&"font_size", 15)
 	return card
 
 
