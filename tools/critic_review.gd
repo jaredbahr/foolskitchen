@@ -39,13 +39,13 @@ func _ready() -> void:
 		var probe: FoodCritic = FoodCritic.new(tuning)
 		var stream: RandomNumberGenerator = RandomNumberGenerator.new()
 		stream.seed = candidate
-		probe.plan_day(Clock.sim.day, 2, func() -> RandomNumberGenerator: return stream)
+		probe.plan_day(Clock.sim.day, tuning.unlock_tier, func() -> RandomNumberGenerator: return stream)
 		if probe.has_tell(FoodCritic.NOTEBOOK) and probe.has_tell(FoodCritic.PRICIEST):
 			_stream = RandomNumberGenerator.new()
 			_stream.seed = candidate
 			break
 	sim.critic_rng_provider = func() -> RandomNumberGenerator: return _staged_stream()
-	sim.critic.plan_day(Clock.sim.day, 2, sim.critic_rng_provider)
+	sim.critic.plan_day(Clock.sim.day, tuning.unlock_tier, sim.critic_rng_provider)
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 303001
 	_guest = sim.add_customer(world.grid.entries()[0], random, customer_type_catalogue.find_type(&"regular"))

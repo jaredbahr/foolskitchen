@@ -122,7 +122,8 @@ static func prepare(main: Node, root: Window) -> Dictionary:
 	var provider: Callable = func() -> RandomNumberGenerator:
 		return random
 	var offer: Dictionary = model.plan_offer(world.clock.day, 2, menu_ids,
-		world.clock.display_open_minute, world.clock.display_close_minute, provider)
+		world.clock.display_open_minute, world.clock.display_close_minute, provider,
+		DiningSeats.booking_capacity(world.grid, tuning.min_party_size))
 	if offer.is_empty():
 		result["error"] = "Joined-table booking fixture could not create its explicit offer"
 		return result
