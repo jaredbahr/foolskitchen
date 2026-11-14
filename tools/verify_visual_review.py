@@ -102,6 +102,7 @@ CAPTURE_FRAMES = {
         "settings": (12,),
         "shortcuts": (12,),
         "settings-world": (90,),
+        "large-cash": (12,),
         "hud-1280": (12, 90),
         "hud-1600": (12, 90),
         "messes-dark": (60,),

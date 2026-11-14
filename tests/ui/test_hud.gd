@@ -176,6 +176,39 @@ func test_collection_toasts_are_queued_mouse_ignored_and_unscaled() -> void:
 	assert_eq(_shown_collection_ids, [&"diner_classics"] as Array[StringName])
 
 
+func test_large_cash_and_exact_tooltip_fit_the_normal_hud_row() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	host.add_child(window)
+	window.add_child(_hud)
+	var cash: Label = _control("Cash") as Label
+	assert_eq(cash.mouse_filter, Control.MOUSE_FILTER_PASS)
+	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
+		window.size = physical_size
+		for value: int in [9_999, 10_000, 99_999, 999_999, 9_999_999]:
+			EventBus.cash_changed.emit(value, 0, Ledger.OTHER)
+			await _layout_frames()
+			assert_eq(cash.text, Fmt.compact_money(value))
+			assert_eq(cash.tooltip_text, "Available cash: %s" % Fmt.money(value))
+			var day: Rect2 = _control("Day").get_global_rect()
+			var money: Rect2 = cash.get_global_rect()
+			var settings: Rect2 = _control("Settings").get_global_rect()
+			var row_top: float = maxf(day.position.y, maxf(money.position.y, settings.position.y))
+			var row_bottom: float = minf(day.end.y, minf(money.end.y, settings.end.y))
+			assert_true(row_bottom > row_top, "cash %d fits one row at %s" % [value, physical_size])
+			_assert_header_layout(window, _control("Context").visible)
+	window.remove_child(_hud)
+	host.free()
+
+
 func test_scaled_window_keeps_every_hud_control_readable_and_build_hints_below_header() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

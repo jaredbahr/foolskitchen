@@ -371,7 +371,7 @@ func refresh() -> void:
 	_render_day_and_season()
 	_time_label.text = Fmt.clock(Clock.sim.display_minutes())
 	_render_phase_label()
-	_cash_label.text = Fmt.money(_cash)
+	_render_cash()
 	_render_loan()
 	_render_reputation()
 	_render_owner_progress()
@@ -879,7 +879,7 @@ func _style_header() -> void:
 	_day_label.tooltip_text = "Current day"
 	_time_label.tooltip_text = "Shop clock"
 	_phase_label.tooltip_text = "Today's service phase"
-	_cash_label.tooltip_text = "Available cash"
+	_cash_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	(get_node("Top/Row/Plates") as Label).tooltip_text = "Clean plates available for service"
 
 
@@ -1161,9 +1161,14 @@ func _on_report_pressed() -> void:
 	report_requested.emit()
 
 
+func _render_cash() -> void:
+	_cash_label.text = Fmt.compact_money(_cash)
+	_cash_label.tooltip_text = "Available cash: %s" % Fmt.money(_cash)
+
+
 func _on_cash_changed(new_cash: int, delta: int, _reason: StringName) -> void:
 	_cash = new_cash
-	_cash_label.text = Fmt.money(new_cash)
+	_render_cash()
 	if _loan_panel.visible:
 		_render_loan_repayment()
 	if delta == 0:
