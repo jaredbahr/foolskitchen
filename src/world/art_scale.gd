@@ -5,7 +5,7 @@ extends RefCounted
 
 const FURNITURE_SCALE: float = 1.1
 const CHARACTER_SCALE: float = 1.1
-const FOOD_SCALE: float = 0.22
+const FOOD_SCALE: float = 0.33
 ## The restaurant cat (#119) is built at its own real size; this keeps it in
 ## proportion to the Mini Characters, who are scaled by CHARACTER_SCALE.
 const CAT_SCALE: float = 1.5
