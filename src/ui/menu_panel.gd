@@ -950,7 +950,8 @@ func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
 
 func _build_recipe_tree() -> void:
 	var sort_line: HBoxContainer = _add_line(_list, "DishSort")
-	_add_label(sort_line, "Label", "Sort dishes")
+	var label: Label = _add_label(sort_line, "Label", "Sort dishes")
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	var sort: OptionButton = OptionButton.new()
 	sort.name = "Order"
 	sort.theme = SHARED_THEME

@@ -957,6 +957,8 @@ func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 		await scene.process_frame
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	var sort_label: Label = _panel.get_node("%List/DishSort/Label") as Label
+	assert_eq(sort_label.get_line_count(), 1, "the sort label fits above the tree without wrapping")
 	assert_true(scroll.get_v_scroll_bar().max_value > scroll.size.y, "the column has more rows than fit")
 	var visible: Rect2 = tree.get_global_rect().intersection(scroll.get_global_rect())
 	var wheel: InputEventMouseButton = InputEventMouseButton.new()
