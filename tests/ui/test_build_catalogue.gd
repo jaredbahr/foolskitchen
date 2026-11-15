@@ -162,7 +162,7 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	var panel: PanelContainer = _catalogue.get_node("Panel") as PanelContainer
 	assert_true(panel.size.x <= BuildCatalogue.MAX_PANEL_WIDTH)
 	assert_true(panel.size.y <= _host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE + 0.5)
-	assert_true(panel.size.x < _host.size.x * 0.8, "the catalogue leaves the world visible beside it")
+	assert_true(panel.size.x < _host.size.x * 0.85, "the catalogue leaves the world visible beside it")
 	assert_almost_eq(panel.position.x, 12.0)
 	assert_almost_eq(panel.get_rect().end.y, _host.size.y - 12.0)
 	assert_false(_scroll().get_h_scroll_bar().visible)
@@ -200,7 +200,8 @@ func test_single_item_catalogue_uses_a_compact_strip() -> void:
 	assert_eq(panel.size.y, toolbars.get_combined_minimum_size().y + rows.get_theme_constant("separation")
 		+ content.get_combined_minimum_size().y + padding.y, "pinned toolbars plus the one card, no spare rows")
 	assert_eq(_scroll().size.y, content.get_combined_minimum_size().y)
-	assert_true(panel.size.x < _host.size.x * 0.8, "a short catalogue leaves the remaining viewport empty")
+	assert_true(panel.size.x <= BuildCatalogue.MAX_PANEL_WIDTH + 0.5,
+		"a short catalogue keeps the full-catalogue width, so the panel does not jump between tabs")
 	assert_false(_scroll().get_h_scroll_bar().visible)
 	assert_false(_scroll().get_v_scroll_bar().visible)
 
@@ -367,25 +368,30 @@ func test_long_catalogue_scrolls_only_its_cards_under_pinned_toolbars() -> void:
 		_content.definitions.append(_definition(StringName("item_%02d" % index), "Furniture %02d" % index, index))
 	_catalogue.bind_content(_content)
 	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
 	await _mount(Vector2(1600.0, 900.0))
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	var scroll: ScrollContainer = _scroll()
 	var toolbars: Control = _catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
 	var panel: Control = _catalogue.get_node("Panel") as Control
 	assert_false(scroll.is_ancestor_of(toolbars), "the toolbars sit outside the scroll")
+	assert_true(toolbars.is_ancestor_of(_catalogue.curb_appeal_meter) and _catalogue.curb_appeal_meter.is_visible_in_tree())
 	assert_true(panel.position.y > _host.size.y * 0.5, "the panel stays below the screen centre")
 	var card: Button = _catalogue.item_buttons[&"item_00"]
 	var rows_shown: float = (scroll.size.y + BuildCatalogue.CARD_GAP) / (card.size.y + BuildCatalogue.CARD_GAP)
-	assert_true(rows_shown >= 1.5 and rows_shown <= float(BuildCatalogue.VISIBLE_ROWS) + 0.01,
-		"rows shown: %s" % rows_shown)
+	assert_almost_eq(rows_shown, float(BuildCatalogue.VISIBLE_ROWS), 0.01, "rows shown: %s" % rows_shown)
 	assert_true(scroll.get_v_scroll_bar().visible)
 	assert_false(scroll.get_h_scroll_bar().visible)
 	var pinned: Dictionary = {}
 	for control: Control in [toolbars, _catalogue.mode_buttons[BuildCatalogue.BUY],
-			_catalogue.category_buttons[&"walls"], _catalogue.sort_button, _catalogue.vibe_meter]:
+			_catalogue.category_buttons[&"walls"], _catalogue.sort_button, _catalogue.vibe_meter,
+			_catalogue.curb_appeal_meter, _catalogue.theme_label, _catalogue.hygiene_button, _catalogue.grid_button, panel]:
 		pinned[control] = control.get_global_rect()
-	# Wheel over the toolbars and over the cards: only the cards move.
-	for point: Vector2 in [_catalogue.sort_button.get_global_rect().get_center(), card.get_global_rect().get_center()]:
+	# Wheel over the toolbars, the readout and the cards: only the cards move.
+	for point: Vector2 in [_catalogue.sort_button.get_global_rect().get_center(),
+			_catalogue.vibe_meter.get_global_rect().get_center(), card.get_global_rect().get_center()]:
+		scroll.scroll_vertical = 0
+		await tree.process_frame
 		var start: int = scroll.scroll_vertical
 		await _wheel(point, MOUSE_BUTTON_WHEEL_DOWN)
 		assert_eq(scroll.scroll_vertical - start, PanelScroll.WHEEL_STEP, "a wheel notch at %s scrolls the cards" % point)
@@ -396,6 +402,203 @@ func test_long_catalogue_scrolls_only_its_cards_under_pinned_toolbars() -> void:
 	for control: Control in pinned:
 		assert_eq(control.get_global_rect(), pinned[control], "%s stays put at the bottom of the list" % control.name)
 	assert_true(_requests.is_empty(), "the wheel buys nothing")
+
+
+## Jared's call on #499: wider, not taller. About 1,300 of 1,600 px, the
+## vibe/curb readout on the Build/Buy and tools row, two full rows of 13 cards.
+func test_wide_panel_shows_two_full_rows_of_thirteen_cards_at_1600x900() -> void:
+	for index: int in range(40):
+		_content.definitions.append(_definition(StringName("item_%02d" % index), "Furniture %02d" % index, index))
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	await _mount(Vector2(1600.0, 900.0))
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	var scroll: ScrollContainer = _scroll()
+	var grid: GridContainer = scroll.get_node("Content/Items") as GridContainer
+	assert_eq(grid.columns, 13)
+	var view: Rect2 = scroll.get_global_rect().grow(0.5)
+	var whole: int = 0
+	var rows: Dictionary = {}
+	var columns: Dictionary = {}
+	for id: StringName in _catalogue.visible_ids():
+		var card: Rect2 = _catalogue.item_buttons[id].get_global_rect()
+		if view.encloses(card):
+			whole += 1
+			rows[card.position.y] = true
+			columns[card.position.x] = true
+	assert_eq(rows.size(), 2, "two whole card rows show")
+	assert_eq(columns.size(), 13, "thirteen whole card columns show")
+	assert_eq(whole, 26)
+	assert_true(panel.size.x >= 1250.0 and panel.size.x <= 1350.0, "about 1,300 px wide: %s" % panel.size.x)
+	assert_true(panel.size.y <= _host.size.y * BuildCatalogue.PANEL_HEIGHT_SHARE + 0.5)
+	# The readout shares the single mode and tool row.
+	var bar: Control = _catalogue.get_node("Panel/Margin/Rows/Toolbars/Bar") as Control
+	var readout: Control = bar.get_node("Readout") as Control
+	assert_eq(_catalogue.vibe_meter.get_parent(), readout)
+	assert_eq(_catalogue.curb_appeal_meter.get_parent(), readout)
+	var mode_button: Rect2 = _catalogue.mode_buttons[BuildCatalogue.BUILD].get_global_rect()
+	for control: Control in [_catalogue.vibe_meter, _catalogue.curb_appeal_meter, _catalogue.theme_label,
+			_catalogue.hygiene_button, _catalogue.grid_button]:
+		var rect: Rect2 = control.get_global_rect()
+		assert_true(rect.position.y < mode_button.end.y and rect.end.y > mode_button.position.y,
+			"%s sits on the Build/Buy row: %s" % [control.name, rect])
+		assert_true(rect.position.x > mode_button.end.x)
+	assert_true(readout.get_global_rect().position.x >= _catalogue.grid_button.get_global_rect().end.x,
+		"the readout never overlaps the tools")
+	# The same width on a tab with few, wider cards: the panel does not jump.
+	var width: float = panel.size.x
+	_catalogue.set_category(BuildCatalogue.WALLS)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	await tree.process_frame
+	assert_eq(panel.size.x, width)
+	# The widest readout (full scores, the longest bonus line and theme name)
+	# still fits on the tools row, and the panel keeps its width.
+	_catalogue.set_category(&"decor")
+	var vibe: VibeModel.Result = VibeModel.Result.new()
+	vibe.valid = true
+	vibe.score = 100.0
+	vibe.active_theme = &"seafood"
+	vibe.theme_label = "Seafood"
+	_catalogue.set_vibe(vibe)
+	_catalogue.set_curb_appeal(100.0, 1.004, true)
+	for frame: int in range(4):
+		await tree.process_frame
+	assert_eq(_catalogue.theme_label.text, "Theme: Seafood")
+	assert_eq(_catalogue.curb_appeal_meter.bonus_label.text, CurbAppealText.SMALL_BONUS)
+	mode_button = _catalogue.mode_buttons[BuildCatalogue.BUILD].get_global_rect()
+	var widest: Rect2 = readout.get_global_rect()
+	assert_true(widest.position.y < mode_button.end.y and widest.end.y > mode_button.position.y,
+		"the widest readout stays on the Build/Buy row: %s in %s" % [widest, bar.get_global_rect()])
+	assert_true(widest.position.x >= _catalogue.grid_button.get_global_rect().end.x)
+	assert_eq(panel.size.x, width)
+	assert_eq(grid.columns, 13)
+
+
+## The shipped Buy cards (some carry look dots, so they are taller) with the
+## street-facing curb meter showing: still two whole rows under the height cap.
+func test_shipped_buy_cards_show_two_whole_rows_at_1600x900() -> void:
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	await _mount(Vector2(1600.0, 900.0))
+	_catalogue.set_category(&"dining")
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	for frame: int in range(4):
+		await tree.process_frame
+	var scroll: ScrollContainer = _scroll()
+	var ids: Array[StringName] = _catalogue.visible_ids()
+	assert_true(ids.size() > 13, "Dining fills more than one row")
+	var view: Rect2 = scroll.get_global_rect().grow(0.5)
+	var whole: int = 0
+	for id: StringName in ids:
+		if view.encloses(_catalogue.item_buttons[id].get_global_rect()):
+			whole += 1
+	assert_eq(whole, mini(ids.size(), 26), "scroll %s, card %s" % [scroll.get_global_rect(),
+		_catalogue.item_buttons[ids[0]].get_global_rect()])
+	assert_eq((scroll.get_node("Content/Items") as GridContainer).columns, 13)
+
+
+## Build centres the tile being worked on, so the screen centre must stay
+## world: a click there reaches the shop at every supported view.
+func test_screen_centre_stays_clear_of_the_wide_panel() -> void:
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	await _mount(Vector2(1600.0, 900.0))
+	var probe: ClickProbe = ClickProbe.new()
+	_host.add_child(probe)
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	var expected: int = 0
+	# 1600x900, 1280x720 (125%) and 1066x600 (150%, the smallest view).
+	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0), Vector2(1066.0, 600.0)]:
+		_host.size = bounds
+		for category: StringName in [&"dining", &"decor", BuildCatalogue.WALLS, BuildCatalogue.FLOORS]:
+			_catalogue.set_category(category)
+			for frame: int in range(4):
+				await tree.process_frame
+			var centre: Vector2 = bounds * 0.5
+			var context: String = "%s at %s panel=%s" % [category, bounds, panel.get_global_rect()]
+			assert_true(panel.position.y > centre.y, context)
+			assert_false(panel.get_global_rect().has_point(centre), context)
+			_mouse(centre, true)
+			_mouse(centre, false)
+			expected += 1
+			assert_eq(probe.clicks, expected, "a click on the centre reaches the shop: " + context)
+
+
+## Narrow views wrap the readout under the tools instead of clipping it:
+## 1280x720 (125%) and 1066x600 (150%), on both sides of the catalogue.
+func test_no_control_is_clipped_at_1280x720_or_150_percent() -> void:
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	await _mount(Vector2(1600.0, 900.0))
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	var toolbars: Control = _catalogue.get_node("Panel/Margin/Rows/Toolbars") as Control
+	var scroll: ScrollContainer = _scroll()
+	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0), Vector2(1066.0, 600.0)]:
+		_host.size = bounds
+		for category: StringName in BuildCatalogue.CATEGORY_IDS:
+			if category == BuildCatalogue.PAINT:
+				continue
+			_catalogue.set_category(category)
+			for frame: int in range(4):
+				await tree.process_frame
+			var context: String = "%s at %s" % [category, bounds]
+			var frame_rect: Rect2 = panel.get_global_rect()
+			assert_true(Rect2(Vector2.ZERO, bounds).grow(-11.5).encloses(frame_rect), "%s panel=%s" % [context, frame_rect])
+			assert_true(frame_rect.grow(0.5).encloses(toolbars.get_global_rect()), context)
+			assert_true(toolbars.get_global_rect().end.y <= scroll.get_global_rect().position.y + 0.5,
+				"%s: the toolbars end above the cards" % context)
+			var content_height: float = (scroll.get_node("Content") as Control).get_combined_minimum_size().y
+			assert_true(scroll.size.y >= minf(content_height, 80.0), "%s: part of a card row still shows (%s px)" % [context, scroll.size.y])
+			assert_false(scroll.get_h_scroll_bar().visible, context)
+			var shown: Array[Control] = []
+			_collect_shown(toolbars, shown)
+			assert_true(shown.size() >= 12, context)
+			for control: Control in shown:
+				var rect: Rect2 = control.get_global_rect()
+				assert_true(toolbars.get_global_rect().grow(0.5).encloses(rect),
+					"%s: %s is clipped: %s outside %s" % [context, control.name, rect, toolbars.get_global_rect()])
+				if control is Button:
+					assert_false((control as Button).clip_text, "%s: %s" % [context, control.name])
+			# Controls that share a row never overlap.
+			for row: Node in toolbars.get_children():
+				var seen: Array[Rect2] = []
+				for child: Node in row.get_children():
+					if child is Control and (child as Control).is_visible_in_tree():
+						var rect: Rect2 = (child as Control).get_global_rect()
+						for other: Rect2 in seen:
+							assert_false(rect.grow(-0.5).intersects(other), "%s: %s overlaps a neighbour" % [context, child.name])
+						seen.append(rect)
+	# The readout is on the tools row when it fits and wraps below it when not.
+	var readout: Control = toolbars.get_node("Bar/Readout") as Control
+	var mode_button: Control = _catalogue.mode_buttons[BuildCatalogue.BUILD]
+	assert_true(readout.get_global_rect().position.y >= mode_button.get_global_rect().end.y,
+		"at 150% the readout wraps to its own line")
+
+
+## Every visible button, label and meter under a toolbar row.
+func _collect_shown(node: Node, into: Array[Control]) -> void:
+	for child: Node in node.get_children():
+		if not (child is Control) or not (child as Control).is_visible_in_tree():
+			continue
+		if child is BaseButton or child is Label or child is ProgressBar:
+			into.append(child as Control)
+		_collect_shown(child, into)
 
 
 func test_only_bottom_panel_blocks_native_world_clicks() -> void:
