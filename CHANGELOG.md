@@ -229,6 +229,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
 - Movement: who goes first is now one fixed order, written down with the other door guarantees in `docs/TECH.md` and held by hand-made tests (a crossing, a corridor, a narrow door). The door rules only run while the shop is open. `tools/liveness_soak.sh` also reports time spent stepping aside, time held at the door, and the longest standstill of a guest walking to a seat and of a guest leaving. (#PRNUM)
 - The "local versus CI" difference in the staff advice capture was a branch behind `main`, not the game: for one commit, a seeded run gives the same result in a cloud container and on hosted CI. The capture's comment and the worker rules now say so, and `tools/check.sh` notes when a checkout is behind `main` and when a test shard was stopped by its timeout. (#525)
 - The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
