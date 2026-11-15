@@ -11,7 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
-- See each dish's sales, average quality and happy guests over the last seven days in the Menu, and sort by name or sales. (#350)
+- See each dish's sales, average quality and happy guests over the last seven days in the Menu, and sort by name or sales. (#539)
 - People get past each other at tight doors. In a shop with only a one-tile way in behind the door, a guest who has been given a table waits outside until whoever is leaving has come out ("Letting someone out before I go in"), people leaving no longer get stuck behind guests waiting beside the door, and a guest with a table can get through the waiting crowd to sit down instead of losing the table. In any shop, three people reaching for the same free tile no longer all stand and wait for each other. (#535)
 - Keep large cash balances on one HUD row and show the full amount on hover. (#522)
 - A worker sent home early who is still on the way out when the shop closes now goes home with the close instead of walking out again the next day, and no later card that day asks about someone who has already left. All the arrival nudges from cards on one day now stay within ±20% together. (#537)
