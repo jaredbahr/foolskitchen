@@ -14,7 +14,7 @@
 	"res://tests/sim/test_a_frame_sign.gd": 2603,
 	"res://tests/sim/test_agent_soak.gd": 4868,
 	"res://tests/sim/test_aisle_repair.gd": 1874,
-	"res://tests/sim/test_aisle_routes.gd": 62000,
+	"res://tests/sim/test_aisle_routes.gd": 73000,
 	"res://tests/sim/test_aquarium.gd": 1440,
 	"res://tests/sim/test_away_sites.gd": 94,
 	"res://tests/sim/test_blueprint_code.gd": 833,
