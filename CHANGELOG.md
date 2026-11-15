@@ -11,6 +11,8 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Keep large cash balances on one HUD row and show the full amount on hover. (#522)
+- A worker sent home early who is still on the way out when the shop closes now goes home with the close instead of walking out again the next day, and no later card that day asks about someone who has already left. All the arrival nudges from cards on one day now stay within ±20% together. (#537)
 - The Seaside Cliff lot now has its own seaside street: a sun-bleached boardwalk of planks instead of grey paving, low weathered beach shacks in sea-blue, seafoam and sand with striped awnings, rope bollards, a lifebuoy, crates of the day's catch, strings of bunting, benches and bins in seaside blues, gulls on the dune grass and a pale sandy back lane. Your own shop is still the boldest colour on the street. (#527)
 - Menu puts the restaurant name, hours and forecast together and scrolls dishes and their details as one. Stock puts each ingredient, buying controls and auto-reorder on one line. (#513)
 - In the Build and Buy catalogue, the top rows stay put: Build/Buy, the tools, the room tabs, the vibe readout and the filters no longer scroll away. Only the item cards scroll, and only up and down. (#524)
@@ -228,8 +230,13 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The first piece taken out of the 8,000-line game session script: the facts a closing day leaves for the evening report (XP earned, goals reached, records, tier rises) now live in one small tested class, and `tools/main_map.py` prints which pieces can come out next. The evening report is unchanged. (#534)
 - The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
+- Starting a new game no longer re-resets things the freshly loaded game scene has already set up: `_new_game()` is about half as long, and says which resets a new system still needs. No change in play. (#533)
 - The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
+- Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#519)
+- A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
+- The test runner deals test files to its shards by how long each took, not by position in the list, so adding one test no longer reshuffles the rest and pushes the hosted check to its time limit. (#530)
 - The "local versus CI" difference in the staff advice capture was a branch behind `main`, not the game: for one commit, a seeded run gives the same result in a cloud container and on hosted CI. The capture's comment and the worker rules now say so, and `tools/check.sh` notes when a checkout is behind `main` and when a test shard was stopped by its timeout. (#525)
 - The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)

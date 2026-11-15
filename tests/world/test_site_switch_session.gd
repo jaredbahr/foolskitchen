@@ -383,7 +383,7 @@ func test_a_switch_keeps_each_sites_morning_books() -> void:
 		"the home site's morning stays in its books after the close")
 	# The close's operating profit (owner XP) is the arriving site's alone.
 	var operating: int = _operating(day, &"second")
-	var award: Dictionary = _main.get("_owner_award_today")
+	var award: Dictionary = (_main.get("day_notes") as DayNotes).owner_award
 	var tuning: ProgressionTuning = (_main.get("owner_progress") as OwnerProgress).tuning
 	assert_true(operating >= tuning.profit_step, "the arriving site made a profit to tell apart")
 	assert_eq(int(award["profit_xp"]), maxi(0, operating) / tuning.profit_step * tuning.profit_step_xp)
@@ -464,7 +464,7 @@ func _default_hours() -> Vector3i:
 func test_each_site_keeps_its_own_hours_and_lease() -> void:
 	_start()
 	var progress: OwnerProgress = _main.get("owner_progress")
-	progress.award_bonus(progress.threshold_for(LEASE.owner_level))
+	progress.award_bonus(progress.threshold_for(CAREER.rung_for(2).min_level))
 	assert_eq(progress.raise_career_tier(CAREER, 3.0), 2)
 	# A morning at the new level first, so each morning's plans (critic,
 	# bookings) are already made when the sites are compared.

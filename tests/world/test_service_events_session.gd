@@ -567,6 +567,50 @@ func test_off_you_go_sends_the_worker_home_until_tomorrow() -> void:
 	assert_not_null(_sim().employee(member.id), "and working")
 
 
+func test_a_worker_still_walking_out_at_closing_is_back_tomorrow() -> void:
+	# The usual close turns CLOSED when the last guest leaves in last orders;
+	# a worker still on the way out then goes home with the close, not again
+	# the next day (#523 review).
+	_start(true, true)
+	var member: StaffMember = _add_second_cook()
+	var sim: RestaurantSim = _sim()
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 900)
+	assert_true(sim.send_home(member.id))
+	Clock.sim.call("_transition_to", SimClock.Phase.LAST_ORDERS)
+	for guest: CustomerAgent in sim.customers():
+		sim.world.remove_agent(guest)
+	_main.call("run_ticks", 1)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED, "the last guest gone, the shop closed")
+	assert_null(sim.employee(member.id), "Pip went home with the close")
+	assert_true(sim.sent_home_today.has(member.id), "and is paid for the day")
+	assert_true(Clock.sim.next_day())
+	var back: StaffAgent = sim.employee(member.id)
+	assert_not_null(back)
+	assert_false(back.going_home, "Pip starts the new day on the floor")
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 600)
+	assert_not_null(sim.employee(member.id), "and stays all day")
+	assert_false(sim.sent_home_today.has(member.id))
+
+
+func test_a_card_about_a_worker_sent_home_today_is_skipped() -> void:
+	_start(true, true)
+	var member: StaffMember = _add_second_cook()
+	var sim: RestaurantSim = _sim()
+	assert_true(Clock.sim.start_service())
+	_main.call("run_ticks", 300)
+	assert_true(sim.send_home(member.id))
+	var events: ServiceEvents = _events()
+	events.day = Clock.sim.day
+	events.schedule = [{"id": "rude_guest", "minute": 0, "shown": false,
+		"names": {"staff": member.display_name}, "staff_id": String(member.id),
+		"staff_role": String(member.role), "ingredient_id": ""}]
+	_main.call("_check_service_event")
+	assert_false(_card().visible, "no card about Pip once Pip is leaving")
+	assert_true(events.pending.is_empty(), "and nothing waits for an answer")
+
+
 func test_a_reload_mid_day_replays_the_send_home() -> void:
 	_start(true, true)
 	var member: StaffMember = _add_second_cook()

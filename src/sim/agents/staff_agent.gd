@@ -69,6 +69,10 @@ func configure_member(member: StaffMember, definition: StaffTrait) -> void:
 		priorities[&"any"] = 1
 	member_id = member.id
 	display_name = member.display_name
+	# A new day's install starts every worker on the floor (#523).
+	going_home = false
+	gone_home = false
+	_exit_waited = 0
 	wage = member.wage
 	trait_id = member.trait_id
 	set_job_priorities(member.priority_state())
