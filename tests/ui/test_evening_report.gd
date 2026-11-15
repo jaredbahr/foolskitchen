@@ -28,6 +28,8 @@ func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() 
 	var week: ScrollContainer = _report.get_node("%WeekScroll") as ScrollContainer
 	var scroll: PanelScroll = _report.get_node("PanelScroll") as PanelScroll
 	var grid: GridContainer = _report.get_node("%WeekCashFlow") as GridContainer
+	var next_day: Button = _report.get_node("%NextDay") as Button
+	var today_next_day_parent: Node = next_day.get_parent()
 	assert_true(tabs.visible)
 	assert_eq(tabs.get_tab_title(0), "Today")
 	assert_eq(tabs.get_tab_title(1), "Week")
@@ -37,7 +39,7 @@ func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() 
 	assert_true(week.visible)
 	assert_false(today.visible)
 	assert_eq(scroll.main_scroll(), week)
-	assert_true((_report.get_node("%NextDay") as Button).is_visible_in_tree())
+	assert_true(next_day.is_visible_in_tree())
 	assert_eq(grid.columns, 8)
 	assert_eq(grid.get_child_count(), 80)
 	assert_eq((grid.get_child(1) as Label).text, "Day 3")
@@ -54,6 +56,7 @@ func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() 
 	assert_true(today.visible)
 	assert_false(week.visible)
 	assert_eq(scroll.main_scroll(), today)
+	assert_eq(next_day.get_parent(), today_next_day_parent)
 	tabs.current_tab = 1
 	_report.call("show_report", DayReport.new())
 	assert_eq(tabs.current_tab, 0)

@@ -99,9 +99,14 @@ var _trend_rows: Array[Dictionary] = []
 var _trend_today: int = 0
 var _trend_buttons: Array[Button] = []
 var _report_tabs: TabBar
+var _title_spacer: Control
 var _today_scroll: ScrollContainer
 var _week_scroll: ScrollContainer
 var _week_grid: GridContainer
+var _week_footer: HBoxContainer
+var _next_day: Button
+var _next_day_parent: Node
+var _next_day_index: int
 var _panel_scroll: PanelScroll
 
 
@@ -120,8 +125,7 @@ func show_report(report: DayReport) -> void:
 	_bind_nodes()
 	# Main follows this compatible single-report API with the detached history.
 	show_history([], report.day)
-	_report_tabs.current_tab = TODAY_TAB
-	_report_tabs.hide()
+	_set_report_tabs_visible(false)
 	_clear(_week_grid)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
@@ -282,9 +286,8 @@ func show_history(rows: Array[Dictionary], today: int) -> void:
 func show_week_cash_flow(days: Array[Dictionary]) -> void:
 	_bind_nodes()
 	_clear(_week_grid)
-	_report_tabs.visible = not days.is_empty() and not GameMode.is_creative()
+	_set_report_tabs_visible(not days.is_empty() and not GameMode.is_creative())
 	if not _report_tabs.visible:
-		_report_tabs.current_tab = TODAY_TAB
 		return
 	_week_grid.columns = days.size() + 1
 	_add_label(_week_grid, "Cash flow")
@@ -309,10 +312,27 @@ func _add_week_amount(amount: int) -> void:
 		value.add_theme_color_override("font_color", LOSS_RED)
 
 
+func _set_report_tabs_visible(tab_available: bool) -> void:
+	if not tab_available:
+		_report_tabs.current_tab = TODAY_TAB
+	_report_tabs.visible = tab_available
+	_title_spacer.visible = not tab_available
+
+
 func _show_report_tab(tab: int) -> void:
 	var show_week: bool = tab == WEEK_TAB
 	_today_scroll.visible = not show_week
 	_week_scroll.visible = show_week
+	# Today keeps its own Next day placement. Bring the same button into the
+	# Week footer only when it would otherwise be hidden with Today's scroll.
+	if show_week and _today_scroll.is_ancestor_of(_next_day):
+		_next_day_parent = _next_day.get_parent()
+		_next_day_index = _next_day.get_index()
+		_next_day.reparent(_week_footer, false)
+	elif not show_week and _next_day.get_parent() == _week_footer:
+		_next_day.reparent(_next_day_parent, false)
+		_next_day_parent.move_child(_next_day, _next_day_index)
+	_week_footer.visible = _next_day.get_parent() == _week_footer
 	if _panel_scroll != null:
 		_panel_scroll.set_main_scroll(_week_scroll if show_week else _today_scroll)
 
@@ -388,11 +408,13 @@ func _bind_nodes() -> void:
 	if _nodes_bound:
 		return
 	_report_tabs = %ReportTabs
+	_title_spacer = $Panel/Column/TitleBar/Balance
 	_today_scroll = $Panel/Column/Scroll
 	_week_scroll = %WeekScroll
 	_week_grid = %WeekCashFlow
+	_week_footer = %WeekFooter
+	_next_day = %NextDay
 	var column: VBoxContainer = _today_scroll.get_parent() as VBoxContainer
-	column.move_child(_report_tabs, _today_scroll.get_index())
 	column.move_child(_week_scroll, _today_scroll.get_index() + 1)
 	_report_tabs.add_tab("Today")
 	_report_tabs.add_tab("Week")
