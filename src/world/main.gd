@@ -2328,6 +2328,7 @@ func _refresh_hygiene_overview() -> void:
 	if active:
 		var state: HygieneOverview.Snapshot = HygieneOverview.capture(sim)
 		_build_catalogue.set_hygiene_lines(HygieneOverview.lines(state))
+		_build_catalogue.set_hygiene_keep_clear($HUD.box_rects())
 		_build_preview.set_hygiene_cells(state.problem_cells, true)
 	else:
 		_build_preview.set_hygiene_cells([] as Array[Vector2i], false)
@@ -2833,117 +2834,36 @@ func _on_plate_broken(cost: int) -> void:
 
 
 ## Builds the evening report for `day` from the ledger and today's counters.
+## The body is `DayReportBuilder` (#526): a new report line goes there, not here.
 func build_report(day: int) -> DayReport:
-	var report := DayReport.new()
-	report.day = day
-	# The receipt names its site: a haggled order bought before a switch
-	# stays out of the arriving site's report (FK-087).
-	if int(_haggle_receipt.get("day", 0)) == day \
-			and StringName(_haggle_receipt.get("site", &"")) == Economy.active_site:
-		report.haggle_percent = int(_haggle_receipt["percent"])
-		report.haggle_saved = int(_haggle_receipt["saved"])
-	report.staff_activity = sim.staff_activity.snapshot()
-	report.restaurant_name = menu_settings.restaurant_name() if menu_settings != null else MenuSettings.DEFAULT_NAME
-	report.regulars_lines = RegularText.report_lines(regulars)
-	report.critic_lines = FoodCritic.report_lines(sim.critic_result)
-	if viral_review.triggered_on(day):
-		var best: RecipeDef = content.recipe(viral_review.dish)
-		report.viral_line = ViralReviewText.evening(best.display_name if best != null else "food")
-	report.booking_lines = sim.booking_report_lines.duplicate()
-	report.loan_first_advance = day_notes.loan_notice_day == day
-	# Only this site's books (FK-087): another site's morning stays in its own.
-	var totals: Dictionary = Economy.ledger.day_totals(day, Economy.active_site)
-	for category: StringName in totals:
-		var amount: int = totals[category]
-		if amount > 0:
-			report.income[category] = amount
-		elif amount < 0:
-			report.costs[category] = -amount
-	report.stock_values_recorded = true
-	report.food_cost = int(_food_cost_today["cost"])
-	report.food_cost_recorded = bool(_food_cost_today["recorded"])
-	# Gross purchases remain visible even when a cancelled order was refunded.
-	var bought: Dictionary = PurchaseBasis.zero()
-	for entry: Dictionary in Economy.ledger.entries_for_day(day, Economy.active_site):
-		if entry["category"] == Ledger.INGREDIENTS and int(entry["amount"]) < 0:
-			PurchaseBasis.combine(bought, {"cost": -int(entry["amount"]), "recorded": true})
-	report.stock_bought = int(bought["cost"])
-	report.stock_bought_recorded = bool(bought["recorded"])
-	var spoiled: Dictionary = Economy.stock.spoilage_value(day)
-	report.spoiled_stock = int(spoiled["cost"])
-	report.spoiled_stock_recorded = bool(spoiled["recorded"])
-	var on_hand: Dictionary = Economy.stock.value()
-	report.stock_on_hand = int(on_hand["cost"])
-	report.stock_on_hand_recorded = bool(on_hand["recorded"])
-	report.dishes_sold = dishes_sold_today.duplicate()
-	report.daily_special_line = DailySpecialText.report(
-		DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
-		int(report.dishes_sold.get(daily_special.recipe_id(), 0)))
-	report.slowest_seller_snapshot = sim.service_menu_report_snapshot()
-	report.customers_served = sim.served_today
-	report.customers_lost = sim.lost_today
-	report.takeaways = sim.takeaways_today
-	if sim.mishaps != null:
-		report.mishaps_text = MishapText.daily(sim.mishaps.spills_today,
-			sim.mishaps.broken_plates_today, sim.mishaps.degreases_today)
-	report.record_dish_quality(sim.orders.orders_in_state(Order.State.DELIVERED))
-	for reason: StringName in sim.leave_reasons_today:
-		if reason != &"happy":
-			report.leave_reasons[reason] = sim.leave_reasons_today[reason]
-	if sim.cleanliness != null:
-		report.cleanliness_label = sim.cleanliness.worst_category_label()
-	var star_total: int = 0
-	for row: Dictionary in sim.reviews_today:
-		var stars: int = int(row.get("stars", 0))
-		star_total += stars
-		report.review_cards.append({"stars": stars, "quote": String(row.get("quote", ""))})
-	report.today_review_average = float(star_total) / float(report.review_cards.size()) \
-		if not report.review_cards.is_empty() else 0.0
-	report.reputation_before = sim.reputation_before_day
-	report.reputation_after = reputation.average()
-	report.owner_level_before = owner_progress.level
-	report.owner_level_after = owner_progress.level
-	if day_notes.owner_award_day != day and day_notes.career_tier_reached > 0 and not day_notes.owner_unlocks.is_empty():
-		report.owner_unlocks = day_notes.owner_unlocks.duplicate()
-	if day_notes.owner_award_day == day:
-		report.owner_xp_breakdown = {
-			"happy_xp": int(day_notes.owner_award["happy_xp"]),
-			"profit_xp": int(day_notes.owner_award["profit_xp"]),
-			"review_xp": int(day_notes.owner_award["review_xp"]),
-			"total_xp": int(day_notes.owner_award["total_xp"]),
-		}
-		report.owner_level_before = int(day_notes.owner_award.get("level_before", owner_progress.level))
-		report.owner_level_after = owner_progress.level
-		report.owner_unlocks = day_notes.owner_unlocks.duplicate()
-		report.owner_tips = day_notes.owner_tips.duplicate()
-		if day_notes.milestone_xp > 0:
-			report.owner_xp_breakdown["milestone_xp"] = day_notes.milestone_xp
-		if day_notes.opening_week_xp_day == day and day_notes.opening_week_xp > 0:
-			report.owner_xp_breakdown["opening_week_xp"] = day_notes.opening_week_xp
-	if sim.inspection.last_day == day:
-		report.inspection_lines = InspectionText.report_lines(sim.inspection.last_result, sim.inspection.tuning)
-	report.rush_hour_lines = sim.rush_hour.report_lines()
-	if service_events != null and service_events.day == day:
-		report.service_event_lines = service_events.report_lines()
-	report.low_stock = StockAlerts.sell_out_lines(sim.stock_outs_today, content)
-	var incoming: Dictionary[StringName, int] = deliveries.pending_by_id()
-	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
+	return DayReportBuilder.build(day, _report_sources(day))
+
+
+## What the builder reads. The two forecasts need the session, so they are
+## worked out here and handed over as values.
+func _report_sources(day: int) -> DayReportSources:
+	var sources: DayReportSources = DayReportSources.new()
+	sources.sim = sim
+	sources.content = content
+	sources.site = Economy.active_site
+	sources.ledger = Economy.ledger
+	sources.stock = Economy.stock
+	sources.menu = menu_settings
+	sources.special = daily_special
+	sources.regulars = regulars
+	sources.viral = viral_review
+	sources.owner = owner_progress
+	sources.service_events = service_events
+	sources.notes = day_notes
+	sources.reputation_average = reputation.average()
+	sources.dishes_sold = dishes_sold_today
+	sources.food_cost = _food_cost_today
+	sources.haggle_receipt = _haggle_receipt
+	sources.stock_forecast = StockAlerts.forecast(Economy.stock,
 		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), auto_reorder_premium,
-		_storage_capacity(), StorageSpace.kinds_of(content), incoming), content))
-	if day_notes.milestone_award_day == day:
-		for goal: Milestone in day_notes.milestones_reached:
-			report.milestones_reached.append({"title": goal.title,
-				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
-	if day_notes.weekly_challenge_reward_day == day:
-		report.weekly_challenge_line = day_notes.weekly_challenge_line
-	if day_notes.career_tier_day == day:
-		report.career_tier_line = CareerTierTuning.reached_text(day_notes.career_tier_reached)
-	if day_notes.away_site_day == day:
-		report.away_site_lines = day_notes.away_site_lines.duplicate()
-	report.demand_forecast = forecast_next_demand()
-	if day_notes.record_day == day:
-		report.record_lines = day_notes.record_lines.duplicate()
-	return report
+		_storage_capacity(), StorageSpace.kinds_of(content), deliveries.pending_by_id())
+	sources.demand_forecast = forecast_next_demand()
+	return sources
 
 
 ## Runs once, from start(), on a Main the scene has just built: New game and

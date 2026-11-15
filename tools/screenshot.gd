@@ -1900,7 +1900,7 @@ static func catalogue_tabs_valid(state: Dictionary, profile: Dictionary) -> bool
 static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: ContentDB,
 		editor: ShopEditor, catalogue: BuildCatalogue) -> Dictionary:
 	var menu: MenuSettings = main.get("menu_settings") as MenuSettings
-	var meter: VibeMeter = catalogue.get_node_or_null("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter") as VibeMeter
+	var meter: VibeMeter = catalogue.get_node_or_null("Panel/Margin/Rows/Toolbars/Bar/Readout/VibeMeter") as VibeMeter
 	var panel: Control = catalogue.get_node_or_null("Panel") as Control
 	# The readout is pinned above the card scroll (#499), so it must fit there.
 	var toolbars: Control = catalogue.get_node_or_null("Panel/Margin/Rows/Toolbars") as Control
