@@ -101,14 +101,8 @@ func test_a_dead_end_no_route_uses_is_never_flagged() -> void:
 
 func test_an_older_squeeze_is_not_blamed_on_an_unrelated_edit() -> void:
 	_start(ROOMIER)
-	# The 7-row room's pass corner is one cell wide between the pass and a
-	# seat, but people can walk around it, so it is no pinch (#391).
-	assert_true(AisleRules.is_narrow(_sim.world.grid, Vector2i(7, 5), {Vector2i(7, 6): true} as Dictionary[Vector2i, bool]))
-	assert_eq(AisleRules.pinches(_sim.world.grid), [] as Array[Vector2i])
-	# Half the street door shut: a squeeze the shop now has.
-	assert_true(_editor.buy(&"potted_plant", Vector2i(7, 12)), _editor.last_check.why)
-	assert_eq(AisleRules.pinches(_sim.world.grid), [Vector2i(8, 12)] as Array[Vector2i])
-	assert_true(_editor.move(_editor.last_item_id, Vector2i(7, 12), 1), _editor.last_check.why)
+	# The 7-row room's pass corner already squeezes between the pass and a seat.
+	assert_eq(AisleRules.pinches(_sim.world.grid), [Vector2i(7, 5)] as Array[Vector2i])
 	assert_true(_editor.check_current().seat_warnings.is_empty(), "an old layout gains no warning")
 	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(1, 11))
 	assert_true(check.ok)

@@ -19,10 +19,12 @@ extends RefCounted
 ## or when it is open on all four sides and both of its corners across one
 ## diagonal are closed (#391): between two things standing corner to corner
 ## there is only that one cell to step through.
-## A narrow cell is a pinch only when nobody can walk around it (Jared, #391:
-## "fewer, sharper"): with that cell shut, somewhere the trip goes could not
-## be reached at all. A plant in open floor, or one of two gaps side by side,
-## is never a pinch; the last way through is.
+## A narrow cell is a pinch only when nobody can reasonably walk around it
+## (Jared, #391: "fewer, sharper"): with that cell shut, somewhere the trip
+## goes could not be reached at all, or only by a way more than
+## LONG_WAY_AROUND times as long as the direct one. A plant in open floor, or
+## one of two gaps side by side, is never a pinch; the last way through is,
+## and so is each of two single-file gaps far apart.
 ## Cells no route crosses are never flagged; a one-cell lane to a single seat
 ## is, since the guest and the server both walk it.
 ##
@@ -40,6 +42,13 @@ const REROUTE_WARNING: String = "Tight squeeze: people now have to pass through 
 
 ## Fixed-point step costs (10 per straight step, 14 per diagonal) keep the
 ## route tree's ties deterministic.
+## How much longer than the direct route the way around a narrow cell may be
+## before the cell counts as a pinch (Jared, #538): the walk with the cell
+## shut, over the direct walk to the same end, both in route length (a
+## straight step 1, a diagonal 1.4). Above this people will not walk around,
+## they squeeze through. Raise it to warn less, lower it to warn more.
+const LONG_WAY_AROUND: float = 2.0
+
 const _STRAIGHT: int = 10
 const _DIAGONAL: int = 14
 ## One bucket per cost in a window wider than the dearest step, so each
@@ -68,8 +77,9 @@ class Family extends RefCounted:
 	## the ones nobody can walk around.
 	var narrow: Array[Vector2i] = []
 	var pinches: Array[Vector2i] = []
-	## The ends a route was found to.
+	## The ends a route was found to, and how long the route to each is.
 	var reached: Array[Vector2i] = []
+	var reach_costs: PackedInt32Array = PackedInt32Array()
 
 
 ## The legal steps of one layout, worked out once per cell and shared by
@@ -171,10 +181,11 @@ static func resurvey(live: Survey, after: SimGrid, changed: Array[Vector2i], ope
 			family.footing = known.footing
 			family.narrow = known.narrow
 			family.reached = known.reached
+			family.reach_costs = known.reach_costs
 			# The routes stand, but a way around a narrow cell may have been
-			# closed anywhere. A pinch stays one: nothing opened.
+			# closed or made longer anywhere. A pinch stays one: nothing opened.
 			for cell: Vector2i in known.narrow:
-				if known.pinches.has(cell) or _no_way_around(after, result.net, family, cell):
+				if known.pinches.has(cell) or _long_way_around(after, result.net, family, cell):
 					family.pinches.append(cell)
 		else:
 			_trace(after, result.net, family)
@@ -210,7 +221,7 @@ static func rerouted(after: SimGrid, cells: Array[Vector2i], changed: Array[Vect
 ## through between them (the corner rule forbids cutting past either).
 ## Doorways and back doors are narrow on purpose and never count.
 ## Narrow is not yet a pinch: a route cell is one only when there is also no
-## way around it (_no_way_around).
+## reasonable way around it (_long_way_around).
 static func is_narrow(grid: SimGrid, cell: Vector2i, seats: Dictionary[Vector2i, bool]) -> bool:
 	if grid.terrain(cell) != SimGrid.Terrain.FLOOR or grid.is_back_door(cell) or seats.has(cell):
 		return false
@@ -425,6 +436,7 @@ static func _trace(grid: SimGrid, net: Net, family: Family) -> void:
 	family.narrow = []
 	family.pinches = []
 	family.reached = []
+	family.reach_costs = PackedInt32Array()
 	if family.sources.is_empty() or family.targets.is_empty():
 		return
 	var count: int = net.width * net.height
@@ -451,8 +463,10 @@ static func _trace(grid: SimGrid, net: Net, family: Family) -> void:
 				continue
 		elif starts.has(end):
 			family.reached.append(target)
+			family.reach_costs.append(0)
 			continue
 		family.reached.append(target)
+		family.reach_costs.append(_end_cost(grid, net, target, costs, family.guest))
 		family.footing[_cell(net, last)] = true
 		if starts.has(last):
 			continue
@@ -469,26 +483,39 @@ static func _trace(grid: SimGrid, net: Net, family: Family) -> void:
 					family.narrow.append(cell)
 			at = previous[at]
 	for cell: Vector2i in family.narrow:
-		if _no_way_around(grid, net, family, cell):
+		if _long_way_around(grid, net, family, cell):
 			family.pinches.append(cell)
 
 
 ## True when shutting `cell` would leave one of the family's ends with no
-## route at all: everyone going there has to pass through it.
-static func _no_way_around(grid: SimGrid, net: Net, family: Family, cell: Vector2i) -> bool:
+## route at all, or only one more than LONG_WAY_AROUND times as long as its
+## direct route: everyone going there passes through `cell`.
+static func _long_way_around(grid: SimGrid, net: Net, family: Family, cell: Vector2i) -> bool:
 	var costs: PackedInt32Array = PackedInt32Array()
 	costs.resize(net.width * net.height)
 	costs.fill(-1)
 	var previous: PackedInt32Array = PackedInt32Array()
 	previous.resize(costs.size())
 	_tree(grid, net, family, costs, previous, _index(net, cell))
-	for target: Vector2i in family.reached:
+	for index: int in family.reached.size():
+		var target: Vector2i = family.reached[index]
 		if target == cell:
 			continue
-		var end: int = _index(net, target)
-		if (end < 0 or costs[end] < 0) and _approach(grid, net, target, costs, family.guest) < 0:
+		var around: int = _end_cost(grid, net, target, costs, family.guest)
+		if around < 0 or around > family.reach_costs[index] * LONG_WAY_AROUND:
 			return true
 	return false
+
+
+## How long the route to `target` is in the tree `costs`, or -1 for none.
+static func _end_cost(grid: SimGrid, net: Net, target: Vector2i, costs: PackedInt32Array, guest: bool) -> int:
+	var end: int = _index(net, target)
+	if end >= 0 and costs[end] >= 0:
+		return costs[end]
+	var last: int = _approach(grid, net, target, costs, guest)
+	if last < 0:
+		return -1
+	return costs[last] + _step_cost(_cell(net, last), target)
 
 
 ## The reached neighbour a route steps onto `target` from (a seat, which the

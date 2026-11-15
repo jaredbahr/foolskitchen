@@ -2,7 +2,8 @@ extends TestCase
 ## #391: the aisle pinch pass. The faster route trees trace the routes the
 ## old ones did, a hover's re-survey equals a full survey, and the restroom,
 ## clearing, delivery and corner-to-corner checks each have a fixture. Only a
-## squeeze nobody can walk around warns (Jared: "fewer, sharper").
+## squeeze with no way around, or only a long one, warns (Jared: "fewer,
+## sharper").
 
 class Catalogue extends ContentDB:
 	var definitions: Dictionary[StringName, ItemDef] = {}
@@ -268,32 +269,56 @@ func test_a_plant_people_can_walk_around_does_not_warn() -> void:
 	_start(DEEPER)
 	# Open floor in the door lane, the gap between two tables, the lane below
 	# the tables, the pass approach: each leaves a way round the plant.
-	for cell: Vector2i in [Vector2i(7, 13), Vector2i(5, 8), Vector2i(6, 11), Vector2i(4, 4), Vector2i(9, 5)]:
+	for cell: Vector2i in [Vector2i(7, 13), Vector2i(5, 8), Vector2i(6, 11), Vector2i(4, 4), Vector2i(9, 11)]:
 		var check: EditCheck = _editor.check_buy(&"potted_plant", cell)
 		assert_true(check.ok, check.why)
 		assert_eq(check.aisle_pinches, [] as Array[Vector2i], "plant at %s" % cell)
 		assert_false(check.seat_warnings.has(0), "plant at %s" % cell)
-	# So does a fridge corner to corner with the stove.
-	assert_eq(_editor.check_buy(&"fridge", Vector2i(10, 3)).aisle_pinches, [] as Array[Vector2i])
-	# In the whole room only eight spots still warn: each takes the last way
-	# through (half the street door, or the kitchen lane by the pass).
+	# A fridge corner to corner with the stove is different: the walk from
+	# the sink is short, and the way round the fridge more than twice it.
+	assert_eq(_editor.check_buy(&"fridge", Vector2i(10, 3)).aisle_pinches, [Vector2i(9, 2)] as Array[Vector2i])
+	# In the whole room fourteen spots still warn: each takes the last way
+	# through (half the street door, the kitchen lane by the pass), or leaves
+	# the server one cell by the pass with only a long way round the tables.
 	var warned: Array[Vector2i] = []
 	for cell: Vector2i in _sim.world.grid.cells():
 		var check: EditCheck = _editor.check_buy(&"potted_plant", cell)
 		if check.ok and not check.aisle_pinches.is_empty():
 			warned.append(cell)
 	assert_eq(warned, [Vector2i(4, 2), Vector2i(7, 2), Vector2i(9, 2), Vector2i(5, 3), Vector2i(7, 3),
-		Vector2i(8, 3), Vector2i(7, 15), Vector2i(8, 15)] as Array[Vector2i])
+		Vector2i(8, 3), Vector2i(5, 5), Vector2i(7, 5), Vector2i(9, 5), Vector2i(4, 6), Vector2i(7, 6),
+		Vector2i(8, 6), Vector2i(7, 15), Vector2i(8, 15)] as Array[Vector2i])
 	var door: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(7, 15))
 	assert_eq(door.aisle_pinches, [Vector2i(8, 15)] as Array[Vector2i], "half the street door")
 	assert_eq(door.seat_warnings.get(0, ""), AisleRules.WARNING)
 
 
-func test_closing_the_way_around_far_off_makes_the_old_gap_a_pinch() -> void:
-	# Two one-cell gaps in a wall. The trip uses the near one; while the far
-	# one is open people can walk around, so nothing warns.
-	var grid: SimGrid = SimGrid.from_ascii(["#########", "#...#...#", "#.......#", "#...#...#", "#...#...#",
-		"#...#...#", "#.......#", "#...#...#", "#########"])
+func test_two_single_file_gaps_far_apart_both_warn() -> void:
+	# A wall with a one-cell gap near the top and another near the bottom, a
+	# sink and a seat by each. Either gap can be walked around through the
+	# other, but that is far more than LONG_WAY_AROUND times the direct walk.
+	var rows: PackedStringArray = ["#########"]
+	for y: int in range(1, 14):
+		rows.append("#.......#" if y in [2, 12] else "#...#...#")
+	rows.append("#########")
+	var grid: SimGrid = SimGrid.from_ascii(rows)
+	var basin: ItemDef = _def(&"basin", ItemDef.Category.STATION, [Vector2i.DOWN])
+	basin.station_type = &"sink"
+	grid.place_def(basin, Vector2i(1, 1), 0)
+	var low: ItemDef = _def(&"low_basin", ItemDef.Category.STATION, [Vector2i.UP])
+	low.station_type = &"sink"
+	grid.place_def(low, Vector2i(1, 13), 0)
+	grid.place_def(_seat(), Vector2i(7, 2), 0)
+	grid.place_def(_seat(), Vector2i(7, 12), 0)
+	assert_eq(AisleRules.pinches(grid), [Vector2i(4, 2), Vector2i(4, 12)] as Array[Vector2i])
+	assert_true(AisleRules.LONG_WAY_AROUND > 1.0)
+
+
+func test_a_short_walk_round_does_not_warn_until_it_is_closed() -> void:
+	# Two one-cell gaps two cells apart. The trip uses the upper one; the way
+	# round through the lower one is barely longer, so nothing warns.
+	var grid: SimGrid = SimGrid.from_ascii(["#########", "#...#...#", "#.......#", "#...#...#", "#.......#",
+		"#...#...#", "#########"])
 	var basin: ItemDef = _def(&"basin", ItemDef.Category.STATION, [Vector2i.DOWN])
 	basin.station_type = &"sink"
 	grid.place_def(basin, Vector2i(1, 1), 0)
@@ -302,14 +327,14 @@ func test_closing_the_way_around_far_off_makes_the_old_gap_a_pinch() -> void:
 	var live: AisleRules.Survey = AisleRules.survey(grid)
 	assert_true(live.families[SINK_TO_SEATS].narrow.has(near))
 	assert_eq(live.pinches, [] as Array[Vector2i])
-	# Plugging the far gap touches no route, so nothing is traced again, yet
-	# the near gap is now the only way through.
+	# Plugging the lower gap touches no route, so nothing is traced again, yet
+	# the upper gap is now the only way through.
 	var preview: SimGrid = _copy(grid)
-	var plug: PlacedItem = preview.place_def(_def(&"block", ItemDef.Category.DECOR, []), Vector2i(4, 6), 0)
+	var plug: PlacedItem = preview.place_def(_def(&"block", ItemDef.Category.DECOR, []), Vector2i(4, 4), 0)
 	var again: AisleRules.Survey = AisleRules.resurvey(live, preview, _cells_of(plug), false)
 	assert_eq(again.traced, 0)
 	assert_eq(again.pinches, [near] as Array[Vector2i])
-	_assert_same(again, AisleRules.survey(preview), "far gap plugged")
+	_assert_same(again, AisleRules.survey(preview), "lower gap plugged")
 	assert_eq(AisleRules.rerouted(preview, again.pinches, _cells_of(plug)), [near] as Array[Vector2i],
 		"blamed on the gap, not on the plug")
 
