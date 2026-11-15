@@ -162,7 +162,7 @@ func test_existing_panel_heading_paths_gain_one_icon_and_paint_uses_made_brush()
 	_assert_heading(report.get_node("Panel/Column/Scroll/Content/Header") as Label, "leaderboardsSimple.png")
 	_assert_heading(report.get_node("Panel/Column/Scroll/Content/ReviewHeading") as Label, "star.png")
 	_assert_heading(report.get_node("Panel/Column/Scroll/Content/GuestHeading") as Label, "singleplayer.png")
-	assert_eq((report.get_node("Panel/Column/Scroll/Content/NextDay") as Button).text, "Next day")
+	assert_eq((report.get_node("%NextDay") as Button).text, "Next day")
 	report.free()
 
 

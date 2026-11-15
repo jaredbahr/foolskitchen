@@ -13,6 +13,54 @@ func after_each() -> void:
 	_report.free()
 
 
+func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_report)
+	var ledger: Ledger = Ledger.new()
+	ledger.record(3, 130, Ledger.SALE)
+	ledger.record(5, -40, Ledger.WAGES)
+	var day: DayReport = DayReport.new()
+	day.day = 9
+	_report.call("show_report", day)
+	_report.call("show_week_cash_flow", ledger.week_cash_flow(day.day))
+	var tabs: TabBar = _report.get_node("%ReportTabs") as TabBar
+	var today: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var week: ScrollContainer = _report.get_node("%WeekScroll") as ScrollContainer
+	var scroll: PanelScroll = _report.get_node("PanelScroll") as PanelScroll
+	var grid: GridContainer = _report.get_node("%WeekCashFlow") as GridContainer
+	assert_true(tabs.visible)
+	assert_eq(tabs.get_tab_title(0), "Today")
+	assert_eq(tabs.get_tab_title(1), "Week")
+	assert_false(week.visible)
+
+	tabs.current_tab = 1
+	assert_true(week.visible)
+	assert_false(today.visible)
+	assert_eq(scroll.main_scroll(), week)
+	assert_true((_report.get_node("%NextDay") as Button).is_visible_in_tree())
+	assert_eq(grid.columns, 8)
+	assert_eq(grid.get_child_count(), 80)
+	assert_eq((grid.get_child(1) as Label).text, "Day 3")
+	assert_eq((grid.get_child(7) as Label).text, "Day 9")
+	assert_eq((grid.get_child(9) as Label).text, "$130")
+	assert_eq((grid.get_child(10) as Label).text, "$0")
+	var wage: Label = grid.get_child(grid.columns * 4 + 3) as Label
+	assert_eq(wage.text, "-$40")
+	assert_eq(wage.get_theme_color("font_color"), Color("a83e35"))
+	assert_eq((grid.get_child(grid.columns * 9) as Label).text, "Total")
+	assert_eq((grid.get_child(grid.columns * 9 + 3) as Label).text, "-$40")
+
+	tabs.current_tab = 0
+	assert_true(today.visible)
+	assert_false(week.visible)
+	assert_eq(scroll.main_scroll(), today)
+	tabs.current_tab = 1
+	_report.call("show_report", DayReport.new())
+	assert_eq(tabs.current_tab, 0)
+	assert_false(tabs.visible)
+	assert_eq(grid.get_child_count(), 0)
+
+
 func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> void:
 	var day: DayReport = DayReport.new()
 	day.dish_quality_count = 2

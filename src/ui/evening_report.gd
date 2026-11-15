@@ -39,6 +39,18 @@ const LEAVE_LABELS: Dictionary = {
 }
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
+const CASH_FLOW_LABELS: Dictionary[StringName, String] = {
+	Ledger.SALE: "Dishes",
+	Ledger.TIP: "Tips",
+	Ledger.INGREDIENTS: "Ingredients",
+	Ledger.WAGES: "Wages",
+	Ledger.RENT: "Rent",
+	Ledger.BANK_LOAN: "Loan",
+	Ledger.UPGRADES: "Upgrades and build",
+	Ledger.OTHER: "Other",
+}
+const TODAY_TAB: int = 0
+const WEEK_TAB: int = 1
 const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
 var _restaurant_name: Label
@@ -86,12 +98,18 @@ var _trend_days: int = 7
 var _trend_rows: Array[Dictionary] = []
 var _trend_today: int = 0
 var _trend_buttons: Array[Button] = []
+var _report_tabs: TabBar
+var _today_scroll: ScrollContainer
+var _week_scroll: ScrollContainer
+var _week_grid: GridContainer
+var _panel_scroll: PanelScroll
 
 
 func _ready() -> void:
 	_bind_nodes()
 	# One wheel step everywhere, and the wheel works over the whole card (#497).
-	PanelScroll.attach(self, $Panel as Control, $Panel/Column/Scroll as ScrollContainer)
+	_panel_scroll = PanelScroll.attach(self, $Panel as Control, _today_scroll, [_week_scroll])
+	_show_report_tab(_report_tabs.current_tab)
 	_on_report_resized()
 	if not _report_shown:
 		show_report(DayReport.new())
@@ -102,6 +120,9 @@ func show_report(report: DayReport) -> void:
 	_bind_nodes()
 	# Main follows this compatible single-report API with the detached history.
 	show_history([], report.day)
+	_report_tabs.current_tab = TODAY_TAB
+	_report_tabs.hide()
+	_clear(_week_grid)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
 	var viral: Label = %ViralReviewLine
@@ -257,6 +278,45 @@ func show_history(rows: Array[Dictionary], today: int) -> void:
 	_refresh_history()
 
 
+## Displays the owner's signed ledger totals for the last seven days.
+func show_week_cash_flow(days: Array[Dictionary]) -> void:
+	_bind_nodes()
+	_clear(_week_grid)
+	_report_tabs.visible = not days.is_empty() and not GameMode.is_creative()
+	if not _report_tabs.visible:
+		_report_tabs.current_tab = TODAY_TAB
+		return
+	_week_grid.columns = days.size() + 1
+	_add_label(_week_grid, "Cash flow")
+	for day: Dictionary in days:
+		var heading: Label = _add_label(_week_grid, "Day %d" % int(day["day"]))
+		heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		heading.autowrap_mode = TextServer.AUTOWRAP_OFF
+	for group: StringName in CASH_FLOW_LABELS:
+		_add_label(_week_grid, CASH_FLOW_LABELS[group])
+		for day: Dictionary in days:
+			_add_week_amount(int(day["groups"][group]))
+	_add_label(_week_grid, "Total")
+	for day: Dictionary in days:
+		_add_week_amount(int(day["total"]))
+
+
+func _add_week_amount(amount: int) -> void:
+	var value: Label = _add_label(_week_grid, Fmt.money(amount))
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.autowrap_mode = TextServer.AUTOWRAP_OFF
+	if amount < 0:
+		value.add_theme_color_override("font_color", LOSS_RED)
+
+
+func _show_report_tab(tab: int) -> void:
+	var show_week: bool = tab == WEEK_TAB
+	_today_scroll.visible = not show_week
+	_week_scroll.visible = show_week
+	if _panel_scroll != null:
+		_panel_scroll.set_main_scroll(_week_scroll if show_week else _today_scroll)
+
+
 func _refresh_history() -> void:
 	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
 	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today)
@@ -327,6 +387,16 @@ func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
 func _bind_nodes() -> void:
 	if _nodes_bound:
 		return
+	_report_tabs = %ReportTabs
+	_today_scroll = $Panel/Column/Scroll
+	_week_scroll = %WeekScroll
+	_week_grid = %WeekCashFlow
+	var column: VBoxContainer = _today_scroll.get_parent() as VBoxContainer
+	column.move_child(_report_tabs, _today_scroll.get_index())
+	column.move_child(_week_scroll, _today_scroll.get_index() + 1)
+	_report_tabs.add_tab("Today")
+	_report_tabs.add_tab("Week")
+	_report_tabs.tab_changed.connect(_show_report_tab)
 	_restaurant_name = %RestaurantName
 	_header = %Header
 	_profit = %Profit

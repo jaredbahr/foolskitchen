@@ -80,6 +80,12 @@ func main_scroll() -> ScrollContainer:
 	return _main
 
 
+## Makes a registered tab's scroll area active for the header and paging keys.
+func set_main_scroll(scroll: ScrollContainer) -> void:
+	assert(_scrolls.has(scroll))
+	_main = scroll
+
+
 ## True while the panel is open and on screen.
 func is_open() -> bool:
 	return _host != null and _host.is_visible_in_tree() and _frame.is_visible_in_tree()
