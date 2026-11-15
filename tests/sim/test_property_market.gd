@@ -87,9 +87,8 @@ func test_each_lot_layout_builds_a_shop_with_its_kitchen() -> void:
 
 func test_each_lot_expands_its_own_layout_into_a_valid_shop() -> void:
 	var db: ContentDB = _db()
-	var home: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 	for lot: LotDef in db.lots():
-		var lease: LeaseUpgrade = lot.lease_upgrade(home)
+		var lease: LeaseUpgrade = lot.lease_upgrade()
 		assert_true(lease.is_valid(), "%s: its expansion is a valid lease" % lot.id)
 		assert_eq(lease.deposit, lot.expansion_price)
 		assert_eq(lease.daily_rent, lot.expanded_daily_rent)
