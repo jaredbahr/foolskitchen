@@ -311,7 +311,9 @@ func test_buy_zero_warning_becomes_actual_id_after_commit_and_clears_after_fix()
 	_mode.update_origin(Vector2i(-1, 0))
 	assert_false(_mode.current_check.ok)
 	assert_eq(_preview.warning_nodes[fridge.id].position, ItemVisual.placed_transform(_content.item(&"fridge"), Vector2i(11, 1), 0).origin, "an invalid proposal keeps the actual warning pose")
-	_mode.update_origin(Vector2i(10, 3))  # a fix that squeezes no aisle (#389)
+	# A fix that squeezes no aisle (#389). Not (10, 3): there the fridge stands
+	# corner to corner with the stove, on the way to the sink (#391).
+	_mode.update_origin(Vector2i(11, 3))
 	assert_true(_mode.current_check.ok)
 	assert_false(_mode.current_check.unreachable.has(fridge.id))
 	assert_true(_mode.commit())
