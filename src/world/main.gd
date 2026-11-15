@@ -224,8 +224,6 @@ var business_history: BusinessHistory = BusinessHistory.new()
 var _loaded_business_history: BusinessHistory = null
 var shop_records: ShopRecords = ShopRecords.new()
 var _loaded_shop_records: ShopRecords = null
-var _record_notice_day: int = 0
-var _record_notices: Array[String] = []
 ## Only first-completion toast acknowledgements persist; progress is derived.
 var _shown_collection_toast_ids: Array[StringName] = []
 var _pending_collection_toast_ids: Array[StringName] = []
@@ -272,26 +270,9 @@ var _cart_trimmed: Dictionary[StringName, int] = {}
 var _morning_order: Dictionary = {}
 var _expired_this_morning: Dictionary = {}
 var _sold_out_shown: int = -1
-var _owner_award_today: Dictionary = {}
-var _owner_unlocks_today: Array[String] = []
-var _owner_tips_today: Array[String] = []
-var _owner_award_day: int = 0
-## The close that raised the career tier, and the tier it reached (report line).
-var _career_tier_day: int = 0
-var _career_tier_reached: int = 0
-## The close that settled the owner's inactive sites, and its report lines
-## (FK-087): one per away site, empty with a single site.
-var _away_site_day: int = 0
-var _away_site_lines: Array[String] = []
+## What tonight's close decided, for the evening report (never saved).
+var day_notes: DayNotes = DayNotes.new()
 var _closed_report_day: int = 0
-var _loan_notice_day: int = 0
-var _milestones_reached_today: Array[Milestone] = []
-var _milestone_award_day: int = 0
-var _milestone_xp_today: int = 0
-var _weekly_challenge_reward_day: int = 0
-var _weekly_challenge_report_line: String = ""
-var _opening_week_xp_today: int = 0
-var _opening_week_xp_day: int = 0
 ## Opening week toasts raised while the evening report covers the toast area;
 ## shown when the next morning begins.
 var _held_opening_toasts: Array[String] = []
@@ -2869,7 +2850,7 @@ func build_report(day: int) -> DayReport:
 		var best: RecipeDef = content.recipe(viral_review.dish)
 		report.viral_line = ViralReviewText.evening(best.display_name if best != null else "food")
 	report.booking_lines = sim.booking_report_lines.duplicate()
-	report.loan_first_advance = _loan_notice_day == day
+	report.loan_first_advance = day_notes.loan_notice_day == day
 	# Only this site's books (FK-087): another site's morning stays in its own.
 	var totals: Dictionary = Economy.ledger.day_totals(day, Economy.active_site)
 	for category: StringName in totals:
@@ -2922,23 +2903,23 @@ func build_report(day: int) -> DayReport:
 	report.reputation_after = reputation.average()
 	report.owner_level_before = owner_progress.level
 	report.owner_level_after = owner_progress.level
-	if _owner_award_day != day and _career_tier_reached > 0 and not _owner_unlocks_today.is_empty():
-		report.owner_unlocks = _owner_unlocks_today.duplicate()
-	if _owner_award_day == day:
+	if day_notes.owner_award_day != day and day_notes.career_tier_reached > 0 and not day_notes.owner_unlocks.is_empty():
+		report.owner_unlocks = day_notes.owner_unlocks.duplicate()
+	if day_notes.owner_award_day == day:
 		report.owner_xp_breakdown = {
-			"happy_xp": int(_owner_award_today["happy_xp"]),
-			"profit_xp": int(_owner_award_today["profit_xp"]),
-			"review_xp": int(_owner_award_today["review_xp"]),
-			"total_xp": int(_owner_award_today["total_xp"]),
+			"happy_xp": int(day_notes.owner_award["happy_xp"]),
+			"profit_xp": int(day_notes.owner_award["profit_xp"]),
+			"review_xp": int(day_notes.owner_award["review_xp"]),
+			"total_xp": int(day_notes.owner_award["total_xp"]),
 		}
-		report.owner_level_before = int(_owner_award_today.get("level_before", owner_progress.level))
+		report.owner_level_before = int(day_notes.owner_award.get("level_before", owner_progress.level))
 		report.owner_level_after = owner_progress.level
-		report.owner_unlocks = _owner_unlocks_today.duplicate()
-		report.owner_tips = _owner_tips_today.duplicate()
-		if _milestone_xp_today > 0:
-			report.owner_xp_breakdown["milestone_xp"] = _milestone_xp_today
-		if _opening_week_xp_day == day and _opening_week_xp_today > 0:
-			report.owner_xp_breakdown["opening_week_xp"] = _opening_week_xp_today
+		report.owner_unlocks = day_notes.owner_unlocks.duplicate()
+		report.owner_tips = day_notes.owner_tips.duplicate()
+		if day_notes.milestone_xp > 0:
+			report.owner_xp_breakdown["milestone_xp"] = day_notes.milestone_xp
+		if day_notes.opening_week_xp_day == day and day_notes.opening_week_xp > 0:
+			report.owner_xp_breakdown["opening_week_xp"] = day_notes.opening_week_xp
 	if sim.inspection.last_day == day:
 		report.inspection_lines = InspectionText.report_lines(sim.inspection.last_result, sim.inspection.tuning)
 	report.rush_hour_lines = sim.rush_hour.report_lines()
@@ -2949,19 +2930,19 @@ func build_report(day: int) -> DayReport:
 	report.low_stock.append_array(StockAlerts.forecast_lines(StockAlerts.forecast(Economy.stock,
 		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), auto_reorder_premium,
 		_storage_capacity(), StorageSpace.kinds_of(content), incoming), content))
-	if _milestone_award_day == day:
-		for goal: Milestone in _milestones_reached_today:
+	if day_notes.milestone_award_day == day:
+		for goal: Milestone in day_notes.milestones_reached:
 			report.milestones_reached.append({"title": goal.title,
 				"reward_xp": goal.reward_xp, "reward_cash": goal.reward_cash})
-	if _weekly_challenge_reward_day == day:
-		report.weekly_challenge_line = _weekly_challenge_report_line
-	if _career_tier_day == day:
-		report.career_tier_line = CareerTierTuning.reached_text(_career_tier_reached)
-	if _away_site_day == day:
-		report.away_site_lines = _away_site_lines.duplicate()
+	if day_notes.weekly_challenge_reward_day == day:
+		report.weekly_challenge_line = day_notes.weekly_challenge_line
+	if day_notes.career_tier_day == day:
+		report.career_tier_line = CareerTierTuning.reached_text(day_notes.career_tier_reached)
+	if day_notes.away_site_day == day:
+		report.away_site_lines = day_notes.away_site_lines.duplicate()
 	report.demand_forecast = forecast_next_demand()
-	if _record_notice_day == day:
-		report.record_lines = _record_notices.duplicate()
+	if day_notes.record_day == day:
+		report.record_lines = day_notes.record_lines.duplicate()
 	return report
 
 
@@ -3067,8 +3048,8 @@ func _load_autosave() -> bool:
 	_loaded_business_history = null
 	shop_records = ShopRecords.new()
 	_loaded_shop_records = null
-	_record_notice_day = 0
-	_record_notices.clear()
+	day_notes.record_day = 0
+	day_notes.record_lines.clear()
 	var loaded: bool = _load_autosave_sections()
 	if not loaded:
 		_loaded_business_history = null
@@ -6285,8 +6266,7 @@ func _begin_morning() -> void:
 	_held_opening_toasts.clear()
 	daily_special.begin_morning(Clock.sim.day)
 	_apply_menu(sim, menu_settings)
-	_record_notice_day = 0
-	_record_notices.clear()
+	day_notes.clear_records_and_goals()
 	# Repeated setup of the SAME morning cannot create another attempt.
 	if _haggle_day != Clock.sim.day:
 		_reset_haggle()
@@ -6301,9 +6281,6 @@ func _begin_morning() -> void:
 	sim.set_customer_level(owner_progress.effective_level())
 	_dismiss_goals()
 	_dismiss_property()
-	_milestones_reached_today.clear()
-	_milestone_award_day = 0
-	_milestone_xp_today = 0
 	_vibe_experiences.clear()
 	_report.call(&"set_vibe", vibe_result)
 	# Direct sim drivers may finish cleanup after service_closed. Apply that
@@ -6359,18 +6336,8 @@ func _begin_morning() -> void:
 	if service_events != null:
 		service_events.begin_morning(Clock.sim.day)
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
-	_owner_award_today.clear()
-	_owner_unlocks_today.clear()
-	_owner_tips_today.clear()
-	_owner_award_day = 0
-	_career_tier_day = 0
-	_career_tier_reached = 0
-	_away_site_day = 0
-	_away_site_lines.clear()
+	day_notes.clear_awards()
 	_closed_report_day = 0
-	_loan_notice_day = 0
-	_weekly_challenge_reward_day = 0
-	_weekly_challenge_report_line = ""
 	# Loading today's persisted pool must not advance the saved hiring stream.
 	if staff_roster.candidate_day != Clock.sim.day:
 		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
@@ -7249,8 +7216,8 @@ func _home_rent() -> int:
 ## site that made it, so the active site's report, history, records and XP
 ## leave it out. A single site does nothing here.
 func _close_away_sites(day: int) -> void:
-	_away_site_day = day
-	_away_site_lines.clear()
+	day_notes.away_site_day = day
+	day_notes.away_site_lines.clear()
 	if site_book.site_count() < 2:
 		return
 	# Planned before the countdown: today was still a renovation day at a
@@ -7280,7 +7247,7 @@ func _close_away_sites(day: int) -> void:
 		for movement: Dictionary in plan["movements"]:
 			Economy.add_cash_for_site(int(movement["amount"]), movement["category"],
 				String(movement["note"]), site)
-		_away_site_lines.append(AwaySites.report_line(label, plan)
+		day_notes.away_site_lines.append(AwaySites.report_line(label, plan)
 			+ PropertyText.renovation_report_note(site_book.renovation_days_left(site), ready.has(site)))
 
 
@@ -7474,10 +7441,10 @@ func _on_service_closed(day: int) -> void:
 	var five_star_reviews: int = _five_star_reviews_today()
 	var level_before: int = owner_progress.level
 	if career:
-		_owner_award_today = owner_progress.award_day(day,
+		day_notes.owner_award = owner_progress.award_day(day,
 			int(sim.leave_reasons_today.get(&"happy", 0)), operating_profit, five_star_reviews)
-	if not _owner_award_today.is_empty():
-		_owner_award_day = day
+	if not day_notes.owner_award.is_empty():
+		day_notes.owner_award_day = day
 	# The goal snapshot sees ordinary day XP, but not its own rewards. Stage
 	# every goal/bonus before installing any milestone completion or paying cash.
 	if career:
@@ -7487,25 +7454,25 @@ func _on_service_closed(day: int) -> void:
 	# repayment share still uses the captured pre-bonus business profit.
 	var settlement: Dictionary = Economy.settle_loan_day(day, operating_profit)
 	if settlement.get("first_advance", false):
-		_loan_notice_day = day
+		day_notes.loan_notice_day = day
 	# The career tier reads tonight's final level and the active site's
 	# closing reputation (D30); it never drops.
 	var tier_before: int = owner_progress.career_tier
 	var tier_reached: int = owner_progress.raise_career_tier(CAREER_TIERS, reputation.average()) if career else 0
 	if tier_reached > 0:
-		_career_tier_day = day
-		_career_tier_reached = tier_reached
+		day_notes.career_tier_day = day
+		day_notes.career_tier_reached = tier_reached
 		shop_editor.set_career_tier(owner_progress.effective_tier())
 		_build_catalogue.set_career_tier(owner_progress.effective_tier())
 		# Newly opened dishes join the menu catalogue at the morning refresh.
-		if _owner_award_day != day:
+		if day_notes.owner_award_day != day:
 			# A tier can rise on a day with no XP: still list what it opens.
-			_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
+			day_notes.owner_unlocks = _unlocked_at_levels(level_before, owner_progress.level,
 				tier_before, owner_progress.career_tier)
-	if _owner_award_day == day:
-		_owner_unlocks_today = _unlocked_at_levels(level_before, owner_progress.level,
+	if day_notes.owner_award_day == day:
+		day_notes.owner_unlocks = _unlocked_at_levels(level_before, owner_progress.level,
 			tier_before, owner_progress.career_tier)
-		_owner_tips_today = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
+		day_notes.owner_tips = customer_type_catalogue.level_up_tips(level_before, owner_progress.level) \
 			if customer_type_catalogue != null else [] as Array[String]
 		menu_settings.set_owner_level(owner_progress.effective_level())
 		sim.set_customer_level(owner_progress.effective_level())
@@ -7516,15 +7483,15 @@ func _on_service_closed(day: int) -> void:
 	var beaten: Array[StringName] = []
 	if business_day:
 		beaten = shop_records.record(shown_report)
-	_record_notice_day = day
-	_record_notices = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten,
+	day_notes.record_day = day
+	day_notes.record_lines = ShopRecordsText.new_record_lines(shop_records.snapshot(), beaten,
 		not GameMode.is_creative())
-	shown_report.record_lines = _record_notices.duplicate()
+	shown_report.record_lines = day_notes.record_lines.duplicate()
 	_last_team_activity = StaffActivity.public_snapshot(shown_report.staff_activity)
 	_staff_panel.set_team_activity(_last_team_activity)
 	if owner_progress.level > level_before:
 		Sounds.play(&"level_up")
-	elif _milestone_award_day == day and not _milestones_reached_today.is_empty():
+	elif day_notes.milestone_award_day == day and not day_notes.milestones_reached.is_empty():
 		Sounds.play(&"milestone")
 	_show_evening_report(shown_report)
 	if _paint_active or is_staff_visible() or is_goals_visible() or is_property_visible():
@@ -7547,16 +7514,12 @@ func _award_milestones(day: int, operating_profit: int) -> void:
 		world.log_event("Career goal rewards could not be applied today")
 		return
 	milestones = staged.tracker
-	_milestones_reached_today.assign(staged.reached)
-	_milestone_award_day = day
-	_milestone_xp_today = staged.xp_reward
+	day_notes.milestones_reached.assign(staged.reached)
+	day_notes.milestone_award_day = day
+	day_notes.milestone_xp = staged.xp_reward
 	if staged.xp_reward > 0:
-		if _owner_award_today.is_empty():
-			_owner_award_today = {"happy_xp": 0, "profit_xp": 0, "review_xp": 0,
-				"total_xp": 0, "level_before": int(staged.owner_xp_result["level_before"])}
-		_owner_award_today["total_xp"] = int(_owner_award_today["total_xp"]) + staged.xp_reward
-		_owner_award_today["level_after"] = owner_progress.level
-		_owner_award_day = day
+		day_notes.add_bonus_xp(day, staged.xp_reward, int(staged.owner_xp_result["level_before"]),
+			owner_progress.level)
 	if staged.cash_reward > 0:
 		Economy.add_cash(staged.cash_reward, Ledger.MILESTONE_BONUS)
 
@@ -7572,8 +7535,8 @@ func _award_weekly_challenge(observation: MilestoneDay, business_day: bool) -> v
 	if staged.cash_reward <= 0:
 		return
 	Economy.add_cash(staged.cash_reward, Ledger.WEEKLY_CHALLENGE_BONUS)
-	_weekly_challenge_reward_day = observation.day
-	_weekly_challenge_report_line = staged.report_text
+	day_notes.weekly_challenge_reward_day = observation.day
+	day_notes.weekly_challenge_line = staged.report_text
 
 
 ## Morning setup for the goal chains (#494, #514): retire a finished or
@@ -7791,14 +7754,9 @@ func _close_opening_week(day: int) -> void:
 		world.log_event("Week goal XP could not be added today")
 		return
 	var xp: int = opening_week.take_pending_xp()
-	_opening_week_xp_today = xp
-	_opening_week_xp_day = day
-	if _owner_award_today.is_empty():
-		_owner_award_today = {"happy_xp": 0, "profit_xp": 0, "review_xp": 0,
-			"total_xp": 0, "level_before": int(bonus["level_before"])}
-	_owner_award_today["total_xp"] = int(_owner_award_today["total_xp"]) + xp
-	_owner_award_today["level_after"] = owner_progress.level
-	_owner_award_day = day
+	day_notes.opening_week_xp = xp
+	day_notes.opening_week_xp_day = day
+	day_notes.add_bonus_xp(day, xp, int(bonus["level_before"]), owner_progress.level)
 
 
 func _refresh_opening_tracker() -> void:
