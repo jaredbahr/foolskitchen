@@ -28,6 +28,10 @@ var _requests: Array[StringName] = []
 var _swatch_requests: Array[StringName] = []
 var _host: Control
 
+## The longest overview: restroom, cleanliness and inspection lines together.
+const HYGIENE_LINES: PackedStringArray = ["Dirty tables: 1", "Floor spots: 2",
+	"Restroom: 1 toilet needs a tidy · 1 upkeep spot", "Today's cleanliness: Spotless", "Last inspection: B, day 12"]
+
 
 func before_each() -> void:
 	_catalogue = SCENE.instantiate() as BuildCatalogue
@@ -504,7 +508,8 @@ func test_shipped_buy_cards_show_two_whole_rows_at_1600x900() -> void:
 
 
 ## Build centres the tile being worked on, so the screen centre must stay
-## world: a click there reaches the shop at every supported view.
+## world: a click there reaches the shop at every supported view, with the
+## Hygiene overview closed or open (#542).
 func test_screen_centre_stays_clear_of_the_wide_panel() -> void:
 	var shipped: ContentDB = ContentDB.new()
 	assert_eq(shipped.load_all(), PackedStringArray())
@@ -512,6 +517,7 @@ func test_screen_centre_stays_clear_of_the_wide_panel() -> void:
 	_catalogue.set_owner_level(6)
 	_catalogue.set_build_visible(true)
 	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	_catalogue.set_hygiene_lines(HYGIENE_LINES)
 	await _mount(Vector2(1600.0, 900.0))
 	var probe: ClickProbe = ClickProbe.new()
 	_host.add_child(probe)
@@ -523,16 +529,164 @@ func test_screen_centre_stays_clear_of_the_wide_panel() -> void:
 		_host.size = bounds
 		for category: StringName in [&"dining", &"decor", BuildCatalogue.WALLS, BuildCatalogue.FLOORS]:
 			_catalogue.set_category(category)
+			for hygiene: bool in [false, true]:
+				# The centre click below puts the card away, so open it afresh.
+				_catalogue.set_hygiene_enabled(false)
+				_catalogue.set_hygiene_enabled(hygiene)
+				for frame: int in range(4):
+					await tree.process_frame
+				var centre: Vector2 = bounds * 0.5
+				var context: String = "%s at %s hygiene=%s panel=%s card=%s" % [category, bounds, hygiene,
+					panel.get_global_rect(), _catalogue.hygiene_panel.get_global_rect()]
+				assert_eq(_catalogue.hygiene_panel.visible, hygiene, context)
+				assert_true(panel.position.y > centre.y, context)
+				assert_false(panel.get_global_rect().has_point(centre), context)
+				if hygiene:
+					assert_false(_catalogue.hygiene_panel.get_global_rect().grow(8.0).has_point(centre),
+						"the Hygiene card stays off the centre: " + context)
+				_mouse(centre, true)
+				_mouse(centre, false)
+				expected += 1
+				assert_eq(probe.clicks, expected, "a click on the centre reaches the shop: " + context)
+	_catalogue.set_hygiene_enabled(false)
+
+
+## Opening Hygiene takes no height from the cards (#542): the card scroll and
+## the panel are the same size open or closed, and 1600x900 keeps two rows.
+func test_hygiene_overview_leaves_the_card_rows_alone() -> void:
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	_catalogue.set_hygiene_lines(HYGIENE_LINES)
+	await _mount(Vector2(1600.0, 900.0))
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	var scroll: ScrollContainer = _scroll()
+	for bounds: Vector2 in [Vector2(1600.0, 900.0), Vector2(1280.0, 720.0), Vector2(1066.0, 600.0)]:
+		_host.size = bounds
+		for category: StringName in [&"dining", &"decor", BuildCatalogue.WALLS]:
+			_catalogue.set_category(category)
+			_catalogue.set_hygiene_enabled(false)
 			for frame: int in range(4):
 				await tree.process_frame
-			var centre: Vector2 = bounds * 0.5
-			var context: String = "%s at %s panel=%s" % [category, bounds, panel.get_global_rect()]
-			assert_true(panel.position.y > centre.y, context)
-			assert_false(panel.get_global_rect().has_point(centre), context)
-			_mouse(centre, true)
-			_mouse(centre, false)
-			expected += 1
-			assert_eq(probe.clicks, expected, "a click on the centre reaches the shop: " + context)
+			var closed_scroll: Rect2 = scroll.get_global_rect()
+			var closed_panel: Rect2 = panel.get_global_rect()
+			_catalogue.set_hygiene_enabled(true)
+			for frame: int in range(4):
+				await tree.process_frame
+			var context: String = "%s at %s" % [category, bounds]
+			assert_true(_catalogue.hygiene_panel.is_visible_in_tree(), context)
+			assert_eq(scroll.get_global_rect(), closed_scroll, "the cards keep their height with Hygiene open: " + context)
+			assert_eq(panel.get_global_rect(), closed_panel, "the panel does not grow with Hygiene open: " + context)
+			assert_false(panel.is_ancestor_of(_catalogue.hygiene_panel), "the overview is not a row of the panel")
+			assert_false(_catalogue.hygiene_panel.get_global_rect().intersects(panel.get_global_rect()),
+				"the Hygiene card floats above the panel, never over it: " + context)
+			if bounds.x == 1600.0 and category == &"dining":
+				var row_height: float = _catalogue.item_buttons[_catalogue.visible_ids()[0]].size.y
+				assert_true(scroll.size.y >= BuildCatalogue.VISIBLE_ROWS * (row_height + BuildCatalogue.CARD_GAP) - BuildCatalogue.CARD_GAP - 0.5,
+					"two whole card rows show with Hygiene open (%s px of cards)" % scroll.size.y)
+	_catalogue.set_hygiene_enabled(false)
+
+
+## The Hygiene card is a popover under the real stretch settings: inside the
+## view at 100%, 125% and 150% UI scale of a 1600x900 window, above the panel.
+func test_hygiene_card_stays_inside_the_view_at_every_ui_scale() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	viewport.gui_embed_subwindows = true
+	tree.root.add_child(viewport)
+	var window: Window = Window.new()
+	window.borderless = true
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	window.content_scale_size = Vector2i(1600, 900)
+	window.size = Vector2i(1600, 900)
+	viewport.add_child(window)
+	_host = Control.new()
+	_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	window.add_child(_host)
+	_host.add_child(_catalogue)
+	var shipped: ContentDB = ContentDB.new()
+	assert_eq(shipped.load_all(), PackedStringArray())
+	_catalogue.bind_content(shipped)
+	_catalogue.set_owner_level(6)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_curb_appeal(40.0, 1.1, true)
+	_catalogue.set_hygiene_lines(HYGIENE_LINES)
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	var card: Control = _catalogue.hygiene_panel
+	for scale_factor: float in [1.0, 1.25, 1.5]:
+		window.content_scale_factor = scale_factor
+		await tree.process_frame
+		_host.size = window.get_visible_rect().size
+		for category: StringName in [&"dining", BuildCatalogue.WALLS, BuildCatalogue.BLUEPRINTS]:
+			_catalogue.set_category(category)
+			_catalogue.set_hygiene_enabled(false)
+			_catalogue.set_hygiene_enabled(true)
+			for frame: int in range(4):
+				await tree.process_frame
+			var allowed: Rect2 = _host.get_global_rect().grow(-11.5)
+			var context: String = "%s at %s%% view=%s card=%s panel=%s" % [category, scale_factor * 100.0,
+				_host.size, card.get_global_rect(), panel.get_global_rect()]
+			assert_true(card.is_visible_in_tree(), context)
+			assert_true(allowed.encloses(card.get_global_rect()), "the Hygiene card stays inside the view: " + context)
+			assert_true(card.get_global_rect().end.y <= panel.get_global_rect().position.y, "the card sits above the panel: " + context)
+			assert_true(card.size.x >= card.get_combined_minimum_size().x - 0.5 \
+				and card.size.y >= card.get_combined_minimum_size().y - 0.5, "no line is cut off: " + context)
+			assert_eq(_catalogue.hygiene_summary.text, "\n".join(HYGIENE_LINES))
+			var button: Rect2 = _catalogue.hygiene_button.get_global_rect()
+			assert_true(absf(card.get_global_rect().end.x - button.end.x) <= 0.5 \
+				or card.get_global_rect().position.x <= 12.5, "the card hangs off the Hygiene button: " + context)
+	_catalogue.set_hygiene_enabled(false)
+	window.remove_child(_host)
+	viewport.free()
+
+
+## Escape or a click elsewhere puts the card away; Hygiene itself (the pressed
+## button and the floor highlight) stays on until the button is pressed again.
+func test_hygiene_card_closes_on_escape_or_a_click_elsewhere_and_returns_on_hover() -> void:
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_hygiene_lines(HYGIENE_LINES)
+	await _mount(Vector2(1600.0, 900.0))
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var toggles: Array[bool] = []
+	_catalogue.hygiene_toggled.connect(func(active: bool) -> void: toggles.append(active))
+	var card: Control = _catalogue.hygiene_panel
+	var button: Button = _catalogue.hygiene_button
+	_mouse(button.get_global_rect().get_center(), true)
+	_mouse(button.get_global_rect().get_center(), false)
+	await tree.process_frame
+	assert_true(_catalogue.hygiene_enabled, "the button opens it")
+	assert_true(card.visible)
+	_mouse(card.get_global_rect().get_center(), true)
+	_mouse(card.get_global_rect().get_center(), false)
+	assert_true(card.visible, "a click on the card keeps it")
+	var escape: InputEventKey = InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	tree.root.push_input(escape, true)
+	assert_false(card.visible, "Escape puts the card away")
+	assert_true(_catalogue.hygiene_enabled)
+	assert_true(button.button_pressed, "the floor highlight stays on")
+	button.mouse_entered.emit()
+	assert_true(card.visible, "pointing at the button brings the card back")
+	_mouse(Vector2(800.0, 200.0), true)
+	_mouse(Vector2(800.0, 200.0), false)
+	assert_false(card.visible, "a click elsewhere puts the card away")
+	assert_true(_catalogue.hygiene_enabled)
+	assert_eq(toggles, [true] as Array[bool], "putting the card away never switches Hygiene off")
+	_mouse(button.get_global_rect().get_center(), true)
+	_mouse(button.get_global_rect().get_center(), false)
+	assert_false(_catalogue.hygiene_enabled, "the button switches it off")
+	assert_false(card.visible)
+	assert_eq(toggles, [true, false] as Array[bool])
 
 
 ## Narrow views wrap the readout under the tools instead of clipping it:

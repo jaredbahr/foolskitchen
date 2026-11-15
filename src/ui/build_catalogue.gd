@@ -232,6 +232,8 @@ var hygiene_button: Button
 var hygiene_panel: PanelContainer
 var hygiene_summary: Label
 var hygiene_enabled: bool = false
+## The Hygiene card was put away (Escape, a click elsewhere) while Hygiene stays on.
+var _hygiene_card_closed: bool = false
 ## The item the hover card describes (empty when hidden).
 var hover_id: StringName = &""
 var _floor_price: int = 0
@@ -363,7 +365,7 @@ func set_hygiene_lines(lines: PackedStringArray) -> void:
 	var text: String = "\n".join(lines)
 	if hygiene_summary.text != text:
 		hygiene_summary.text = text
-		_fit_panel()
+		_place_hygiene_card()
 
 
 func set_hygiene_enabled(enabled: bool) -> void:
@@ -371,17 +373,68 @@ func set_hygiene_enabled(enabled: bool) -> void:
 	if hygiene_enabled == enabled:
 		return
 	hygiene_enabled = enabled
+	_hygiene_card_closed = false
 	hygiene_button.set_pressed_no_signal(enabled)
 	_update_hygiene_visibility()
 	hygiene_toggled.emit(enabled)
-	_fit_panel()
 
 
 func _update_hygiene_visibility() -> void:
 	if hygiene_button == null:
 		return
 	hygiene_button.visible = not _paint_visible
-	hygiene_panel.visible = visible and hygiene_enabled and not _paint_visible
+	hygiene_panel.visible = visible and hygiene_enabled and not _paint_visible and not _hygiene_card_closed
+	_place_hygiene_card()
+
+
+## A floating card over the world, above the panel and under the Hygiene
+## button, like the item hover card: it never takes rows from the cards (#542).
+## It stays inside the view and on the button's side of the screen centre.
+func _place_hygiene_card() -> void:
+	if hygiene_panel == null or not hygiene_panel.visible:
+		return
+	var origin: Vector2 = get_global_rect().position
+	var button: Rect2 = hygiene_button.get_global_rect()
+	button.position -= origin
+	var panel: Rect2 = (get_node("Panel") as Control).get_global_rect()
+	panel.position -= origin
+	var card_size: Vector2 = hygiene_panel.get_combined_minimum_size()
+	hygiene_panel.position = Vector2(
+		clampf(button.end.x - card_size.x, EDGE_MARGIN, maxf(EDGE_MARGIN, size.x - EDGE_MARGIN - card_size.x)),
+		maxf(EDGE_MARGIN, panel.position.y - CARD_GAP - card_size.y))
+	hygiene_panel.size = card_size
+
+
+## Escape or a click anywhere else puts the card away. The floor highlight and
+## the pressed button stay until Hygiene is switched off; pointing at the
+## button brings the card back.
+func _close_hygiene_card() -> void:
+	if hygiene_panel == null or not hygiene_panel.visible:
+		return
+	_hygiene_card_closed = true
+	_update_hygiene_visibility()
+
+
+func _on_hygiene_hovered() -> void:
+	if hygiene_enabled and _hygiene_card_closed:
+		_hygiene_card_closed = false
+		_update_hygiene_visibility()
+
+
+func _input(event: InputEvent) -> void:
+	if hygiene_panel == null or not hygiene_panel.is_visible_in_tree():
+		return
+	var key: InputEventKey = event as InputEventKey
+	if key != null and key.pressed and not key.echo \
+			and (key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode) == KEY_ESCAPE:
+		_close_hygiene_card()
+		get_viewport().set_input_as_handled()
+		return
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE] \
+			and not hygiene_panel.get_global_rect().has_point(mouse.position) \
+			and not hygiene_button.get_global_rect().has_point(mouse.position):
+		_close_hygiene_card()
 
 
 func _on_hygiene_pressed() -> void:
@@ -1736,14 +1789,19 @@ func _prepare_layout() -> void:
 	hygiene_button = _chip("Hygiene", HygieneOverview.TITLE)
 	hygiene_button.tooltip_text = HygieneOverview.TOGGLE_TIP
 	hygiene_button.pressed.connect(_on_hygiene_pressed)
+	hygiene_button.mouse_entered.connect(_on_hygiene_hovered)
+	hygiene_button.item_rect_changed.connect(_place_hygiene_card)
+	readout.item_rect_changed.connect(_place_hygiene_card)
 	hygiene_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	readout.add_child(hygiene_button)
 	hygiene_panel = PanelContainer.new()
 	hygiene_panel.name = "HygieneOverview"
 	hygiene_panel.visible = false
-	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	toolbars.add_child(hygiene_panel)
-	toolbars.move_child(hygiene_panel, categories.get_index() + 1)
+	# A click on the card stays on the card; the item hover card draws over it.
+	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	hygiene_panel.add_theme_stylebox_override("panel", card_style)
+	add_child(hygiene_panel)
+	move_child(hygiene_panel, card.get_index())
 	hygiene_summary = Label.new()
 	hygiene_summary.name = "Summary"
 	hygiene_summary.add_theme_font_size_override("font_size", 18)
@@ -1895,6 +1953,7 @@ func _fit_panel() -> void:
 	panel.position = Vector2(EDGE_MARGIN, size.y - EDGE_MARGIN - panel.size.y)
 	_fitting = false
 	_place_hover_card()
+	_place_hygiene_card()
 
 
 func _visible_cards() -> Array[Button]:

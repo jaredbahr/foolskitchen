@@ -351,6 +351,11 @@ Settings both have a What's new button, and "All release notes" calls
   problem cells using the existing Clay swatch. The native mesh updates only
   when those cells change and disappears outside Build; no sim, RNG or save
   state changes. The catalogue's shared readout wraps within its bounded panel.
+  The summary is a floating card (`BuildCatalogue.hygiene_panel`) above the
+  panel, right-aligned to the Hygiene button and kept inside the view; it takes
+  no rows from the cards (#542). Escape or a click elsewhere puts the card
+  away while the toggle and the floor tint stay on; pointing at the button
+  shows it again.
   `bash tools/screenshot.sh --scene=res://tools/hygiene_review.tscn --speed=0
   --frames=12,60 --quarter=2` shows an explicitly staged, unsaved slightly messy
   shop before and after enabling Hygiene (seed 1, one dirty table, two floor
