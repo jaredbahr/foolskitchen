@@ -185,7 +185,7 @@ static func _clean_row(value: Dictionary) -> Dictionary:
 			var quality_sum: Variant = sample.get("quality_sum")
 			var eaten: Variant = sample.get("eaten")
 			var happy: Variant = sample.get("happy")
-			if not _whole(sold, 0) or not _whole(eaten, 0) or not _whole(happy, 0, int(eaten)) \
+			if not _whole(sold, 0) or not _whole(eaten, 0, int(sold)) or not _whole(happy, 0, int(eaten)) \
 					or not (quality_sum is int or quality_sum is float) \
 					or not is_finite(float(quality_sum)) or quality_sum < 0 or quality_sum > sold:
 				return {}

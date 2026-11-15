@@ -165,6 +165,15 @@ func test_a_switch_and_back_is_lossless() -> void:
 	assert_eq(Clock.sim.day, day + 1)
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 	assert_eq(_saves, 3, "the next morning saves as usual")
+	var home_history: BusinessHistory = _main.get("business_history") as BusinessHistory
+	var home_week: Dictionary[StringName, Dictionary] = home_history.dish_week(day)
+	assert_false(home_week.is_empty())
+	assert_true(_main.call("switch_site", &"second"))
+	var second_history: BusinessHistory = _main.get("business_history") as BusinessHistory
+	assert_eq(second_history.dish_week(day), {}, "the other site has no home-site dish measurements")
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	home_history = _main.get("business_history") as BusinessHistory
+	assert_eq(home_history.dish_week(day), home_week, "the home site's dish window returns intact")
 
 
 func test_the_return_morning_records_away_stock_spoilage() -> void:

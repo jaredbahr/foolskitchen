@@ -326,6 +326,10 @@ func test_dish_week_restores_json_and_does_not_infer_metrics_from_legacy_sales()
 	invalid["days"][1]["dish_metrics"]["burger"]["happy"] = 4
 	assert_false(restored.restore(invalid))
 	assert_eq(restored.dish_week(2), _history.dish_week(2), "invalid guest counts cannot replace valid history")
+	invalid = saved.duplicate(true)
+	invalid["days"][1]["dish_metrics"]["burger"]["eaten"] = 5
+	assert_false(restored.restore(invalid), "one measured diner per sale is the upper bound")
+	assert_eq(restored.dish_week(2), _history.dish_week(2), "a rejected diner count leaves history intact")
 
 
 func _report(day: int) -> DayReport:

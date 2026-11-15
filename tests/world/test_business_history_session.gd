@@ -71,11 +71,19 @@ func test_actual_close_records_final_report_and_report_queries_remain_pure() -> 
 			payments[order.recipe_id] = []
 		payments[order.recipe_id].append(order.quality))
 	var diners: Dictionary[StringName, Array] = {}
-	sim.customer_left.connect(func(customer: CustomerAgent, reason: StringName) -> void:
-		for id: StringName in customer.review_visit(0).consumed_recipe_ids:
+	var recipes: Array[RecipeDef] = sim.menu.duplicate()
+	var tuning: ReviewTuning = sim.review_tuning
+	sim.customer_left.connect(func(customer: CustomerAgent, _reason: StringName) -> void:
+		var standard_price: int = 0
+		for recipe: RecipeDef in recipes:
+			if customer.order != null and recipe.id == customer.order.recipe_id:
+				standard_price = recipe.standard_price
+		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		var stars: int = ReputationBook.score_visit(visit, tuning, RestaurantSim.VIBE_TUNING, true)
+		for id: StringName in visit.consumed_recipe_ids:
 			if not diners.has(id):
 				diners[id] = []
-			diners[id].append(reason))
+			diners[id].append(stars >= 4))
 	var report: DayReport = _finish_service()
 	if report == null:
 		return
@@ -87,15 +95,15 @@ func test_actual_close_records_final_report_and_report_queries_remain_pure() -> 
 	assert_eq(week.size(), payments.size())
 	for id: StringName in payments:
 		var qualities: Array = payments[id]
-		var reasons: Array = diners.get(id, [])
+		var satisfaction: Array = diners.get(id, [])
 		var entry: Dictionary = week.get(id, {})
 		assert_eq(entry.get("sold"), qualities.size())
 		var sum: float = 0.0
 		for quality: float in qualities:
 			sum += quality
 		assert_almost_eq(float(entry.get("quality_sum", -1.0)), sum)
-		assert_eq(entry.get("eaten"), reasons.size())
-		assert_eq(entry.get("happy"), reasons.count(&"happy"))
+		assert_eq(entry.get("eaten"), satisfaction.size())
+		assert_eq(entry.get("happy"), satisfaction.count(true))
 	assert_eq(_saved_text(), morning, "closing records memory only, preserving the morning checkpoint")
 	var old_cash_change: int = report.profit()
 	# A bookkeeping fixture makes a query-only regression observable: a report
@@ -111,7 +119,7 @@ func test_actual_close_records_final_report_and_report_queries_remain_pure() -> 
 	assert_eq(_main.get("shown_report"), report, "a query does not replace the presented report")
 
 
-func test_paid_party_members_credit_their_own_dishes_and_departure_outcomes() -> void:
+func test_paid_party_members_credit_their_own_dishes_and_satisfaction() -> void:
 	_start_main()
 	assert_true(Clock.sim.start_service())
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
@@ -127,17 +135,26 @@ func test_paid_party_members_credit_their_own_dishes_and_departure_outcomes() ->
 	unhappy.party = party
 	# Two orders of the same recipe count as two sales and one diner.
 	unhappy.extra_order = _delivered_dish(&"burger", 1.0)
+	unhappy._queue_wait = unhappy.queue_patience - 1
+	unhappy._food_wait = unhappy.food_patience - 1
 	sim.pay(unhappy, unhappy.order)
-	unhappy.leave_reason = &"closing"
 	sim.record_departure(unhappy)
+	assert_eq(unhappy.leave_reason, &"happy", "a paid departure reason does not measure satisfaction")
 	var takeaway: CustomerAgent = _paid_dish_guest(sim, 1003)
 	takeaway.takeaway = true
 	sim.pay(takeaway, takeaway.order)
 	sim.record_departure(takeaway)
 	assert_eq(_history().dish_week(1), {}, "the dashboard snapshots only closed service")
+	var cutoff: CustomerAgent = _paid_dish_guest(sim, 1004)
+	sim.pay(cutoff, cutoff.order)
+	var written_reviews: int = sim.reviews_today.size()
+	# Exercise cutoff departure separately from the real closing test.
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	sim.record_departure(cutoff)
+	assert_eq(sim.reviews_today.size(), written_reviews, "closing still suppresses written reviews")
 	var report: DayReport = _main.call("build_report", 1) as DayReport
 	assert_eq(report.dish_metrics[&"burger"],
-		{"sold": 4, "quality_sum": 3.25, "eaten": 2, "happy": 1})
+		{"sold": 5, "quality_sum": 4.0, "eaten": 3, "happy": 2})
 	assert_eq(report.dish_metrics[&"coffee"],
 		{"sold": 1, "quality_sum": 0.5, "eaten": 1, "happy": 1})
 

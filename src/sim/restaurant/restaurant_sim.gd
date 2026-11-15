@@ -13,6 +13,9 @@ const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres"
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
+## Completed recipes and the review scorer's satisfaction outcome, including
+## guests who do not write a review.
+signal dish_visit_completed(recipe_ids: Array[StringName], happy: bool)
 signal dish_sold_out(display_name: String)
 signal health_inspector_arrived()
 ## A detached, player-facing row without the scorer's internal cause id.
@@ -1420,6 +1423,9 @@ func record_departure(customer: CustomerAgent) -> void:
 					"before": result["before"], "after": result["after"]}
 				reviews_today.append(row)
 				review_recorded.emit(row.duplicate())
+		if not visit.consumed_recipe_ids.is_empty():
+			var happy: bool = ReputationBook.score_visit(visit, review_tuning, VIBE_TUNING, true) >= 4
+			dish_visit_completed.emit(visit.consumed_recipe_ids.duplicate(), happy)
 	customer_left.emit(customer, reason)
 
 

@@ -903,6 +903,7 @@ func _connect_session() -> void:
 	if not _report.is_connected(&"close_requested", _on_report_close_requested):
 		_report.connect(&"close_requested", _on_report_close_requested)
 	sim.customer_paid.connect(_on_customer_paid)
+	sim.dish_visit_completed.connect(_on_dish_visit_completed)
 	if not sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.connect(_on_vibe_customer_left)
 	sim.dish_sold_out.connect(_on_dish_sold_out)
@@ -959,6 +960,8 @@ func _exit_tree() -> void:
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim != null and sim.dish_visit_completed.is_connected(_on_dish_visit_completed):
+		sim.dish_visit_completed.disconnect(_on_dish_visit_completed)
 	if sim != null and sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
 	_disconnect_service_alerts()
@@ -1797,14 +1800,6 @@ func forecast_next_demand() -> Dictionary:
 ## evidence; review calculation and its random stream remain in RestaurantSim.
 func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
 	_settle_booking_after_departure(customer, reason)
-	# As for signature reviews, count each completed dine-in recipe once per guest.
-	if customer != null and customer.paid and not customer.takeaway:
-		var visit: ReviewVisit = customer.review_visit(0)
-		for id: StringName in visit.consumed_recipe_ids:
-			var metrics: Dictionary = _dish_metrics_for(id)
-			metrics["eaten"] += 1
-			if reason == &"happy":
-				metrics["happy"] += 1
 	if Clock.attached_world == world and ShopRecords.ANGRY_REASONS.has(reason):
 		EventBus.guest_left_angry.emit()
 	if customer != null and customer.paid and is_finite(customer.vibe_review_bonus) \
@@ -3592,6 +3587,8 @@ func _disconnect_session() -> void:
 		sim.aquarium.changed.disconnect(_on_aquarium_changed)
 	if sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim.dish_visit_completed.is_connected(_on_dish_visit_completed):
+		sim.dish_visit_completed.disconnect(_on_dish_visit_completed)
 	if sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
 	_disconnect_service_alerts()
@@ -7339,6 +7336,14 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 	_observe_opening_state()
 	_observe_opening_party(customer)
 	_refresh_goals()
+
+
+func _on_dish_visit_completed(recipe_ids: Array[StringName], happy: bool) -> void:
+	for id: StringName in recipe_ids:
+		var metrics: Dictionary = _dish_metrics_for(id)
+		metrics["eaten"] += 1
+		if happy:
+			metrics["happy"] += 1
 
 
 func _dish_metrics_for(id: StringName) -> Dictionary:
