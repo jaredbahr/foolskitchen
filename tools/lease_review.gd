@@ -82,7 +82,7 @@ func _capture_view(main: Node, mode: String, output: String, errors: ErrorCounte
 	var warning: Label = offer.get_node("Warning")
 	var refusal: Label = offer.get_node("Refusal")
 	var accept: Button = offer.get_node("Accept")
-	var progress: RefCounted = main.get("owner_progress")
+	var progress: OwnerProgress = main.get("owner_progress")
 	var editor: RefCounted = main.get("shop_editor")
 	var catalogue: Control = main.get_node("Overlay/BuildCatalogue")
 	var valid: bool = errors.count() == 0
@@ -176,9 +176,15 @@ static func prepare(main: Node, context_root: Node, mode: String) -> Dictionary:
 	var lot: Rect2i = editor.call("footprint").lot
 	var grown: Rect2i = Rect2i(lot.position - Vector2i(lease.get("extra_west"), lease.get("extra_north")),
 		lot.size + Vector2i(lease.get("extra_west") + lease.get("extra_east"), lease.get("extra_north")))
-	progress.call("award_bonus", progress.call("threshold_for", lease.get("owner_level")))
-	# The offer needs career Tier 2 (D30), which a real close grants at this level.
-	progress.call("raise_career_tier", load("res://data/balance/career_tiers.tres"), 3.0)
+	var career: CareerTierTuning = load("res://data/balance/career_tiers.tres")
+	var rung: CareerTier = career.rung_for(2)
+	if rung == null:
+		result["error"] = "lease review could not find the Tier 2 career requirements"
+		return result
+	progress.award_bonus(progress.threshold_for(rung.min_level))
+	if progress.raise_career_tier(career, 3.0) != 2:
+		result["error"] = "lease review could not qualify for the Tier 2 offer"
+		return result
 	menu.call("set_owner_level", progress.get("level"))
 	editor.call("set_owner_level", progress.get("level"))
 	editor.call("set_career_tier", progress.get("career_tier"))
@@ -209,7 +215,7 @@ static func prepare(main: Node, context_root: Node, mode: String) -> Dictionary:
 	if _enabled_recipes(menu) != before:
 		result["error"] = "lease review changed the default enabled recipes"
 	result.merge({"starting_enabled_recipes": before, "lot_before": _lot_data(lot), "lot_after": _lot_data(grown),
-		"deposit": deposit, "daily_rent": lease.get("daily_rent"), "owner_level": lease.get("owner_level"),
+		"deposit": deposit, "daily_rent": lease.get("daily_rent"), "owner_level": rung.min_level,
 		"purchase_attempted": mode != "offer", "purchase_accepted": accepted, "master_seed": 1})
 	return result
 

@@ -365,7 +365,7 @@ func test_a_lot_site_offers_and_sells_its_own_expansion() -> void:
 	assert_eq(grown.position, before.position - Vector2i(lot.expansion_west, lot.expansion_north))
 	assert_eq(grown.size, before.size + Vector2i(lot.expansion_west + lot.expansion_east, lot.expansion_north),
 		"the lot's own margins grow")
-	assert_eq(grown, ShopFootprint.from_layout(lot.lease_upgrade(null).layout_for(lot.base_layout, 2)).lot)
+	assert_eq(grown, ShopFootprint.from_layout(lot.lease_upgrade().layout_for(lot.base_layout, 2)).lot)
 	assert_eq(_main.call("lease_refusal"), "Your lease is already upgraded")
 	assert_false(_main.call("lease_buy"))
 	assert_false(_lease_offer().visible, "no second offer")
