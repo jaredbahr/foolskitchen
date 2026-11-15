@@ -384,6 +384,7 @@ Settings both have a What's new button, and "All release notes" calls
 - Money numbers live in `data/balance/*.tres` (`EconomyTuning`).
 - `customer_paid` records a SALE and counts the dish.
 - **Saves:** the slot is "autosave" (F10 deletes it and restarts). Autoloads register save providers through `register_save_provider()`, which `main.start()` also calls, because the test runner never delivers `_ready()`.
+- **New game (#526):** New game and F10 reload `main.tscn`, so `_new_game()` runs once, from `start()`, on a Main (and a sim) whose fields all have their declared values. It resets only what can differ from a first boot: the autoloads and `GameMode` (they outlive the scene), what a refused load staged (`_loaded_*`) or restored straight onto the session (the owner, the hints), and the few things a new game sets differently from the declared value. A new system adds no line there unless it is one of those. (Five more lines stay only because three session tests call `_new_game()` on a Main that has already played; the function says which.) `tests/world/test_new_game_clean.gd` holds this: it compares a new game after real play, by each player route, with a first boot.
 - `run_ticks(n)` fast-forwards for tests and tools.
 - With the owner selected, Main resolves assignment targets before ordinary
   agent/item picking and retains owner selection. K/F/H/R and the inspector's
