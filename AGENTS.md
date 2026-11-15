@@ -72,6 +72,7 @@ This file is read by every coding agent (Codex, Claude and Claude's subagents). 
 - Setup: `bash tools/get_godot.sh` once (it downloads Godot into `.tools/`), then `bash tools/check.sh`.
 - In the PR body: what changed, how you tested it, and any open questions.
 - Visual changes: attach screenshots from `bash tools/screenshot.sh` (needs `xvfb` and Mesa; if your environment lacks them, say so).
+- A new capture or review fixture is a scene (`tools/<name>_review.tscn`, run with `--scene=res://tools/<name>_review.tscn`) that parses its own options. Never add a flag to `tools/screenshot.gd`: its list is frozen and `tests/tools/test_screenshot_flags_frozen.gd` fails on a new one (#526).
 
 ## Art assets
 - `.glb` only, 1 unit = 1 m, Y-up, origin at the base centre, facing -Z. See `docs/TECH.md` section 3.

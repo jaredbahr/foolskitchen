@@ -228,6 +228,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
 - The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
 - A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
 - The test runner deals test files to its shards by how long each took, not by position in the list, so adding one test no longer reshuffles the rest and pushes the hosted check to its time limit. (#530)
