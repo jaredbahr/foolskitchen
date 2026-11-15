@@ -313,12 +313,18 @@ func _storage_for(world: SimWorld, crate: Crate) -> Dictionary:
 ## A walkable work cell of some storage item, so the delivery route chosen can
 ## reach the stores, or NO_CELL when the shop has none.
 func _any_storage_cell(world: SimWorld) -> Vector2i:
-	for placed: PlacedItem in world.grid.items():
+	return storage_cell(world.grid)
+
+
+## The storage work cell a delivery's way in is chosen for (the first one
+## standing), or NO_CELL. AisleRules asks too, to check the same carry (#391).
+static func storage_cell(grid: SimGrid) -> Vector2i:
+	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if definition == null or placed.removed or definition.storage_units <= 0:
 			continue
 		for cell: Vector2i in placed.work_cells:
-			if world.grid.is_walkable(cell):
+			if grid.is_walkable(cell):
 				return cell
 	return SimGrid.NO_CELL
 
