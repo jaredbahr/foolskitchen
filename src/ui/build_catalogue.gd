@@ -49,19 +49,28 @@ signal grid_requested()
 signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
-const MAX_PANEL_WIDTH: float = 980.0
+## "Wider, not taller" (#499): the bottom panel may use most of a 1600 px view.
+## That holds MAX_COLUMNS cards with their scroll bar, keeps the widest readout
+## on the tools row, and leaves room beside the panel for the hover card.
+const MAX_PANEL_WIDTH: float = 1320.0
 ## The tallest the bottom panel may grow, as a share of the view. It keeps the
 ## top of the panel below the screen centre, where Build centres the tile you
 ## are working on (world clicks there must not land on the panel).
 const PANEL_HEIGHT_SHARE: float = 0.45
 ## The most card rows the scroll shows before it scrolls, when the height cap
-## leaves room for them.
-const VISIBLE_ROWS: int = 3
+## leaves room for them. Two full rows of MAX_COLUMNS cards fit under the
+## height cap at 1600x900; a third row would cover the screen centre.
+const VISIBLE_ROWS: int = 2
 ## A catalogue tile: the picture on top, the price (or unlock level) under it.
-const CARD_MINIMUM: Vector2 = Vector2(96.0, 104.0)
+const CARD_MINIMUM: Vector2 = Vector2(92.0, 104.0)
 const THUMBNAIL_WIDTH: int = 64
-const CARD_GAP: float = 8.0
-const MAX_COLUMNS: int = 12
+const CARD_GAP: float = 6.0
+## How far the Hygiene card stays from the screen centre, and what joins two
+## of its facts on one line.
+const HYGIENE_CENTRE_GAP: float = 12.0
+const HYGIENE_JOIN: String = "   |   "
+const HYGIENE_FONT_SIZE: int = 18
+const MAX_COLUMNS: int = 13
 const MIN_COLUMNS: int = 6
 const BUY: StringName = &"buy"
 const BUILD: StringName = &"build"
@@ -217,7 +226,7 @@ var _material_icons: Dictionary[StringName, ImageTexture] = {}
 var copied_look: String = ""
 ## Main armed "Copy look": the next piece clicked is copied.
 var copy_armed: bool = false
-## Stable capture path: Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter.
+## Stable capture path: Panel/Margin/Rows/Toolbars/Bar/Readout/VibeMeter.
 var vibe_meter: VibeMeter
 var curb_appeal_meter: CurbAppealMeter
 var _curb_score: float = NAN
@@ -228,6 +237,13 @@ var hygiene_button: Button
 var hygiene_panel: PanelContainer
 var hygiene_summary: Label
 var hygiene_enabled: bool = false
+## The Hygiene card was put away (Escape, a click elsewhere) while Hygiene stays on.
+var _hygiene_card_closed: bool = false
+var _hygiene_lines: PackedStringArray = []
+var _hygiene_keep_clear: Array[Rect2] = []
+var _placing_hygiene: bool = false
+var _hygiene_style: StyleBox
+var _hygiene_compact_style: StyleBox
 ## The item the hover card describes (empty when hidden).
 var hover_id: StringName = &""
 var _floor_price: int = 0
@@ -267,6 +283,8 @@ func set_owner_level(level: int) -> void:
 func set_build_visible(active: bool) -> void:
 	if visible != active:
 		visible = active
+		# Coming back to Build shows the chosen overview again.
+		_hygiene_card_closed = false
 	if not active:
 		_hide_hover_card()
 	_update_hygiene_visibility()
@@ -278,6 +296,7 @@ func set_paint_visible(active: bool) -> void:
 	if _paint_visible == active:
 		return
 	_paint_visible = active
+	_hygiene_card_closed = false
 	_update_hygiene_visibility()
 	if active:
 		if mode == BUY:
@@ -356,10 +375,18 @@ func set_curb_appeal(score: float, multiplier: float, street_visible: bool) -> v
 
 func set_hygiene_lines(lines: PackedStringArray) -> void:
 	_prepare_layout()
-	var text: String = "\n".join(lines)
-	if hygiene_summary.text != text:
-		hygiene_summary.text = text
-		_fit_panel()
+	if _hygiene_lines != lines:
+		_hygiene_lines = lines.duplicate()
+		hygiene_summary.text = "\n".join(lines)
+		_place_hygiene_card()
+
+
+## Boxes the Hygiene card must not cover (the HUD header, build hints and
+## goals tracker), in this control's canvas coordinates.
+func set_hygiene_keep_clear(rects: Array[Rect2]) -> void:
+	if _hygiene_keep_clear != rects:
+		_hygiene_keep_clear = rects.duplicate()
+		_place_hygiene_card()
 
 
 func set_hygiene_enabled(enabled: bool) -> void:
@@ -367,17 +394,122 @@ func set_hygiene_enabled(enabled: bool) -> void:
 	if hygiene_enabled == enabled:
 		return
 	hygiene_enabled = enabled
+	_hygiene_card_closed = false
 	hygiene_button.set_pressed_no_signal(enabled)
 	_update_hygiene_visibility()
 	hygiene_toggled.emit(enabled)
-	_fit_panel()
 
 
 func _update_hygiene_visibility() -> void:
 	if hygiene_button == null:
 		return
 	hygiene_button.visible = not _paint_visible
-	hygiene_panel.visible = visible and hygiene_enabled and not _paint_visible
+	hygiene_panel.visible = visible and hygiene_enabled and not _paint_visible and not _hygiene_card_closed
+	_place_hygiene_card()
+
+
+## A floating card over the world, above the panel and under the Hygiene
+## button, like the item hover card: it never takes rows from the cards (#542).
+## It stays inside the view, on the button's side of the screen centre and off
+## the HUD's boxes. Three layouts, the first that fits:
+##   1. one fact a line (1600x900 at 100%);
+##   2. smaller, with facts sharing lines, where the gap between the HUD and
+##      the panel is short (125%);
+##   3. where there is no gap to speak of (150%: about 40 px), the small card
+##      lies over the item cards at the panel's foot, never over the HUD.
+func _place_hygiene_card() -> void:
+	if hygiene_panel == null or not hygiene_panel.visible or _placing_hygiene:
+		return
+	_placing_hygiene = true
+	var origin: Vector2 = get_global_rect().position
+	var button: Rect2 = hygiene_button.get_global_rect()
+	button.position -= origin
+	var panel: Rect2 = (get_node("Panel") as Control).get_global_rect()
+	panel.position -= origin
+	var centre: Vector2 = size * 0.5
+	var placed: Rect2 = Rect2()
+	for layout: int in range(3):
+		var compact: bool = layout > 0
+		hygiene_panel.add_theme_stylebox_override("panel", _hygiene_compact_style if compact else _hygiene_style)
+		hygiene_summary.add_theme_font_size_override("font_size", CHIP_FONT_SIZE if compact else HYGIENE_FONT_SIZE)
+		var padding: float = hygiene_panel.get_theme_stylebox("panel").get_minimum_size().x
+		if layout == 0:
+			hygiene_summary.text = "\n".join(_hygiene_lines)
+		elif layout == 1:
+			# Widest text that still ends at the button without reaching the centre.
+			hygiene_summary.text = _packed_hygiene_lines(button.end.x - (centre.x + HYGIENE_CENTRE_GAP) - padding)
+		else:
+			hygiene_summary.text = _packed_hygiene_lines(panel.size.x - CARD_GAP * 2.0 - padding)
+		var card_size: Vector2 = hygiene_panel.get_combined_minimum_size()
+		var left: float = clampf(button.end.x - card_size.x, EDGE_MARGIN, maxf(EDGE_MARGIN, size.x - EDGE_MARGIN - card_size.x))
+		if layout == 2:
+			placed = Rect2(Vector2(left, maxf(EDGE_MARGIN, panel.end.y - CARD_GAP - card_size.y)), card_size)
+			break
+		placed = Rect2(Vector2(left, panel.position.y - CARD_GAP - card_size.y), card_size)
+		var free: bool = placed.position.y >= EDGE_MARGIN and not placed.grow(HYGIENE_CENTRE_GAP).has_point(centre)
+		for box: Rect2 in _hygiene_keep_clear:
+			free = free and not placed.grow(CARD_GAP).intersects(Rect2(box.position - origin, box.size))
+		if free:
+			break
+	hygiene_panel.position = placed.position
+	hygiene_panel.size = placed.size
+	_placing_hygiene = false
+
+
+## The facts in reading order, as many to a line as fit in `width`.
+func _packed_hygiene_lines(width: float) -> String:
+	var font: Font = hygiene_summary.get_theme_font("font")
+	var font_size: int = hygiene_summary.get_theme_font_size("font_size")
+	var rows: PackedStringArray = []
+	for line: String in _hygiene_lines:
+		var joined: String = "" if rows.is_empty() else rows[rows.size() - 1] + HYGIENE_JOIN + line
+		if not rows.is_empty() and font.get_string_size(joined, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x <= width:
+			rows[rows.size() - 1] = joined
+		else:
+			rows.append(line)
+	return "\n".join(rows)
+
+
+## Escape or a click anywhere else puts the card away. The floor highlight and
+## the pressed button stay until Hygiene is switched off; pointing at the
+## button brings the card back.
+func _close_hygiene_card() -> void:
+	if hygiene_panel == null or not hygiene_panel.visible:
+		return
+	_hygiene_card_closed = true
+	_update_hygiene_visibility()
+
+
+func _on_hygiene_hovered() -> void:
+	if hygiene_enabled and _hygiene_card_closed:
+		_hygiene_card_closed = false
+		_update_hygiene_visibility()
+
+
+func _input(event: InputEvent) -> void:
+	if hygiene_panel == null or not hygiene_panel.is_visible_in_tree():
+		return
+	var key: InputEventKey = event as InputEventKey
+	if key != null and key.pressed and not key.echo \
+			and (key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode) == KEY_ESCAPE:
+		_close_hygiene_card()
+		get_viewport().set_input_as_handled()
+		return
+	# A left click on the card keeps it; a right click there acts like one
+	# anywhere else (it closes the card and still drops the build ghost).
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE] \
+			and not hygiene_button.get_global_rect().has_point(mouse.position) \
+			and (mouse.button_index != MOUSE_BUTTON_LEFT or not hygiene_panel.get_global_rect().has_point(mouse.position)):
+		_close_hygiene_card()
+
+
+## Only left clicks stop at the card. Pointer motion, the wheel and right
+## clicks carry on to the shop, so the build ghost keeps following the pointer.
+func _on_hygiene_card_input(event: InputEvent) -> void:
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT:
+		hygiene_panel.accept_event()
 
 
 func _on_hygiene_pressed() -> void:
@@ -1657,7 +1789,7 @@ func _prepare_layout() -> void:
 	content.minimum_size_changed.connect(_fit_panel)
 	var toolbars: Control = _toolbars()
 	toolbars.minimum_size_changed.connect(_fit_panel)
-	var bar: HBoxContainer = toolbars.get_node("Bar") as HBoxContainer
+	var bar: HFlowContainer = toolbars.get_node("Bar") as HFlowContainer
 	for side: StringName in [BUILD, BUY]:
 		var button: Button = _chip("Mode_%s" % side, "Build" if side == BUILD else "Buy", 18)
 		button.tooltip_text = "Build: walls, doorways, windows, wall finishes, floors, rooms, more floor space and paint" if side == BUILD \
@@ -1705,14 +1837,20 @@ func _prepare_layout() -> void:
 		category_buttons[category] = button
 		categories.add_child(button)
 	IconStyle.configure_button(category_buttons[PAINT], &"paint", "Paint", "Paint walls, floor and furniture (P)")
+	# The vibe/curb/theme readout shares the mode and tool row, at its right end
+	# (#499: wider, not taller). In a narrow view the flow wraps it to a line of
+	# its own instead of clipping it.
 	var readout: HBoxContainer = HBoxContainer.new()
 	readout.name = "Readout"
 	readout.mouse_filter = Control.MOUSE_FILTER_PASS
+	readout.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_END
 	readout.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	readout.add_theme_constant_override("separation", 10)
+	readout.add_theme_constant_override("separation", 8)
 	readout.tooltip_text = "Your room's vibe and theme right now"
-	categories.add_child(_divider())
-	categories.add_child(readout)
+	bar.add_child(readout)
+	for control: Node in bar.get_children():
+		if control is Button:
+			(control as Button).size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	vibe_meter = VibeMeter.new()
 	readout.add_child(vibe_meter)
 	curb_appeal_meter = CurbAppealMeter.new()
@@ -1726,16 +1864,27 @@ func _prepare_layout() -> void:
 	hygiene_button = _chip("Hygiene", HygieneOverview.TITLE)
 	hygiene_button.tooltip_text = HygieneOverview.TOGGLE_TIP
 	hygiene_button.pressed.connect(_on_hygiene_pressed)
+	hygiene_button.mouse_entered.connect(_on_hygiene_hovered)
+	hygiene_button.item_rect_changed.connect(_place_hygiene_card)
+	readout.item_rect_changed.connect(_place_hygiene_card)
+	hygiene_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	readout.add_child(hygiene_button)
 	hygiene_panel = PanelContainer.new()
 	hygiene_panel.name = "HygieneOverview"
 	hygiene_panel.visible = false
-	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	toolbars.add_child(hygiene_panel)
-	toolbars.move_child(hygiene_panel, categories.get_index() + 1)
+	# A left click on the card stays on the card (_on_hygiene_card_input); the
+	# item hover card draws over it.
+	hygiene_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	hygiene_panel.gui_input.connect(_on_hygiene_card_input)
+	_hygiene_style = card_style
+	_hygiene_compact_style = original.duplicate() as StyleBox
+	_hygiene_compact_style.set_content_margin_all(6.0)
+	hygiene_panel.add_theme_stylebox_override("panel", _hygiene_style)
+	add_child(hygiene_panel)
+	move_child(hygiene_panel, card.get_index())
 	hygiene_summary = Label.new()
 	hygiene_summary.name = "Summary"
-	hygiene_summary.add_theme_font_size_override("font_size", 18)
+	hygiene_summary.add_theme_font_size_override("font_size", HYGIENE_FONT_SIZE)
 	hygiene_summary.tooltip_text = HygieneOverview.TODAY_TIP
 	hygiene_summary.mouse_filter = Control.MOUSE_FILTER_PASS
 	hygiene_panel.add_child(hygiene_summary)
@@ -1842,8 +1991,10 @@ func _fit_panel() -> void:
 	for button: Button in _visible_cards():
 		card_size = card_size.max(button.get_combined_minimum_size())
 	var bar_width: float = scroll.get_v_scroll_bar().get_combined_minimum_size().x
-	# The tiles fill the width of the toolbars (at least MIN_COLUMNS tiles), so
-	# the panel stays narrow enough to leave the shop in view; more tiles scroll.
+	# Wider, not taller (#499): the card grid takes up to MAX_COLUMNS tiles of
+	# the view's width and VISIBLE_ROWS rows, so the panel stays below the screen
+	# centre; more tiles scroll. Other pages (Paint, blueprints) keep the width
+	# of their own rows.
 	var rows_width: float = 0.0
 	for parent: Control in [toolbars, content]:
 		for child: Node in parent.get_children():
@@ -1859,7 +2010,11 @@ func _fit_panel() -> void:
 							ideal += (control as Control).get_combined_minimum_size().x \
 								+ (child as HFlowContainer).get_theme_constant("h_separation")
 					rows_width = maxf(rows_width, ideal)
-	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_size.x + CARD_GAP) - CARD_GAP)
+	# The card grid always takes the full width budget (MAX_COLUMNS plain cards
+	# at 1600x900), so the panel does not jump as tabs, filters or the readout's
+	# numbers change; a tab with wider cards shows fewer columns in that width.
+	var wanted: float = limit.x if row.visible \
+		else maxf(rows_width, MIN_COLUMNS * (CARD_MINIMUM.x + CARD_GAP) - CARD_GAP)
 	var grid_width: float = minf(wanted, limit.x - bar_width)
 	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_size.x + CARD_GAP)), 1, MAX_COLUMNS)
 	if row.columns != columns:
@@ -1869,13 +2024,16 @@ func _fit_panel() -> void:
 	var scroll_limit: float = maxf(0.0, minf(limit.y - pinned,
 		VISIBLE_ROWS * (card_size.y + CARD_GAP) - CARD_GAP))
 	var vertical: bool = natural.y > scroll_limit
-	var width: float = minf(maxf(natural.x + (bar_width if vertical else 0.0), rows_width), limit.x)
+	# The scroll bar's lane is always held free, so it never changes the width.
+	var cards_width: float = grid_width + bar_width if row.visible else 0.0
+	var width: float = minf(maxf(maxf(natural.x + (bar_width if vertical else 0.0), cards_width), rows_width), limit.x)
 	var height: float = minf(natural.y, scroll_limit)
 	scroll.custom_minimum_size = Vector2(width, height)
 	panel.size = Vector2(width, pinned + height) + padding
 	panel.position = Vector2(EDGE_MARGIN, size.y - EDGE_MARGIN - panel.size.y)
 	_fitting = false
 	_place_hover_card()
+	_place_hygiene_card()
 
 
 func _visible_cards() -> Array[Button]:
