@@ -94,6 +94,8 @@ static func group_for(definition: ItemDef) -> StringName:
 
 ## What the item does, in a few words: "Seats 2", "Cooks hot dishes".
 static func does(definition: ItemDef) -> String:
+	if definition != null and definition.id == &"tip_jar":
+		return "Place on a table or counter near the till, bar or pass for higher tips"
 	if definition == null:
 		return ""
 	match definition.category:

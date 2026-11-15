@@ -6,7 +6,7 @@ extends Resource
 enum Category { DOOR, TABLE, CHAIR, STATION, STORAGE, PASS, DECOR, RESTROOM, WAITING }
 ## WALL (D26): hangs on a wall face (ShopEditor.decor, WallDecor), never on
 ## the grid; its footprint is (width along the wall in faces, 1).
-enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL }
+enum PlacementLayer { NORMAL, FLOOR_DECOR, WALL, SURFACE_DECOR }
 ## Where a WALL-layer item hangs (D26). INSIDE_FACE: on a solid wall face
 ## inside the shop (prints, boards). WINDOW: in an outside window, one per
 ## window, its front facing the street (the neon OPEN sign). Never renumber;
@@ -65,6 +65,8 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var price: int = 0
 ## Owner level required for new purchases. Existing placed items remain valid.
 @export var unlock_level: int = 1
+## Whether the evening report names this item when its level is reached.
+@export var announce_unlock: bool = true
 @export var charm: int = 0
 @export var theme_tags: Array[StringName] = []
 ## Empty keeps legacy content unchanged; the first authored look is the default.
@@ -126,7 +128,19 @@ func placement_layer_valid() -> bool:
 			and (wall_mount == WallMount.INSIDE_FACE or wall_mount == WallMount.WINDOW and footprint.x == 1 \
 				or wall_mount == WallMount.EXTERIOR) and exterior_band >= ExteriorSupport.Band.BODY \
 			and exterior_band <= ExteriorSupport.Band.GROUND
+	if placement_layer == PlacementLayer.SURFACE_DECOR:
+		return category == Category.DECOR and passive and footprint == Vector2i.ONE
 	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
+
+
+## A passive decoration that sits on furniture and can share the cell with a rug.
+func sits_on_surface() -> bool:
+	return placement_layer == PlacementLayer.SURFACE_DECOR
+
+
+## A table, service counter or pass may support a small decoration.
+func supports_surface_decor() -> bool:
+	return category in [Category.TABLE, Category.PASS] or station_type == &"order_counter"
 
 
 ## Hangs on a wall face (D26) instead of standing on the floor.

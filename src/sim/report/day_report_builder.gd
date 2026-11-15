@@ -35,6 +35,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 			report.income[category] = amount
 		elif amount < 0:
 			report.costs[category] = -amount
+	report.tip_jar_percent = roundi((sources.sim.tip_jar_multiplier() - 1.0) * 100.0)
 	report.stock_values_recorded = true
 	report.food_cost = int(sources.food_cost["cost"])
 	report.food_cost_recorded = bool(sources.food_cost["recorded"])

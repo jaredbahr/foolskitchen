@@ -116,7 +116,7 @@ func show_report(report: DayReport) -> void:
 	else:
 		_profit.text = "Operating profit not recorded"
 		_profit.remove_theme_color_override("font_color")
-	_fill_money(_income, report.income, "No income today")
+	_fill_money(_income, report.income, "No income today", report.tip_jar_percent)
 	var displayed_costs: Dictionary = report.costs.duplicate()
 	if report.stock_values_recorded:
 		displayed_costs.erase(Ledger.INGREDIENTS)
@@ -530,12 +530,14 @@ func _fill_milestones(milestones: Array[Dictionary]) -> void:
 	_milestone_rows.visible = shown > 0
 
 
-func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
+func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String, tip_jar_percent: int = 0) -> void:
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
 		var title: String = String(MONEY_LABELS.get(StringName(id), id.capitalize()))
 		if rows == _costs and StringName(id) == Ledger.BOOKING_DEPOSIT:
 			title = "Deposit taken off the bill"
+		if tip_jar_percent > 0 and StringName(id) == Ledger.TIP:
+			title += " (tip jar +%d%%)" % tip_jar_percent
 		_add_row(rows, title, _money(int(amounts[StringName(id)])))
 	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")

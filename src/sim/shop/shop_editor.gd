@@ -395,6 +395,9 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 		# Distinct non-live ids let dining and room rules identify every entry.
 		ids[placed.id] = -1 - proposed.size()
 		proposed.append(placed.id)
+	var surface_problem: String = _surface_decor_problem(preview)
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	var people_problem: String = _placement_people_problem(preview)
 	if not people_problem.is_empty():
 		return EditCheck.new(false, people_problem)
@@ -511,6 +514,9 @@ func _check_remove_stamp(item_ids: Array[int], exact: Exact) -> EditCheck:
 		if seen.has(ids[preview_id]):
 			preview.remove(preview_id)
 			ids.erase(preview_id)
+	var surface_problem: String = _surface_decor_problem(preview, true)
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	for placed: PlacedItem in preview.items():
 		required.erase(_required_key(placed.def as ItemDef))
 	if not required.is_empty():
@@ -560,6 +566,9 @@ func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 	var preview: SimGrid = _preview_without(item_id, ids)
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
+	var surface_problem: String = _surface_decor_problem(preview, true)
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	var dining: EditCheck = EditCheck.new(true) if exact != null \
 		else EditCheck.validate_dining(_sim.world.grid, preview, ids, -1, item_id)
 	if not dining.ok:
@@ -706,8 +715,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		return null
 	var patio_set: Dictionary[Vector2i, bool] = ShopFootprint.to_set(patio_cells)
 	var rows: Array = data["items"]
-	# Two grid layers (normal and floor decor); wall decor is saved separately.
-	if rows.size() > preview.size.x * preview.size.y * 2:
+	# Wall decor is saved separately from the overlapping grid layers.
+	if rows.size() > preview.size.x * preview.size.y * SimGrid.GRID_PLACEMENT_LAYERS.size():
 		errors.append("Too many shop items")
 		return null
 	var layout: ShopLayout = ShopLayout.new()
@@ -766,6 +775,9 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			errors.append("Saved item does not fit on the layout's floor")
 			return null
 		layout.placements.append(placement)
+	if not _surface_decor_problem(preview).is_empty():
+		errors.append("Saved tabletop item has no table or counter")
+		return null
 	var minimums: Dictionary[String, int] = {}
 	for placement: ShopPlacement in template_layout.placements:
 		var definition: ItemDef = content.item(placement.item_id)
@@ -2246,6 +2258,9 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		proposed_id = placed.id
 	if proposed_id < 0:
 		return EditCheck.new(false, "The shop changed; check the placement again")
+	var surface_problem: String = _surface_decor_problem(preview, exclude_id >= 0 and not definition.sits_on_surface())
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	var people_problem: String = _placement_people_problem(preview)
 	if not people_problem.is_empty():
 		return EditCheck.new(false, people_problem)
@@ -2397,6 +2412,16 @@ func _preview_without(exclude_id: int, ids: Dictionary[int, int], replacement: I
 			return null
 		ids[copy.id] = placed.id
 	return preview
+
+
+## Check the final layout, so grouped edits and undo keep supported decor
+## in place regardless of saved placement order.
+static func _surface_decor_problem(grid: SimGrid, moving_support: bool = false) -> String:
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.sits_on_surface() and grid.surface_support_at(placed.origin) == null:
+			return "Move the item on top first" if moving_support else "Choose a table or counter"
+	return ""
 
 
 ## A furnishing's customer reservation belongs to its physical table, not to
