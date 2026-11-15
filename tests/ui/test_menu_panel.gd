@@ -859,6 +859,9 @@ func test_tree_shows_measured_quality_and_happy_share_and_sorts_dishes() -> void
 	assert_eq(burger.get_next(), cheese)
 	assert_eq(cheese.get_next(), soup)
 	assert_eq(burger.get_text(2), "New")
+	for column: int in 3:
+		assert_eq(burger.get_autowrap_mode(column), TextServer.AUTOWRAP_WORD_SMART,
+			"the name, status and history can all wrap when columns are narrow")
 	assert_true(_panel.select_recipe(&"burger"))
 	_panel.set_dish_week({
 		&"burger": {"sold": 42, "quality_sum": 31.92, "eaten": 10, "happy": 9},

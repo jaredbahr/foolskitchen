@@ -967,8 +967,8 @@ func _build_recipe_tree() -> void:
 	_recipe_tree.theme = SHARED_THEME
 	_recipe_tree.columns = 3
 	_recipe_tree.column_titles_visible = false
-	_recipe_tree.set_column_expand_ratio(0, 4)
-	_recipe_tree.set_column_expand_ratio(1, 3)
+	_recipe_tree.set_column_expand_ratio(0, 5)
+	_recipe_tree.set_column_expand_ratio(1, 4)
 	_recipe_tree.set_column_expand_ratio(2, 6)
 	_recipe_tree.set_column_clip_content(1, true)
 	_recipe_tree.set_column_clip_content(2, true)
@@ -1027,6 +1027,7 @@ func _add_grouped_dishes(remaining: Array[RecipeDef], root: TreeItem) -> void:
 				if not sections.has(section):
 					var heading: TreeItem = _recipe_tree.create_item(root)
 					heading.set_text(0, RecipeDef.section_name(section))
+					heading.set_expand_right(0, true)
 					heading.set_selectable(0, false)
 					heading.set_selectable(1, false)
 					heading.set_selectable(2, false)
@@ -1077,7 +1078,9 @@ func _add_recipe_node(recipe: RecipeDef, parent: TreeItem) -> void:
 	var node: TreeItem = _recipe_tree.create_item(parent)
 	node.set_text(0, recipe.display_name)
 	node.set_metadata(0, recipe.id)
-	node.set_autowrap_mode(2, TextServer.AUTOWRAP_WORD_SMART)
+	# Small windows can wrap each cell without widening the shared scroll.
+	for column: int in _recipe_tree.columns:
+		node.set_autowrap_mode(column, TextServer.AUTOWRAP_WORD_SMART)
 	node.set_custom_font_size(2, 15)
 	node.custom_minimum_height = 30
 	_tree_items[recipe.id] = node
