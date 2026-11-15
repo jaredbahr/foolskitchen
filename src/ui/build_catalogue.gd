@@ -242,8 +242,10 @@ var _hygiene_card_closed: bool = false
 var _hygiene_lines: PackedStringArray = []
 var _hygiene_keep_clear: Array[Rect2] = []
 var _placing_hygiene: bool = false
+var _hygiene_strip: bool = false
 var _hygiene_style: StyleBox
 var _hygiene_compact_style: StyleBox
+var _panel_scroll: PanelScroll
 ## The item the hover card describes (empty when hidden).
 var hover_id: StringName = &""
 var _floor_price: int = 0
@@ -415,8 +417,8 @@ func _update_hygiene_visibility() -> void:
 ##   1. one fact a line (1600x900 at 100%);
 ##   2. smaller, with facts sharing lines, where the gap between the HUD and
 ##      the panel is short (125%);
-##   3. where there is no gap to speak of (150%: about 40 px), the small card
-##      lies over the item cards at the panel's foot, never over the HUD.
+##   3. where there is no room above, a strip at the foot of the catalogue.
+##      At 150% it uses one line starting at the item grid's left edge.
 func _place_hygiene_card() -> void:
 	if hygiene_panel == null or not hygiene_panel.visible or _placing_hygiene:
 		return
@@ -428,21 +430,36 @@ func _place_hygiene_card() -> void:
 	panel.position -= origin
 	var centre: Vector2 = size * 0.5
 	var placed: Rect2 = Rect2()
+	var window: Window = get_window()
+	var large_ui: bool = window != null and window.content_scale_factor >= 1.5
+	var strip: bool = false
 	for layout: int in range(3):
 		var compact: bool = layout > 0
+		strip = layout == 2 and large_ui
 		hygiene_panel.add_theme_stylebox_override("panel", _hygiene_compact_style if compact else _hygiene_style)
 		hygiene_summary.add_theme_font_size_override("font_size", CHIP_FONT_SIZE if compact else HYGIENE_FONT_SIZE)
+		hygiene_summary.clip_text = strip
+		hygiene_summary.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS if strip else TextServer.OVERRUN_NO_TRIMMING
 		var padding: float = hygiene_panel.get_theme_stylebox("panel").get_minimum_size().x
 		if layout == 0:
 			hygiene_summary.text = "\n".join(_hygiene_lines)
 		elif layout == 1:
 			# Widest text that still ends at the button without reaching the centre.
 			hygiene_summary.text = _packed_hygiene_lines(button.end.x - (centre.x + HYGIENE_CENTRE_GAP) - padding)
+		elif strip:
+			hygiene_summary.text = " | ".join(_hygiene_lines).replace("Today's cleanliness:", "Cleanliness:") \
+				.replace(" needs a tidy", " to tidy").replace(" need a tidy", " to tidy")
 		else:
 			hygiene_summary.text = _packed_hygiene_lines(panel.size.x - CARD_GAP * 2.0 - padding)
 		var card_size: Vector2 = hygiene_panel.get_combined_minimum_size()
 		var left: float = clampf(button.end.x - card_size.x, EDGE_MARGIN, maxf(EDGE_MARGIN, size.x - EDGE_MARGIN - card_size.x))
 		if layout == 2:
+			if strip:
+				left = _items().get_global_rect().position.x - origin.x
+				var font: Font = hygiene_summary.get_theme_font("font")
+				var width: float = font.get_string_size(hygiene_summary.text, HORIZONTAL_ALIGNMENT_LEFT,
+					-1.0, CHIP_FONT_SIZE).x + padding
+				card_size.x = minf(width, panel.end.x - CARD_GAP - left)
 			placed = Rect2(Vector2(left, maxf(EDGE_MARGIN, panel.end.y - CARD_GAP - card_size.y)), card_size)
 			break
 		placed = Rect2(Vector2(left, panel.position.y - CARD_GAP - card_size.y), card_size)
@@ -451,6 +468,9 @@ func _place_hygiene_card() -> void:
 			free = free and not placed.grow(CARD_GAP).intersects(Rect2(box.position - origin, box.size))
 		if free:
 			break
+	_hygiene_strip = strip
+	hygiene_summary.tooltip_text = "\n".join(_hygiene_lines) + "\n\n" + HygieneOverview.TODAY_TIP \
+		if strip else HygieneOverview.TODAY_TIP
 	hygiene_panel.position = placed.position
 	hygiene_panel.size = placed.size
 	_placing_hygiene = false
@@ -492,11 +512,13 @@ func _input(event: InputEvent) -> void:
 	var key: InputEventKey = event as InputEventKey
 	if key != null and key.pressed and not key.echo \
 			and (key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode) == KEY_ESCAPE:
+		if _panel_scroll.is_covered():
+			return
 		_close_hygiene_card()
 		get_viewport().set_input_as_handled()
 		return
-	# A left click on the card keeps it; a right click there acts like one
-	# anywhere else (it closes the card and still drops the build ghost).
+	# A left click on the card keeps it. A right click closes it, and the
+	# catalogue still owns that click if the card is over its item grid.
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE] \
 			and not hygiene_button.get_global_rect().has_point(mouse.position) \
@@ -504,12 +526,13 @@ func _input(event: InputEvent) -> void:
 		_close_hygiene_card()
 
 
-## Only left clicks stop at the card. Pointer motion, the wheel and right
-## clicks carry on to the shop, so the build ghost keeps following the pointer.
+## Pointer motion still reaches the shop, so the build ghost follows the pointer.
 func _on_hygiene_card_input(event: InputEvent) -> void:
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.button_index == MOUSE_BUTTON_LEFT:
 		hygiene_panel.accept_event()
+	elif _hygiene_strip:
+		_panel_scroll.forward_wheel(event, hygiene_panel)
 
 
 func _on_hygiene_pressed() -> void:
@@ -584,7 +607,7 @@ func _ready() -> void:
 	_prepare_layout()
 	_fit_panel()
 	# The shared wheel step and whole-card wheel (#497); its toolbars are #499.
-	PanelScroll.attach(self, $Panel as Control, $Panel/Margin/Rows/Scroll as ScrollContainer)
+	_panel_scroll = PanelScroll.attach(self, $Panel as Control, $Panel/Margin/Rows/Scroll as ScrollContainer)
 
 
 func _notification(what: int) -> void:

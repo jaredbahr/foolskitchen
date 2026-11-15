@@ -721,7 +721,7 @@ func test_hygiene_card_closes_on_escape_or_a_click_elsewhere_and_returns_on_hove
 		click.pressed = pressed
 		tree.root.push_input(click, true)
 	assert_false(card.visible, "a right click on the card puts it away like one anywhere else")
-	assert_eq(probe.right, 1, "and still reaches Build, which drops the ghost")
+	assert_eq(probe.right, 1, "outside the catalogue the click reaches the shop")
 	assert_true(_catalogue.hygiene_enabled)
 	assert_eq(toggles, [true] as Array[bool], "putting the card away never switches Hygiene off")
 	_mouse(button.get_global_rect().get_center(), true)

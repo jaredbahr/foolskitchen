@@ -358,10 +358,14 @@ Settings both have a What's new button, and "All release notes" calls
   build hints, booking card, goals tracker) to `set_hygiene_keep_clear`, and
   the card takes the first layout that clears them and the screen centre: one
   fact a line; smaller with facts sharing lines (125%); or, with no room above
-  the panel (150% has about 40 px), a short strip over the panel's foot.
-  Escape (consumed) or a click elsewhere puts the card away while the toggle
-  and the floor tint stay on; pointing at the button, reopening Build or
-  leaving Paint shows it again. Only left clicks stop at the card.
+  the panel, a strip over the panel's foot. At 150% the strip starts at the
+  item grid's left edge and keeps the facts on one line. Hover for the full
+  text. The vertical wheel over the strip scrolls the catalogue.
+  Escape closes Shortcuts first if it covers Build. Otherwise Escape or a
+  click elsewhere puts the card away while the toggle and the floor tint
+  stay on. Right-click over the strip closes it and leaves the held build
+  ghost in place, as over the rest of the catalogue. Pointing at the button,
+  reopening Build or leaving Paint shows the card again.
   `HYGIENE_REVIEW_SCALE=125` or `150` renders the fixture below at that UI size.
   `bash tools/screenshot.sh --scene=res://tools/hygiene_review.tscn --speed=0
   --frames=12,60 --quarter=2` shows an explicitly staged, unsaved slightly messy
