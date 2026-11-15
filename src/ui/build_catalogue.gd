@@ -51,7 +51,7 @@ signal hygiene_toggled(active: bool)
 const EDGE_MARGIN: float = 12.0
 ## "Wider, not taller" (#499): the bottom panel may use most of a 1600 px view,
 ## enough for MAX_COLUMNS cards, their scroll bar and the panel's own padding.
-const MAX_PANEL_WIDTH: float = 1384.0
+const MAX_PANEL_WIDTH: float = 1308.0
 ## The tallest the bottom panel may grow, as a share of the view. It keeps the
 ## top of the panel below the screen centre, where Build centres the tile you
 ## are working on (world clicks there must not land on the panel).
@@ -61,9 +61,9 @@ const PANEL_HEIGHT_SHARE: float = 0.45
 ## height cap at 1600x900; a third row would cover the screen centre.
 const VISIBLE_ROWS: int = 2
 ## A catalogue tile: the picture on top, the price (or unlock level) under it.
-const CARD_MINIMUM: Vector2 = Vector2(96.0, 104.0)
+const CARD_MINIMUM: Vector2 = Vector2(92.0, 104.0)
 const THUMBNAIL_WIDTH: int = 64
-const CARD_GAP: float = 8.0
+const CARD_GAP: float = 6.0
 const MAX_COLUMNS: int = 13
 const MIN_COLUMNS: int = 6
 const BUY: StringName = &"buy"
