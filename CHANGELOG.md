@@ -230,6 +230,7 @@ Each line ends with its PR number.
 
 ### Under the hood
 - The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
+- Starting a new game no longer re-resets things the freshly loaded game scene has already set up: `_new_game()` is about half as long, and says which resets a new system still needs. No change in play. (#533)
 - The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
 - Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#519)
 - A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
