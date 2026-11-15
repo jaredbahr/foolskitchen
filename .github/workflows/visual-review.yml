@@ -190,6 +190,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/shortcuts --shortcuts --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
+          bash tools/screenshot.sh --out=screens/visual-review/large-cash --scene=res://tools/large_cash_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90
           bash tools/screenshot.sh --out=screens/visual-review/hud-1600 --hud-layout --window-size=1600x900 --speed=0 --frames=12,90
           MESS_REVIEW_FLOOR=dark bash tools/screenshot.sh --out=screens/visual-review/messes-dark --scene=res://tools/messes_review.tscn --speed=0 --frames=60
