@@ -67,6 +67,15 @@ print("runs=%d agent_days=%d stuck_runs=%d stuck_episodes=%d max_no_progress=%d 
 if any("inspector_visits" in r for r in rows):
     print("inspector visits=%d removed=%d max_stall=%d" % (sum(r.get("inspector_visits", 0) for r in rows),
         sum(r.get("inspector_removed", 0) for r in rows), max(r.get("inspector_max_stall", 0) for r in rows)))
+print("yield_ticks=%d door_hold_ticks=%d max_seat_walk_stall=%d max_leaver_stall=%d day_ticks=%d" % (
+    sum(r.get("yield_ticks", 0) for r in rows), sum(r.get("door_hold_ticks", 0) for r in rows),
+    max([r.get("max_seat_walk_stall", 0) for r in rows] or [0]), max([r.get("max_leaver_stall", 0) for r in rows] or [0]),
+    sum(r.get("day_ticks", 0) for r in rows)))
+reasons = {}
+for r in rows:
+    for k, v in r.get("reasons", {}).items():
+        reasons[k] = reasons.get(k, 0) + v
+print("lost_by_reason=" + json.dumps(reasons, sort_keys=True))
 for r in stuck + errors:
     print("  %s seed=%d edits=%s episodes=%d max=%d %s" % (r["setup"], r["seed"], r["edits"], r["stuck_episodes"], r["max_no_progress"], r.get("error", "")))
 PY
