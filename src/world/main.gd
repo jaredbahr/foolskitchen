@@ -3918,7 +3918,7 @@ func _lease_for(base: ShopLayout) -> LeaseUpgrade:
 	if base != null and content != null:
 		for lot: LotDef in content.lots():
 			if lot.base_layout == base:
-				return lot.lease_upgrade(LEASE)
+				return lot.lease_upgrade()
 	return LEASE
 
 
