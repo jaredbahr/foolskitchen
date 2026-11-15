@@ -156,6 +156,7 @@ func test_day_gated_notes_show_only_on_their_day() -> void:
 	var sources: DayReportSources = _sources()
 	var notes: DayNotes = sources.notes
 	var goal: Milestone = Milestone.new()
+	goal.title = "First full house"
 	notes.record_day = 5
 	notes.record_lines = ["New record: 40 covers"] as Array[String]
 	notes.away_site_day = 5
@@ -172,7 +173,7 @@ func test_day_gated_notes_show_only_on_their_day() -> void:
 	assert_eq(report.weekly_challenge_line, "Weekly challenge complete")
 	assert_true(report.loan_first_advance)
 	assert_eq(report.milestones_reached.size(), 1)
-	assert_eq(String(report.milestones_reached[0]["title"]), goal.title)
+	assert_eq(String(report.milestones_reached[0]["title"]), "First full house")
 	var later: DayReport = DayReportBuilder.build(4, sources)
 	assert_true(later.record_lines.is_empty())
 	assert_true(later.away_site_lines.is_empty())
