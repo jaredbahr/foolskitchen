@@ -14,10 +14,11 @@ const LOOKS: Array[StringName] = [&"booth_white", &"booth_walnut"]
 const TARGET: Vector2i = Vector2i(11, 5)
 ## Keep the complete native booth bounds clear of HUD, instructions, catalogue
 ## and the fixture notice. Derived from the v2 native projected AABBs, then
-## nudged and widened slightly for the one-cell-east target.
-const REVIEW_FOCUS: Vector2 = Vector2(2.72, 4.31)
+## nudged and widened slightly for the one-cell-east target, then shifted
+## right of the wide build catalogue (#499: its panel reaches x = 1257).
+const REVIEW_FOCUS: Vector2 = Vector2(1.22, 5.81)
 const REVIEW_ZOOM: float = 7.3
-const WORLD_SAFE_RECT: Rect2 = Rect2(620, 210, 920, 570)
+const WORLD_SAFE_RECT: Rect2 = Rect2(900, 200, 680, 590)
 const RESERVED_UI: Array[NodePath] = [^"HUD/Top", ^"HUD/BuildHints",
 	^"Overlay/BuildCatalogue/Panel", ^"DinerReviewNotice/Panel"]
 const SUPPORTS: Array[Dictionary] = [
