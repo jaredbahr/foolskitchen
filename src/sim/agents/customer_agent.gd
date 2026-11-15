@@ -130,6 +130,8 @@ var _task: SimTask = null
 var _queue_wait: int = 0
 var _food_wait: int = 0
 var _walk_wait: int = 0
+## Has a table but is waiting on the street for someone to come out (#468).
+var _held_outside: bool = false
 var _eating: int = 0
 var _exit_unreachable: int = 0
 var _ordering_block_logged: bool = false
@@ -313,11 +315,21 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 				if _queue_wait >= queue_patience:
 					_leave(world, sim, &"no_table")
 		State.WALKING_TO_SEAT:
-			_walk_wait += 1
-			if _walk_wait >= SEAT_WALK_LIMIT:
-				_requeue(world, sim)
-			elif allow_movement:
-				_walk_to_seat(world, sim)
+			_held_outside = _held_at_the_door(world)
+			if _held_outside:
+				# Table booked, still on the street: let them out first (#468).
+				# The hold has its own limit, so it does not spend the walk's.
+				# No route while it waits: with one it would count as stuck
+				# (and in time be given right of way, or sent home), and would
+				# keep others out of the door cell it is not stepping into.
+				if not path.is_empty():
+					clear_path()
+			else:
+				_walk_wait += 1
+				if _walk_wait >= SEAT_WALK_LIMIT:
+					_requeue(world, sim)
+				elif allow_movement:
+					_walk_to_seat(world, sim)
 		State.ORDERING:
 			if _task == null or _task.state == SimTask.State.CANCELLED:
 				_post_order_task(world, sim)
@@ -360,7 +372,7 @@ func why() -> String:
 					else "Walking to a waiting bench")
 			return _waiting_why("Waiting by the door for a free table")
 		State.WALKING_TO_SEAT:
-			return "Walking to my seat"
+			return "Letting someone out before I go in" if _held_outside else "Walking to my seat"
 		State.WAITING_FOOD when restroom == Restroom.WALKING:
 			return "Walking to the restroom"
 		State.WAITING_FOOD when restroom == Restroom.INSIDE:
@@ -566,6 +578,7 @@ func _book_table(world: SimWorld, walk: bool) -> bool:
 			booked_table_ids = PartySeating.table_group_members(table, world.grid)
 			seat_cell = seat
 			_walk_wait = 0
+			_held_outside = false
 			_ordering_block_logged = false
 			if walk:
 				state = State.WALKING_TO_SEAT
@@ -624,10 +637,25 @@ func _preferred_seats(table: PlacedItem, world: SimWorld) -> Array[Vector2i]:
 	return seats
 
 
+## A guest with a table who has not stepped in from the street yet waits there
+## like a queued guest does (#468): while someone on the way out is stuck at
+## the door, or anyone is leaving through a narrow way in. Before, only a guest
+## without a table was held, so one seated on the street walked into the
+## one-cell way in and met the leaver head-on. A step already begun finishes,
+## and so does stepping aside for someone who needs this street cell.
+func _held_at_the_door(world: SimWorld) -> bool:
+	return move_progress == 0.0 and world.grid.terrain(cell) == SimGrid.Terrain.ENTRY \
+		and not world.movement.is_yielding(id) and not world.movement.is_stopping(id) \
+		and world.movement.hold_at_door(world, self, true)
+
+
 func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
 	# An order-counter guest walks to the order cell first (#293).
 	var goal: Vector2i = counter_cell if counter_visit and counter_stage == Counter.TO_COUNTER else seat_cell
-	if needs_repath or path.is_empty():
+	# A finished path that ends short of the seat (a pocket the stall backstop
+	# sent this guest to while it was held at the door, #535 review) plans again.
+	if needs_repath or path.is_empty() or (has_arrived() and cell != goal \
+			and not world.movement.is_yielding(id) and not world.movement.is_stopping(id)):
 		if not set_destination(world.grid, goal):
 			_requeue(world, sim)
 			return
@@ -909,6 +937,12 @@ func _stand_clear_of_door(world: SimWorld) -> void:
 	if not _wait_spot_ok(world):
 		_wait_spot = _pick_wait_spot(world)
 	if _wait_spot == SimGrid.NO_CELL or cell == _wait_spot:
+		# A step already begun finishes (#468). With nowhere left to wait the
+		# guest used to freeze part way through it, holding the cell it was
+		# stepping into: a leaver whose diagonal step needed that cell as a
+		# corner then stood there until the stall backstop.
+		if move_progress > 0.0 and not world.movement.is_stopping(id):
+			step_move(world)
 		return
 	# A finished path would make _move keep its old goal: aim at the spot.
 	# Never re-aim a real partial edge: it finishes first.
