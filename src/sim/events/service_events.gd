@@ -238,6 +238,12 @@ func due(minute: int) -> Dictionary:
 	return {}
 
 
+## Drops the card just taken from due() without showing it (its cooldown
+## stays), for a card whose named worker is no longer on the floor.
+func drop_pending() -> void:
+	pending.clear()
+
+
 ## The pending card's text with its names filled in.
 func card_text(entry: Dictionary) -> Dictionary:
 	var event: ServiceEventDef = definition(StringName(entry.get("id", "")))
