@@ -19,6 +19,10 @@ var seat_cut_id: int = 0
 ## the proposal newly narrows to one cell, and the item the warning is on.
 var aisle_pinches: Array[Vector2i] = []
 var aisle_id: int = 0
+## True when the proposal closed nothing beside those cells: it only sends
+## people through a one-cell gap the shop already had (#391). The warning is
+## then on an item beside the gap, when there is one.
+var aisle_rerouted: bool = false
 ## Enabled dishes the proposal would take off sale (FK-100), in menu order.
 var menu_losses: Array[RecipeDef] = []
 var menu_warning: String = ""

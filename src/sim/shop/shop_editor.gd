@@ -35,13 +35,17 @@ var last_check: EditCheck = EditCheck.new()
 ## The last committed placement's seat cut-off warning (#315): {version, id,
 ## text}. check_current() shows it on that item while the layout is unchanged.
 var _seat_cut_note: Dictionary = {}
-## The last committed placement's aisle pinch (#389): {version, id, cells}.
+## The last committed placement's aisle pinch (#389): {version, id, cells, text}.
 var _aisle_note: Dictionary = {}
-## The live layout's aisle pinches, cached per grid version: a ghost moving
-## over an unchanged shop rechecks only its own preview.
-var _live_pinches: Array[Vector2i] = []
-var _live_pinches_version: int = -1
-var _live_pinches_grid: SimGrid
+## The live layout's used routes and pinches, cached per grid version: a
+## ghost moving over an unchanged shop only retraces what it comes near (#391).
+var _live_survey: AisleRules.Survey = null
+var _live_survey_version: int = -1
+var _live_survey_grid: SimGrid
+var _live_survey_lot: Rect2i = Rect2i()
+## How many kinds of trip the last pinch check had to trace again (0 when
+## the proposal came near none of them). For tests and the timing tool.
+var last_aisle_traced: int = 0
 ## The signed cash change of the last successful edit (negative = spent), and
 ## the id a successful buy gave its item. Undo history reads both (FK-085).
 var last_cash_change: int = 0
@@ -269,9 +273,10 @@ func check_current() -> EditCheck:
 		_add_seat_warning(check, int(_seat_cut_note["id"]), String(_seat_cut_note["text"]))
 	if check.ok and not _aisle_note.is_empty() and int(_aisle_note["version"]) == grid.version \
 			and grid.item(int(_aisle_note["id"])) != null:
-		_add_seat_warning(check, int(_aisle_note["id"]), AisleRules.WARNING)
+		_add_seat_warning(check, int(_aisle_note["id"]), String(_aisle_note.get("text", AisleRules.WARNING)))
 		check.aisle_pinches.assign(_aisle_note["cells"])
 		check.aisle_id = int(_aisle_note["id"])
+		check.aisle_rerouted = String(_aisle_note.get("text", "")) == AisleRules.REROUTE_WARNING
 	return check
 
 
@@ -408,7 +413,7 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 	_fill_warnings(check, preview, ids)
 	if exact == null:
 		_note_seat_cut_off(check, preview, _stamp_culprit(blueprint, anchor, rotation, preview))
-		_note_aisle_pinch(check, preview, -1, proposed)
+		_note_aisle_pinch(check, preview, -1, proposed, ids, -1, true)
 	_note_menu_access(check, preview, exact != null)
 	return check
 
@@ -2268,7 +2273,7 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 	_fill_warnings(check, preview, ids)
 	if not restoring:
 		_note_seat_cut_off(check, preview, result_id)
-		_note_aisle_pinch(check, preview, result_id)
+		_note_aisle_pinch(check, preview, result_id, [proposed_id] as Array[int], ids, exclude_id, false)
 	var proposed: PlacedItem = preview.item(proposed_id)
 	if check.ok and proposed != null and definition.category == ItemDef.Category.TABLE:
 		check.dining_capacity = DiningSeats.usable_cells(preview, proposed).size()
@@ -2465,33 +2470,92 @@ func _remember_seat_cut(check: EditCheck, item_id: int) -> void:
 
 
 func _remember_aisle_pinch(check: EditCheck, item_id: int) -> void:
-	_aisle_note = {} if check.aisle_pinches.is_empty() or item_id < 0 else \
-		{"version": _sim.world.grid.version, "id": item_id, "cells": check.aisle_pinches.duplicate()}
+	var on: int = item_id
+	# A squeeze the edit only sent people through is on an item beside it.
+	if check.aisle_rerouted and check.aisle_id > 0 and _sim.world.grid.item(check.aisle_id) != null:
+		on = check.aisle_id
+	_aisle_note = {} if check.aisle_pinches.is_empty() or on < 0 else \
+		{"version": _sim.world.grid.version, "id": on, "cells": check.aisle_pinches.duplicate(),
+			"text": AisleRules.REROUTE_WARNING if check.aisle_rerouted else AisleRules.WARNING}
 
 
-## A placement that newly narrows a walkway people use to one cell (#389):
-## door to tables and the pass, pass to tables, and the kitchen stations.
-## Like the seat cut-off warning it is on the item placed, while placing and
-## after the commit until the next layout change, and the pinch cells are
-## highlighted. Only what this edit newly squeezes counts, so older layouts
-## never gain warnings; it warns, never blocks (DESIGN 4.3). A blueprint
-## stamp passes its entries' preview ids: the warning goes on the entry
-## standing nearest the first pinch.
-func _note_aisle_pinch(check: EditCheck, preview: SimGrid, result_id: int,
-		stamped: Array[int] = []) -> void:
+## A placement that newly narrows a walkway people use to one cell they
+## cannot walk around (#389, #391):
+## door to tables and the pass, pass to tables, the kitchen stations, and
+## since #391 the restroom, clearing tables to the sink and carrying
+## deliveries to the stores. Like the seat cut-off warning it is on the item
+## placed, while placing and after the commit until the next layout change,
+## and the pinch cells are highlighted. Only what this edit newly squeezes
+## counts, so older layouts never gain warnings; it warns, never blocks
+## (DESIGN 4.3).
+## `added` are the preview ids of what the edit puts down (one item, or a
+## blueprint's entries, whose warning goes on the entry standing nearest the
+## first pinch); `moved_id` is the live item a move takes away, or -1.
+## When the edit closed nothing beside the new pinches, it only reroutes
+## people through a gap the shop already had: the warning then says so and
+## goes on an item beside that gap when there is one (#391).
+func _note_aisle_pinch(check: EditCheck, preview: SimGrid, result_id: int, added: Array[int],
+		ids: Dictionary[int, int], moved_id: int, stamp: bool) -> void:
 	if not check.ok:
 		return
 	var live: SimGrid = _sim.world.grid
-	if _live_pinches_grid != live or _live_pinches_version != live.version:
-		_live_pinches = AisleRules.pinches(live)
-		_live_pinches_grid = live
-		_live_pinches_version = live.version
-	var cells: Array[Vector2i] = AisleRules.new_pinches_from(_live_pinches, preview)
+	var lot: Rect2i = _footprint.lot if _footprint != null else Rect2i()
+	if _live_survey == null or _live_survey_grid != live or _live_survey_version != live.version \
+			or _live_survey_lot != lot:
+		_live_survey = AisleRules.survey(live, lot)
+		_live_survey_lot = lot
+		_live_survey_grid = live
+		_live_survey_version = live.version
+	var closed: Array[Vector2i] = []
+	for id: int in added:
+		_append_item_cells(closed, preview.item(id))
+	var changed: Array[Vector2i] = closed.duplicate()
+	var moved: PlacedItem = live.item(moved_id) if moved_id >= 0 else null
+	_append_item_cells(changed, moved)
+	var after: AisleRules.Survey = AisleRules.resurvey(_live_survey, preview, changed, moved != null, lot)
+	last_aisle_traced = after.traced
+	var cells: Array[Vector2i] = AisleRules.added_pinches(_live_survey.pinches, after)
 	if cells.is_empty():
 		return
 	check.aisle_pinches = cells
-	check.aisle_id = result_id if stamped.is_empty() else _nearest_entry(preview, stamped, cells[0])
-	_add_seat_warning(check, check.aisle_id, AisleRules.WARNING)
+	var rerouted: Array[Vector2i] = AisleRules.rerouted(preview, cells, closed)
+	check.aisle_rerouted = rerouted.size() == cells.size()
+	var first: Vector2i = cells[0]
+	for cell: Vector2i in cells:
+		if not rerouted.has(cell):
+			first = cell
+			break
+	check.aisle_id = _nearest_entry(preview, added, first) if stamp else result_id
+	if check.aisle_rerouted:
+		var beside: int = _item_beside(preview, first, added, ids)
+		if beside > 0:
+			check.aisle_id = beside
+	_add_seat_warning(check, check.aisle_id,
+		AisleRules.REROUTE_WARNING if check.aisle_rerouted else AisleRules.WARNING)
+
+
+static func _append_item_cells(cells: Array[Vector2i], placed: PlacedItem) -> void:
+	if placed == null:
+		return
+	for group: Array[Vector2i] in [placed.cells, placed.seat_cells, placed.work_cells]:
+		for cell: Vector2i in group:
+			if not cells.has(cell):
+				cells.append(cell)
+
+
+## The live id of a standing item that touches `cell` (not one of `added`),
+## lowest id first; 0 when only walls do.
+static func _item_beside(preview: SimGrid, cell: Vector2i, added: Array[int], ids: Dictionary[int, int]) -> int:
+	var best: int = 0
+	for placed: PlacedItem in preview.items():
+		if added.has(placed.id) or int(ids.get(placed.id, 0)) <= 0:
+			continue
+		for group: Array[Vector2i] in [placed.cells, placed.seat_cells]:
+			for covered: Vector2i in group:
+				if maxi(absi(covered.x - cell.x), absi(covered.y - cell.y)) == 1 \
+						and (best == 0 or int(ids[placed.id]) < best):
+					best = int(ids[placed.id])
+	return best
 
 
 ## The stamp entry (as its preview id, -1 for the first) nearest `cell`.
