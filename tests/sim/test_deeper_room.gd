@@ -93,7 +93,7 @@ func test_a_dead_end_no_route_uses_is_never_flagged() -> void:
 	# (1,14) between it and the wall: nobody's route goes there.
 	var check: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(2, 14))
 	assert_true(check.ok)
-	assert_true(AisleRules.is_pinch(_preview_with(&"potted_plant", Vector2i(2, 14)), Vector2i(1, 14), {}),
+	assert_true(AisleRules.is_narrow(_preview_with(&"potted_plant", Vector2i(2, 14)), Vector2i(1, 14), {}),
 		"the pocket is one cell wide")
 	assert_eq(check.aisle_pinches, [] as Array[Vector2i])
 	assert_false(check.seat_warnings.has(0))
