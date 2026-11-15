@@ -319,7 +319,11 @@ func _advance_visit(world: SimWorld, allow_movement: bool = true) -> void:
 			if _held_outside:
 				# Table booked, still on the street: let them out first (#468).
 				# The hold has its own limit, so it does not spend the walk's.
-				pass
+				# No route while it waits: with one it would count as stuck
+				# (and in time be given right of way, or sent home), and would
+				# keep others out of the door cell it is not stepping into.
+				if not path.is_empty():
+					clear_path()
 			else:
 				_walk_wait += 1
 				if _walk_wait >= SEAT_WALK_LIMIT:
@@ -637,9 +641,11 @@ func _preferred_seats(table: PlacedItem, world: SimWorld) -> Array[Vector2i]:
 ## like a queued guest does (#468): while someone on the way out is stuck at
 ## the door, or anyone is leaving through a narrow way in. Before, only a guest
 ## without a table was held, so one seated on the street walked into the
-## one-cell way in and met the leaver head-on. A step already begun finishes.
+## one-cell way in and met the leaver head-on. A step already begun finishes,
+## and so does stepping aside for someone who needs this street cell.
 func _held_at_the_door(world: SimWorld) -> bool:
 	return move_progress == 0.0 and world.grid.terrain(cell) == SimGrid.Terrain.ENTRY \
+		and not world.movement.is_yielding(id) and not world.movement.is_stopping(id) \
 		and world.movement.hold_at_door(world, self, true)
 
 
@@ -928,6 +934,12 @@ func _stand_clear_of_door(world: SimWorld) -> void:
 	if not _wait_spot_ok(world):
 		_wait_spot = _pick_wait_spot(world)
 	if _wait_spot == SimGrid.NO_CELL or cell == _wait_spot:
+		# A step already begun finishes (#468). With nowhere left to wait the
+		# guest used to freeze part way through it, holding the cell it was
+		# stepping into: a leaver whose diagonal step needed that cell as a
+		# corner then stood there until the stall backstop.
+		if move_progress > 0.0 and not world.movement.is_stopping(id):
+			step_move(world)
 		return
 	# A finished path would make _move keep its old goal: aim at the spot.
 	# Never re-aim a real partial edge: it finishes first.

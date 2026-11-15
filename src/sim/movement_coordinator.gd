@@ -860,7 +860,8 @@ func _behind_in_line_out(agent: SimAgent, holder: SimAgent) -> bool:
 ##   a full doorway every waiting guest is boxed in behind whoever is ahead,
 ##   and each one asked the guest walking to a seat in front of it to step
 ##   back, before that guest had waited long enough to ask the person in its
-##   own way to move: it went back and forth until it lost its table (#468);
+##   own way to move: it went back and forth until it lost its table (#468).
+##   Waiting guests still shuffle up for each other;
 ## - a leaver never steps back for a guest who gives way at the door: the
 ##   guest's way in is the leaver's way out, so the gap only lets the crowd
 ##   behind press further in (#459).
@@ -1500,7 +1501,12 @@ func hold_at_door(world: SimWorld, agent: SimAgent, timed: bool = false) -> bool
 		return false
 	var since: int = int(_held_since.get(agent.id, world.now))
 	_held_since[agent.id] = since
-	return world.now - since < world.movement_tuning.door_hold_max_ticks
+	if world.now - since >= world.movement_tuning.door_hold_max_ticks:
+		return false
+	# Whoever is held has agreed to wait: a right of way won earlier, while
+	# stuck in the queue, must not outrank the people it is waiting for.
+	_right_of_way.erase(agent.id)
+	return true
 
 
 ## The door opens onto a one-cell way in: some floor cell of the door lane
