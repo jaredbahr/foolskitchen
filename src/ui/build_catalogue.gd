@@ -221,7 +221,7 @@ var _material_icons: Dictionary[StringName, ImageTexture] = {}
 var copied_look: String = ""
 ## Main armed "Copy look": the next piece clicked is copied.
 var copy_armed: bool = false
-## Stable capture path: Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter.
+## Stable capture path: Panel/Margin/Rows/Toolbars/Bar/Readout/VibeMeter.
 var vibe_meter: VibeMeter
 var curb_appeal_meter: CurbAppealMeter
 var _curb_score: float = NAN

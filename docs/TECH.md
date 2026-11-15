@@ -1360,7 +1360,7 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
 - **Two sides, one panel.** `BuildCatalogue` has Build/Buy tabs (`mode`),
   category tabs, tool buttons (Hand, Eyedropper, Sell) and Undo/Redo, and the
   room readout (the `VibeMeter` plus a theme label, path
-  `Panel/Margin/Rows/Scroll/Content/Categories/Readout/VibeMeter`). Build has
+  `Panel/Margin/Rows/Toolbars/Bar/Readout/VibeMeter`). Build has
   Walls, Floor (only with a lot) and Paint; Paint asks Main for the existing
   paint mode (`paint_requested`), and Esc in paint opened from Build returns to
   Build. Buy tabs are rooms: `ItemDef.catalogue_room` (data, one of

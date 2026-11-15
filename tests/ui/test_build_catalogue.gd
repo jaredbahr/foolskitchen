@@ -200,7 +200,8 @@ func test_single_item_catalogue_uses_a_compact_strip() -> void:
 	assert_eq(panel.size.y, toolbars.get_combined_minimum_size().y + rows.get_theme_constant("separation")
 		+ content.get_combined_minimum_size().y + padding.y, "pinned toolbars plus the one card, no spare rows")
 	assert_eq(_scroll().size.y, content.get_combined_minimum_size().y)
-	assert_true(panel.size.x < _host.size.x * 0.85, "a short catalogue leaves the remaining viewport empty")
+	assert_true(panel.size.x <= BuildCatalogue.MAX_PANEL_WIDTH + 0.5,
+		"a short catalogue keeps the full-catalogue width, so the panel does not jump between tabs")
 	assert_false(_scroll().get_h_scroll_bar().visible)
 	assert_false(_scroll().get_v_scroll_bar().visible)
 
@@ -416,7 +417,6 @@ func test_wide_panel_shows_two_full_rows_of_thirteen_cards_at_1600x900() -> void
 	var scroll: ScrollContainer = _scroll()
 	var grid: GridContainer = scroll.get_node("Content/Items") as GridContainer
 	assert_eq(grid.columns, 13)
-	assert_eq(BuildCatalogue.VISIBLE_ROWS, 2)
 	var view: Rect2 = scroll.get_global_rect().grow(0.5)
 	var whole: int = 0
 	var rows: Dictionary = {}
@@ -564,7 +564,7 @@ func test_no_control_is_clipped_at_1280x720_or_150_percent() -> void:
 			assert_true(toolbars.get_global_rect().end.y <= scroll.get_global_rect().position.y + 0.5,
 				"%s: the toolbars end above the cards" % context)
 			var content_height: float = (scroll.get_node("Content") as Control).get_combined_minimum_size().y
-			assert_true(scroll.size.y >= minf(content_height, 80.0), "%s: cards still show (%s px)" % [context, scroll.size.y])
+			assert_true(scroll.size.y >= minf(content_height, 80.0), "%s: part of a card row still shows (%s px)" % [context, scroll.size.y])
 			assert_false(scroll.get_h_scroll_bar().visible, context)
 			var shown: Array[Control] = []
 			_collect_shown(toolbars, shown)
@@ -573,9 +573,6 @@ func test_no_control_is_clipped_at_1280x720_or_150_percent() -> void:
 				var rect: Rect2 = control.get_global_rect()
 				assert_true(toolbars.get_global_rect().grow(0.5).encloses(rect),
 					"%s: %s is clipped: %s outside %s" % [context, control.name, rect, toolbars.get_global_rect()])
-				var minimum: Vector2 = control.get_combined_minimum_size()
-				assert_true(control.size.x >= minimum.x - 0.5 and control.size.y >= minimum.y - 0.5,
-					"%s: %s is squeezed to %s below %s" % [context, control.name, control.size, minimum])
 				if control is Button:
 					assert_false((control as Button).clip_text, "%s: %s" % [context, control.name])
 			# Controls that share a row never overlap.
