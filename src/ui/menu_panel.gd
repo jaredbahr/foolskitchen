@@ -949,18 +949,19 @@ func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
 
 
 func _build_recipe_tree() -> void:
-	var sort_line: HBoxContainer = _add_line(_list, "DishSort")
-	var label: Label = _add_label(sort_line, "Label", "Sort dishes")
-	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	# Keep sorting in the header so both scrolling columns retain room for dishes.
+	var header: HBoxContainer = $Panel/Content/Header
 	var sort: OptionButton = OptionButton.new()
-	sort.name = "Order"
+	sort.name = "DishSort"
 	sort.theme = SHARED_THEME
+	sort.add_theme_font_size_override("font_size", 16)
+	sort.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	sort.add_item("By name")
 	sort.add_item("Most sold")
-	sort.tooltip_text = "Browse by name within sections and unlocks, or rank all dishes by sales."
+	sort.tooltip_text = "Sort dishes by name within sections and unlocks, or rank all dishes by sales."
 	sort.item_selected.connect(_on_dish_sort_selected)
-	sort_line.add_child(sort)
-	_list.move_child(sort_line, _empty.get_index() + 1)
+	header.add_child(sort)
+	header.move_child(sort, 1)
 	_recipe_tree = Tree.new()
 	_recipe_tree.name = "RecipeTree"
 	_recipe_tree.theme = SHARED_THEME
@@ -980,7 +981,7 @@ func _build_recipe_tree() -> void:
 	_recipe_tree.scroll_vertical_enabled = false
 	_recipe_tree.item_selected.connect(_on_recipe_selected)
 	_list.add_child(_recipe_tree)
-	_list.move_child(_recipe_tree, sort_line.get_index() + 1)
+	_list.move_child(_recipe_tree, _empty.get_index() + 1)
 	_detail_heading = _add_label(_detail, "DishDetail", "Dish detail")
 	_detail_heading.add_theme_font_size_override("font_size", SECTION_FONT_SIZE)
 	_detail.move_child(_detail_heading, 0)
