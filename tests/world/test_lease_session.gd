@@ -56,7 +56,7 @@ func _editor() -> ShopEditor:
 
 
 func _eligible() -> void:
-	_progress().award_bonus(_progress().threshold_for(LEASE.owner_level))
+	_progress().award_bonus(_progress().threshold_for(CAREER.rung_for(2).min_level))
 	# The offer needs career Tier 2 (D30), which a real close grants at this level.
 	assert_eq(_progress().raise_career_tier(CAREER, 3.0), 2)
 	(_main.get("menu_settings") as MenuSettings).set_owner_level(_progress().level)

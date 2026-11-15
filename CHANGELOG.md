@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - People get past each other at tight doors. In a shop with only a one-tile way in behind the door, a guest who has been given a table waits outside until whoever is leaving has come out ("Letting someone out before I go in"), people leaving no longer get stuck behind guests waiting beside the door, and a guest with a table can get through the waiting crowd to sit down instead of losing the table. In any shop, three people reaching for the same free tile no longer all stand and wait for each other. (#535)
+- Keep large cash balances on one HUD row and show the full amount on hover. (#522)
 - The Seaside Cliff lot now has its own seaside street: a sun-bleached boardwalk of planks instead of grey paving, low weathered beach shacks in sea-blue, seafoam and sand with striped awnings, rope bollards, a lifebuoy, crates of the day's catch, strings of bunting, benches and bins in seaside blues, gulls on the dune grass and a pale sandy back lane. Your own shop is still the boldest colour on the street. (#527)
 - Menu puts the restaurant name, hours and forecast together and scrolls dishes and their details as one. Stock puts each ingredient, buying controls and auto-reorder on one line. (#513)
 - In the Build and Buy catalogue, the top rows stay put: Build/Buy, the tools, the room tabs, the vibe readout and the filters no longer scroll away. Only the item cards scroll, and only up and down. (#524)
@@ -232,6 +233,9 @@ Each line ends with its PR number.
 - The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
 - The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
 - Movement: who goes first is now one fixed order, written down with the other door guarantees in `docs/TECH.md` and held by hand-made tests (a crossing, a corridor, a narrow door). The door rules only run while the shop is open. `tools/liveness_soak.sh` also reports time spent stepping aside, time held at the door, and the longest standstill of a guest walking to a seat and of a guest leaving. (#535)
+- Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#519)
+- A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
+- The test runner deals test files to its shards by how long each took, not by position in the list, so adding one test no longer reshuffles the rest and pushes the hosted check to its time limit. (#530)
 - The "local versus CI" difference in the staff advice capture was a branch behind `main`, not the game: for one commit, a seeded run gives the same result in a cloud container and on hosted CI. The capture's comment and the worker rules now say so, and `tools/check.sh` notes when a checkout is behind `main` and when a test shard was stopped by its timeout. (#525)
 - The street outside each restaurant is now built from a street preset chosen by its lot, so a new site can get its own street (seaside next) from data alone. The starter street looks exactly as before. (#521)
 - Roadmap: the early-game fixes and panel layouts go to the top of the Codex queue. (#507)
