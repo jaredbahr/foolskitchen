@@ -261,6 +261,37 @@ func test_a_guest_with_a_table_lets_a_leaver_out_before_stepping_in() -> void:
 	assert_eq(guest.cell, seat, "at the table it was given on the street")
 
 
+## The stall backstop can send a held guest with a table to a pocket inside
+## (it has no route, so it counts as standing). From there it must plan to its
+## seat again, not stand in the pocket until the seat walk runs out (#535 review).
+func test_a_held_guest_sent_to_a_pocket_still_reaches_its_table() -> void:
+	var sim: RestaurantSim = _shop(true)
+	var world: SimWorld = sim.world
+	var entry: Vector2i = world.grid.entries()[1]
+	var guest: CustomerAgent = _customer(sim, entry)
+	var leaver: CustomerAgent = _customer(sim, Vector2i(3, 5))
+	leaver._leave(world, sim, &"no_table")
+	_free_seats(world, 1)
+	for tick: int in 5:
+		if not _tick(sim):
+			return
+	assert_eq(guest.state, CustomerAgent.State.WALKING_TO_SEAT, "premise: seated from the street")
+	assert_eq(guest.cell, entry, "premise: held on the street")
+	var avoid: Dictionary[Vector2i, bool] = {}
+	assert_true(world.movement._clear_to_pocket(world, guest, avoid), "premise: the backstop sends it aside")
+	var seat: Vector2i = guest.seat_cell
+	# About 20 ticks to the pocket and about 20 more on to the seat; without
+	# the re-plan it stood in the pocket for about 100 ticks.
+	for tick: int in 60:
+		if guest.state >= CustomerAgent.State.ORDERING:
+			break
+		if not _tick(sim):
+			return
+	assert_true(guest.state >= CustomerAgent.State.ORDERING and guest.state <= CustomerAgent.State.PAYING,
+		"the guest sits down rather than waiting in the pocket")
+	assert_eq(guest.cell, seat, "at its own table")
+
+
 ## The hold is bounded like a queued guest's: door_hold_max_ticks, however
 ## many people keep leaving. A wide door never holds anyone this way.
 func test_the_hold_on_a_guest_with_a_table_has_its_limit_and_spares_wide_doors() -> void:

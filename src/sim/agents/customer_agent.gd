@@ -652,7 +652,10 @@ func _held_at_the_door(world: SimWorld) -> bool:
 func _walk_to_seat(world: SimWorld, sim: RestaurantSim) -> void:
 	# An order-counter guest walks to the order cell first (#293).
 	var goal: Vector2i = counter_cell if counter_visit and counter_stage == Counter.TO_COUNTER else seat_cell
-	if needs_repath or path.is_empty():
+	# A finished path that ends short of the seat (a pocket the stall backstop
+	# sent this guest to while it was held at the door, #535 review) plans again.
+	if needs_repath or path.is_empty() or (has_arrived() and cell != goal \
+			and not world.movement.is_yielding(id) and not world.movement.is_stopping(id)):
 		if not set_destination(world.grid, goal):
 			_requeue(world, sim)
 			return
