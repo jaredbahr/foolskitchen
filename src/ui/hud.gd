@@ -664,6 +664,20 @@ func _layout_header() -> void:
 	(get_node("Top/Row") as Container).queue_sort()
 
 
+## The boxes this HUD shows under and beside the header right now, for
+## floating cards that must not cover them (#542).
+func box_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	var boxes: Array[Control] = [get_node("Top") as Control, get_node("MenuNotice") as Control,
+		get_node("DemandNotice") as Control, get_node("BuildHints") as Control, _opening_panel]
+	if _booking_status != null:
+		boxes.append(_booking_status.get_parent() as Control)
+	for box: Control in boxes:
+		if box != null and box.is_visible_in_tree():
+			rects.append(box.get_global_rect())
+	return rects
+
+
 ## Main uses the final native header height to keep morning panels below it.
 func panel_top() -> float:
 	return maxf(112.0, _notices_bottom() + 12.0)
