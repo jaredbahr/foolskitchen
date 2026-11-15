@@ -887,6 +887,13 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 	assert_true(day_label.get_combined_minimum_size().y <= weather.get_combined_minimum_size().y + 0.5,
 		"the season line fits inside the existing weather badge height")
 	_assert_three_groups()
+	var today: Button = _hud.get_node("Today") as Button
+	assert_true(today.is_visible_in_tree())
+	assert_eq(today.text, "Today")
+	assert_true(today.size.y >= 46.0, "Today preserves a native 46px touch target")
+	_assert_readable_control(today, window)
+	assert_true(today.get_global_rect().position.y >= top.get_global_rect().end.y + 11.5,
+		"Today stays below the wrapped header without changing its packing")
 
 
 func _assert_readable_control(control: Control, window: Window) -> void:
@@ -942,6 +949,9 @@ func _assert_build_hint_layout(window: Window) -> void:
 	assert_true(hints.global_position.y >= top.get_global_rect().end.y + 6.0,
 		"build instructions move below the wrapped header")
 	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(hints, window)))
+	var today: Button = _hud.get_node("Today") as Button
+	assert_true(today.get_global_rect().position.y >= hints.get_global_rect().end.y + 7.5,
+		"Today clears the build instructions")
 	assert_true(float(_hud.call("panel_top")) >= top.get_global_rect().end.y + 12.0,
 		"morning panels receive clearance below the final header height")
 

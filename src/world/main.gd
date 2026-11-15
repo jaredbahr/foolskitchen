@@ -327,6 +327,7 @@ var _menu_quality: Dictionary[StringName, Dictionary] = {}
 var _menu_access_losses: Dictionary[StringName, RecipeDef] = {}
 var _menu_access_day: int = 0
 var _menu_access_error: String = ""
+var _today_panel: TodayPanel
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
@@ -437,6 +438,10 @@ func _bind_world_presentation() -> void:
 	view.set_camera_quarter(camera.camera_quarter())
 	$HUD.bind_shop_view(view)
 	$HUD.bind_preferences(Preferences)
+	_today_panel = $Overlay/TodayPanel
+	if not $HUD.today_pressed.is_connected(_on_today_pressed):
+		$HUD.today_pressed.connect(_on_today_pressed)
+		$HUD/Today.item_rect_changed.connect(_align_today_panel)
 	_refresh_loan_hud()
 	if not $HUD.is_connected(&"loan_repayment_requested", _on_loan_repayment_requested):
 		$HUD.connect(&"loan_repayment_requested", _on_loan_repayment_requested)
@@ -897,6 +902,7 @@ func _wire_session() -> bool:
 
 
 func _connect_session() -> void:
+	$Overlay/TodayPanel.bind_log(sim.day_log)
 	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):
 		_report.connect(&"next_day_pressed", _on_next_day_pressed)
 	if not _report.is_connected(&"close_requested", _on_report_close_requested):
@@ -940,6 +946,8 @@ func _connect_session() -> void:
 
 func _exit_tree() -> void:
 	_end_haggle_modal()
+	if _today_panel != null:
+		_today_panel.bind_log(null)
 	# The shared clock outlives this session: a site's refusal goes with it.
 	Clock.sim.opening_refusal = ""
 	if sound != null:
@@ -1078,12 +1086,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key != null:
 			_mark_input_handled()
 		return
+	var pressed_code: Key = KEY_NONE
+	if key != null and key.pressed and not key.echo:
+		pressed_code = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+	if pressed_code == KEY_ESCAPE and _today_panel.visible:
+		_today_panel.hide()
+		_mark_input_handled()
+		return
 	if route_paint_input(event) or route_build_input(event):
 		_mark_input_handled()
 		return
-	if key != null and key.pressed and not key.echo:
-		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		if code == KEY_ESCAPE:
+	if pressed_code != KEY_NONE:
+		if pressed_code == KEY_ESCAPE:
 			if $HUD.dismiss_loan_repayment(true):
 				_mark_input_handled()
 				return
@@ -1106,13 +1120,25 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_settings_visible(true)
 			_mark_input_handled()
 		else:
-			var mode: StringName = _owner_mode_for_key(code)
+			var mode: StringName = _owner_mode_for_key(pressed_code)
 			if not mode.is_empty() and assign_owner_mode(mode):
 				_mark_input_handled()
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		pick_screen_position(mouse.position)
 		_mark_input_handled()
+
+
+func _on_today_pressed() -> void:
+	if is_site_card_visible() or is_service_event_visible() or is_settings_visible() \
+			or is_shortcuts_visible() or is_owner_picker_visible():
+		return
+	_align_today_panel()
+	_today_panel.toggle()
+
+
+func _align_today_panel() -> void:
+	_today_panel.set_panel_top(($HUD/Today as Button).get_global_rect().end.y + 8.0)
 
 
 func _take_photo_key(photo: PhotoMode, key: InputEventKey) -> void:
@@ -3493,6 +3519,7 @@ func _clear_site_staging() -> void:
 ## switch replaces them (the counterpart of _wire_session, _connect_session
 ## and _bind_build_session). Autoload and panel signals stay connected.
 func _disconnect_session() -> void:
+	$Overlay/TodayPanel.bind_log(null)
 	clear_selection()
 	if sound != null:
 		sound.unbind()
@@ -4242,7 +4269,9 @@ func service_event_pick(index: int) -> bool:
 		_close_service_event_card(true)
 		refresh_presentation()
 		return false
-	world.log_event("Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]])
+	var line: String = "Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]]
+	world.log_event(line)
+	sim.log_today(DayLog.Kind.SERVICE_EVENT, line)
 	_close_service_event_card(true)
 	refresh_presentation()
 	return true
@@ -4350,10 +4379,14 @@ func _apply_service_event_buzz() -> void:
 	sim.event_arrival_factor *= factor
 	var buzz: float = service_events.next_day_factor(Clock.sim.day, site)
 	if buzz != 1.0:
-		world.log_event(ServiceEventText.buzz_line(buzz))
+		var line: String = ServiceEventText.buzz_line(buzz)
+		world.log_event(line)
+		sim.log_today(DayLog.Kind.SERVICE_EVENT, line)
 	# Multi-day nudges (#506) each name their card.
 	for boost: Dictionary in service_events.boosts_on(Clock.sim.day, site):
-		world.log_event(ServiceEventText.later_line(String(boost["title"]), int(boost["percent"])))
+		var line: String = ServiceEventText.later_line(String(boost["title"]), int(boost["percent"]))
+		world.log_event(line)
+		sim.log_today(DayLog.Kind.SERVICE_EVENT, line)
 
 
 func _service_event_unit_cost(entry: Dictionary) -> int:
@@ -5836,6 +5869,7 @@ func set_settings_visible(value: bool) -> bool:
 	if _settings_panel.visible == value:
 		return true
 	if value:
+		_today_panel.hide()
 		_dismiss_goals()
 		_dismiss_property()
 		$HUD.dismiss_loan_repayment()
@@ -6187,6 +6221,7 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	$Overlay/TodayPanel.hide()
 	# Opening-week toasts held under last night's report show now, whichever
 	# button started the day.
 	for line: String in _held_opening_toasts:
