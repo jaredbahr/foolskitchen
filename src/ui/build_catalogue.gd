@@ -49,9 +49,10 @@ signal grid_requested()
 signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
-## "Wider, not taller" (#499): the bottom panel may use most of a 1600 px view,
-## enough for MAX_COLUMNS cards, their scroll bar and the panel's own padding.
-const MAX_PANEL_WIDTH: float = 1308.0
+## "Wider, not taller" (#499): the bottom panel may use most of a 1600 px view.
+## That holds MAX_COLUMNS cards with their scroll bar, keeps the widest readout
+## on the tools row, and leaves room beside the panel for the hover card.
+const MAX_PANEL_WIDTH: float = 1320.0
 ## The tallest the bottom panel may grow, as a share of the view. It keeps the
 ## top of the panel below the screen centre, where Build centres the tile you
 ## are working on (world clicks there must not land on the panel).
@@ -1716,7 +1717,7 @@ func _prepare_layout() -> void:
 	readout.mouse_filter = Control.MOUSE_FILTER_PASS
 	readout.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_END
 	readout.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	readout.add_theme_constant_override("separation", 10)
+	readout.add_theme_constant_override("separation", 8)
 	readout.tooltip_text = "Your room's vibe and theme right now"
 	bar.add_child(readout)
 	for control: Node in bar.get_children():
@@ -1871,11 +1872,11 @@ func _fit_panel() -> void:
 							ideal += (control as Control).get_combined_minimum_size().x \
 								+ (child as HFlowContainer).get_theme_constant("h_separation")
 					rows_width = maxf(rows_width, ideal)
-	# The grid keeps one width on every tab (MAX_COLUMNS plain cards), so the
-	# panel does not jump as tabs or filters change the cards; a tab with wider
-	# cards shows fewer columns in the same width.
-	var wanted_columns: int = MAX_COLUMNS if row.visible else MIN_COLUMNS
-	var wanted: float = maxf(rows_width, wanted_columns * (CARD_MINIMUM.x + CARD_GAP) - CARD_GAP)
+	# The card grid always takes the full width budget (MAX_COLUMNS plain cards
+	# at 1600x900), so the panel does not jump as tabs, filters or the readout's
+	# numbers change; a tab with wider cards shows fewer columns in that width.
+	var wanted: float = limit.x if row.visible \
+		else maxf(rows_width, MIN_COLUMNS * (CARD_MINIMUM.x + CARD_GAP) - CARD_GAP)
 	var grid_width: float = minf(wanted, limit.x - bar_width)
 	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_size.x + CARD_GAP)), 1, MAX_COLUMNS)
 	if row.columns != columns:

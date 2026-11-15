@@ -453,6 +453,27 @@ func test_wide_panel_shows_two_full_rows_of_thirteen_cards_at_1600x900() -> void
 	await tree.process_frame
 	await tree.process_frame
 	assert_eq(panel.size.x, width)
+	# The widest readout (full scores, the longest bonus line and theme name)
+	# still fits on the tools row, and the panel keeps its width.
+	_catalogue.set_category(&"decor")
+	var vibe: VibeModel.Result = VibeModel.Result.new()
+	vibe.valid = true
+	vibe.score = 100.0
+	vibe.active_theme = &"seafood"
+	vibe.theme_label = "Seafood"
+	_catalogue.set_vibe(vibe)
+	_catalogue.set_curb_appeal(100.0, 1.004, true)
+	for frame: int in range(4):
+		await tree.process_frame
+	assert_eq(_catalogue.theme_label.text, "Theme: Seafood")
+	assert_eq(_catalogue.curb_appeal_meter.bonus_label.text, CurbAppealText.SMALL_BONUS)
+	mode_button = _catalogue.mode_buttons[BuildCatalogue.BUILD].get_global_rect()
+	var widest: Rect2 = readout.get_global_rect()
+	assert_true(widest.position.y < mode_button.end.y and widest.end.y > mode_button.position.y,
+		"the widest readout stays on the Build/Buy row: %s in %s" % [widest, bar.get_global_rect()])
+	assert_true(widest.position.x >= _catalogue.grid_button.get_global_rect().end.x)
+	assert_eq(panel.size.x, width)
+	assert_eq(grid.columns, 13)
 
 
 ## The shipped Buy cards (some carry look dots, so they are taller) with the
