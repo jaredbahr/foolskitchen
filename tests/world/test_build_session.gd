@@ -755,7 +755,9 @@ func test_preview_warning_ids_match_proposal_actual_purchase_cancel_exit_and_fix
 	_key(KEY_ESCAPE)
 	assert_true(_preview().displayed_warning_ids().has(id))
 	# A clear kitchen spot that neither blocks a station nor squeezes an aisle (#389).
-	var repair: Vector2i = _world().grid.item(_id(&"pass_counter")).origin + Vector2i(6, -1)
+	# Not one cell further east: there the fridge stands corner to corner with
+	# the sink, on the way to its own door (#391).
+	var repair: Vector2i = _world().grid.item(_id(&"pass_counter")).origin + Vector2i(5, -1)
 	assert_true(_main.call("shop_move", id, repair, 0))
 	assert_eq(_preview().displayed_warning_ids(), _editor().check_current().unreachable)
 	assert_false(_preview().displayed_warning_ids().has(id))
