@@ -235,7 +235,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
-- The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#PRNUM)
+- The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#549)
 - Claude can hand small, self-contained coding tasks (boilerplate, test scaffolds, log summaries) to DeepSeek with `tools/deepseek.py`, and checks the result before it goes in. (#543)
 - The first piece taken out of the 8,000-line game session script: the facts a closing day leaves for the evening report (XP earned, goals reached, records, tier rises) now live in one small tested class, and `tools/main_map.py` prints which pieces can come out next. The evening report is unchanged. (#534)
 - The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
