@@ -6,6 +6,14 @@ extends RefCounted
 enum YieldAttempt { STARTED, IN_PROGRESS_PROTECTED, NO_POCKET }
 
 const CARRYING_PRIORITY: int = 3
+## _rank steps: food in hand, right of way, priority(), and how far below
+## other guests come a guest walking to a seat in the door lane and a guest
+## who is only waiting (whose right of way is worth 1).
+const RANK_FOOD: int = 1000
+const RANK_WAY: int = 100
+const RANK_PRIORITY: int = 10
+const RANK_SEAT_AT_DOOR: int = 3
+const RANK_WAITING: int = 5
 ## _escape outcomes: mid-step (retry next tick), nothing could change, acted.
 const ESCAPE_SKIPPED: int = 0
 const ESCAPE_FUTILE: int = 1
@@ -143,7 +151,7 @@ func register_agent(world: SimWorld, agent: SimAgent, cause: String = "admission
 	if agent.movement_admitted:
 		return world.agents.has(agent) and _occupied.get(agent.cell, -1) == agent.id
 	var requested: Vector2i = agent.cell
-	if cause == "admission" and agent is CustomerAgent \
+	if cause == "admission" and agent is CustomerAgent and _in_service(world) \
 			and (_someone_leaving_by_the_door(world) or door_counterflow(world)):
 		# Let them out first: while the door is jammed (someone on the way out
 		# has been stuck in the door lane for the escape limit), a guest
@@ -353,33 +361,77 @@ static func lane_cells(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 	return lane
 
 
+## Who goes first: one strict total order (#468). Each person has a rank that
+## depends on that person alone, and the lower ID wins a tie, so among any
+## number of people reaching for the same free cell exactly one is ahead of
+## all the others and takes it. The pairwise rules this replaces could form a
+## ring: someone leaving went before a waiting guest, a waiting guest holding
+## right of way went before a guest walking to a seat, and that guest went
+## before the leaver on its lower ID. All three then stood in front of a free
+## cell for as long as the right of way was renewed.
 func _before(world: SimWorld, first: SimAgent, second: SimAgent) -> bool:
-	# Counterflow at the door (#459): someone on the way out goes before a guest
-	# still arriving or waiting for a table, even one granted right of way.
-	# A stuck arrival's escape otherwise won the head-on against the leaver,
-	# who stepped back and let the next waiting guest refill the doorway.
-	var first_out: bool = _leaving(first) and _waiting_guest(second)
-	if first_out or (_leaving(second) and _waiting_guest(first)):
-		return first_out
-	var a: int = priority(world, first)
-	var b: int = priority(world, second)
-	# Food in hand keeps its priority; otherwise a stuck person's granted
-	# right of way (#306) wins until its retry.
-	var first_way: bool = int(_right_of_way.get(first.id, -1)) >= world.now
-	if first_way != (int(_right_of_way.get(second.id, -1)) >= world.now) \
-			and a != CARRYING_PRIORITY and b != CARRYING_PRIORITY:
-		return first_way
+	var a: int = _rank(world, first)
+	var b: int = _rank(world, second)
 	return a > b or (a == b and first.id < second.id)
 
 
-## A guest still arriving or waiting for a table (not yet walking to a seat).
-func _waiting_guest(agent: SimAgent) -> bool:
-	return agent is CustomerAgent and (agent as CustomerAgent).state <= CustomerAgent.State.QUEUED
+## The rank behind _before, highest first:
+## - food in hand (right of way never outranks it);
+## - a stuck person's right of way from the backstop (#306);
+## - then priority(): staff, then guests;
+## - among guests: anybody going somewhere first (out, to the restroom, to a
+##   seat); then a guest walking to a seat who is still in the door lane; then
+##   a guest who is only waiting (still arriving or queueing); and last a
+##   waiting guest standing in the door lane (#305).
+## At the door it is out before in, and a seat before a wait: each leaves
+## more room behind it than the next. Right of way is for people with
+## somewhere to be: for a guest who is only waiting it counts among waiting
+## guests and no further. In a full doorway every waiting guest is stuck, so
+## they all held it all the time, and a guest with a table could not get past
+## them to sit down.
+func _rank(world: SimWorld, agent: SimAgent) -> int:
+	var base: int = priority(world, agent)
+	if base == CARRYING_PRIORITY:
+		return RANK_FOOD
+	var rank: int = base * RANK_PRIORITY
+	var way: bool = int(_right_of_way.get(agent.id, -1)) >= world.now
+	if agent is CustomerAgent:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if _only_waiting(guest):
+			if base > 0:
+				rank -= RANK_WAITING
+			return rank + (1 if way else 0)
+		if guest.state == CustomerAgent.State.WALKING_TO_SEAT and in_door_lane(world, guest.cell):
+			rank -= RANK_SEAT_AT_DOOR
+	return rank + (RANK_WAY if way else 0)
 
 
-## Counterflow at the door (#459): someone leaving whose step enters the door
-## lane (or the step after it does), and who is held up only by guests still
-## arriving or waiting for a table: those guests. The leaver then swaps past
+## The guests who let people out first (#459, #468): one still arriving or
+## waiting for a table, anywhere, and one walking to a seat for as long as it
+## stands in the door lane. Further in, a guest walking to a seat is ordinary
+## traffic again.
+func _gives_way_at_door(world: SimWorld, agent: SimAgent) -> bool:
+	if not agent is CustomerAgent:
+		return false
+	var guest: CustomerAgent = agent as CustomerAgent
+	return _only_waiting(guest) \
+		or (guest.state == CustomerAgent.State.WALKING_TO_SEAT and in_door_lane(world, guest.cell))
+
+
+## The door rules keep their promises with timers (how long a guest has been
+## held, when two people last swapped) and with the stall watch. All of that
+## only runs during service (_watch_liveness clears it otherwise), so the door
+## rules only apply then too (#468): outside it a hold would never run out and
+## the same two people could swap again every few ticks.
+func _in_service(world: SimWorld) -> bool:
+	return world.clock.phase == SimClock.Phase.OPEN or world.clock.phase == SimClock.Phase.LAST_ORDERS
+
+
+## Counterflow at the door (#459): someone leaving who is held up only by
+## guests who give way at the door (still arriving, waiting for a table, or
+## walking to a seat but still in the lane, #468): those guests. At the door
+## (the leaver's step enters the door lane, or the step after it does) or,
+## when every one of them is boxed in, anywhere. The leaver then swaps past
 ## them (an ordinary squeeze) instead of waiting for the stall backstop. At a
 ## one-cell way in they have nowhere to step aside to, and yielding only
 ## shuffled the crowd: the leaver took 180 to 360 ticks to get out. Boxed-in
@@ -396,17 +448,21 @@ func _counterflow_blockers(world: SimWorld, agent: SimAgent, next: Vector2i, wai
 	var near: bool = lane.has(agent.cell) or lane.has(next)
 	if not near and agent.path_index + 1 < agent.path.size():
 		near = lane.has(agent.path[agent.path_index + 1])
-	if not near:
+	# Further in, only past guests who cannot step aside at all, and only once
+	# the ordinary yield has had its turn (#468): the cells beside a one-cell
+	# way in are where waiting guests stand, so a leaver met them boxed in
+	# two steps before the lane and waited for the stall backstop.
+	if not near and waits < tuning.yield_after_ticks:
 		return blockers
 	for cell: Vector2i in _step_cells(agent.cell, next):
 		var other: SimAgent = _holder(world, cell)
 		if other == null or other == agent or blockers.has(other):
 			continue
-		if not _waiting_guest(other):
+		if not _gives_way_at_door(world, other):
 			blockers.clear()
 			return blockers
 		blockers.append(other)
-	if waits < tuning.yield_after_ticks:
+	if not near or waits < tuning.yield_after_ticks:
 		for other: SimAgent in blockers:
 			var reachable: Dictionary[Vector2i, bool] = world.grid.reachable_avoiding(other.cell,
 				_route_blocked(world, other, other.cell, SimGrid.NO_CELL, true), other.uses_guest_layer())
@@ -421,6 +477,8 @@ func _counterflow_blockers(world: SimWorld, agent: SimAgent, next: Vector2i, wai
 func _squeeze_counterflow(world: SimWorld) -> void:
 	var ids: Array[int] = _counterflow.keys()
 	_counterflow.clear()
+	if not _in_service(world):
+		return  # The pair cooldown that stops a swap straight back only runs in service.
 	ids.sort()
 	for id: int in ids:
 		var agent: SimAgent = world.agent(id)
@@ -748,13 +806,14 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 				_resume[holder.id] = holder.path.back()
 				return
 		var yielding: SimAgent = holder if _before(world, agent, holder) else agent
-		if waits >= world.movement_tuning.yield_after_ticks:
+		# Behind another leaver in the line out there is nobody to ask (#468).
+		if waits >= world.movement_tuning.yield_after_ticks and not _behind_in_line_out(agent, holder):
 			var winner: SimAgent = agent if yielding == holder else holder
-			# A leaver never steps back to make room for a boxed-in arrival
-			# (#459): the arrival's way in is the leaver's way out, so the gap
-			# only lets the crowd behind it press further in.
+			# Nobody steps back to make room for a boxed-in guest who is only
+			# waiting, and a leaver never does for a guest it meets in the door
+			# lane (#459, #468): see _asks_for_room.
 			if _yield(world, yielding, winner) == YieldAttempt.NO_POCKET \
-					and not (_leaving(winner) and _waiting_guest(yielding)):
+					and _asks_for_room(world, yielding, winner):
 				# A boxed lower-priority actor cannot clear itself. Only then
 				# ask the normal winner to make a physical cooperative vacancy.
 				var blocked_cell: Vector2i = yielding.cell
@@ -779,6 +838,41 @@ func _wait(world: SimWorld, agent: SimAgent, next: Vector2i) -> void:
 			alternate = _local_reconnection(world, agent, next)
 		if not alternate.is_empty() and alternate.size() > 1 and alternate[1] != next:
 			agent.install_movement_route(alternate)
+
+
+## Two people on the way out, and the one in the way is not coming through the
+## waiting one's cell: it is simply ahead in the line out. The one behind
+## waits its turn; neither steps aside for the other. Before, the lower ID
+## asked the leaver ahead of it to step back out of its diagonal corner, a
+## waiting guest walked into the cell that opened, the leaver came back, and
+## the three went round like that until the stall backstop (#468). The
+## backstop already treats a leaving line this way (it hands an escape on to
+## the head of the line).
+func _behind_in_line_out(agent: SimAgent, holder: SimAgent) -> bool:
+	if not _leaving(agent) or not _leaving(holder):
+		return false
+	return holder.has_arrived() or not _step_cells(holder.cell, holder.next_cell()).has(agent.cell)
+
+
+## Whether a boxed-in person may ask the one who goes first to step back and
+## open a gap (the cooperative vacancy). Not at the door, in two cases:
+## - a guest who is only waiting never asks anyone who is going somewhere. In
+##   a full doorway every waiting guest is boxed in behind whoever is ahead,
+##   and each one asked the guest walking to a seat in front of it to step
+##   back, before that guest had waited long enough to ask the person in its
+##   own way to move: it went back and forth until it lost its table (#468);
+## - a leaver never steps back for a guest who gives way at the door: the
+##   guest's way in is the leaver's way out, so the gap only lets the crowd
+##   behind press further in (#459).
+func _asks_for_room(world: SimWorld, boxed: SimAgent, winner: SimAgent) -> bool:
+	if _only_waiting(boxed) and not _only_waiting(winner):
+		return false
+	return not (_leaving(winner) and _gives_way_at_door(world, boxed))
+
+
+## A guest still arriving or waiting for a table (not yet walking to a seat).
+func _only_waiting(agent: SimAgent) -> bool:
+	return agent is CustomerAgent and (agent as CustomerAgent).state <= CustomerAgent.State.QUEUED
 
 
 ## A distant body cut must not hide a legal local way around this blocker.
@@ -1391,11 +1485,17 @@ func door_counterflow(world: SimWorld) -> bool:
 ## Whether a guest on the street holds back for "let them out first", either
 ## rule: a stalled leaver at the door (door_outflow_stalled, #322) or someone
 ## leaving through a narrow way in (door_counterflow, #459). The narrow-door
-## hold never keeps one guest out longer than door_hold_max_ticks.
-func hold_at_door(world: SimWorld, agent: SimAgent) -> bool:
-	if door_outflow_stalled(world):
+## hold never keeps one guest out longer than door_hold_max_ticks. A guest
+## still waiting for a table spends queue patience under the stalled-leaver
+## rule, which bounds it; one who already has a table (#468) passes `timed`,
+## so that both rules share the one per-guest limit. Service only (_in_service).
+func hold_at_door(world: SimWorld, agent: SimAgent, timed: bool = false) -> bool:
+	if not _in_service(world):
+		return false
+	var stalled: bool = door_outflow_stalled(world)
+	if stalled and not timed:
 		return true
-	if not door_counterflow(world):
+	if not stalled and not door_counterflow(world):
 		_held_since.erase(agent.id)
 		return false
 	var since: int = int(_held_since.get(agent.id, world.now))

@@ -71,7 +71,8 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		limit: int, edits: bool, max_dumps: int, inspector: bool = false, staff_limit: int = 450) -> Dictionary:
 	var result: Dictionary = {"setup": setup_name, "seed": seed_value, "days": days, "edits": edits,
 		"agent_days": 0, "max_no_progress": 0, "max_frozen": 0, "max_goal_stall": 0, "max_goal_wait": 0, "max_staff_stall": 0, "stuck_episodes": 0, "served": 0,
-		"lost": 0, "reasons": {}, "edit_actions": 0}
+		"lost": 0, "reasons": {}, "edit_actions": 0,
+		"yield_ticks": 0, "door_hold_ticks": 0, "max_seat_walk_stall": 0, "max_leaver_stall": 0, "day_ticks": 0}
 	if inspector:
 		result["inspector_visits"] = 0
 		result["inspector_max_stall"] = 0
@@ -129,9 +130,14 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				break
 			if inspector:
 				result["inspector_removed"] = int(result["inspector_removed"]) + _removals_this_tick(world)
+			# Guests kept on the street (not admitted yet) by "let them out first".
+			result["door_hold_ticks"] = int(result["door_hold_ticks"]) + world.movement._held_since.size()
 			for agent: SimAgent in world.agents:
 				seen[agent.id] = true
 				var wants: bool = wants_to_move(world, agent)
+				if world.movement.is_yielding(agent.id):
+					# Time spent stepping aside for someone else (person-ticks).
+					result["yield_ticks"] = int(result["yield_ticks"]) + 1
 				# Frozen: cell and edge progress unchanged.
 				var key: Array = [agent.cell, agent.move_progress]
 				if not wants or last_key.get(agent.id, []) != key:
@@ -170,6 +176,12 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 							count, describe(world, agent)]
 				if agent is StaffAgent:
 					result["max_staff_stall"] = maxi(int(result["max_staff_stall"]), count)
+				elif agent is CustomerAgent:
+					var walker: CustomerAgent = agent as CustomerAgent
+					if walker.state == CustomerAgent.State.WALKING_TO_SEAT:
+						result["max_seat_walk_stall"] = maxi(int(result["max_seat_walk_stall"]), count)
+					elif walker.state == CustomerAgent.State.LEAVING:
+						result["max_leaver_stall"] = maxi(int(result["max_leaver_stall"]), count)
 				if count > cap and not dumped.has(agent.id):
 					dumped[agent.id] = true
 					result["stuck_episodes"] = int(result["stuck_episodes"]) + 1
@@ -181,6 +193,7 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 			result["error"] = "did not close day %d" % (day_index + 1)
 			break
 		result["agent_days"] = int(result["agent_days"]) + seen.size()
+		result["day_ticks"] = int(result["day_ticks"]) + ticks
 		if inspector:
 			result["inspector_visits"] = int(result["inspector_visits"]) \
 				+ (1 if sim.inspection.arrived_day == Clock.sim.day else 0)
@@ -223,6 +236,8 @@ static func wants_to_move(world: SimWorld, agent: SimAgent) -> bool:
 		return true
 	if agent is CustomerAgent:
 		var guest: CustomerAgent = agent as CustomerAgent
+		if guest.state == CustomerAgent.State.WALKING_TO_SEAT and guest.get("_held_outside") == true:
+			return false  # Has a table, letting someone out first (#468): stationary by design.
 		if guest.state == CustomerAgent.State.LEAVING or guest.state == CustomerAgent.State.WALKING_TO_SEAT:
 			return true
 	if agent is InspectorAgent:

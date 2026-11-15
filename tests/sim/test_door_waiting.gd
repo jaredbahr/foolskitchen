@@ -133,6 +133,31 @@ func test_arrivals_wait_on_the_street_while_a_leaver_is_stuck_at_a_narrow_door()
 	assert_false(arriving.path.is_empty(), "steps in once nobody is on the way out")
 
 
+## The jammed-door hold on new arrivals (#306) only counts a leaver stuck
+## inside the door lane; one stuck a step short of it holds nobody on the
+## street (queued guests are kept off its way instead, #322). A wide door, so
+## the narrow-door hold (#459) is not in play. This assertion was lost when
+## the test above was edited for #459 (#468).
+func test_the_jammed_door_hold_ignores_a_leaver_stuck_outside_the_door_lane() -> void:
+	var sim: RestaurantSim = _full_shop()
+	var world: SimWorld = sim.world
+	assert_false(world.movement.narrow_way_in(world), "premise: a wide door")
+	var entries: Array[Vector2i] = world.grid.entries()
+	var outside: CustomerAgent = _guest(sim, Vector2i(6, 11))
+	outside.state = CustomerAgent.State.LEAVING
+	assert_false(world.movement.in_door_lane(world, outside.cell), "stuck one step short of the lane")
+	_stall(world, outside)
+	assert_true(world.movement.door_outflow_stalled(world), "premise: it is stuck beside the lane")
+	var arriving: CustomerAgent = _guest(sim, entries[0])
+	assert_true(arriving.movement_admitted, "the street hold only covers a leaver inside the lane")
+	var inside: CustomerAgent = _guest(sim, Vector2i(7, 11))
+	inside.state = CustomerAgent.State.LEAVING
+	assert_true(world.movement.in_door_lane(world, inside.cell))
+	_stall(world, inside)
+	var held: CustomerAgent = _guest(sim, entries[1])
+	assert_false(held.movement_admitted, "a leaver stuck inside the lane does hold an arrival on the street")
+
+
 func test_a_waiting_guest_never_heads_for_a_stuck_leavers_way_out() -> void:
 	var sim: RestaurantSim = _narrow_door_shop()
 	var world: SimWorld = sim.world
