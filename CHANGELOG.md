@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Keep large cash balances on one HUD row and show the full amount on hover. (#522)
+- A worker sent home early who is still on the way out when the shop closes now goes home with the close instead of walking out again the next day, and no later card that day asks about someone who has already left. All the arrival nudges from cards on one day now stay within ±20% together. (#537)
 - The Seaside Cliff lot now has its own seaside street: a sun-bleached boardwalk of planks instead of grey paving, low weathered beach shacks in sea-blue, seafoam and sand with striped awnings, rope bollards, a lifebuoy, crates of the day's catch, strings of bunting, benches and bins in seaside blues, gulls on the dune grass and a pale sandy back lane. Your own shop is still the boldest colour on the street. (#527)
 - Menu puts the restaurant name, hours and forecast together and scrolls dishes and their details as one. Stock puts each ingredient, buying controls and auto-reorder on one line. (#513)
 - In the Build and Buy catalogue, the top rows stay put: Build/Buy, the tools, the room tabs, the vibe readout and the filters no longer scroll away. Only the item cards scroll, and only up and down. (#524)
