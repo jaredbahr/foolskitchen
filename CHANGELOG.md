@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
+- People get past each other at tight doors. In a shop with only a one-tile way in behind the door, a guest who has been given a table waits outside until whoever is leaving has come out ("Letting someone out before I go in"), people leaving no longer get stuck behind guests waiting beside the door, and a guest with a table can get through the waiting crowd to sit down instead of losing the table. In any shop, three people reaching for the same free tile no longer all stand and wait for each other. (#535)
 - Keep large cash balances on one HUD row and show the full amount on hover. (#522)
 - A worker sent home early who is still on the way out when the shop closes now goes home with the close instead of walking out again the next day, and no later card that day asks about someone who has already left. All the arrival nudges from cards on one day now stay within ±20% together. (#537)
 - The Seaside Cliff lot now has its own seaside street: a sun-bleached boardwalk of planks instead of grey paving, low weathered beach shacks in sea-blue, seafoam and sand with striped awnings, rope bollards, a lifebuoy, crates of the day's catch, strings of bunting, benches and bins in seaside blues, gulls on the dune grass and a pale sandy back lane. Your own shop is still the boldest colour on the street. (#527)
@@ -235,6 +236,7 @@ Each line ends with its PR number.
 - The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
 - Starting a new game no longer re-resets things the freshly loaded game scene has already set up: `_new_game()` is about half as long, and says which resets a new system still needs. No change in play. (#533)
 - The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
+- Movement: who goes first is now one fixed order, written down with the other door guarantees in `docs/TECH.md` and held by hand-made tests (a crossing, a corridor, a narrow door). The door rules only run while the shop is open. `tools/liveness_soak.sh` also reports time spent stepping aside, time held at the door, and the longest standstill of a guest walking to a seat and of a guest leaving. (#535)
 - Remove the old lease owner-level field. Career Tier 2 still unlocks lease upgrades, and old lease resources still load. (#519)
 - A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
 - The test runner deals test files to its shards by how long each took, not by position in the list, so adding one test no longer reshuffles the rest and pushes the hosted check to its time limit. (#530)
