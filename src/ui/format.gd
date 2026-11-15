@@ -15,6 +15,31 @@ static func money(value: int) -> String:
 	return ("-$" if value < 0 else "$") + digits + grouped
 
 
+## A short balance for the HUD. Truncating keeps the label from overstating cash.
+static func compact_money(value: int) -> String:
+	if value > -10_000 and value < 10_000:
+		return money(value)
+	var prefix: String = "-$" if value < 0 else "$"
+	@warning_ignore("integer_division")
+	var thousands: int = absi(value / 1_000)
+	if thousands >= 1_000:
+		@warning_ignore("integer_division")
+		var tenths_of_millions: int = absi(value / 100_000)
+		return prefix + _tenths(tenths_of_millions) + "M"
+	if thousands >= 100:
+		return prefix + str(thousands) + "k"
+	@warning_ignore("integer_division")
+	var tenths_of_thousands: int = absi(value / 100)
+	return prefix + _tenths(tenths_of_thousands) + "k"
+
+
+static func _tenths(value: int) -> String:
+	@warning_ignore("integer_division")
+	var whole: int = value / 10
+	var fraction: int = value % 10
+	return str(whole) if fraction == 0 else "%d.%d" % [whole, fraction]
+
+
 ## A price the player pays: "Free" in a Creative game (FK-141), where money
 ## is off; otherwise exactly money().
 static func price(value: int) -> String:
