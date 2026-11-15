@@ -72,11 +72,9 @@ func size_cells() -> int:
 
 ## The lot's expansion as lease terms, so the offer, refusal and layout share
 ## the home lease's rules (D30): the price is the deposit, the expanded rent
-## the daily rent, and the lot's own margins grow. `home` gives the owner
-## level (unused since career tiers, kept for LeaseUpgrade.is_valid).
-func lease_upgrade(home: LeaseUpgrade) -> LeaseUpgrade:
+## the daily rent, and the lot's own margins grow.
+func lease_upgrade() -> LeaseUpgrade:
 	var lease: LeaseUpgrade = LeaseUpgrade.new()
-	lease.owner_level = home.owner_level if home != null else lease.owner_level
 	lease.deposit = expansion_price
 	lease.daily_rent = expanded_daily_rent
 	lease.extra_west = expansion_west
