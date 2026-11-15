@@ -49,19 +49,22 @@ signal grid_requested()
 signal hygiene_toggled(active: bool)
 
 const EDGE_MARGIN: float = 12.0
-const MAX_PANEL_WIDTH: float = 980.0
+## "Wider, not taller" (#499): the bottom panel may use most of a 1600 px view,
+## enough for MAX_COLUMNS cards, their scroll bar and the panel's own padding.
+const MAX_PANEL_WIDTH: float = 1384.0
 ## The tallest the bottom panel may grow, as a share of the view. It keeps the
 ## top of the panel below the screen centre, where Build centres the tile you
 ## are working on (world clicks there must not land on the panel).
 const PANEL_HEIGHT_SHARE: float = 0.45
 ## The most card rows the scroll shows before it scrolls, when the height cap
-## leaves room for them.
-const VISIBLE_ROWS: int = 3
+## leaves room for them. Two full rows of MAX_COLUMNS cards fit under the
+## height cap at 1600x900; a third row would cover the screen centre.
+const VISIBLE_ROWS: int = 2
 ## A catalogue tile: the picture on top, the price (or unlock level) under it.
 const CARD_MINIMUM: Vector2 = Vector2(96.0, 104.0)
 const THUMBNAIL_WIDTH: int = 64
 const CARD_GAP: float = 8.0
-const MAX_COLUMNS: int = 12
+const MAX_COLUMNS: int = 13
 const MIN_COLUMNS: int = 6
 const BUY: StringName = &"buy"
 const BUILD: StringName = &"build"
@@ -1657,7 +1660,7 @@ func _prepare_layout() -> void:
 	content.minimum_size_changed.connect(_fit_panel)
 	var toolbars: Control = _toolbars()
 	toolbars.minimum_size_changed.connect(_fit_panel)
-	var bar: HBoxContainer = toolbars.get_node("Bar") as HBoxContainer
+	var bar: HFlowContainer = toolbars.get_node("Bar") as HFlowContainer
 	for side: StringName in [BUILD, BUY]:
 		var button: Button = _chip("Mode_%s" % side, "Build" if side == BUILD else "Buy", 18)
 		button.tooltip_text = "Build: walls, doorways, windows, wall finishes, floors, rooms, more floor space and paint" if side == BUILD \
@@ -1705,14 +1708,20 @@ func _prepare_layout() -> void:
 		category_buttons[category] = button
 		categories.add_child(button)
 	IconStyle.configure_button(category_buttons[PAINT], &"paint", "Paint", "Paint walls, floor and furniture (P)")
+	# The vibe/curb/theme readout shares the mode and tool row, at its right end
+	# (#499: wider, not taller). In a narrow view the flow wraps it to a line of
+	# its own instead of clipping it.
 	var readout: HBoxContainer = HBoxContainer.new()
 	readout.name = "Readout"
 	readout.mouse_filter = Control.MOUSE_FILTER_PASS
+	readout.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_END
 	readout.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	readout.add_theme_constant_override("separation", 10)
 	readout.tooltip_text = "Your room's vibe and theme right now"
-	categories.add_child(_divider())
-	categories.add_child(readout)
+	bar.add_child(readout)
+	for control: Node in bar.get_children():
+		if control is Button:
+			(control as Button).size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	vibe_meter = VibeMeter.new()
 	readout.add_child(vibe_meter)
 	curb_appeal_meter = CurbAppealMeter.new()
@@ -1726,6 +1735,7 @@ func _prepare_layout() -> void:
 	hygiene_button = _chip("Hygiene", HygieneOverview.TITLE)
 	hygiene_button.tooltip_text = HygieneOverview.TOGGLE_TIP
 	hygiene_button.pressed.connect(_on_hygiene_pressed)
+	hygiene_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	readout.add_child(hygiene_button)
 	hygiene_panel = PanelContainer.new()
 	hygiene_panel.name = "HygieneOverview"
@@ -1842,8 +1852,10 @@ func _fit_panel() -> void:
 	for button: Button in _visible_cards():
 		card_size = card_size.max(button.get_combined_minimum_size())
 	var bar_width: float = scroll.get_v_scroll_bar().get_combined_minimum_size().x
-	# The tiles fill the width of the toolbars (at least MIN_COLUMNS tiles), so
-	# the panel stays narrow enough to leave the shop in view; more tiles scroll.
+	# Wider, not taller (#499): the card grid takes up to MAX_COLUMNS tiles of
+	# the view's width and VISIBLE_ROWS rows, so the panel stays below the screen
+	# centre; more tiles scroll. Other pages (Paint, blueprints) keep the width
+	# of their own rows.
 	var rows_width: float = 0.0
 	for parent: Control in [toolbars, content]:
 		for child: Node in parent.get_children():
@@ -1859,7 +1871,11 @@ func _fit_panel() -> void:
 							ideal += (control as Control).get_combined_minimum_size().x \
 								+ (child as HFlowContainer).get_theme_constant("h_separation")
 					rows_width = maxf(rows_width, ideal)
-	var wanted: float = maxf(rows_width, MIN_COLUMNS * (card_size.x + CARD_GAP) - CARD_GAP)
+	# The grid keeps one width on every tab (MAX_COLUMNS plain cards), so the
+	# panel does not jump as tabs or filters change the cards; a tab with wider
+	# cards shows fewer columns in the same width.
+	var wanted_columns: int = MAX_COLUMNS if row.visible else MIN_COLUMNS
+	var wanted: float = maxf(rows_width, wanted_columns * (CARD_MINIMUM.x + CARD_GAP) - CARD_GAP)
 	var grid_width: float = minf(wanted, limit.x - bar_width)
 	var columns: int = clampi(floori((grid_width + CARD_GAP) / (card_size.x + CARD_GAP)), 1, MAX_COLUMNS)
 	if row.columns != columns:
@@ -1869,7 +1885,9 @@ func _fit_panel() -> void:
 	var scroll_limit: float = maxf(0.0, minf(limit.y - pinned,
 		VISIBLE_ROWS * (card_size.y + CARD_GAP) - CARD_GAP))
 	var vertical: bool = natural.y > scroll_limit
-	var width: float = minf(maxf(natural.x + (bar_width if vertical else 0.0), rows_width), limit.x)
+	# The scroll bar's lane is always held free, so it never changes the width.
+	var cards_width: float = grid_width + bar_width if row.visible else 0.0
+	var width: float = minf(maxf(maxf(natural.x + (bar_width if vertical else 0.0), cards_width), rows_width), limit.x)
 	var height: float = minf(natural.y, scroll_limit)
 	scroll.custom_minimum_size = Vector2(width, height)
 	panel.size = Vector2(width, pinned + height) + padding
