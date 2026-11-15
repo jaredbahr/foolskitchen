@@ -4261,6 +4261,12 @@ func _check_service_event() -> void:
 	var entry: Dictionary = service_events.due(Clock.sim.display_minutes())
 	if entry.is_empty():
 		return
+	# Names are drawn at opening: a worker sent home earlier today (#523) no
+	# longer gets cards about them.
+	var staff_id: StringName = StringName(entry.get("staff_id", ""))
+	if not staff_id.is_empty() and (sim.employee(staff_id) == null or sim.employee(staff_id).going_home):
+		service_events.drop_pending()
+		return
 	if service_event_auto_pick >= 0:
 		service_event_pick(_service_event_auto_index(entry))
 		return
@@ -4477,7 +4483,9 @@ func _apply_service_event(outcome: Dictionary) -> bool:
 	if choice.day_patience_percent != 0:
 		sim.event_patience_multiplier *= 1.0 + float(choice.day_patience_percent) / 100.0
 	if choice.day_arrivals_percent != 0:
-		sim.event_arrival_factor *= 1.0 + float(choice.day_arrivals_percent) / 100.0
+		# All of a day's nudges together stay within the same bound (#523).
+		sim.event_arrival_factor = clampf(sim.event_arrival_factor * (1.0 + float(choice.day_arrivals_percent) / 100.0),
+			1.0 - ServiceEvents.MAX_ARRIVAL_SWING, 1.0 + ServiceEvents.MAX_ARRIVAL_SWING)
 	if choice.staff_mood != 0 and staff_roster != null:
 		staff_roster.adjust_mood(StringName(entry.get("staff_id", "")), choice.staff_mood)
 	if choice.clean_spots:

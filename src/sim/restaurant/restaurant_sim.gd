@@ -408,6 +408,11 @@ func advance() -> void:
 	if world.clock.phase == SimClock.Phase.LAST_ORDERS and customers().is_empty():
 		world.clock.notify_restaurant_empty()
 	if not was_closed and world.clock.phase == SimClock.Phase.CLOSED:
+		# The usual close (the last guest leaving in last orders) turns CLOSED
+		# after the release above, and the sim stops ticking: anyone still on
+		# the way home goes now, so nobody walks out again tomorrow (#523).
+		if _anyone_going_home():
+			_release_sent_home(true)
 		# Anything not put away by closing is stored, before the day's books.
 		if dock != null:
 			dock.store_all()
