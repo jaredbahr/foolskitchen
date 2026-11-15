@@ -2328,6 +2328,7 @@ func _refresh_hygiene_overview() -> void:
 	if active:
 		var state: HygieneOverview.Snapshot = HygieneOverview.capture(sim)
 		_build_catalogue.set_hygiene_lines(HygieneOverview.lines(state))
+		_build_catalogue.set_hygiene_keep_clear($HUD.box_rects())
 		_build_preview.set_hygiene_cells(state.problem_cells, true)
 	else:
 		_build_preview.set_hygiene_cells([] as Array[Vector2i], false)
