@@ -109,6 +109,7 @@ var shown_report: DayReport = null
 var _last_team_activity: Dictionary = {}
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
+var _dish_metrics_today: Dictionary[StringName, Dictionary] = {}
 var _food_cost_today: Dictionary = PurchaseBasis.zero()
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
@@ -1796,6 +1797,14 @@ func forecast_next_demand() -> Dictionary:
 ## evidence; review calculation and its random stream remain in RestaurantSim.
 func _on_vibe_customer_left(customer: CustomerAgent, reason: StringName) -> void:
 	_settle_booking_after_departure(customer, reason)
+	# As for signature reviews, count each completed dine-in recipe once per guest.
+	if customer != null and customer.paid and not customer.takeaway:
+		var visit: ReviewVisit = customer.review_visit(0)
+		for id: StringName in visit.consumed_recipe_ids:
+			var metrics: Dictionary = _dish_metrics_for(id)
+			metrics["eaten"] += 1
+			if reason == &"happy":
+				metrics["happy"] += 1
 	if Clock.attached_world == world and ShopRecords.ANGRY_REASONS.has(reason):
 		EventBus.guest_left_angry.emit()
 	if customer != null and customer.paid and is_finite(customer.vibe_review_bonus) \
@@ -2876,6 +2885,7 @@ func build_report(day: int) -> DayReport:
 	report.stock_on_hand = int(on_hand["cost"])
 	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = dishes_sold_today.duplicate()
+	report.dish_metrics = _dish_metrics_today.duplicate(true)
 	report.daily_special_line = DailySpecialText.report(
 		DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
 		int(report.dishes_sold.get(daily_special.recipe_id(), 0)))
@@ -3606,7 +3616,7 @@ func _disconnect_session() -> void:
 
 
 func _capture_business_history() -> Dictionary:
-	return business_history.capture()
+	return business_history.capture(Clock.sim.day - 1)
 
 
 func _capture_shop_records() -> Dictionary:
@@ -6353,6 +6363,7 @@ func _begin_morning() -> void:
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
+	_dish_metrics_today.clear()
 	_food_cost_today = PurchaseBasis.zero()
 	shown_report = null
 	_begin_weekly_challenge_if_needed()
@@ -7320,11 +7331,20 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 		if tip > 0:
 			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+	var metrics: Dictionary = _dish_metrics_for(order.recipe_id)
+	metrics["sold"] = dishes_sold_today[order.recipe_id]
+	metrics["quality_sum"] += order.quality
 	if signature_state != null:
 		signature_state.record_sale(order.recipe_id)
 	_observe_opening_state()
 	_observe_opening_party(customer)
 	_refresh_goals()
+
+
+func _dish_metrics_for(id: StringName) -> Dictionary:
+	if not _dish_metrics_today.has(id):
+		_dish_metrics_today[id] = {"sold": 0, "quality_sum": 0.0, "eaten": 0, "happy": 0}
+	return _dish_metrics_today[id]
 
 
 func _settle_booking_after_departure(customer: CustomerAgent, reason: StringName) -> void:
@@ -8011,6 +8031,7 @@ func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
 func _refresh_menu_details() -> void:
 	if _menu_panel != null and content != null:
 		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+		_menu_panel.set_dish_week(business_history.dish_week(Clock.sim.day - 1))
 		var favourites: Array[StringName] = []
 		for profile: RegularProfile in regulars.profiles:
 			if profile.active and not favourites.has(profile.favourite_dish):

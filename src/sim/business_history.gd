@@ -3,6 +3,7 @@ extends RefCounted
 ## Detached closing summaries. Main owns when these join the morning save.
 
 const MAX_DAYS: int = 30
+const DISH_WINDOW_DAYS: int = 7
 const SAVE_VERSION: int = 1
 const MAX_EXACT_INTEGER: int = 9007199254740991
 const MAX_MONEY: int = 9223372036854775807
@@ -32,6 +33,7 @@ func record(report: DayReport) -> void:
 		"good_reviews": good_reviews,
 		"no_table": int(report.leave_reasons.get(&"no_table", 0)),
 		"dishes_sold": report.dishes_sold,
+		"dish_metrics": report.dish_metrics,
 	})
 	if row.is_empty():
 		return
@@ -45,6 +47,7 @@ func record(report: DayReport) -> void:
 	_days.append(row)
 	if _days.size() > MAX_DAYS:
 		_days.pop_front()
+	_prune_dish_metrics(_days, report.day)
 
 
 func summaries() -> Array[Dictionary]:
@@ -59,9 +62,38 @@ func recent(limit: int = 7) -> Array[Dictionary]:
 	return result
 
 
+## Aggregate each measurement before dividing so a busy day carries its weight.
+func dish_week(through_day: int) -> Dictionary[StringName, Dictionary]:
+	var totals: Dictionary[StringName, Dictionary] = {}
+	var first_day: int = through_day - DISH_WINDOW_DAYS + 1
+	for row: Dictionary in _days:
+		var day: int = row["day"]
+		if day < first_day or day > through_day:
+			continue
+		var dishes: Dictionary = row.get("dish_metrics", {})
+		for id: String in dishes:
+			var sample: Dictionary = dishes[id]
+			var recipe_id: StringName = StringName(id)
+			var total: Dictionary = totals.get(recipe_id, {"sold": 0, "quality_sum": 0.0, "eaten": 0, "happy": 0})
+			for metric: String in total:
+				total[metric] += sample[metric]
+			totals[recipe_id] = total
+	return totals
+
+
+static func _prune_dish_metrics(rows: Array[Dictionary], through_day: int) -> void:
+	var first_day: int = through_day - DISH_WINDOW_DAYS + 1
+	for row: Dictionary in rows:
+		if int(row["day"]) >= first_day:
+			break
+		row.erase("dish_metrics")
+
+
 ## Signed money stays exact through JSON; the recorded flag distinguishes unknown.
-func capture() -> Dictionary:
+func capture(through_day: int = 0) -> Dictionary:
 	var days: Array[Dictionary] = summaries()
+	if through_day > 0:
+		_prune_dish_metrics(days, through_day)
 	for row: Dictionary in days:
 		row["dish_profit"] = str(row["dish_profit"])
 		row["cash_change"] = str(row["cash_change"])
@@ -92,6 +124,7 @@ func restore(data: Dictionary) -> bool:
 		candidate.append(row)
 		if candidate.size() > MAX_DAYS:
 			candidate.pop_front()
+	_prune_dish_metrics(candidate, previous_day)
 	_days = candidate
 	return true
 
@@ -137,6 +170,29 @@ static func _clean_row(value: Dictionary) -> Dictionary:
 		row["good_reviews"] = int(value["good_reviews"])
 		row["no_table"] = int(value["no_table"])
 		row["dishes_sold"] = dishes
+	if value.has("dish_metrics"):
+		var raw_metrics: Variant = value["dish_metrics"]
+		if not raw_metrics is Dictionary:
+			return {}
+		var metrics: Dictionary[String, Dictionary] = {}
+		for key: Variant in raw_metrics:
+			if not (key is String or key is StringName) or str(key).is_empty():
+				return {}
+			var sample: Variant = raw_metrics[key]
+			if not sample is Dictionary:
+				return {}
+			var sold: Variant = sample.get("sold")
+			var quality_sum: Variant = sample.get("quality_sum")
+			var eaten: Variant = sample.get("eaten")
+			var happy: Variant = sample.get("happy")
+			if not _whole(sold, 0) or not _whole(eaten, 0) or not _whole(happy, 0, int(eaten)) \
+					or not (quality_sum is int or quality_sum is float) \
+					or not is_finite(float(quality_sum)) or quality_sum < 0 or quality_sum > sold:
+				return {}
+			metrics[str(key)] = {"sold": int(sold), "quality_sum": float(quality_sum),
+				"eaten": int(eaten), "happy": int(happy)}
+		if not metrics.is_empty():
+			row["dish_metrics"] = metrics
 	return row
 
 
