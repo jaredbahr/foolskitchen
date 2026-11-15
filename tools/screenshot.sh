@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Renders the game (default: src/world/main.tscn) under a virtual display and
 # saves PNGs to screens/ (git-ignored). Needs xvfb and Mesa (software OpenGL).
+# The flag list below is frozen (#526): a new capture is a scene, run with
+# --scene=res://tools/<name>_review.tscn. tests/tools/test_screenshot_flags_frozen.gd holds the line.
 # Usage: bash tools/screenshot.sh [--out=dir] [--frames=120,400,900] [--speed=4] [--scene=res://...] [--quarter=0..3] [--open] [--fast=N] [--select=guest|owner] [--assign-owner=kitchen] [--f3] [--menu] [--settings] [--shortcuts] [--report] [--build=green|red] [--paint]
 # --staff --speed=0 shows the production Staff panel without changing its roster.
 # --stock --speed=0 --frames=12 shows the morning Stock panel; --stock --open --fast=2 --speed=0 --frames=30 shows the Sold out tag; add --report (--fast=100 --frames=60) for the report's Low stock section.
