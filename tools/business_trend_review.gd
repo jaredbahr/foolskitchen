@@ -100,6 +100,11 @@ func _review_run_services() -> bool:
 			"weekly_profit": shown_report.purchase_basis_operating_profit(),
 			"good_reviews": good_reviews, "no_table": shown_report.leave_reasons.get(&"no_table", 0),
 			"dishes_sold": dishes}
+		if not shown_report.dish_metrics.is_empty():
+			var metrics: Dictionary[String, Dictionary] = {}
+			for id: StringName in shown_report.dish_metrics:
+				metrics[String(id)] = shown_report.dish_metrics[id].duplicate(true)
+			actual["dish_metrics"] = metrics
 		if history.size() != day_index + 1 or history[-1] != actual:
 			_review_fail("stored history differs from the closing report on day %d" % shown_report.day)
 			return false
