@@ -9,6 +9,10 @@ var _review_frame: int = 0
 
 func _ready() -> void:
 	use_saves = false
+	# HYGIENE_REVIEW_SCALE=125 or 150 shows the card at the larger UI sizes (#542).
+	var scale_percent: int = OS.get_environment("HYGIENE_REVIEW_SCALE").to_int()
+	if scale_percent in [125, 150]:
+		get_window().content_scale_factor = float(scale_percent) / 100.0
 	new_game_seed_override = 1
 	super._ready()
 	if sim == null:

@@ -22,6 +22,24 @@ class ClickProbe extends Node:
 		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 			clicks += 1
 
+## Counts what falls through the interface to the shop.
+class InputProbe extends Node:
+	var keys: int = 0
+	var motions: int = 0
+	var left: int = 0
+	var right: int = 0
+
+	func _unhandled_input(event: InputEvent) -> void:
+		if event is InputEventKey and (event as InputEventKey).pressed:
+			keys += 1
+		elif event is InputEventMouseMotion:
+			motions += 1
+		elif event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+			if (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+				left += 1
+			elif (event as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
+				right += 1
+
 var _catalogue: BuildCatalogue
 var _content: CatalogueContent
 var _requests: Array[StringName] = []
@@ -649,12 +667,16 @@ func test_hygiene_card_stays_inside_the_view_at_every_ui_scale() -> void:
 
 ## Escape or a click elsewhere puts the card away; Hygiene itself (the pressed
 ## button and the floor highlight) stays on until the button is pressed again.
+## The first Escape and a left click on the card stop there; pointer motion
+## and a right click over the card still reach the shop.
 func test_hygiene_card_closes_on_escape_or_a_click_elsewhere_and_returns_on_hover() -> void:
 	_catalogue.bind_content(_content)
 	_catalogue.set_build_visible(true)
 	_catalogue.set_hygiene_lines(HYGIENE_LINES)
 	await _mount(Vector2(1600.0, 900.0))
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var probe: InputProbe = InputProbe.new()
+	_host.add_child(probe)
 	var toggles: Array[bool] = []
 	_catalogue.hygiene_toggled.connect(func(active: bool) -> void: toggles.append(active))
 	var card: Control = _catalogue.hygiene_panel
@@ -664,22 +686,42 @@ func test_hygiene_card_closes_on_escape_or_a_click_elsewhere_and_returns_on_hove
 	await tree.process_frame
 	assert_true(_catalogue.hygiene_enabled, "the button opens it")
 	assert_true(card.visible)
-	_mouse(card.get_global_rect().get_center(), true)
-	_mouse(card.get_global_rect().get_center(), false)
-	assert_true(card.visible, "a click on the card keeps it")
-	var escape: InputEventKey = InputEventKey.new()
-	escape.keycode = KEY_ESCAPE
-	escape.physical_keycode = KEY_ESCAPE
-	escape.pressed = true
-	tree.root.push_input(escape, true)
+	var on_card: Vector2 = card.get_global_rect().get_center()
+	_mouse(on_card, true)
+	_mouse(on_card, false)
+	assert_true(card.visible, "a left click on the card keeps it")
+	assert_eq(probe.left, 0, "a left click on the card never reaches the shop")
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = on_card + Vector2(3.0, 0.0)
+	motion.global_position = motion.position
+	tree.root.push_input(motion, true)
+	assert_eq(probe.motions, 1, "pointer motion over the card reaches the shop, so a build ghost keeps following")
+	assert_true(card.visible)
+	_escape()
 	assert_false(card.visible, "Escape puts the card away")
+	assert_eq(probe.keys, 0, "the first Escape only puts the card away: nothing else sees it")
 	assert_true(_catalogue.hygiene_enabled)
 	assert_true(button.button_pressed, "the floor highlight stays on")
+	_escape()
+	assert_eq(probe.keys, 1, "with the card away, Escape is Build's again")
 	button.mouse_entered.emit()
 	assert_true(card.visible, "pointing at the button brings the card back")
 	_mouse(Vector2(800.0, 200.0), true)
 	_mouse(Vector2(800.0, 200.0), false)
 	assert_false(card.visible, "a click elsewhere puts the card away")
+	assert_eq(probe.left, 1)
+	button.mouse_entered.emit()
+	assert_true(card.visible)
+	for pressed: bool in [true, false]:
+		var click: InputEventMouseButton = InputEventMouseButton.new()
+		click.position = card.get_global_rect().get_center()
+		click.global_position = click.position
+		click.button_index = MOUSE_BUTTON_RIGHT
+		click.button_mask = MOUSE_BUTTON_MASK_RIGHT if pressed else 0
+		click.pressed = pressed
+		tree.root.push_input(click, true)
+	assert_false(card.visible, "a right click on the card puts it away like one anywhere else")
+	assert_eq(probe.right, 1, "and still reaches Build, which drops the ghost")
 	assert_true(_catalogue.hygiene_enabled)
 	assert_eq(toggles, [true] as Array[bool], "putting the card away never switches Hygiene off")
 	_mouse(button.get_global_rect().get_center(), true)
@@ -687,6 +729,75 @@ func test_hygiene_card_closes_on_escape_or_a_click_elsewhere_and_returns_on_hove
 	assert_false(_catalogue.hygiene_enabled, "the button switches it off")
 	assert_false(card.visible)
 	assert_eq(toggles, [true, false] as Array[bool])
+
+
+## A card put away with Escape comes back with Build or after Paint, as long
+## as Hygiene is still on.
+func test_hygiene_card_returns_when_build_reopens_or_paint_closes() -> void:
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_hygiene_lines(HYGIENE_LINES)
+	await _mount(Vector2(1600.0, 900.0))
+	var card: Control = _catalogue.hygiene_panel
+	_catalogue.set_hygiene_enabled(true)
+	_escape()
+	assert_false(card.visible)
+	_catalogue.set_build_visible(true)
+	assert_false(card.visible, "Build staying open does not bring it back")
+	_catalogue.set_build_visible(false)
+	assert_false(card.visible)
+	_catalogue.set_build_visible(true)
+	assert_true(card.visible, "reopening Build shows the chosen overview again")
+	_escape()
+	assert_false(card.visible)
+	_catalogue.set_paint_visible(true)
+	assert_false(card.visible)
+	_catalogue.set_paint_visible(false)
+	assert_true(card.visible, "returning from Paint shows it again")
+	_catalogue.set_hygiene_enabled(false)
+	_catalogue.set_build_visible(false)
+	_catalogue.set_build_visible(true)
+	assert_false(card.visible, "Hygiene off stays off")
+
+
+## Without room above the panel the facts share lines; a box in the way
+## (the HUD's hints or goals) is never covered.
+func test_hygiene_card_packs_its_facts_to_stay_clear_of_a_box_above() -> void:
+	_catalogue.bind_content(_content)
+	_catalogue.set_build_visible(true)
+	_catalogue.set_hygiene_lines(HYGIENE_LINES)
+	await _mount(Vector2(1280.0, 720.0))
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	_catalogue.set_hygiene_enabled(true)
+	await tree.process_frame
+	var card: Control = _catalogue.hygiene_panel
+	var panel: Control = _catalogue.get_node("Panel") as Control
+	assert_eq(_catalogue.hygiene_summary.text, "\n".join(HYGIENE_LINES), "one fact a line when nothing is in the way")
+	var tall: float = card.size.y
+	var box: Rect2 = Rect2(900.0, 100.0, 368.0, card.get_global_rect().position.y + 40.0 - 100.0)
+	_catalogue.set_hygiene_keep_clear([box] as Array[Rect2])
+	assert_true(card.size.y < tall, "the card is shorter: %s" % card.get_global_rect())
+	assert_false(card.get_global_rect().intersects(box), "and clear of the box: %s" % card.get_global_rect())
+	assert_true(card.get_global_rect().end.y <= panel.get_global_rect().position.y)
+	for fact: String in HYGIENE_LINES:
+		assert_true(_catalogue.hygiene_summary.text.contains(fact), fact)
+	# No room at all above the panel: a strip over the panel's foot.
+	box.size.y = panel.get_global_rect().position.y - 20.0 - box.position.y
+	_catalogue.set_hygiene_keep_clear([box] as Array[Rect2])
+	assert_false(card.get_global_rect().intersects(box))
+	assert_true(panel.get_global_rect().encloses(card.get_global_rect()), "over the panel's foot: %s" % card.get_global_rect())
+	assert_true(Rect2(Vector2.ZERO, _host.size).grow(-11.5).encloses(card.get_global_rect()))
+	_catalogue.set_hygiene_keep_clear([] as Array[Rect2])
+	assert_eq(_catalogue.hygiene_summary.text, "\n".join(HYGIENE_LINES))
+	assert_almost_eq(card.size.y, tall)
+
+
+func _escape() -> void:
+	var escape: InputEventKey = InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	(Engine.get_main_loop() as SceneTree).root.push_input(escape, true)
 
 
 ## Narrow views wrap the readout under the tools instead of clipping it:
