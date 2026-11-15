@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Build mode's "tight squeeze" warning now also looks at the way to the restroom, the way from the tables to the sink and the way deliveries are carried to storage, and it notices two things standing corner to corner with only one cell to step through between them. When what you place does not make the squeeze itself but sends people through a narrow gap the shop already had, the warning says so ("Tight squeeze: people now have to pass through here") and sits on the furniture beside that gap. Moving furniture around in Build mode is also smoother, because the check no longer redoes all its work on every cell you hover. (#PRNUM)
 - Keep large cash balances on one HUD row and show the full amount on hover. (#522)
 - A worker sent home early who is still on the way out when the shop closes now goes home with the close instead of walking out again the next day, and no later card that day asks about someone who has already left. All the arrival nudges from cards on one day now stay within ±20% together. (#537)
 - The Seaside Cliff lot now has its own seaside street: a sun-bleached boardwalk of planks instead of grey paving, low weathered beach shacks in sea-blue, seafoam and sand with striped awnings, rope bollards, a lifebuoy, crates of the day's catch, strings of bunting, benches and bins in seaside blues, gulls on the dune grass and a pale sandy back lane. Your own shop is still the boldest colour on the street. (#527)

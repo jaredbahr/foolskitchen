@@ -12,7 +12,8 @@ extends RefCounted
 ## - the pass's kitchen side to every kitchen station and store;
 ## - the restroom to every seat (guests going there and back, #391);
 ## - the sink to every seat (clearing tables, #391);
-## - where deliveries are put down to every store (#391).
+## - where deliveries are put down to every store (#391): the one receiving
+##   cell DeliveryDock uses (WallRules.delivery_route).
 ## A cell on one of these routes is a pinch when both of its sides across one
 ## axis are closed (a wall, an item, a seat, or a wall segment between them),
 ## or when it is open on all four sides and both of its corners across one
@@ -84,6 +85,10 @@ class Survey extends RefCounted:
 	var net: Net = null
 	## How many families were traced for this survey (the rest were reused).
 	var traced: int = 0
+	## Where deliveries are put down (one cell, or none), and the store that
+	## cell was chosen for.
+	var receiving: Array[Vector2i] = []
+	var store: Vector2i = SimGrid.NO_CELL
 
 
 ## The cells of every used route, endpoints (the door, the pass and the
@@ -108,13 +113,17 @@ static func new_pinches_from(had: Array[Vector2i], after: SimGrid) -> Array[Vect
 	return _added(had, pinches(after))
 
 
-## The routes and pinches of one layout, every family traced.
-static func survey(grid: SimGrid) -> Survey:
+## The routes and pinches of one layout, every family traced. `lot` is the
+## shop's lot (ShopFootprint.lot; empty: the building), which decides whether
+## a back door can take deliveries.
+static func survey(grid: SimGrid, lot: Rect2i = Rect2i()) -> Survey:
 	var result: Survey = Survey.new()
 	if grid == null:
 		return result
 	result.net = _net(grid, _seats(grid))
-	result.families = _families(grid)
+	result.store = DeliveryDock.storage_cell(grid)
+	result.receiving = _receiving(grid, result.store, lot)
+	result.families = _families(grid, result.receiving)
 	for family: Family in result.families:
 		_trace(grid, result.net, family)
 		result.traced += 1
@@ -128,17 +137,19 @@ static func survey(grid: SimGrid) -> Survey:
 ## cells of what was added, moved or removed). `opened` says some cell became
 ## walkable or stopped being a seat: a new way through can shorten any route,
 ## so then everything is traced again.
-static func resurvey(live: Survey, after: SimGrid, changed: Array[Vector2i], opened: bool) -> Survey:
+static func resurvey(live: Survey, after: SimGrid, changed: Array[Vector2i], opened: bool,
+		lot: Rect2i = Rect2i()) -> Survey:
 	if live == null or live.net == null or after == null or opened \
 			or live.net.origin != after.bounds.position or live.net.width != after.bounds.size.x \
 			or live.net.height != after.bounds.size.y:
-		return survey(after)
+		return survey(after, lot)
 	var result: Survey = Survey.new()
 	var seats: Dictionary[Vector2i, bool] = _seats(after)
 	result.net = _patched(live.net, seats, changed)
-	result.families = _families(after)
-	if result.families.size() != live.families.size():
-		return survey(after)
+	result.store = DeliveryDock.storage_cell(after)
+	result.receiving = live.receiving if _receiving_stands(live, after, result.store) \
+		else _receiving(after, result.store, lot)
+	result.families = _families(after, result.receiving)
 	var near: Dictionary[Vector2i, bool] = {}
 	for cell: Vector2i in changed:
 		for offset: Vector2i in _AROUND:
@@ -243,7 +254,7 @@ static func _seats(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 
 ## The kinds of trip this layout has, always in the same order (a family
 ## with no start or no end stays in the list, empty).
-static func _families(grid: SimGrid) -> Array[Family]:
+static func _families(grid: SimGrid, receiving: Array[Vector2i]) -> Array[Family]:
 	var dining: Array[Vector2i] = []
 	var stations: Array[Vector2i] = []
 	var stores: Array[Vector2i] = []
@@ -276,7 +287,7 @@ static func _families(grid: SimGrid) -> Array[Family]:
 	return [_family(door, dining, true), _family(door, pass_dining, false),
 		_family(pass_dining, dining, false), _family(pass_kitchen, stations, false),
 		_family(restrooms, dining, true), _family(pass_dining, restrooms, false),
-		_family(sinks, dining, false), _family(_receiving(grid), stores, false)]
+		_family(sinks, dining, false), _family(receiving, stores, false)]
 
 
 static func _family(sources: Array[Vector2i], targets: Array[Vector2i], guest: bool) -> Family:
@@ -287,30 +298,37 @@ static func _family(sources: Array[Vector2i], targets: Array[Vector2i], guest: b
 	return family
 
 
-## Where deliveries are put down: the floor cell inside each back door, or
-## inside the street door when the shop has no back door (WallRules.
-## delivery_route picks one of these; any of them may be the one in use).
-static func _receiving(grid: SimGrid) -> Array[Vector2i]:
+## Where deliveries are put down: the one receiving cell DeliveryDock sets
+## its crates on (inside the first back door that reaches `store`, else
+## inside the street door). None when the shop has no store to carry to.
+static func _receiving(grid: SimGrid, store: Vector2i, lot: Rect2i) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
-	for edge: Vector3i in grid.segment_edges():
-		if grid.segment(edge) != SimGrid.Segment.DOORWAY:
-			continue
-		var ends: Array[Vector2i] = SimGrid.edge_cells(edge)
-		for index: int in ends.size():
-			var inside: Vector2i = ends[index]
-			var door: Vector2i = ends[ends.size() - 1 - index]
-			if grid.is_back_door(door) and grid.terrain(inside) == SimGrid.Terrain.FLOOR \
-					and grid.is_walkable(inside) and not out.has(inside):
-				out.append(inside)
-	if not out.is_empty():
+	if store == SimGrid.NO_CELL:
 		return out
-	for entry: Vector2i in grid.entries():
-		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
-			var inside: Vector2i = entry + step
-			if grid.terrain(inside) == SimGrid.Terrain.FLOOR and grid.is_walkable(inside) \
-					and grid.step_open(entry, inside) and not out.has(inside):
-				out.append(inside)
+	var route: Dictionary = WallRules.delivery_route(grid, store, lot)
+	if not route.is_empty():
+		out.append(route["drop"])
 	return out
+
+
+## True when an edit that opened nothing leaves the receiving cell where it
+## was: WallRules.delivery_route takes the first way in that works, an edit
+## that only closes cells cannot make an earlier one work, so the cell stands
+## while the street still reaches it and it still reaches the same store.
+## (No way in before means none after.) Two path lookups instead of a flood
+## of the whole shop on every hover.
+static func _receiving_stands(live: Survey, after: SimGrid, store: Vector2i) -> bool:
+	if store != live.store:
+		return false
+	if live.receiving.is_empty():
+		return true
+	var drop: Vector2i = live.receiving[0]
+	if not after.is_walkable(drop) or after.find_path(drop, store).is_empty():
+		return false
+	for entry: Vector2i in after.entries():
+		if after.is_walkable(entry) and not after.find_path(entry, drop).is_empty():
+			return true
+	return false
 
 
 static func _net(grid: SimGrid, seats: Dictionary[Vector2i, bool]) -> Net:

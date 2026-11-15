@@ -42,6 +42,7 @@ var _aisle_note: Dictionary = {}
 var _live_survey: AisleRules.Survey = null
 var _live_survey_version: int = -1
 var _live_survey_grid: SimGrid
+var _live_survey_lot: Rect2i = Rect2i()
 ## How many kinds of trip the last pinch check had to trace again (0 when
 ## the proposal came near none of them). For tests and the timing tool.
 var last_aisle_traced: int = 0
@@ -2497,8 +2498,11 @@ func _note_aisle_pinch(check: EditCheck, preview: SimGrid, result_id: int, added
 	if not check.ok:
 		return
 	var live: SimGrid = _sim.world.grid
-	if _live_survey == null or _live_survey_grid != live or _live_survey_version != live.version:
-		_live_survey = AisleRules.survey(live)
+	var lot: Rect2i = _footprint.lot if _footprint != null else Rect2i()
+	if _live_survey == null or _live_survey_grid != live or _live_survey_version != live.version \
+			or _live_survey_lot != lot:
+		_live_survey = AisleRules.survey(live, lot)
+		_live_survey_lot = lot
 		_live_survey_grid = live
 		_live_survey_version = live.version
 	var closed: Array[Vector2i] = []
@@ -2507,7 +2511,7 @@ func _note_aisle_pinch(check: EditCheck, preview: SimGrid, result_id: int, added
 	var changed: Array[Vector2i] = closed.duplicate()
 	var moved: PlacedItem = live.item(moved_id) if moved_id >= 0 else null
 	_append_item_cells(changed, moved)
-	var after: AisleRules.Survey = AisleRules.resurvey(_live_survey, preview, changed, moved != null)
+	var after: AisleRules.Survey = AisleRules.resurvey(_live_survey, preview, changed, moved != null, lot)
 	last_aisle_traced = after.traced
 	var cells: Array[Vector2i] = AisleRules.added_pinches(_live_survey.pinches, after)
 	if cells.is_empty():
