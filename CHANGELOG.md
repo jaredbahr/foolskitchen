@@ -228,6 +228,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Starting a new game no longer re-resets things the freshly loaded game scene has already set up: `_new_game()` is about half as long, and says which resets a new system still needs. No change in play. (#533)
 - The hosted Godot checks run the tests in four parallel shards instead of two, so the job finishes well inside its time limit again. (#531)
 - A new test plays real games (career days with a second site, a Creative game, a service in full swing, a save that will not load) and then starts a new one from the title, with F10 or with Continue, and checks that every save section and the first day of play match a game started from nothing. It found no leftovers. (#530)
 - The "local versus CI" difference in the staff advice capture was a branch behind `main`, not the game: for one commit, a seeded run gives the same result in a cloud container and on hosted CI. The capture's comment and the worker rules now say so, and `tools/check.sh` notes when a checkout is behind `main` and when a test shard was stopped by its timeout. (#525)
