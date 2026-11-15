@@ -14,11 +14,15 @@ extends RefCounted
 ## - the sink to every seat (clearing tables, #391);
 ## - where deliveries are put down to every store (#391): the one receiving
 ##   cell DeliveryDock uses (WallRules.delivery_route).
-## A cell on one of these routes is a pinch when both of its sides across one
+## A cell on one of these routes is narrow when both of its sides across one
 ## axis are closed (a wall, an item, a seat, or a wall segment between them),
 ## or when it is open on all four sides and both of its corners across one
 ## diagonal are closed (#391): between two things standing corner to corner
 ## there is only that one cell to step through.
+## A narrow cell is a pinch only when nobody can walk around it (Jared, #391:
+## "fewer, sharper"): with that cell shut, somewhere the trip goes could not
+## be reached at all. A plant in open floor, or one of two gaps side by side,
+## is never a pinch; the last way through is.
 ## Cells no route crosses are never flagged; a one-cell lane to a single seat
 ## is, since the guest and the server both walk it.
 ##
@@ -60,8 +64,12 @@ class Family extends RefCounted:
 	## Every cell the traced routes stand on or end at. A proposal that stays
 	## more than one cell away from all of them cannot change these routes.
 	var footing: Dictionary[Vector2i, bool] = {}
-	## The route cells that are pinches.
+	## The route cells that are narrow (is_narrow), and of those the pinches:
+	## the ones nobody can walk around.
+	var narrow: Array[Vector2i] = []
 	var pinches: Array[Vector2i] = []
+	## The ends a route was found to.
+	var reached: Array[Vector2i] = []
 
 
 ## The legal steps of one layout, worked out once per cell and shared by
@@ -161,7 +169,13 @@ static func resurvey(live: Survey, after: SimGrid, changed: Array[Vector2i], ope
 				and not _touches(known.footing, near):
 			family.cells = known.cells
 			family.footing = known.footing
-			family.pinches = known.pinches
+			family.narrow = known.narrow
+			family.reached = known.reached
+			# The routes stand, but a way around a narrow cell may have been
+			# closed anywhere. A pinch stays one: nothing opened.
+			for cell: Vector2i in known.narrow:
+				if known.pinches.has(cell) or _no_way_around(after, result.net, family, cell):
+					family.pinches.append(cell)
 		else:
 			_trace(after, result.net, family)
 			result.traced += 1
@@ -195,7 +209,9 @@ static func rerouted(after: SimGrid, cells: Array[Vector2i], changed: Array[Vect
 ## two things standing corner to corner, with this cell the only one to step
 ## through between them (the corner rule forbids cutting past either).
 ## Doorways and back doors are narrow on purpose and never count.
-static func is_pinch(grid: SimGrid, cell: Vector2i, seats: Dictionary[Vector2i, bool]) -> bool:
+## Narrow is not yet a pinch: a route cell is one only when there is also no
+## way around it (_no_way_around).
+static func is_narrow(grid: SimGrid, cell: Vector2i, seats: Dictionary[Vector2i, bool]) -> bool:
 	if grid.terrain(cell) != SimGrid.Terrain.FLOOR or grid.is_back_door(cell) or seats.has(cell):
 		return false
 	var closed: Array[bool] = []
@@ -406,7 +422,9 @@ static func _steps(grid: SimGrid, net: Net, index: int, guest: bool) -> PackedIn
 static func _trace(grid: SimGrid, net: Net, family: Family) -> void:
 	family.cells = {}
 	family.footing = {}
+	family.narrow = []
 	family.pinches = []
+	family.reached = []
 	if family.sources.is_empty() or family.targets.is_empty():
 		return
 	var count: int = net.width * net.height
@@ -432,7 +450,9 @@ static func _trace(grid: SimGrid, net: Net, family: Family) -> void:
 			if last < 0:
 				continue
 		elif starts.has(end):
+			family.reached.append(target)
 			continue
+		family.reached.append(target)
 		family.footing[_cell(net, last)] = true
 		if starts.has(last):
 			continue
@@ -445,9 +465,30 @@ static func _trace(grid: SimGrid, net: Net, family: Family) -> void:
 			if not family.cells.has(cell):
 				family.cells[cell] = true
 				family.footing[cell] = true
-				if is_pinch(grid, cell, net.seats):
-					family.pinches.append(cell)
+				if is_narrow(grid, cell, net.seats):
+					family.narrow.append(cell)
 			at = previous[at]
+	for cell: Vector2i in family.narrow:
+		if _no_way_around(grid, net, family, cell):
+			family.pinches.append(cell)
+
+
+## True when shutting `cell` would leave one of the family's ends with no
+## route at all: everyone going there has to pass through it.
+static func _no_way_around(grid: SimGrid, net: Net, family: Family, cell: Vector2i) -> bool:
+	var costs: PackedInt32Array = PackedInt32Array()
+	costs.resize(net.width * net.height)
+	costs.fill(-1)
+	var previous: PackedInt32Array = PackedInt32Array()
+	previous.resize(costs.size())
+	_tree(grid, net, family, costs, previous, _index(net, cell))
+	for target: Vector2i in family.reached:
+		if target == cell:
+			continue
+		var end: int = _index(net, target)
+		if (end < 0 or costs[end] < 0) and _approach(grid, net, target, costs, family.guest) < 0:
+			return true
+	return false
 
 
 ## The reached neighbour a route steps onto `target` from (a seat, which the
@@ -476,19 +517,23 @@ static func _approach(grid: SimGrid, net: Net, target: Vector2i, costs: PackedIn
 ## in, exactly as the binary heap this replaces ordered them (cost, then
 ## push order), so the trees are the same ones, several times faster.
 static func _tree(grid: SimGrid, net: Net, family: Family, costs: PackedInt32Array,
-		previous: PackedInt32Array) -> void:
+		previous: PackedInt32Array, barred: int = -1) -> void:
 	var buckets: Array[PackedInt32Array] = []
 	for _slot: int in _BUCKETS:
 		buckets.append(PackedInt32Array())
 	var waiting: int = 0
 	for source: Vector2i in family.sources:
 		var at: int = _index(net, source)
-		if at >= 0 and grid.is_walkable(source) and costs[at] < 0:
+		if at >= 0 and at != barred and grid.is_walkable(source) and costs[at] < 0:
 			costs[at] = 0
 			buckets[0].append(at)
 			waiting += 1
 	var done: PackedByteArray = PackedByteArray()
 	done.resize(costs.size())
+	# `barred` is a cell taken as shut (-1: none): nobody stands on it or
+	# cuts a corner past it, as with someone standing there.
+	if barred >= 0:
+		done[barred] = 1
 	var width: int = net.width
 	var cost: int = 0
 	while waiting > 0:
@@ -509,7 +554,12 @@ static func _tree(grid: SimGrid, net: Net, family: Family, costs: PackedInt32Arr
 				if done[next] != 0:
 					continue
 				var delta: int = absi(next - current)
-				var reached: int = cost + (_STRAIGHT if delta == 1 or delta == width else _DIAGONAL)
+				var straight: bool = delta == 1 or delta == width
+				if barred >= 0 and not straight:
+					var across: int = next % width - current % width
+					if current + across == barred or next - across == barred:
+						continue
+				var reached: int = cost + (_STRAIGHT if straight else _DIAGONAL)
 				if costs[next] >= 0 and costs[next] <= reached:
 					continue
 				costs[next] = reached

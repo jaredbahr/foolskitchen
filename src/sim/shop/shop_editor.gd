@@ -2479,7 +2479,8 @@ func _remember_aisle_pinch(check: EditCheck, item_id: int) -> void:
 			"text": AisleRules.REROUTE_WARNING if check.aisle_rerouted else AisleRules.WARNING}
 
 
-## A placement that newly narrows a walkway people use to one cell (#389):
+## A placement that newly narrows a walkway people use to one cell they
+## cannot walk around (#389, #391):
 ## door to tables and the pass, pass to tables, the kitchen stations, and
 ## since #391 the restroom, clearing tables to the sink and carrying
 ## deliveries to the stores. Like the seat cut-off warning it is on the item

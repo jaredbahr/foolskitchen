@@ -1,7 +1,8 @@
 extends TestCase
 ## #391: the aisle pinch pass. The faster route trees trace the routes the
 ## old ones did, a hover's re-survey equals a full survey, and the restroom,
-## clearing, delivery and corner-to-corner checks each have a fixture.
+## clearing, delivery and corner-to-corner checks each have a fixture. Only a
+## squeeze nobody can walk around warns (Jared: "fewer, sharper").
 
 class Catalogue extends ContentDB:
 	var definitions: Dictionary[StringName, ItemDef] = {}
@@ -230,29 +231,87 @@ func test_corner_to_corner_is_a_squeeze() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(["#######", "#.....#", "#.....#", "#.....#", "#.....#", "#.....#", "#######"])
 	var block: ItemDef = _def(&"block", ItemDef.Category.DECOR, [])
 	var middle: Vector2i = Vector2i(3, 3)
-	assert_false(AisleRules.is_pinch(grid, middle, {}))
+	assert_false(AisleRules.is_narrow(grid, middle, {}))
 	grid.place_def(block, Vector2i(2, 2), 0)
-	assert_false(AisleRules.is_pinch(grid, middle, {}), "one corner is not a squeeze")
+	assert_false(AisleRules.is_narrow(grid, middle, {}), "one corner is not a squeeze")
 	var far: PlacedItem = grid.place_def(block, Vector2i(4, 4), 0)
-	assert_true(AisleRules.is_pinch(grid, middle, {}), "two things corner to corner leave one cell between them")
+	assert_true(AisleRules.is_narrow(grid, middle, {}), "two things corner to corner leave one cell between them")
 	assert_false(REFERENCE.call("is_pinch", grid, middle, {} as Dictionary[Vector2i, bool]), "new in #391")
 	assert_true(grid.remove(far.id))
 	grid.place_def(block, Vector2i(4, 2), 0)
-	assert_false(AisleRules.is_pinch(grid, middle, {}), "two corners on the same side leave the other side open")
+	assert_false(AisleRules.is_narrow(grid, middle, {}), "two corners on the same side leave the other side open")
 	# A seat closes a corner as an item does.
-	assert_true(AisleRules.is_pinch(grid, middle, {Vector2i(2, 4): true} as Dictionary[Vector2i, bool]))
+	assert_true(AisleRules.is_narrow(grid, middle, {Vector2i(2, 4): true} as Dictionary[Vector2i, bool]))
 
 
-func test_a_corner_to_corner_squeeze_on_a_used_route_warns() -> void:
+func test_a_corner_to_corner_squeeze_with_no_way_around_is_a_pinch() -> void:
+	# Two walls step past each other: MIDDLE is open on all four sides, and
+	# the only cell joining the two halves of the room.
+	var rows: PackedStringArray = ["#########", "#....#..#", "#....#..#", "#.......#", "#..#....#", "#..#....#",
+		"#########"]
+	var middle: Vector2i = Vector2i(4, 3)
+	var grid: SimGrid = SimGrid.from_ascii(rows)
+	var basin: ItemDef = _def(&"basin", ItemDef.Category.STATION, [Vector2i.DOWN])
+	basin.station_type = &"sink"
+	grid.place_def(basin, Vector2i(1, 1), 0)
+	grid.place_def(_seat(), Vector2i(7, 4), 0)
+	assert_true(AisleRules.is_narrow(grid, middle, {}))
+	assert_eq(AisleRules.pinches(grid), [middle] as Array[Vector2i])
+	assert_eq(REFERENCE.call("pinches", grid), [] as Array[Vector2i], "new in #391")
+	# Open one of the walls and people can walk around: no pinch.
+	assert_true(grid.set_terrain(Vector2i(5, 1), SimGrid.Terrain.FLOOR))
+	assert_true(AisleRules.is_narrow(grid, middle, {}), "still narrow")
+	assert_eq(AisleRules.pinches(grid), [] as Array[Vector2i])
+
+
+func test_a_plant_people_can_walk_around_does_not_warn() -> void:
 	_start(DEEPER)
-	# A fridge corner to corner with the stove, on the way to the sink.
-	var check: EditCheck = _editor.check_buy(&"fridge", Vector2i(10, 3))
-	assert_true(check.ok, check.why)
-	assert_eq(check.aisle_pinches, [Vector2i(9, 2)] as Array[Vector2i])
-	assert_false(check.aisle_rerouted)
-	assert_eq(check.seat_warnings.get(0, ""), AisleRules.WARNING)
-	# One cell further along nothing stands corner to corner.
-	assert_eq(_editor.check_buy(&"fridge", Vector2i(11, 3)).aisle_pinches, [] as Array[Vector2i])
+	# Open floor in the door lane, the gap between two tables, the lane below
+	# the tables, the pass approach: each leaves a way round the plant.
+	for cell: Vector2i in [Vector2i(7, 13), Vector2i(5, 8), Vector2i(6, 11), Vector2i(4, 4), Vector2i(9, 5)]:
+		var check: EditCheck = _editor.check_buy(&"potted_plant", cell)
+		assert_true(check.ok, check.why)
+		assert_eq(check.aisle_pinches, [] as Array[Vector2i], "plant at %s" % cell)
+		assert_false(check.seat_warnings.has(0), "plant at %s" % cell)
+	# So does a fridge corner to corner with the stove.
+	assert_eq(_editor.check_buy(&"fridge", Vector2i(10, 3)).aisle_pinches, [] as Array[Vector2i])
+	# In the whole room only eight spots still warn: each takes the last way
+	# through (half the street door, or the kitchen lane by the pass).
+	var warned: Array[Vector2i] = []
+	for cell: Vector2i in _sim.world.grid.cells():
+		var check: EditCheck = _editor.check_buy(&"potted_plant", cell)
+		if check.ok and not check.aisle_pinches.is_empty():
+			warned.append(cell)
+	assert_eq(warned, [Vector2i(4, 2), Vector2i(7, 2), Vector2i(9, 2), Vector2i(5, 3), Vector2i(7, 3),
+		Vector2i(8, 3), Vector2i(7, 15), Vector2i(8, 15)] as Array[Vector2i])
+	var door: EditCheck = _editor.check_buy(&"potted_plant", Vector2i(7, 15))
+	assert_eq(door.aisle_pinches, [Vector2i(8, 15)] as Array[Vector2i], "half the street door")
+	assert_eq(door.seat_warnings.get(0, ""), AisleRules.WARNING)
+
+
+func test_closing_the_way_around_far_off_makes_the_old_gap_a_pinch() -> void:
+	# Two one-cell gaps in a wall. The trip uses the near one; while the far
+	# one is open people can walk around, so nothing warns.
+	var grid: SimGrid = SimGrid.from_ascii(["#########", "#...#...#", "#.......#", "#...#...#", "#...#...#",
+		"#...#...#", "#.......#", "#...#...#", "#########"])
+	var basin: ItemDef = _def(&"basin", ItemDef.Category.STATION, [Vector2i.DOWN])
+	basin.station_type = &"sink"
+	grid.place_def(basin, Vector2i(1, 1), 0)
+	grid.place_def(_seat(), Vector2i(7, 2), 0)
+	var near: Vector2i = Vector2i(4, 2)
+	var live: AisleRules.Survey = AisleRules.survey(grid)
+	assert_true(live.families[SINK_TO_SEATS].narrow.has(near))
+	assert_eq(live.pinches, [] as Array[Vector2i])
+	# Plugging the far gap touches no route, so nothing is traced again, yet
+	# the near gap is now the only way through.
+	var preview: SimGrid = _copy(grid)
+	var plug: PlacedItem = preview.place_def(_def(&"block", ItemDef.Category.DECOR, []), Vector2i(4, 6), 0)
+	var again: AisleRules.Survey = AisleRules.resurvey(live, preview, _cells_of(plug), false)
+	assert_eq(again.traced, 0)
+	assert_eq(again.pinches, [near] as Array[Vector2i])
+	_assert_same(again, AisleRules.survey(preview), "far gap plugged")
+	assert_eq(AisleRules.rerouted(preview, again.pinches, _cells_of(plug)), [near] as Array[Vector2i],
+		"blamed on the gap, not on the plug")
 
 
 func test_a_reroute_through_an_old_gap_is_blamed_on_the_gap() -> void:
@@ -278,8 +337,8 @@ func test_a_reroute_through_an_old_gap_is_blamed_on_the_gap() -> void:
 	grid.place_def(catalogue.item(&"counter"), Vector2i(4, 1), 0)
 	grid.place_def(catalogue.item(&"stool"), Vector2i(4, 2), 0)
 	var gap: Vector2i = Vector2i(9, 4)
-	assert_true(AisleRules.is_pinch(grid, gap, {}), "the gap is one cell wide already")
-	assert_eq(AisleRules.pinches(grid), [] as Array[Vector2i], "but nobody walks through it")
+	assert_true(AisleRules.is_narrow(grid, gap, {}), "the gap is one cell wide already")
+	assert_eq(AisleRules.pinches(grid), [] as Array[Vector2i], "but nobody has to walk through it")
 	var check: EditCheck = _editor.check_buy(&"long_counter", Vector2i(1, 4))
 	assert_true(check.ok, check.why)
 	assert_eq(check.aisle_pinches, [gap] as Array[Vector2i])
@@ -323,26 +382,29 @@ func _assert_only_family_squeezes(grid: SimGrid, index: int) -> void:
 	assert_eq(REFERENCE.call("pinches", grid), [] as Array[Vector2i], "the #389 pass did not look at this trip")
 
 
-## The four #389 trips walk the cells the old trees walked, and squeeze where
-## they did; anything more is a corner-to-corner squeeze.
+## The four #389 trips walk the cells the old trees walked and are narrow
+## where those squeezed; anything more is a corner-to-corner squeeze. (Which
+## narrow cells warn is the #391 rule: only those with no way around.)
 func _assert_matches_reference(grid: SimGrid, what: String) -> void:
 	var survey: AisleRules.Survey = AisleRules.survey(grid)
 	var cells: Dictionary[Vector2i, bool] = {}
-	var pinches: Array[Vector2i] = []
+	var narrow: Array[Vector2i] = []
 	for index: int in range(DOOR_TO_SEATS, DOOR_TO_SEATS + 4):
 		cells.merge(survey.families[index].cells)
+		for cell: Vector2i in survey.families[index].narrow:
+			if not narrow.has(cell):
+				narrow.append(cell)
 		for cell: Vector2i in survey.families[index].pinches:
-			if not pinches.has(cell):
-				pinches.append(cell)
+			assert_true(survey.families[index].narrow.has(cell), "a pinch is a narrow cell, %s" % what)
 	var expected: Dictionary[Vector2i, bool] = REFERENCE.call("route_cells", grid)
 	assert_eq(_sorted(cells.keys()), _sorted(expected.keys()), "routes, %s" % what)
 	var old: Array[Vector2i] = REFERENCE.call("pinches", grid)
 	for cell: Vector2i in old:
-		assert_true(pinches.has(cell), "old pinch %s kept, %s" % [cell, what])
+		assert_true(narrow.has(cell), "old pinch %s is narrow, %s" % [cell, what])
 	var seats: Dictionary[Vector2i, bool] = survey.net.seats
-	for cell: Vector2i in pinches:
+	for cell: Vector2i in narrow:
 		assert_true(old.has(cell) or not REFERENCE.call("is_pinch", grid, cell, seats),
-			"new pinch %s is a corner squeeze, %s" % [cell, what])
+			"new narrow cell %s is a corner squeeze, %s" % [cell, what])
 
 
 func _assert_same(actual: AisleRules.Survey, expected: AisleRules.Survey, what: String) -> void:
@@ -356,6 +418,7 @@ func _assert_same(actual: AisleRules.Survey, expected: AisleRules.Survey, what: 
 		assert_eq(mine.sources, full.sources, "trip %d starts, %s" % [index, what])
 		assert_eq(mine.targets, full.targets, "trip %d ends, %s" % [index, what])
 		assert_eq(_sorted(mine.cells.keys()), _sorted(full.cells.keys()), "trip %d cells, %s" % [index, what])
+		assert_eq(_sorted(mine.narrow), _sorted(full.narrow), "trip %d narrow cells, %s" % [index, what])
 		assert_eq(_sorted(mine.pinches), _sorted(full.pinches), "trip %d pinches, %s" % [index, what])
 
 

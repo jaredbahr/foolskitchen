@@ -111,7 +111,10 @@ func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cel
 	var changes_before: int = _changes.size()
 	var check: EditCheck = _editor.check_buy(&"table_4", partial_origin)
 	assert_true(check.ok)
-	assert_eq(check.seat_warnings.get(0, ""), "Only 3 of 4 seats usable")
+	# The table also takes the way round the pass corner, so the one cell left
+	# there (7, 5) is a squeeze nobody can walk around (#391): a second line.
+	assert_eq(String(check.seat_warnings.get(0, "")).split("\n")[0], "Only 3 of 4 seats usable")
+	assert_eq(check.aisle_pinches, [Vector2i(7, 5)] as Array[Vector2i])
 	assert_false(check.unreachable.has(0))
 	assert_eq(_editor.to_dict(), before)
 	assert_eq(_cash, cash_before)
@@ -122,7 +125,7 @@ func test_partial_table_capacity_warning_is_read_only_and_uses_actual_usable_cel
 	assert_eq(table.seat_cells.size(), 3)
 	assert_eq(DiningSeats.nominal_capacity(_sim.world.grid, table), 4)
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 3)
-	assert_eq(_editor.check_current().seat_warnings.get(table.id, ""), "Only 3 of 4 seats usable")
+	assert_eq(String(_editor.check_current().seat_warnings.get(table.id, "")).split("\n")[0], "Only 3 of 4 seats usable")
 	assert_true(_editor.move(table.id, repair_origin, 0))
 	assert_eq(DiningSeats.largest_usable_capacity(_sim.world.grid), 4)
 	# The repaired pose may still narrow an aisle (#389); the seat warning is gone.
