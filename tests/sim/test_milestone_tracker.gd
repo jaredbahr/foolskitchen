@@ -5,9 +5,9 @@ extends TestCase
 const STARTER: MilestoneSet = preload("res://data/milestones/starter.tres")
 
 
-func test_starter_catalogue_has_twelve_valid_goals_and_every_condition() -> void:
+func test_starter_catalogue_has_twenty_two_valid_goals_and_every_condition() -> void:
 	assert_true(STARTER.is_valid())
-	assert_eq(STARTER.milestones.size(), 12)
+	assert_eq(STARTER.milestones.size(), 22)
 	var kinds: Dictionary[int, bool] = {}
 	for goal: Milestone in STARTER.milestones:
 		assert_true(goal.is_valid())
@@ -17,6 +17,20 @@ func test_starter_catalogue_has_twelve_valid_goals_and_every_condition() -> void
 		assert_true(kinds.has(kind), "all seven authored condition kinds are present")
 	assert_not_null(STARTER.by_id(&"clean_run"))
 	assert_null(STARTER.by_id(&"missing_goal"))
+
+
+func test_every_authored_goal_can_be_reached_through_day_closes() -> void:
+	var tracker: MilestoneTracker = MilestoneTracker.new()
+	for day: int in range(1, 30):
+		var observation: MilestoneDay = _day(day)
+		observation.served_today = 35
+		observation.reputation = 4.5
+		observation.operating_profit = 125
+		observation.owner_level = 6
+		observation.staff_count = 5
+		tracker.evaluate_day(observation, STARTER)
+	for goal: Milestone in STARTER.milestones:
+		assert_true(tracker.is_completed(goal.id), goal.title + " can be earned")
 
 
 func test_each_single_day_condition_completes_at_its_threshold_only_once() -> void:
