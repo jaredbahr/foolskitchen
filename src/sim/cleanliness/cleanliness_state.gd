@@ -18,6 +18,7 @@ var _messes: Dictionary[Vector2i, int] = {}
 ## worst band or the floor spot cap, and never drawn.
 var _restroom_spots: Dictionary[Vector2i, bool] = {}
 var _worst_today: int = 0
+var difficulty: Difficulty = Difficulty.new()
 
 
 func _init(grid: SimGrid, tuning: CleanlinessTuning, random: RandomNumberGenerator) -> void:
@@ -40,7 +41,7 @@ func use_rng(random: RandomNumberGenerator) -> bool:
 func try_spawn_at_departed_seat(seat_cell: Vector2i) -> bool:
 	if not _can_place(seat_cell):
 		return false
-	if _rng.randf() >= _tuning.seat_departure_chance:
+	if _rng.randf() >= _mess_chance(_tuning.seat_departure_chance):
 		return false
 	_place(seat_cell)
 	return true
@@ -60,7 +61,7 @@ func try_spawn_on_arrival(entry: Vector2i) -> Vector2i:
 		return SimGrid.NO_CELL
 	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return a.y < b.y or (a.y == b.y and a.x < b.x))
-	if _rng.randf() >= _tuning.arrival_chance:
+	if _rng.randf() >= _mess_chance(_tuning.arrival_chance):
 		return SimGrid.NO_CELL
 	var chosen: Vector2i = candidates[_rng.randi_range(0, candidates.size() - 1)]
 	_place(chosen)
@@ -202,3 +203,8 @@ func _can_place(cell: Vector2i) -> bool:
 func _place(cell: Vector2i) -> void:
 	_spots[cell] = true
 	_worst_today = maxi(_worst_today, spot_count())
+
+
+func _mess_chance(base: float) -> float:
+	var multiplier: float = difficulty.mult(&"messes") if difficulty != null else 1.0
+	return clampf(base * multiplier, 0.0, 1.0)

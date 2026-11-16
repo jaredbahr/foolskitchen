@@ -35,6 +35,14 @@ var visit_tuning: VisitTuning = VISIT_TUNING
 ## Session-latched deterministic growth, independent of visit-kind/hour weights.
 var demand_factor: float = 1.0
 var demand_tuning: DemandTuning = null
+## Current per-run difficulty; Main shares the same object with forecast users.
+var difficulty: Difficulty = Difficulty.new():
+	set(value):
+		difficulty = value if value != null else Difficulty.new()
+		if cleanliness != null:
+			cleanliness.difficulty = difficulty
+		if mishaps != null:
+			mishaps.difficulty = difficulty
 ## Shop-wide server capacity. Morning upgrades select one of these three values.
 var carry_capacity: int:
 	get:
@@ -603,6 +611,7 @@ func configure_cleanliness(state: CleanlinessState, tuning: CleanlinessTuning) -
 	if world == null or state == null or tuning == null or not tuning.is_valid() or cleanliness != null:
 		return false
 	cleanliness = state
+	cleanliness.difficulty = difficulty
 	clean_tasks = CleanTaskController.new(world, state, tuning)
 	clean_tasks.bind_tanks(aquarium)
 	clean_tasks.sync_spots()
@@ -614,6 +623,7 @@ func configure_messes(tuning: MessTuning, random: RandomNumberGenerator) -> bool
 	if cleanliness == null or tuning == null or not tuning.is_valid() or random == null or mishaps != null:
 		return false
 	mishaps = MishapState.new(tuning, random)
+	mishaps.difficulty = difficulty
 	clean_tasks.bind_mishaps(mishaps)
 	return true
 
@@ -746,6 +756,16 @@ static func _vibe_patience(budget: int, multiplier: float, tuning: VibeTuning = 
 	if scaled >= float(9223372036854775807):
 		return 9223372036854775807
 	return roundi(scaled)
+
+
+## Difficulty scales the final arrival budget after cleanliness, vibe and events.
+static func _difficulty_patience(budget: int, multiplier: float) -> int:
+	if budget <= 0 or not is_finite(multiplier) or multiplier <= 0.0:
+		return budget
+	var scaled: float = float(budget) * multiplier
+	if not is_finite(scaled) or scaled >= float(9223372036854775807):
+		return 9223372036854775807
+	return maxi(1, roundi(scaled))
 
 
 ## Latches every menu dish the fridge itself can no longer cover. It stays
@@ -1131,6 +1151,9 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		if event_patience_multiplier != 1.0:
 			customer.queue_patience = maxi(1, roundi(customer.queue_patience * event_patience_multiplier))
 			customer.food_patience = maxi(1, roundi(customer.food_patience * event_patience_multiplier))
+		var difficulty_patience: float = difficulty.mult(&"patience") if difficulty != null else 1.0
+		customer.queue_patience = _difficulty_patience(customer.queue_patience, difficulty_patience)
+		customer.food_patience = _difficulty_patience(customer.food_patience, difficulty_patience)
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
 	if publish:
@@ -1393,6 +1416,7 @@ func record_departure(customer: CustomerAgent) -> void:
 					standard_price = recipe.standard_price
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		visit.difficulty_review_bonus = difficulty.review_bonus() if difficulty != null else 0.0
 		visit.ate_signature_dish = not effective_signature_recipe_id.is_empty() \
 			and visit.consumed_recipe_ids.has(effective_signature_recipe_id)
 		visit.sticky_floor = mishaps != null and cleanliness != null \

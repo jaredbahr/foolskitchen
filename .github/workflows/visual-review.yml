@@ -188,6 +188,8 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/blueprint-looks --scene=res://tools/blueprint_looks_review.tscn --speed=0 --frames=12,60
           FK_MENU_REVIEW_STAGE=open bash tools/screenshot.sh --out=screens/visual-review/menu-access-open --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/difficulty-title --scene=res://tools/difficulty_title_review.tscn --speed=0 --frames=60
+          bash tools/screenshot.sh --out=screens/visual-review/difficulty-settings --scene=res://tools/difficulty_settings_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/shortcuts --shortcuts --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/large-cash --scene=res://tools/large_cash_review.tscn --speed=0 --frames=12
