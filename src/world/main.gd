@@ -619,6 +619,8 @@ func _bind_world_presentation() -> void:
 		_staff_panel.raise_decline_requested.connect(_on_staff_raise_decline_requested)
 	if not _staff_panel.job_priority_requested.is_connected(_on_staff_job_priority_requested):
 		_staff_panel.job_priority_requested.connect(_on_staff_job_priority_requested)
+	if not _staff_panel.rename_requested.is_connected(staff_rename):
+		_staff_panel.rename_requested.connect(staff_rename)
 	if not _staff_panel.transfer_requested.is_connected(_on_staff_transfer_requested):
 		_staff_panel.transfer_requested.connect(_on_staff_transfer_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
@@ -1026,6 +1028,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_mark_input_handled()
 		return
 	if event is InputEventKey and _build_catalogue != null and _build_catalogue.blueprint_name_has_focus():
+		return
+	if key != null and _staff_panel != null and _staff_panel.name_edit_has_focus():
 		return
 	if is_settings_visible():
 		var settings_key: InputEventKey = event as InputEventKey
@@ -2853,6 +2857,7 @@ func _report_sources(day: int) -> DayReportSources:
 	sources.regulars = regulars
 	sources.viral = viral_review
 	sources.owner = owner_progress
+	sources.staff_nicknames = staff_roster.nicknames()
 	sources.service_events = service_events
 	sources.notes = day_notes
 	sources.reputation_average = reputation.average()
@@ -4646,6 +4651,22 @@ func can_view_staff() -> bool:
 
 func can_edit_staff() -> bool:
 	return can_view_staff() and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+## A nickname changes presentation on the same live person. The existing
+## roster provider writes it at the next morning autosave.
+func staff_rename(id: StringName, text: String) -> bool:
+	if not can_view_staff():
+		return false
+	var name_text: String = staff_roster.rename_member(id, text)
+	if name_text.is_empty():
+		return false
+	var employee: StaffAgent = sim.employee(id)
+	if employee != null:
+		employee.display_name = name_text
+	_staff_panel.refresh()
+	_inspect_panel.refresh()
+	return true
 
 
 ## Selection changes apply at the next pick. Install a detached row on the

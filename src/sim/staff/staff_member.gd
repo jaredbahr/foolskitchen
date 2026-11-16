@@ -6,6 +6,7 @@ extends Resource
 ## candidate pool. Kept as is so candidate draws below Tier 3 never change.
 const ROLES: Array[StringName] = [&"cook", &"server", &"cleaner"]
 const MAX_WORK_COUNT: int = 9007199254740991
+const MAX_NICKNAME_LENGTH: int = 20
 ## One mapping owns both task grouping and player-facing words; everything else
 ## is Other. Drinks poured count as served; mopping and degreasing as cleaned.
 ## Served and washed count plates, so one batched trip can add several.
@@ -24,7 +25,11 @@ const WORK_GROUPS: Array[Dictionary] = [
 const MANAGER: StringName = &"manager"
 
 @export var id: StringName = &""
-@export var display_name: String = ""
+@export var display_name: String = "":
+	get:
+		return original_name if _nickname.is_empty() else _nickname
+	set(value):
+		original_name = value
 @export var role: StringName = &"cook"
 @export_range(1, 5) var skill: int = 3
 @export var wage: int = 0
@@ -36,12 +41,15 @@ var growth: StaffGrowth = null
 var _job_priorities: StaffJobPriorities = null
 var _work_today: Dictionary[String, int] = {}
 var _work_total: Dictionary[String, int] = {}
+var original_name: String = ""
+var _nickname: String = ""
 
 
 func copy() -> StaffMember:
 	var member: StaffMember = StaffMember.new()
 	member.id = id
-	member.display_name = display_name
+	member.display_name = original_name
+	member._nickname = _nickname
 	member.role = role
 	member.skill = skill
 	member.wage = wage
@@ -53,6 +61,29 @@ func copy() -> StaffMember:
 	member._work_today = _work_today.duplicate()
 	member._work_total = _work_total.duplicate()
 	return member
+
+
+## Empty input restores the employee's hiring name. Reject invalid edits
+## before replacing the current nickname.
+func set_nickname(value: String) -> bool:
+	var normalized: Variant = normalized_nickname(value)
+	if normalized == null:
+		return false
+	_nickname = "" if normalized == original_name else String(normalized)
+	return true
+
+
+func nickname() -> String:
+	return _nickname
+
+
+static func normalized_nickname(value: String) -> Variant:
+	for index: int in value.length():
+		var code: int = value.unicode_at(index)
+		if code < 32 or (code >= 127 and code <= 159) or code == 8232 or code == 8233:
+			return null
+	var trimmed: String = value.strip_edges()
+	return trimmed if trimmed.length() <= MAX_NICKNAME_LENGTH else null
 
 
 ## Old saves and authored candidates start with zero XP and a neutral mood.
@@ -124,20 +155,23 @@ static func _work_phrase(counts: Dictionary[String, int]) -> String:
 
 
 func to_dict() -> Dictionary:
-	return {"id": String(id), "name": display_name, "role": String(role),
+	var row: Dictionary = {"id": String(id), "name": original_name, "role": String(role),
 		"skill": skill, "wage": wage, "trait": String(trait_id),
 		"growth": growth_state().to_dict(), "priorities": priority_state().to_dict(),
 		"work": work_total()}
+	if not _nickname.is_empty():
+		row["nickname"] = _nickname
+	return row
 
 
 static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	if not data is Dictionary or catalogue == null:
 		return null
 	var row: Dictionary = data
-	if row.size() < 6 or row.size() > 9:
+	if row.size() < 6 or row.size() > 10:
 		return null
 	for key: Variant in row:
-		if not ["id", "name", "role", "skill", "wage", "trait", "growth", "priorities", "work"].has(key):
+		if not ["id", "name", "role", "skill", "wage", "trait", "growth", "priorities", "work", "nickname"].has(key):
 			return null
 	for key: String in ["id", "name", "role", "trait"]:
 		if not row.get(key) is String or String(row[key]).strip_edges().is_empty():
@@ -147,6 +181,11 @@ static func from_dict(data: Variant, catalogue: StaffCatalogue) -> StaffMember:
 	var member: StaffMember = StaffMember.new()
 	member.id = StringName(row["id"])
 	member.display_name = row["name"]
+	if row.has("nickname"):
+		var nickname_value: Variant = row["nickname"]
+		if not nickname_value is String or not member.set_nickname(nickname_value) \
+				or member._nickname.is_empty() or member._nickname != nickname_value:
+			return null
 	member.role = StringName(row["role"])
 	member.skill = int(row["skill"])
 	member.wage = int(row["wage"])

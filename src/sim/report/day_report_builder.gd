@@ -19,6 +19,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 		report.haggle_percent = int(sources.haggle_receipt["percent"])
 		report.haggle_saved = int(sources.haggle_receipt["saved"])
 	report.staff_activity = sources.sim.staff_activity.snapshot()
+	report.staff_nicknames = sources.staff_nicknames.duplicate()
 	report.restaurant_name = sources.menu.restaurant_name() if sources.menu != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(sources.regulars)
 	report.critic_lines = FoodCritic.report_lines(sources.sim.critic_result)

@@ -221,7 +221,7 @@ func show_report(report: DayReport) -> void:
 	critic_summary.text = "\n".join(PackedStringArray(report.critic_lines.slice(1)))
 	critic_summary.visible = report.critic_lines.size() > 1
 	_fill_reasons(report.leave_reasons)
-	_render_team(report.staff_activity, report.leave_reasons)
+	_render_team(report.staff_activity, report.leave_reasons, report.staff_nicknames)
 	_clear(_low_stock)
 	for line: String in report.low_stock:
 		_add_label(_low_stock, line)
@@ -311,7 +311,7 @@ func _render_demand(forecast: Dictionary) -> void:
 	_demand_section.visible = not _demand_summary.text.is_empty()
 
 
-func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
+func _render_team(summary: Dictionary, leave_reasons: Dictionary, nicknames: Array[String]) -> void:
 	var clean: Dictionary = StaffActivity.public_snapshot(summary)
 	var rows: VBoxContainer = %TeamActivityRows
 	for index: int in range(StaffAdviceText.ROLES.size()):
@@ -321,7 +321,16 @@ func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
 	var advice: Label = %TeamAdvice
 	advice.text = StaffAdviceText.recommendation(STAFF_ADVICE_RULES.recommendation(clean, leave_reasons))
 	advice.visible = not advice.text.is_empty()
-	(%TeamSection as VBoxContainer).visible = not clean.is_empty()
+	var section: VBoxContainer = %TeamSection
+	var names: Label = section.get_node_or_null("StaffNicknames") as Label
+	if names == null and not nicknames.is_empty():
+		names = _add_label(section, "")
+		names.name = "StaffNicknames"
+		section.move_child(names, rows.get_index())
+	if names != null:
+		names.text = "Staff nicknames: " + ", ".join(nicknames)
+		names.visible = not nicknames.is_empty()
+	section.visible = not clean.is_empty() or not nicknames.is_empty()
 
 
 func _bind_nodes() -> void:
