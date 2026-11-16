@@ -45,6 +45,7 @@ CAPTURE_FRAMES = {
         "lease-short": (12,),
         "lease-expand": (12,),
         "staff": (12,),
+        "staff-traits": (60,),
         "property": (12,),
         "site-card": (12, 30),
         "haggle": (30, 90),

@@ -711,6 +711,9 @@ func _on_task_completed(task: SimTask) -> void:
 			mark_table_dirty(table_id)
 		else:
 			dirty_tables.erase(table_id)
+			var worker: StaffAgent = sim.world.agent(task.claimed_by) as StaffAgent
+			if worker != null and worker.cleans_bussed_seats():
+				sim.clean_bussed_seats(sim.world.grid.item(table_id))
 		_ensure_wash_task()
 		return
 	if task.kind == &"wash":

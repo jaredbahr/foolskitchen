@@ -128,6 +128,7 @@ jobs:
           bash tools/screenshot.sh --out=screens/visual-review/lease-short --menu --lease-review=short --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/lease-expand --lease-review=expand --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/staff --staff --speed=0 --frames=12
+          bash tools/screenshot.sh --out=screens/visual-review/staff-traits --scene=res://tools/staff_traits_review.tscn --speed=0 --frames=60
           bash tools/screenshot.sh --out=screens/visual-review/property --property-review --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/site-card --site-card-review --speed=0 --frames=12,30
           bash tools/screenshot.sh --out=screens/visual-review/haggle --scene=res://tools/haggle_review.tscn --speed=0 --frames=30,90

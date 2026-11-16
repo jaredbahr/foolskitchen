@@ -30,6 +30,7 @@ var trait_id: StringName = &"steady"
 var cook_quality_bonus: float = 0.0
 var food_patience_multiplier: float = 1.0
 var _walk_multiplier: float = 1.0
+var _trait: StaffTrait
 
 var task: SimTask = null
 var step_index: int = 0
@@ -82,6 +83,7 @@ func configure_member(member: StaffMember, definition: StaffTrait) -> void:
 		skills[staff_role] = member.growth_state().skill_level(StaffMember._primary_skill(staff_role))
 	move_speed = move_speed / _walk_multiplier * definition.walk_multiplier
 	_walk_multiplier = definition.walk_multiplier
+	_trait = definition
 	cook_quality_bonus = definition.cook_quality_bonus
 	food_patience_multiplier = definition.food_patience_multiplier
 
@@ -102,7 +104,31 @@ func job_priorities() -> StaffJobPriorities:
 
 
 func movement_multiplier() -> float:
-	return _walk_multiplier
+	return _walk_multiplier * _shift_speed_multiplier()
+
+
+func _shift_speed_multiplier() -> float:
+	if _trait == null or (_trait.early_speed_multiplier == 1.0 and _trait.late_speed_multiplier == 1.0):
+		return 1.0
+	var world: SimWorld = movement_world()
+	if world == null:
+		return 1.0
+	var minute: int = world.clock.display_minutes()
+	if minute < 12 * 60:
+		return _trait.early_speed_multiplier
+	if minute >= 18 * 60:
+		return _trait.late_speed_multiplier
+	return 1.0
+
+
+## The static trait is already baked into move_speed on roster install. The
+## clock's multiplier changes an edge's tick budget without changing its base.
+func _baseline_move_speed(_multiplier: float) -> float:
+	return move_speed / _walk_multiplier
+
+
+func cleans_bussed_seats() -> bool:
+	return _trait != null and _trait.cleans_seat_dirt
 
 
 ## Physical meals in hand, not a retained delivery batch before re-pickup.
@@ -125,9 +151,9 @@ func skill_for(task_role: StringName) -> int:
 	return skills.get(r, 1)
 
 
-## Work units per tick for a task role: 0.7 at skill 1 up to 1.1 at skill 5.
+## Base work units per tick run from 0.7 at skill 1 to 1.1 at skill 5.
 func work_speed(task_role: StringName) -> float:
-	return 0.6 + 0.1 * skill_for(task_role)
+	return (0.6 + 0.1 * skill_for(task_role)) * _shift_speed_multiplier()
 
 
 ## Gives the task back (drop) and frees held cells when leaving the world.
@@ -605,6 +631,8 @@ func _walk(world: SimWorld) -> void:
 func _run_work(world: SimWorld, s: TaskStep) -> void:
 	if not _step_started:
 		work_left = float(s.ticks)
+		if task.kind == &"bus_table" and _trait != null:
+			work_left *= _trait.bussing_duration_multiplier
 		_step_started = true
 	var factor: float = float(s.work_rate.call(self)) if s.work_rate.is_valid() else 1.0
 	work_left -= work_speed(task.role) * factor

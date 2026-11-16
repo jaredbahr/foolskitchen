@@ -572,6 +572,17 @@ func clean_all_spots() -> int:
 	return cleaned
 
 
+## A careful bussed table clears ordinary dirt from its own seats.
+func clean_bussed_seats(table: PlacedItem) -> void:
+	if cleanliness == null or table == null:
+		return
+	var changed: bool = false
+	for seat: Vector2i in table.seat_cells:
+		changed = cleanliness.clear_seat_dirt(seat) or changed
+	if changed and clean_tasks != null:
+		clean_tasks.sync_spots()
+
+
 ## Uses `random` for arrivals (the spawner and future guests). The game session
 ## passes GameState.rng(&"customers") so the stream is saved and seeded per run.
 func use_rng(random: RandomNumberGenerator) -> void:

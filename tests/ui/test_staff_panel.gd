@@ -120,6 +120,10 @@ func test_candidate_trait_text_describes_only_the_bonus_available_to_their_role(
 			"text": "Cheerful: Guests they serve have 10% more patience for food."},
 		{"role": &"cleaner", "trait": &"cheerful",
 			"text": "Cheerful: Friendly manner. No special bonus in this role."},
+		{"role": &"cook", "trait": &"night_owl",
+			"text": "Night owl: Walks and works 10% faster from 6 pm and 5% slower before noon."},
+		{"role": &"server", "trait": &"neat_freak",
+			"text": "Neat freak: Clears dirt from the seats when bussing a table, but takes 10% longer."},
 	]
 	for example: Dictionary in cases:
 		var saved: Dictionary = _roster.to_dict()
