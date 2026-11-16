@@ -189,6 +189,8 @@ jobs:
           FK_MENU_REVIEW_STAGE=open bash tools/screenshot.sh --out=screens/visual-review/menu-access-open --scene=res://tools/menu_access_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/settings --settings --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/shortcuts --shortcuts --speed=0 --frames=12
+          SYSTEM_GUIDE_REVIEW_PAGE="Menu and prices" bash tools/screenshot.sh --out=screens/visual-review/guide-menu --scene=res://tools/system_guide_review.tscn --speed=0 --frames=30
+          SYSTEM_GUIDE_REVIEW_PAGE=Loans bash tools/screenshot.sh --out=screens/visual-review/guide-loans --scene=res://tools/system_guide_review.tscn --speed=0 --frames=30
           bash tools/screenshot.sh --out=screens/visual-review/settings-world --settings-world --speed=0 --frames=90
           bash tools/screenshot.sh --out=screens/visual-review/large-cash --scene=res://tools/large_cash_review.tscn --speed=0 --frames=12
           bash tools/screenshot.sh --out=screens/visual-review/hud-1280 --hud-layout --window-size=1280x720 --speed=0 --frames=12,90

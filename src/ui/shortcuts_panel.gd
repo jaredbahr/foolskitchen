@@ -3,6 +3,7 @@ extends Control
 ## Modal keyboard reference. It does not pause or otherwise change the game.
 
 signal close_requested
+signal guide_requested
 
 const GROUP_HEADING_SIZE: int = 17
 const CELL_SIZE: int = 15
@@ -17,6 +18,8 @@ const VIEW_MARGIN: float = 16.0
 
 func _ready() -> void:
 	_close_button.pressed.connect(_on_close_pressed)
+	var guide_button: Button = $Panel/Column/Header/Guide
+	guide_button.pressed.connect(_on_guide_pressed)
 	_build_rows()
 	resized.connect(_layout_card)
 	_content.minimum_size_changed.connect(_layout_card)
@@ -54,6 +57,10 @@ func _build_rows() -> void:
 			cells.add_child(key_label)
 			cells.add_child(action_label)
 			_content.add_child(cells)
+
+
+func _on_guide_pressed() -> void:
+	guide_requested.emit()
 
 
 func _on_close_pressed() -> void:

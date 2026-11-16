@@ -197,6 +197,51 @@ func test_f1_panel_is_modal_nonpausing_and_escape_restores_focus() -> void:
 	await _send_key(KEY_F1, false)
 
 
+func test_guide_opens_from_the_hud_and_f1_with_normal_input() -> void:
+	await _start_main()
+	await _frame()
+	var hud_button: Button = _main.get_node("HUD/Top/Row/Guide") as Button
+	await _click(hud_button.get_global_rect().get_center())
+	assert_true(_main.call("is_system_guide_visible"), "HUD button opens the Guide")
+	var panel: Control = _main.get_node("Overlay/GuidePanel") as Control
+	var topics: ItemList = panel.get_node("Card/Column/Pages/Topics") as ItemList
+	var heading: Label = panel.get_node("Card/Column/Pages/Reading/Article/Heading") as Label
+	var body: Label = panel.get_node("Card/Column/Pages/Reading/Article/Body") as Label
+	assert_eq(topics.item_count, 9)
+	assert_eq(heading.text, "Menu and prices")
+	assert_false(body.text.is_empty())
+	assert_eq(_main.get_viewport().gui_get_focus_owner(), topics)
+	await _send_key(KEY_DOWN, true)
+	assert_eq(heading.text, "Stock", "keyboard selection changes the displayed page")
+	await _send_key(KEY_DOWN, false)
+	await _send_key(KEY_2, true)
+	assert_eq(Clock.speed, 0, "Guide keeps shop shortcuts from changing speed")
+	await _send_key(KEY_2, false)
+	await _send_key(KEY_ESCAPE, true)
+	assert_false(_main.call("is_system_guide_visible"))
+	await _send_key(KEY_ESCAPE, false)
+	await _send_key(KEY_F1, true)
+	await _send_key(KEY_F1, false)
+	var help_guide: Button = _main.get_node("Overlay/ShortcutsPanel/Panel/Column/Header/Guide") as Button
+	await _click(help_guide.get_global_rect().get_center())
+	assert_true(_main.call("is_system_guide_visible"), "F1 panel entry opens the Guide")
+	assert_false(_main.call("is_shortcuts_visible"), "only one help panel remains open")
+	var close_button: Button = panel.get_node("Card/Column/Header/Close") as Button
+	await _click(close_button.get_global_rect().get_center())
+	assert_false(_main.call("is_system_guide_visible"), "the close button returns to the shop")
+
+
+func _click(position: Vector2) -> void:
+	for down: bool in [true, false]:
+		var event: InputEventMouseButton = InputEventMouseButton.new()
+		event.position = position
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+		event.pressed = down
+		_main.get_viewport().push_input(event, true)
+		await _frame()
+
+
 func test_photo_name_and_desktop_only_shortcuts() -> void:
 	assert_eq(PhotoMode.file_name(3, 9 * 60 + 5), "fools_kitchen_3_0905.png")
 	assert_eq(PhotoMode.file_name(12, 0), "fools_kitchen_12_0000.png")

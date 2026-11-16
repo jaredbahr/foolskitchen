@@ -62,6 +62,8 @@ CAPTURE_FRAMES = {
         "report": (60,),
         "blueprint-codes": (30,),
         "report-slowest": (60,),
+        "guide-menu": (30,),
+        "guide-loans": (30,),
         "daily-special": (30, 120),
         "profit-review": (60,),
         "demand-report": (60,),
