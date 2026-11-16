@@ -214,6 +214,32 @@ layout_mode = 2
 mouse_filter = 2
 text = "Available this morning"
 
+[node name="HiringChoices" type="HBoxContainer" parent="Panel/Content/Scroll/List"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="RoleCaption" type="Label" parent="Panel/Content/Scroll/List/HiringChoices"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+text = "Role"
+
+[node name="HiringRole" type="OptionButton" parent="Panel/Content/Scroll/List/HiringChoices"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(144, 0)
+layout_mode = 2
+
+[node name="SortCaption" type="Label" parent="Panel/Content/Scroll/List/HiringChoices"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+text = "Sort by"
+
+[node name="HiringSort" type="OptionButton" parent="Panel/Content/Scroll/List/HiringChoices"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+
 [node name="Empty" type="Label" parent="Panel/Content/Scroll/List"]
 unique_name_in_owner = true
 layout_mode = 2

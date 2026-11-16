@@ -13,6 +13,8 @@ signal owner_look_requested()
 ## Send an employee to another of the owner's restaurants (#473).
 signal transfer_requested(id: StringName, site: StringName)
 
+enum HiringSort { SKILL, WAGE, TRAIT }
+
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
 const MORNING_HINT: String = "Staff changes are available in the morning."
@@ -165,6 +167,7 @@ func _day_wage(wage: int) -> int:
 
 
 func refresh() -> void:
+	_setup_hiring_choices()
 	if not (%OwnerLook as Button).pressed.is_connected(_on_owner_look):
 		(%OwnerLook as Button).pressed.connect(_on_owner_look)
 	# These controls share the heading row, but retain ordinary body sizing.
@@ -205,7 +208,7 @@ func refresh() -> void:
 		else "Hiring, letting staff go, raises and upgrades are available in the morning. Job priorities can change now."
 	(%RosterTitle as Label).text = "Your team (%d/%d)" % [_roster.members().size(), StaffRoster.CAPACITY] \
 		+ ("" if GameMode.is_creative() else " - $%d a day" % _team_day_wages())
-	(%Empty as Label).visible = _roster.candidates().is_empty()
+	_refresh_hiring_rows()
 	(%Carry as Label).text = "Servers carry %d plate%s" % [1 << _tray_level, "" if _tray_level == 0 else "s"]
 	for level: int in [1, 2]:
 		var price: int = _tray_prices[level - 1] if _tray_prices.size() >= level else -1
@@ -242,6 +245,67 @@ func _team_day_wages() -> int:
 	for member: StaffMember in _roster.members():
 		total += _day_wage(member.wage)
 	return total
+
+
+## The controls live for the lifetime of the panel and need no saved state.
+func _setup_hiring_choices() -> void:
+	var role_picker: OptionButton = %HiringRole
+	if role_picker.item_count > 0:
+		return
+	var roles: Array[StringName] = [&""]
+	roles.append_array(StaffMember.ROLES)
+	roles.append(StaffMember.MANAGER)
+	for role: StringName in roles:
+		role_picker.add_item("All" if role.is_empty() else _role_name(role))
+		role_picker.set_item_metadata(role_picker.item_count - 1, role)
+	var sort_picker: OptionButton = %HiringSort
+	sort_picker.add_item("Skill high to low", HiringSort.SKILL)
+	sort_picker.add_item("Wage low to high", HiringSort.WAGE)
+	sort_picker.add_item("Trait A–Z", HiringSort.TRAIT)
+	role_picker.select(0)
+	sort_picker.select(0)
+	role_picker.item_selected.connect(_refresh_hiring_rows)
+	sort_picker.item_selected.connect(_refresh_hiring_rows)
+
+
+## Insert from the pool in order, shifting only strictly better entries.
+## Keep the existing row and Hire button when the player changes the view.
+func _refresh_hiring_rows(_selection: int = -1) -> void:
+	if _roster == null:
+		return
+	var role_picker: OptionButton = %HiringRole
+	var role: StringName = role_picker.get_item_metadata(role_picker.selected)
+	var mode: int = (%HiringSort as OptionButton).get_selected_id()
+	var shown: Array[StaffMember] = []
+	for member: StaffMember in _roster.candidates():
+		var row: Control = _rows[member.id]
+		row.visible = role.is_empty() or member.role == role
+		if not row.visible:
+			continue
+		var position: int = shown.size()
+		while position > 0 and _hiring_precedes(member, shown[position - 1], mode):
+			position -= 1
+		shown.insert(position, member)
+	var candidates: VBoxContainer = %Candidates
+	for index: int in shown.size():
+		var row: Control = _rows[shown[index].id]
+		if row.get_index() != index:
+			candidates.move_child(row, index)
+	var empty: Label = %Empty
+	empty.visible = shown.is_empty()
+	empty.text = "Everyone has been hired. More candidates arrive next morning." if role.is_empty() \
+		else "No candidates for this role today."
+
+
+func _hiring_precedes(first: StaffMember, second: StaffMember, mode: int) -> bool:
+	match mode:
+		HiringSort.WAGE:
+			return _day_wage(first.wage) < _day_wage(second.wage)
+		HiringSort.TRAIT:
+			var first_trait: String = _roster.catalogue.find_trait(first.trait_id).display_name
+			var second_trait: String = _roster.catalogue.find_trait(second.trait_id).display_name
+			return first_trait.nocasecmp_to(second_trait) < 0
+	return first.skill > second.skill
 
 
 func row_for(id: StringName) -> Control:

@@ -773,3 +773,103 @@ func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> voi
 	_native_host.push_input(_priority_mouse(point, false), true)
 	assert_eq(_requests, [id] as Array[StringName])
 	assert_eq(_roster.to_dict(), before, "the panel still only requests a hire")
+
+
+func test_hiring_sort_orders_visible_rows_and_keeps_pool_order_on_every_tie() -> void:
+	_set_hiring_pool()
+	var a: StringName = &"candidate_1_0"
+	var b: StringName = &"candidate_1_1"
+	var c: StringName = &"candidate_1_2"
+	var sort_picker: OptionButton = _panel.get_node("%HiringSort") as OptionButton
+	var hire: Button = _panel.row_for(a).get_node("Top/Action") as Button
+	var before: Dictionary = _roster.to_dict()
+	var random_state: Dictionary = GameState._capture_save()
+	assert_eq(sort_picker.get_selected_id(), StaffPanel.HiringSort.SKILL)
+	assert_eq(_visible_candidates(), [b, c, a] as Array[StringName])
+	_pick_hiring_option(sort_picker, 1)
+	assert_eq(_visible_candidates(), [a, c, b] as Array[StringName])
+	_pick_hiring_option(sort_picker, 2)
+	assert_eq(_visible_candidates(), [c, a, b] as Array[StringName])
+	_pick_hiring_option(sort_picker, 0)
+	assert_eq(_visible_candidates(), [b, c, a] as Array[StringName])
+	assert_eq(_panel.row_for(a).get_node("Top/Action"), hire)
+	assert_eq(_roster.to_dict(), before)
+	assert_eq(GameState._capture_save(), random_state)
+
+
+func test_hiring_roles_include_manager_and_keep_choices_through_refresh_and_reopen() -> void:
+	_set_hiring_pool()
+	var role_picker: OptionButton = _panel.get_node("%HiringRole") as OptionButton
+	var sort_picker: OptionButton = _panel.get_node("%HiringSort") as OptionButton
+	var empty: Label = _panel.get_node("%Empty") as Label
+	assert_eq(role_picker.selected, 0)
+	var roles: Array[String] = []
+	for index: int in role_picker.item_count:
+		roles.append(role_picker.get_item_text(index))
+	assert_eq(roles, ["All", "Cook", "Server", "Cleaner", "Manager"] as Array[String])
+	for option: int in [1, 2, 3]:
+		_pick_hiring_option(role_picker, option)
+		assert_eq(_visible_candidates(), [StringName("candidate_1_%d" % (option - 1))] as Array[StringName])
+		assert_false(empty.visible)
+	_pick_hiring_option(role_picker, 4)
+	_pick_hiring_option(sort_picker, 2)
+	assert_true(_visible_candidates().is_empty())
+	assert_true(empty.visible)
+	assert_eq(empty.text, "No candidates for this role today.")
+	var next_pool: Dictionary = _roster.to_dict()
+	next_pool["candidate_day"] = 2
+	var manager: Dictionary = next_pool["candidates"][0]
+	manager["role"] = "manager"
+	manager.erase("growth")
+	manager.erase("priorities")
+	assert_true(_roster.from_dict(next_pool))
+	_panel.hide()
+	_panel.set_morning(2, [])
+	_panel.bind_roster(_roster)
+	_panel.show()
+	assert_eq(_visible_candidates(), [&"candidate_1_0"] as Array[StringName])
+	assert_false(empty.visible)
+	assert_eq(role_picker.selected, 4)
+	assert_eq(sort_picker.get_selected_id(), StaffPanel.HiringSort.TRAIT)
+	_pick_hiring_option(role_picker, 0)
+	assert_eq(_visible_candidates(), [&"candidate_1_2", &"candidate_1_0", &"candidate_1_1"] as Array[StringName])
+	var fresh: StaffPanel = PANEL.instantiate() as StaffPanel
+	fresh.bind_roster(_roster)
+	assert_eq((fresh.get_node("%HiringRole") as OptionButton).selected, 0)
+	assert_eq((fresh.get_node("%HiringSort") as OptionButton).get_selected_id(), StaffPanel.HiringSort.SKILL)
+	fresh.free()
+
+
+func _set_hiring_pool() -> void:
+	var saved: Dictionary = _roster.to_dict()
+	var roles: Array[String] = ["cook", "server", "cleaner"]
+	var skills: Array[int] = [2, 5, 5]
+	var wages: Array[int] = [30, 50, 30]
+	var traits: Array[String] = ["quick", "quick", "careful"]
+	for index: int in 3:
+		var member: Dictionary = saved["candidates"][index]
+		member["role"] = roles[index]
+		member["skill"] = skills[index]
+		member["wage"] = wages[index]
+		member["trait"] = traits[index]
+		member.erase("growth")
+		member.erase("priorities")
+	assert_true(_roster.from_dict(saved))
+	_panel.refresh()
+
+
+func _pick_hiring_option(picker: OptionButton, index: int) -> void:
+	picker.select(index)
+	picker.item_selected.emit(index)
+
+
+func _visible_candidates() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for row: Node in _panel.get_node("%Candidates").get_children():
+		if not (row as Control).visible:
+			continue
+		for member: StaffMember in _roster.candidates():
+			if _panel.row_for(member.id) == row:
+				ids.append(member.id)
+				break
+	return ids
