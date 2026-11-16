@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Events"
+body = "Events add small surprises to service. A card may ask you to make a choice, offer a short opportunity or respond to a problem. Read the choices before deciding. Every card has at least one option that costs no cash or stock, while others may trade money, ingredients, time or a possible review for a chance at a better outcome. The event text describes the risk and what you stand to gain.\n\nNot every day brings the same cards, and some events only appear after you reach a certain point in your career. Rushes and special visitors can change the pace, so keep a little room in your schedule and enough ingredients for the menu you are serving. These are decisions within the running restaurant, not a separate campaign. If an outcome goes poorly, use the report and your remaining resources to plan the next morning."

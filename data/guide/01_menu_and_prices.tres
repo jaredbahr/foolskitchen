@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Menu and prices"
+body = "Your menu is the promise guests see before they sit down. In the morning, open Menu to choose which available dishes to offer, set each price, and choose a special or signature when those options are available. A dish's standard price is a reference. Guests judge what you charge against quality and what they can afford. A higher price can help a tight budget, but can also feel unfair.\n\nRecipes arrive through owner levels and property tiers. Their ingredient lists and kitchen steps determine what stock and stations you need. {menu_unlock_example}. Check the recipe details before you add a dish, then keep the menu small enough for your kitchen and pantry to support. Menu changes take effect in the morning, so use the evening report and tomorrow's plan to adjust."
