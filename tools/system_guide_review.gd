@@ -11,7 +11,7 @@ func _ready() -> void:
 	if page_title not in ["Menu and prices", "Loans"]:
 		push_error("Guide review requires Menu and prices or Loans")
 		return
-	($HUD/Top/Row/Guide as Button).pressed.emit()
+	($HUD/Guide as Button).pressed.emit()
 	var topics: ItemList = $Overlay/GuidePanel/Card/Column/Pages/Topics
 	for index: int in range(topics.item_count):
 		if topics.get_item_text(index) != page_title:

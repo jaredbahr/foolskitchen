@@ -363,8 +363,9 @@ func refresh() -> void:
 		_stock_button = get_node("Top/Row/Stock") as Button
 		_stock_button.pressed.connect(_on_stock_pressed)
 		_sold_out_label = get_node("Top/Row/SoldOut") as Label
-		var guide_button: Button = get_node("Top/Row/Guide") as Button
+		var guide_button: Button = $Guide
 		guide_button.pressed.connect(_on_guide_pressed)
+		IconStyle.compact_button(guide_button)
 		_settings_button = get_node("Top/Row/Settings") as Button
 		_settings_button.pressed.connect(_on_settings_pressed)
 		_style_header()

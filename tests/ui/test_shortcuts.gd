@@ -200,7 +200,7 @@ func test_f1_panel_is_modal_nonpausing_and_escape_restores_focus() -> void:
 func test_guide_opens_from_the_hud_and_f1_with_normal_input() -> void:
 	await _start_main()
 	await _frame()
-	var hud_button: Button = _main.get_node("HUD/Top/Row/Guide") as Button
+	var hud_button: Button = _main.get_node("HUD/Guide") as Button
 	await _click(hud_button.get_global_rect().get_center())
 	assert_true(_main.call("is_system_guide_visible"), "HUD button opens the Guide")
 	var panel: Control = _main.get_node("Overlay/GuidePanel") as Control
