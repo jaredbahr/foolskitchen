@@ -252,6 +252,7 @@ var _patio_enabled: bool = false
 var _thumbnails: ItemThumbnailCache
 var _fitting: bool = false
 var _content: ContentDB
+var _lot_tags: Array[StringName] = []
 var _ordered_ids: Array[StringName] = []
 var _layout_ready: bool = false
 var _paint_visible: bool = false
@@ -265,6 +266,12 @@ func bind_content(content: ContentDB) -> void:
 	_prepare_layout()
 	_content = content
 	refresh_content()
+
+
+func set_lot_tags(tags: Array[StringName]) -> void:
+	if _lot_tags != tags:
+		_lot_tags = tags.duplicate()
+		refresh_content()
 
 
 ## Main calls this after restoring progress and when the career tier rises.
@@ -2076,8 +2083,8 @@ func _on_buy_pressed(id: StringName) -> void:
 			variant_buy_requested.emit(id, selected_variants.get(id, &""))
 
 
-static func _buyable(definition: ItemDef) -> bool:
-	return definition != null and definition.catalogue_visible and not definition.id.is_empty() \
+func _buyable(definition: ItemDef) -> bool:
+	return LotAccess.allowed(definition, _lot_tags) and definition.catalogue_visible and not definition.id.is_empty() \
 		and not definition.display_name.strip_edges().is_empty() and not category_for(definition).is_empty() \
 		and definition.price >= 0 and definition.unlock_level >= 1 \
 		and definition.footprint.x > 0 and definition.footprint.y > 0

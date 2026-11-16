@@ -2261,6 +2261,8 @@ func _on_blueprint_code_paste_requested(text: String) -> void:
 
 
 func _bind_build_session() -> void:
+	var lot_tags: Array[StringName] = _site_lot_tags()
+	shop_editor.set_lot_tags(lot_tags)
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
 	edit_history = ShopEditHistory.new(shop_editor, world.grid)
@@ -2275,6 +2277,7 @@ func _bind_build_session() -> void:
 	build_mode.bind_walls(shop_wall_finishes, shop_hang, shop_rehang, shop_take_down)
 	build_mode.bind_blueprints(blueprint_library, shop_stamp)
 	if _build_catalogue != null:
+		_build_catalogue.set_lot_tags(lot_tags)
 		_build_catalogue.bind_blueprints(blueprint_library)
 	($ShopView as ShopView).bind_wall_finishes(shop_editor.walls, shop_editor.decor)
 	_inspect_panel.bind_menu_boards(shop_editor.decor, menu_settings)
@@ -5468,6 +5471,11 @@ func _purchase_refusal(lot: LotDef) -> PropertyMarket.Refusal:
 		Economy.loan.principal)
 
 
+func _site_lot_tags() -> Array[StringName]:
+	var lot: LotDef = _lot_def(site_book.lot_id(site_book.active_id)) if site_book != null else null
+	return lot.tags if lot != null else ([] as Array[StringName])
+
+
 func _lot_def(lot_id: StringName) -> LotDef:
 	return content.lot(lot_id) if content != null else null
 
@@ -6392,15 +6400,17 @@ func _shelf_lives() -> Dictionary:
 	return lives
 
 
-## One price map feeds every live purchase and quote. Future restock forecasts
+## The active lot's price map feeds purchases, auto-orders and quotes. Future forecasts
 ## pass their purchase day explicitly; paid deliveries retain their stored lines.
 func _unit_costs(for_day: int = 0) -> Dictionary:
 	var day: int = Clock.sim.day if for_day < 1 else for_day
 	var costs: Dictionary = {}
 	if content == null:
 		return costs
+	var lot_tags: Array[StringName] = _site_lot_tags()
 	for ingredient: IngredientDef in content.ingredients():
-		costs[ingredient.id] = Season.purchase_unit_cost(ingredient.id, ingredient.unit_cost, day, season_tuning)
+		if LotAccess.allowed(ingredient, lot_tags):
+			costs[ingredient.id] = Season.purchase_unit_cost(ingredient.id, ingredient.unit_cost, day, season_tuning)
 	return costs
 
 
@@ -6553,6 +6563,8 @@ func stock_cart_set(id: StringName, qty: int) -> bool:
 	if qty == 0:
 		trial.erase(id)
 	else:
+		if not LotAccess.allowed(content.ingredient(id), _site_lot_tags()):
+			return false
 		trial[id] = qty
 	# Only the added ingredient's own kind must fit: a cart left over in
 	# another kind never blocks it.
@@ -6579,8 +6591,7 @@ func stock_cart_list_total() -> int:
 	var costs: Dictionary = _unit_costs()
 	var total: int = 0
 	for id: StringName in stock_cart:
-		var ingredient: IngredientDef = content.ingredient(id)
-		if ingredient != null:
+		if costs.has(id):
 			total += int(costs[id]) * int(stock_cart[id])
 	return total
 
@@ -6667,6 +6678,10 @@ func _reset_haggle() -> void:
 func stock_cart_refusal() -> String:
 	if stock_cart.is_empty():
 		return "Choose some ingredients first"
+	var lot_tags: Array[StringName] = _site_lot_tags()
+	for id: StringName in stock_cart:
+		if not LotAccess.allowed(content.ingredient(id), lot_tags):
+			return "An ingredient in the cart is unavailable at this lot"
 	var kind: int = storage_space().first_overflow(stock_cart)
 	if kind >= 0:
 		return StorageSpace.refusal(kind)
@@ -6763,14 +6778,16 @@ func _cart_order() -> Array[StringName]:
 
 
 func stock_set_auto(id: StringName, enabled: bool) -> bool:
-	if not can_edit_stock() or not reorder_settings.set_enabled(id, enabled):
+	if not can_edit_stock() or not LotAccess.allowed(content.ingredient(id), _site_lot_tags()) \
+			or not reorder_settings.set_enabled(id, enabled):
 		return false
 	_refresh_stock_panel()
 	return true
 
 
 func stock_set_target(id: StringName, target: int) -> bool:
-	if not can_edit_stock() or not reorder_settings.set_target(id, target):
+	if not can_edit_stock() or not LotAccess.allowed(content.ingredient(id), _site_lot_tags()) \
+			or not reorder_settings.set_target(id, target):
 		return false
 	_refresh_stock_panel()
 	return true
@@ -6858,7 +6875,8 @@ func stock_rows() -> Array[Dictionary]:
 		for in_use: bool in [true, false]:
 			for id: StringName in reorder_settings.all_ids():
 				var ingredient: IngredientDef = content.ingredient(id)
-				if ingredient == null or int(ingredient.storage) != kind or used.has(id) != in_use:
+				if ingredient == null or not costs.has(id) or int(ingredient.storage) != kind \
+					or used.has(id) != in_use:
 					continue
 				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
 					"expiring": int(expiring.get(id, 0)), "unit_cost": int(costs[id]),

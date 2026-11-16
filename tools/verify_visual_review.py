@@ -97,6 +97,7 @@ CAPTURE_FRAMES = {
         "build-red": (12,),
         "build-pinch": (12,),
         "viral": (30, 90),
+        "lot-access": (30, 90),
         "menu-access-preview": (12,),
         "blueprint-looks": (12, 60),
         "menu-access-open": (12,),

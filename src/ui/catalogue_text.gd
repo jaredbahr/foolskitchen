@@ -264,3 +264,14 @@ static func blueprint_card(name: String, cost: int) -> String:
 
 const BLUEPRINT_KEYS: String = "Click Place blueprint  |  , . or R Rotate  |  Esc or Right-click Cancel"
 const BLUEPRINT_SELECTION_KEYS: String = "Drag a box around furniture  |  Save as blueprint in Buy → Blueprints  |  Esc Cancel"
+
+
+static func lot_refusal(tags: Array[StringName]) -> String:
+	var labels: Array[String] = []
+	for tag: StringName in tags:
+		match tag:
+			&"seaside": labels.append("Seaside")
+			&"rooftop": labels.append("Rooftop")
+	if labels.is_empty():
+		return "Only available at a matching lot"
+	return "Only available at a lot with: %s" % " or ".join(labels)
