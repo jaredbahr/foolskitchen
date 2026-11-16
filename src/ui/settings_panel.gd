@@ -63,6 +63,7 @@ var _difficulty: Difficulty
 
 
 func _ready() -> void:
+	_content.move_child(_difficulty_section, 0)
 	for mode_id: StringName in Difficulty.MODES:
 		_difficulty_choice.add_item(Difficulty.mode_name(mode_id))
 		var index: int = _difficulty_choice.item_count - 1
