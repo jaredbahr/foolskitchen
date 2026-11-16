@@ -288,9 +288,6 @@ func to_dict() -> Dictionary:
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
-	var visitors: Array[Dictionary] = _public_visitor_breakdown(visitor_breakdown)
-	if not visitors.is_empty():
-		result["visitor_breakdown"] = visitors
 	if takeaways > 0:
 		result["takeaways"] = takeaways
 	# Only on days a critic reviewed, so every other report keeps its exact shape.
@@ -304,6 +301,9 @@ func to_dict() -> Dictionary:
 		result["record_lines"] = record_lines.duplicate()
 	if not away_site_lines.is_empty():
 		result["away_site_lines"] = away_site_lines.duplicate()
+	var visitors: Array[Dictionary] = _public_visitor_breakdown(visitor_breakdown)
+	if not visitors.is_empty():
+		result["visitor_breakdown"] = visitors
 	return result
 
 

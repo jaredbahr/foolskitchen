@@ -250,17 +250,17 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "No guests visited today"
 
-[node name="Cleanliness" type="Label" parent="Panel/Column/Scroll/Content"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-
 [node name="VisitorBreakdown" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
+
+[node name="Cleanliness" type="Label" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
 
 [node name="FoodQuality" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
