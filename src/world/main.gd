@@ -59,6 +59,7 @@ const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 ## A Creative game's Goals panel (FK-141): collections and records only.
 const CREATIVE_GOALS_TITLE: String = "Collections"
+const SYSTEM_GUIDE_SCENE: PackedScene = preload("res://src/ui/guide_panel.tscn")
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -580,9 +581,6 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"close_day_requested", close_for_today)
 	_settings_panel = $Overlay/SettingsPanel
 	_shortcuts_panel = $Overlay/ShortcutsPanel
-	_guide_panel = $Overlay/GuidePanel
-	if not _guide_panel.close_requested.is_connected(_on_close_system_guide):
-		_guide_panel.close_requested.connect(_on_close_system_guide)
 	if not _shortcuts_panel.guide_requested.is_connected(_on_open_system_guide):
 		_shortcuts_panel.guide_requested.connect(_on_open_system_guide)
 	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
@@ -5922,7 +5920,7 @@ func is_system_guide_visible() -> bool:
 
 
 func _on_open_system_guide() -> void:
-	if _guide_panel == null or is_system_guide_visible() or not _started or display_only \
+	if is_system_guide_visible() or not _started or display_only \
 			or is_haggle_active() or is_service_event_visible() or is_site_card_visible() \
 			or is_owner_picker_visible() or is_settings_visible():
 		return
@@ -5930,6 +5928,10 @@ func _on_open_system_guide() -> void:
 	$HUD.dismiss_loan_repayment()
 	var viewport: Viewport = get_viewport()
 	_guide_previous_focus = viewport.gui_get_focus_owner()
+	if _guide_panel == null:
+		_guide_panel = SYSTEM_GUIDE_SCENE.instantiate() as GuidePanel
+		_guide_panel.close_requested.connect(_on_close_system_guide)
+		$Overlay.add_child(_guide_panel)
 	_guide_panel.show()
 	_guide_panel.focus_topics()
 

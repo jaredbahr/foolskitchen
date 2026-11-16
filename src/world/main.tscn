@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=24 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -25,7 +25,6 @@
 [ext_resource type="PackedScene" path="res://src/minigames/haggle_game.tscn" id="18_haggle"]
 [ext_resource type="Script" path="res://src/world/photo_mode.gd" id="19_photo"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="20_theme"]
-[ext_resource type="PackedScene" path="res://src/ui/guide_panel.tscn" id="21_guide"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -102,8 +101,6 @@ ok_button_text = "Keep playing"
 [node name="HaggleGame" parent="Overlay" instance=ExtResource("18_haggle")]
 
 [node name="ShortcutsPanel" parent="Overlay" instance=ExtResource("17_shortcuts")]
-
-[node name="GuidePanel" parent="Overlay" instance=ExtResource("21_guide")]
 
 
 [node name="PhotoToast" type="PanelContainer" parent="Overlay"]
