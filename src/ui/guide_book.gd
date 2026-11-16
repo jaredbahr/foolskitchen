@@ -16,9 +16,15 @@ const PAGE_PATHS: PackedStringArray = [
 ]
 
 const LOAN_TUNING: LoanTuning = preload("res://data/balance/loans.tres")
+const MENU_TUNING: MenuTuning = preload("res://data/balance/menu.tres")
+const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const CAREER_TUNING: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
 const STARTER_RECIPE: RecipeDef = preload("res://data/recipes/fries.tres")
 const FOLLOWUP_RECIPE: RecipeDef = preload("res://data/recipes/fish_and_chips.tres")
+const FLOOR_UNLOCK_SAMPLE: FloorStyleDef = preload("res://data/floors/small_tile.tres")
+const WALL_UNLOCK_SAMPLE: WallStyleDef = preload("res://data/wall_finishes/brick.tres")
+const EVENT_UNLOCK_SAMPLE: ServiceEventDef = preload("res://data/events/critic_rumour.tres")
+const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 
 
 static func load_pages() -> Array[GuidePage]:
@@ -37,7 +43,11 @@ static func load_pages() -> Array[GuidePage]:
 static func _fill_facts(body: String) -> String:
 	var result: String = body
 	result = result.replace("{menu_unlock_example}", _menu_unlock_example())
+	result = result.replace("{menu_special_rule}", _menu_special_rule())
+	result = result.replace("{signature_rule}", _signature_rule())
 	result = result.replace("{career_unlock_example}", _career_unlock_example())
+	result = result.replace("{build_unlock_example}", _build_unlock_example())
+	result = result.replace("{event_unlock_example}", _event_unlock_example())
 	result = result.replace("{loan_interest}", "%.0f%%" % (LOAN_TUNING.daily_interest * 100.0))
 	result = result.replace("{loan_repay_share}", "%.0f%%" % (LOAN_TUNING.repay_share * 100.0))
 	result = result.replace("{loan_step}", "$%d" % LOAN_TUNING.borrowing_step)
@@ -48,9 +58,9 @@ static func _menu_unlock_example() -> String:
 	if STARTER_RECIPE == null or FOLLOWUP_RECIPE == null \
 			or FOLLOWUP_RECIPE.unlock_from != STARTER_RECIPE.id:
 		return "New dishes appear as you gain owner levels."
-	return "%s opens at level %d, and %s follows at level %d" % [
-		STARTER_RECIPE.display_name, STARTER_RECIPE.unlock_level,
-		FOLLOWUP_RECIPE.display_name, FOLLOWUP_RECIPE.unlock_level]
+	return "%s opens at %s, and %s follows at %s" % [
+		STARTER_RECIPE.display_name, _recipe_unlock_terms(STARTER_RECIPE),
+		FOLLOWUP_RECIPE.display_name, _recipe_unlock_terms(FOLLOWUP_RECIPE)]
 
 
 static func _career_unlock_example() -> String:
@@ -63,3 +73,39 @@ static func _career_unlock_example() -> String:
 	if tier_three.min_reputation > 0.0:
 		result += " and %.1f stars" % tier_three.min_reputation
 	return result + "."
+
+
+static func _menu_special_rule() -> String:
+	return "Any enabled dish can be selected as today's special each morning. It receives a %d%% price discount." % \
+		roundi(MENU_TUNING.special_discount * 100.0)
+
+
+static func _signature_rule() -> String:
+	return "A dish becomes eligible as your signature after %d paid sales. You can change it after %d days." % [
+		SIGNATURE_TUNING.signature_unlock_sales, SIGNATURE_TUNING.change_cooldown_days]
+
+
+static func _build_unlock_example() -> String:
+	return "For example, %s unlock at %s, and %s at %s" % [
+		FLOOR_UNLOCK_SAMPLE.display_name, _style_unlock_terms(FLOOR_UNLOCK_SAMPLE.unlock_level,
+			FLOOR_UNLOCK_SAMPLE.unlock_tier),
+		WALL_UNLOCK_SAMPLE.display_name, _style_unlock_terms(WALL_UNLOCK_SAMPLE.unlock_level,
+			WALL_UNLOCK_SAMPLE.unlock_tier)]
+
+
+static func _event_unlock_example() -> String:
+	var event_requirement: String = "Tier %d" % EVENT_UNLOCK_SAMPLE.min_tier
+	if EVENT_UNLOCK_SAMPLE.min_level > 1:
+		event_requirement += " and owner level %d" % EVENT_UNLOCK_SAMPLE.min_level
+	var rush_requirement: String = "owner level %d" % RUSH_TUNING.unlock_level
+	return "%s becomes eligible at %s, and rush hours unlock at %s." % [
+		EVENT_UNLOCK_SAMPLE.title, event_requirement, rush_requirement]
+
+
+static func _recipe_unlock_terms(recipe: RecipeDef) -> String:
+	return "owner level %d" % recipe.unlock_level if recipe.unlock_tier <= 1 else \
+		"Tier %d and owner level %d" % [recipe.unlock_tier, recipe.unlock_level]
+
+
+static func _style_unlock_terms(level: int, tier: int) -> String:
+	return "owner level %d" % level if tier <= 1 else "Tier %d and owner level %d" % [tier, level]
