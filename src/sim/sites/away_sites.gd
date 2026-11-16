@@ -126,6 +126,10 @@ static func lot_rent(lot: StringName, home_rent: int, definition: LotDef = null,
 		if definition == null or definition.id != lot:
 			return UNKNOWN_RENT
 		rent = definition.rent(expanded)
+	return adjusted_rent(rent, multiplier)
+
+
+static func adjusted_rent(rent: int, multiplier: float) -> int:
 	return maxi(0, rent if multiplier == 1.0 else roundi(rent * multiplier))
 
 

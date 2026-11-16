@@ -79,7 +79,7 @@ static func forecast_lines(forecast_data: Dictionary, content: ContentDB) -> Arr
 		if low:
 			parts.append("%d left, target %d" % [usable, target])
 		var text: String = "%s: %s." % [_ingredient_name(row.get("id", &""), content), ", ".join(parts)]
-		if low and not enabled:
+		if not enabled:
 			text += " Auto-reorder is off."
 		elif unfit > 0:
 			text += " %s to reorder %d." % [StorageSpace.refusal(int(row.get("kind", StorageSpace.DRY))), unfit]

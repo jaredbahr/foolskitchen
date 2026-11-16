@@ -3831,7 +3831,7 @@ func _refresh_lease_offer() -> void:
 	_menu_panel.set_lease_offer(true,
 		"More land to expand, free." if GameMode.is_creative()
 		else "Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
-			Fmt.money(lease.deposit), Fmt.money(lease.daily_rent)],
+			Fmt.money(lease.deposit), Fmt.money(AwaySites.adjusted_rent(lease.daily_rent, difficulty.mult(&"rent")))],
 		RestockBudgetWarning.text(Economy.spendable(), lease.deposit, build_restock_estimate()), lease_refusal())
 
 
@@ -5479,6 +5479,7 @@ func _property_buyer() -> PropertyPanel.Buyer:
 	buyer.limits = SITE_LIMITS
 	buyer.cash = Economy.spendable()
 	buyer.loan = Economy.loan.principal
+	buyer.rent_multiplier = difficulty.mult(&"rent")
 	return buyer
 
 
