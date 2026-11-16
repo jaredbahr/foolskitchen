@@ -100,6 +100,7 @@ CAPTURE_FRAMES = {
         "menu-access-preview": (12,),
         "blueprint-looks": (12, 60),
         "menu-access-open": (12,),
+        "menu-presets": (30,),
         "settings": (12,),
         "shortcuts": (12,),
         "settings-world": (90,),

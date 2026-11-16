@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/ui/menu_panel.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://src/ui/menu_preset_controls.tscn" id="3_presets"]
 
 [node name="MenuPanel" type="Control"]
 visible = false
@@ -50,6 +51,14 @@ mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "Menu and prices"
 text_overrun_behavior = 3
+
+[node name="PresetsToggle" type="Button" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+toggle_mode = true
+text = "Menu presets"
+tooltip_text = "Save and load complete menus"
 
 [node name="PropertyButton" type="Button" parent="Panel/Content/Header"]
 unique_name_in_owner = true
@@ -142,6 +151,10 @@ visible = false
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
+
+[node name="MenuPresetControls" parent="Panel/Content/Identity" instance=ExtResource("3_presets")]
+unique_name_in_owner = true
+layout_mode = 2
 
 [node name="Hints" type="HBoxContainer" parent="Panel/Content/Identity"]
 layout_mode = 2

@@ -45,6 +45,8 @@ var _requirements_box: VBoxContainer
 var _name_edit: LineEdit
 var _name_apply: Button
 var _name_feedback: Label
+var _preset_toggle: Button
+var _preset_controls: MenuPresetControls
 var _menu_count: Label
 var _special_option: OptionButton
 var _special_id: StringName = &""
@@ -127,6 +129,15 @@ func bind_menu(model: MenuSettings) -> void:
 		if _menu != null:
 			_menu.owner_level_changed.connect(_on_owner_level_changed)
 	refresh()
+
+
+func preset_controls() -> MenuPresetControls:
+	_bind_nodes()
+	return _preset_controls
+
+
+func _on_presets_toggled(open: bool) -> void:
+	_preset_controls.set_open(open and not _preset_toggle.disabled)
 
 
 ## Read-only cast preference; this never enables or reprices a recipe.
@@ -270,6 +281,11 @@ func refresh() -> void:
 	_empty.visible = _rows.is_empty()
 	_name_edit.editable = editable and _menu != null and _menu.is_valid()
 	_name_apply.disabled = not _name_edit.editable
+	_preset_toggle.disabled = not _name_edit.editable
+	_preset_controls.set_editable(not _preset_toggle.disabled)
+	if _preset_toggle.disabled and _preset_toggle.button_pressed:
+		_preset_toggle.set_pressed_no_signal(false)
+		_preset_controls.set_open(false)
 	_name_edit.tooltip_text = "Name your restaurant (up to 24 characters)." if editable else MORNING_HINT
 	_name_apply.tooltip_text = "Use this restaurant name." if editable else MORNING_HINT
 	_refresh_bulk_controls(editable)
@@ -465,6 +481,9 @@ func _bind_nodes() -> void:
 	_name_edit = %RestaurantName
 	_name_apply = %ApplyName
 	_name_feedback = %NameFeedback
+	_preset_toggle = %PresetsToggle
+	_preset_controls = %MenuPresetControls
+	_preset_toggle.toggled.connect(_on_presets_toggled)
 	_menu_count = %MenuCount
 	_name_edit.max_length = MenuSettings.MAX_NAME_LENGTH
 	_name_edit.text_changed.connect(_on_name_changed)

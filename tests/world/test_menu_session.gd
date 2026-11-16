@@ -87,6 +87,96 @@ func test_legacy_menu_section_loads_current_choices_with_default_name() -> void:
 	assert_true(choices.is_enabled(&"grilled_cheese"))
 
 
+func test_preset_controls_save_load_rename_and_delete_through_the_morning_save() -> void:
+	var first: Node = _start()
+	var controls: MenuPresetControls = _open_preset_controls(first)
+	var morning_file: String = FileAccess.get_file_as_string(_path())
+	var choices: MenuSettings = first.get("menu_settings") as MenuSettings
+	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(first.call("menu_set_price", &"burger", 11))
+	_submit_preset_name(controls, "Lunch menu")
+	assert_eq((first.get("menu_presets") as MenuPresetLibrary).names(), ["Lunch menu"] as Array[String])
+	assert_true(first.call("menu_set_enabled", &"tomato_soup", true))
+	assert_true(first.call("menu_set_price", &"burger", 19))
+	(controls.get_node("%LoadPreset") as Button).pressed.emit()
+	assert_false(choices.is_enabled(&"tomato_soup"))
+	assert_eq(choices.price_of(choices.recipe(&"burger")), 11)
+	assert_eq((first.get("sim") as RestaurantSim).prices[&"burger"], 11)
+	(controls.get_node("%RenamePreset") as Button).pressed.emit()
+	_submit_preset_name(controls, "Afternoon menu")
+	assert_eq((first.get("menu_presets") as MenuPresetLibrary).names(), ["Afternoon menu"] as Array[String])
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+	_next_morning()
+	var saved: Dictionary = _document()["data"]["menu_presets"]
+	assert_eq(saved["presets"][0]["name"], "Afternoon menu")
+	assert_eq(saved["presets"][0]["prices"]["burger"], "11")
+	_close(first)
+
+	var second: Node = _start()
+	controls = _open_preset_controls(second)
+	var library: MenuPresetLibrary = second.get("menu_presets")
+	assert_eq(library.names(), ["Afternoon menu"] as Array[String])
+	Clock.sim.phase = SimClock.Phase.OPEN
+	assert_eq(second.call("menu_load_preset", 0), {})
+	Clock.sim.phase = SimClock.Phase.MORNING
+	morning_file = FileAccess.get_file_as_string(_path())
+	(controls.get_node("%DeletePreset") as Button).pressed.emit()
+	assert_true(library.names().is_empty())
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+	_next_morning()
+	assert_eq(_document()["data"]["menu_presets"]["presets"], [])
+
+
+func test_old_morning_save_without_menu_presets_loads_an_empty_library() -> void:
+	var first: Node = _start()
+	assert_true(first.call("menu_set_price", &"burger", 11))
+	_next_morning()
+	var saved_day: int = Clock.sim.day
+	var document: Dictionary = _document()
+	document["data"].erase("menu_presets")
+	_write_document(document)
+	_remove_backup()
+	_close(first)
+	var second: Node = _start()
+	var choices: MenuSettings = second.get("menu_settings") as MenuSettings
+	assert_eq(Clock.sim.day, saved_day)
+	assert_eq(choices.price_of(choices.recipe(&"burger")), 11)
+	assert_true((second.get("menu_presets") as MenuPresetLibrary).names().is_empty())
+
+
+func test_preset_controls_explain_a_missing_dish_and_apply_the_rest() -> void:
+	var main: Node = _start()
+	var library: MenuPresetLibrary = main.get("menu_presets")
+	assert_true(library.restore({"version": 1, "presets": [{
+		"name": "Counter menu",
+		"enabled": ["burger", "removed_dish"],
+		"prices": {"burger": "11", "removed_dish": "15"},
+	}]}))
+	var controls: MenuPresetControls = _open_preset_controls(main)
+	(controls.get_node("%LoadPreset") as Button).pressed.emit()
+	var note: Label = controls.get_node("%PresetFeedback")
+	assert_true(note.visible)
+	assert_eq(note.text, "Menu preset loaded. 1 dish in this preset is unavailable.")
+	var choices: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_eq(choices.enabled_count(), 1)
+	assert_true(choices.is_enabled(&"burger"))
+	assert_eq(choices.price_of(choices.recipe(&"burger")), 11)
+
+
+func _open_preset_controls(main: Node) -> MenuPresetControls:
+	assert_true(main.call("set_menu_visible", true))
+	var panel: MenuPanel = main.get_node("Overlay/MenuPanel")
+	(panel.get_node("%PresetsToggle") as Button).button_pressed = true
+	return panel.preset_controls()
+
+
+func _submit_preset_name(controls: MenuPresetControls, preset_name: String) -> void:
+	var name_edit: LineEdit = controls.get_node("%PresetName")
+	name_edit.text = preset_name
+	name_edit.text_changed.emit(preset_name)
+	(controls.get_node("%SavePreset") as Button).pressed.emit()
+
+
 func test_signature_selection_is_morning_only_and_waits_for_the_existing_autosave() -> void:
 	var first: Node = _start()
 	var state: SignatureState = first.get("signature_state") as SignatureState

@@ -282,6 +282,52 @@ func set_price(id: StringName, price: int) -> bool:
 	return true
 
 
+## A preset may outlive its original catalogue. Keep the live menu nonempty,
+## use the normal price clamps, and report entries we could not apply.
+func apply_preset(enabled_ids: Array[StringName], prices: Dictionary[StringName, int]) -> Dictionary:
+	if not _valid:
+		return {}
+	var available: Array[StringName] = []
+	var next_enabled: Dictionary[StringName, bool] = {}
+	var unavailable: Dictionary[StringName, bool] = {}
+	for id: StringName in enabled_ids:
+		var definition: RecipeDef = recipe(id)
+		if definition == null or definition.unlock_level > _owner_level:
+			unavailable[id] = true
+			continue
+		available.append(id)
+		# An older save can already exceed the limit. Keep its requested
+		# existing dishes, but enforce the same limit on new additions.
+		if is_enabled(id):
+			next_enabled[id] = true
+	var over_limit: int = 0
+	for id: StringName in available:
+		if next_enabled.has(id):
+			continue
+		if next_enabled.size() < menu_limit():
+			next_enabled[id] = true
+		else:
+			over_limit += 1
+	var keep_current: bool = next_enabled.is_empty()
+	var enabled_changed: bool = not keep_current and _enabled != next_enabled
+	if enabled_changed:
+		_enabled = next_enabled
+	var prices_changed: bool = false
+	for id: StringName in prices:
+		var before: int = _prices.get(id, 0)
+		if not set_price(id, prices[id]):
+			unavailable[id] = true
+		elif _prices[id] != before:
+			prices_changed = true
+	return {
+		"unavailable": unavailable.size(),
+		"over_limit": over_limit,
+		"kept_current_menu": keep_current,
+		"enabled_changed": enabled_changed,
+		"prices_changed": prices_changed,
+	}
+
+
 ## Reset every known price, including locked and station-removed session choices.
 ## A removed dish uses its current authored standard when its station returns.
 func reset_all_prices_to_standard() -> bool:
@@ -380,7 +426,7 @@ func from_dict(data: Variant) -> bool:
 		var id: StringName = StringName(key)
 		if not _by_id.has(id) or next_prices.has(id):
 			return false
-		var price: int = _decode_price(price_data[key])
+		var price: int = decode_saved_price(price_data[key])
 		if price < minimum_price(id) or price > maximum_price(id):
 			return false
 		next_prices[id] = price
@@ -411,7 +457,7 @@ static func normalized_restaurant_name(value: String) -> String:
 	return trimmed
 
 
-static func _decode_price(value: Variant) -> int:
+static func decode_saved_price(value: Variant) -> int:
 	if typeof(value) == TYPE_INT:
 		return value if value >= 0 else -1
 	if typeof(value) == TYPE_FLOAT:

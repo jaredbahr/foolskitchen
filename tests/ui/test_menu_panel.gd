@@ -687,6 +687,19 @@ func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
 		var list: Control = _panel.get_node("%List") as Control
 		assert_true(detail.global_position.x >= list.get_global_rect().end.x, "the dish detail sits beside the tree")
 		assert_true(detail.get_global_rect().end.x <= scroll.get_global_rect().end.x, "the detail fits the scroll width")
+		var toggle: Button = _panel.get_node("%PresetsToggle")
+		var presets: MenuPresetControls = _panel.preset_controls()
+		presets.set_names(["A long afternoon menu", "Dinner"] as Array[String])
+		toggle.button_pressed = true
+		for frame: int in 3:
+			await tree.process_frame
+		bounds = (_panel.get_node("Panel") as Control).get_global_rect()
+		assert_true(Rect2(Vector2.ZERO, Vector2(dimensions)).encloses(bounds), "the presets keep the panel on screen")
+		assert_true(bounds.encloses(toggle.get_global_rect()))
+		assert_true(presets.is_visible_in_tree())
+		assert_true(bounds.encloses(presets.get_global_rect()))
+		assert_true(scroll.size.y > 40.0, "open presets leave room for the dish list")
+		toggle.button_pressed = false
 	viewport.remove_child(_panel)
 	viewport.free()
 

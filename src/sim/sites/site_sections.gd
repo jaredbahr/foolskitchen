@@ -10,7 +10,7 @@ const GLOBAL: PackedStringArray = [
 	# The clock is the shared calendar. Each site's opening hours are its own
 	# "site_hours" section; the clock's copy follows the active site.
 	"clock",
-	"economy", "blueprints", "milestones", "weekly_challenge", "hints", "weather",
+	"economy", "blueprints", "menu_presets", "milestones", "weekly_challenge", "hints", "weather",
 	"collection_toasts", "sites",
 	# Career or Creative (FK-141) belongs to the whole game, not one site.
 	"game_mode",
