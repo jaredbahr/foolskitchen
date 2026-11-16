@@ -1,0 +1,29 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/pizza.glb" id="1_pizza"]
+
+[node name="PizzaSlice" instance=ExtResource("1_pizza")]
+
+[node name="slice6" parent="." index="0"]
+position = Vector3(-0.15, 0, -0.21)
+
+[node name="slice1" parent="." index="1"]
+visible = false
+
+[node name="slice2" parent="." index="2"]
+visible = false
+
+[node name="slice3" parent="." index="3"]
+visible = false
+
+[node name="slice4" parent="." index="4"]
+visible = false
+
+[node name="slice5" parent="." index="5"]
+visible = false
+
+[node name="slice7" parent="." index="6"]
+visible = false
+
+[node name="slice8" parent="." index="7"]
+visible = false

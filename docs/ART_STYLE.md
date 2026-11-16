@@ -75,6 +75,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
   - **Grilled cheese and Tomato melt:** `sandwich`
   - **Croissant:** `croissant`. Drinks, when shown: **Coffee** `cup-coffee`, **Tea** `cup-tea`, **Soft drink** `soda-glass`, **Beer** `glass`, **Wine** `glass-wine` (FK-083)
   - **Fries:** `fries`; **Savoury pie:** `pie` (FK-081).
+  - **Diner classics (FK-167):** hot dog `hot-dog`, pizza slice one wedge from `pizza`, taco `taco`, club sandwich `sandwich`, sundae `ice-cream-cup` with `ice-cream-scoop-chocolate`.
 - Every served dish sits on `plate` (or `plate-dinner`).
 - A dirty plate is `plate` plus a small smear piece from the same kit, or `plate` alone tinted darker. No new models.
 

@@ -36,6 +36,11 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		&"soft_drink": "soda-glass", &"beer": "glass", &"wine": "glass-wine",
 		&"fish_and_chips": "fish", &"mussels_broth": "mussel-open", &"salmon_maki": "sushi-salmon",
 		&"seafood_stew": "bowl-broth", &"shrimp_skewer": "skewer",
+		&"club_sandwich": "sandwich", &"hot_dog": "hot-dog", &"taco": "taco",
+	}
+	var assembled: Dictionary[StringName, String] = {
+		&"pizza_slice": "res://assets/props/pizza_slice.tscn",
+		&"ice_cream_sundae": "res://assets/props/ice_cream_sundae.tscn",
 	}
 	var paths: PackedStringArray = _recipe_resource_paths("res://data/recipes")
 	var recipes: Array[RecipeDef] = _content.recipes()
@@ -45,7 +50,10 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		assert_true(paths.has(recipe.resource_path))
 		assert_not_null(recipe.view_model, String(recipe.id) + " has its authored presentation mapping")
 		if recipe.view_model != null:
-			assert_true(recipe.view_model.resource_path.begins_with("res://assets/kenney/food/"))
+			if assembled.has(recipe.id):
+				assert_eq(recipe.view_model.resource_path, assembled[recipe.id])
+			else:
+				assert_true(recipe.view_model.resource_path.begins_with("res://assets/kenney/food/"))
 		assert_true(_view.food.pool[0].models.has(recipe.id), "the warmed pool covers every loaded recipe")
 		assert_not_null(_view.food.pool[0].models.get(recipe.id))
 	# Preserve every existing exact model choice; new content is discovered above.
@@ -57,6 +65,27 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		assert_not_null(recipe.view_model)
 		if recipe.view_model != null:
 			assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
+
+
+func test_diner_classics_fit_the_plate_and_use_one_pizza_wedge_and_a_filled_cup() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	for id: StringName in [&"club_sandwich", &"hot_dog", &"pizza_slice", &"taco", &"ice_cream_sundae"]:
+		dish.show_dish(_content.recipe(id), false)
+		var food: Node3D = dish.models[id]
+		assert_ne(food, dish.plate)
+		assert_true(food.visible and dish.plate.visible)
+		assert_true(DishVisual._footprint_radius(food, Transform3D.IDENTITY) <= dish.footprint_radius)
+	var pizza: Node3D = dish.models[&"pizza_slice"]
+	var wedges: Array[StringName] = []
+	for child: Node in pizza.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = child as MeshInstance3D
+		if mesh.visible and mesh.mesh != null:
+			wedges.append(child.name)
+	assert_eq(wedges, [&"slice6"] as Array[StringName], "the imported pizza supplies one rendered wedge")
+	var sundae: Node3D = dish.models[&"ice_cream_sundae"].get_child(0) as Node3D
+	assert_eq(sundae.get_node("Cup").scene_file_path, "res://assets/kenney/food/ice-cream-cup.glb")
+	assert_eq(sundae.get_node("ChocolateScoop").scene_file_path,
+		"res://assets/kenney/food/ice-cream-scoop-chocolate.glb")
 
 
 func test_ready_carried_eating_dirty_bussed_and_sink_stack_lifecycle() -> void:
