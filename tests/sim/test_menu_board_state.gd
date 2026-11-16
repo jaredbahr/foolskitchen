@@ -51,7 +51,7 @@ func test_section_choice_is_per_board_and_only_effective_changes_notify() -> voi
 	assert_false(_editor.set_menu_board_section(Vector3i(2, 6, WEST), RecipeDef.Section.MAINS))
 	assert_false(_editor.set_menu_board_section(art, RecipeDef.Section.MAINS))
 	assert_false(_editor.set_menu_board_section(first, -2))
-	assert_false(_editor.set_menu_board_section(first, RecipeDef.Section.BAKERY + 1))
+	assert_false(_editor.set_menu_board_section(first, RecipeDef.Section.BREAKFAST + 1))
 	assert_eq(_editor.decor.revision, revision)
 	assert_eq(_changed_count, notices)
 	assert_true(_editor.set_menu_board_section(first, RecipeDef.Section.MAINS))
@@ -86,16 +86,16 @@ func test_snapshot_restores_distinct_sections_and_legacy_rows() -> void:
 	var second: Vector3i = Vector3i(1, 9, WEST)
 	assert_true(_editor.hang(&"menu_board", first), _editor.last_check.why)
 	assert_true(_editor.hang(&"menu_board", second), _editor.last_check.why)
-	assert_true(_editor.set_menu_board_section(first, RecipeDef.Section.DESSERTS))
+	assert_true(_editor.set_menu_board_section(first, RecipeDef.Section.BREAKFAST))
 	assert_true(_editor.set_menu_board_section(second, RecipeDef.Section.STARTERS))
 	var expected: Array[Array] = [
-		[1, 7, WEST, "menu_board", RecipeDef.Section.DESSERTS],
+		[1, 7, WEST, "menu_board", RecipeDef.Section.BREAKFAST],
 		[1, 9, WEST, "menu_board", RecipeDef.Section.STARTERS],
 	]
 	assert_eq(_editor.to_dict()["wall_items"], expected)
 	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(_editor.to_dict()))
 	var copy: ShopEditor = _restore(snapshot)
-	assert_eq(copy.decor.item(first).menu_section, RecipeDef.Section.DESSERTS)
+	assert_eq(copy.decor.item(first).menu_section, RecipeDef.Section.BREAKFAST)
 	assert_eq(copy.decor.item(second).menu_section, RecipeDef.Section.STARTERS)
 	assert_eq(copy.to_dict()["wall_items"], expected)
 	var legacy: Dictionary = snapshot.duplicate(true)
@@ -111,7 +111,7 @@ func test_snapshot_restores_distinct_sections_and_legacy_rows() -> void:
 func test_bad_saved_sections_keep_the_board_in_automatic_mode() -> void:
 	var anchor: Vector3i = Vector3i(1, 7, WEST)
 	var base: Dictionary = _editor.to_dict()
-	var invalid: Array[Variant] = [null, "Mains", [], -2, RecipeDef.Section.BAKERY + 1, 1.5]
+	var invalid: Array[Variant] = [null, "Mains", [], -2, RecipeDef.Section.BREAKFAST + 1, 1.5]
 	for value: Variant in invalid:
 		var saved: Dictionary = base.duplicate(true)
 		saved["wall_items"] = [[1, 7, WEST, "menu_board", value]]

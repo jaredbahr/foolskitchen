@@ -1010,7 +1010,7 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 			continue
 		var section: int = -1
 		if boarded and definition.id == WallDecor.MENU_BOARD_ID and mount != ItemDef.WallMount.EXTERIOR \
-				and _integer_in(row[4], -1, RecipeDef.Section.BAKERY):
+				and _integer_in(row[4], -1, RecipeDef.Section.BREAKFAST):
 			section = int(row[4])
 		staged.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch, section)
 		layout.wall_items[anchor] = definition.id

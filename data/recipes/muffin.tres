@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/pastry.tres" id="ingredient_pastry"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/muffin.glb" id="view_model"]
+
+[sub_resource type="Resource" id="Step_prep"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 12
+
+[resource]
+script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
+id = &"muffin"
+display_name = "Muffin"
+section = 6
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_pastry")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_prep")])
+base_quality = 0.55
+standard_price = 5
+unlock_tier = 1
+unlock_level = 2
+default_enabled = false
+theme_tags = Array[StringName]([&"cafe", &"cosy"])
