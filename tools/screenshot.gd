@@ -1642,12 +1642,14 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 
 ## Expected identities come from all valid visible data, including locked cards
 ## and other categories, independently of the catalogue's actual button list.
+## These furnishing captures use the untagged starter lot.
 static func _catalogue_content_expectations(content: ContentDB, selected: Dictionary[StringName, StringName] = {}) -> Dictionary:
 	var cards: Array[Dictionary] = []
 	var wrappers: Array[String] = []
 	for definition: ItemDef in content.items():
-		if definition == null or not definition.catalogue_visible or definition.id.is_empty() \
-				or definition.display_name.strip_edges().is_empty() or definition.price < 0 or definition.unlock_level < 1 \
+		if definition == null or not definition.catalogue_visible or not definition.lot_tags.is_empty() \
+				or definition.id.is_empty() or definition.display_name.strip_edges().is_empty() \
+				or definition.price < 0 or definition.unlock_level < 1 \
 				or definition.footprint.x < 1 or definition.footprint.y < 1 or not definition.placement_layer_valid() \
 				or not [ItemDef.Category.TABLE, ItemDef.Category.CHAIR, ItemDef.Category.STATION,
 					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR,

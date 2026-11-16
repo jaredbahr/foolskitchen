@@ -10,6 +10,7 @@ script = ExtResource("variant_script")
 id = &"cocktail_brushed_metal"
 display_name = "Brushed metal"
 chip_colour = &"metalDark"
+theme_tags = Array[StringName]([&"modern", &"bar"])
 material_colours = Dictionary[StringName, StringName]({&"wood": &"metalDark", &"woodDark": &"metal"})
 
 [sub_resource type="Resource" id="slot_counter"]

@@ -1256,7 +1256,8 @@ func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -
 	var wanted: Array[String] = []
 	var wrappers: Array[String] = []
 	for definition: ItemDef in content.items():
-		if not definition.catalogue_visible or definition.id.is_empty() or definition.display_name.strip_edges().is_empty() \
+		if not definition.catalogue_visible or not definition.lot_tags.is_empty() \
+				or definition.id.is_empty() or definition.display_name.strip_edges().is_empty() \
 				or definition.price < 0 or definition.unlock_level < 1 or definition.footprint.x < 1 or definition.footprint.y < 1 \
 				or not definition.placement_layer_valid() or definition.category < ItemDef.Category.TABLE \
 				or definition.category > ItemDef.Category.WAITING:
@@ -1277,7 +1278,7 @@ func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -
 	for card: Dictionary in state["cards"]:
 		actual.append(card["id"])
 	actual.sort()
-	assert_eq(actual, wanted, "all valid visible data, including locked and other-category entries, has one real card")
+	assert_eq(actual, wanted, "every available starter item, including locked and other-category entries, has one real card")
 	assert_eq(state["cache"]["expected_scenes"], wrappers)
 	assert_eq(state["cache"]["expected"], wrappers.size())
 	for hidden: StringName in [&"plant_small_1", &"plant_small_2", &"plant_small_3"]:
