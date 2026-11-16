@@ -309,8 +309,8 @@ func refresh() -> void:
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
 		_season_label = _day_label.get_node("Season") as Label
-		_time_label = get_node("Top/Row/Time") as Label
-		_phase_label = get_node("Top/Row/Phase") as Label
+		_time_label = get_node("Top/Row/TimeStatus/Time") as Label
+		_phase_label = get_node("Top/Row/TimeStatus/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
 		_loan_label = get_node("Top/Row/Loan") as Label
 		_loan_trigger = _loan_label.get_node("OpenRepayment") as Button
@@ -428,7 +428,7 @@ func set_weather(kind: int) -> void:
 
 
 func _render_day_and_season() -> void:
-	_day_label.text = "Day %d" % Clock.sim.day
+	_day_label.text = "Day %d · %s" % [Clock.sim.day, DemandText.weekday_name(Clock.sim.day).left(3)]
 	_season_label.text = SeasonText.name_for_day(Clock.sim.day)
 	var day_font: Font = _day_label.get_theme_font("font")
 	var day_size: int = _day_label.get_theme_font_size("font_size")

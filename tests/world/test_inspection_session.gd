@@ -239,7 +239,8 @@ func test_the_grade_moves_arrivals_for_exactly_seven_days() -> void:
 	_start()
 	_level(TUNING.unlock_level)
 	_next_morning()
-	var base: float = _sim().demand_factor
+	var live: Dictionary = _main.call("current_demand_snapshot")
+	var base: float = _sim().demand_factor / float(live["weekday"])
 	_sim().inspection.record(Clock.sim.day, {"grade": &"C", "findings": []})
 	# The forecast for tomorrow already carries the grade.
 	var forecast: Dictionary = _main.call("forecast_next_demand")
@@ -248,7 +249,10 @@ func test_the_grade_moves_arrivals_for_exactly_seven_days() -> void:
 	for offset: int in range(1, 9):
 		_next_morning()
 		var expected: float = 0.9 if offset <= 7 else 1.0
-		assert_almost_eq(_sim().demand_factor, minf(base * expected, 3.0), 0.0001, "day +%d" % offset)
+		live = _main.call("current_demand_snapshot")
+		var weekday: float = float(live["weekday"])
+		assert_almost_eq(_sim().demand_factor, minf(base * weekday * expected, 3.0), 0.0001,
+			"day +%d" % offset)
 	assert_eq(Clock.sim.day, day + 8)
 
 

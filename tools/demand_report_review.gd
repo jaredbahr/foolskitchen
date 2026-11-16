@@ -55,7 +55,7 @@ func _review_validate(section: Control) -> void:
 			or int(forecast.get("expected_guests", -1)) < 0:
 		_review_fail("the report lacks an actual next-day forecast")
 		return
-	for key: String in ["reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "total"]:
+	for key: String in ["reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "weekday", "total"]:
 		var value: Variant = forecast.get(key)
 		if not (value is float or value is int) or not is_finite(float(value)) or float(value) <= 0.0:
 			_review_fail("the report has an invalid actual demand factor")
@@ -66,9 +66,13 @@ func _review_validate(section: Control) -> void:
 	var explanation: Label = section.get_node("Explanation") as Label
 	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var expected_count: String = str(int(forecast["expected_guests"]))
+	var hud_day: Label = $HUD/Top/Row/Day
+	var forecast_lines: PackedStringArray = factors.text.split("\n", false)
+	var saturday_line: String = "Saturday crowd " + DemandText.change_text(WEEK_RHYTHM.factor_for_day(6))
 	if not _report.is_visible_in_tree() or not section.is_visible_in_tree() \
 			or heading.text != "Tomorrow's crowd" or not summary.text.contains(expected_count + " guests expected") \
-			or factors.text.split("\n", false).size() != 5 or explanation.text.is_empty() \
+			or hud_day.text != "Day 5 · Fri" or forecast_lines.size() != 6 \
+			or not forecast_lines.has(saturday_line) or explanation.text.is_empty() \
 			or not scroll.get_global_rect().grow(1.0).encloses(section.get_global_rect()) \
 			or not get_viewport().get_visible_rect().encloses(section.get_global_rect()):
 		_review_fail("the native forecast text is missing or clipped")
@@ -80,6 +84,7 @@ func _review_validate(section: Control) -> void:
 	print("DEMAND_REPORT_REVIEW ", JSON.stringify({"fixture": "actual default seed1 five-day service; no saves or grants",
 		"day": shown_report.day, "forecast": forecast, "heading": heading.text,
 		"summary": summary.text, "factors": factors.text, "explanation": explanation.text,
+		"hud_day": hud_day.text,
 		"rect": [section.global_position.x, section.global_position.y, section.size.x, section.size.y],
 		"world_tick": world.now, "rng": GameState._capture_save(), "unchanged": true}))
 

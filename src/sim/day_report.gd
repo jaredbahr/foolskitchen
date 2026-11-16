@@ -440,6 +440,13 @@ static func public_demand_forecast(value: Variant) -> Dictionary:
 				or not is_finite(float(factor)) or float(factor) <= 0.0:
 			return {}
 		result[key] = float(factor)
+	# The recorded forecast may include the weekday's contribution.
+	if forecast.has("weekday"):
+		var weekday: Variant = forecast["weekday"]
+		if (typeof(weekday) != TYPE_INT and typeof(weekday) != TYPE_FLOAT) \
+				or not is_finite(float(weekday)) or float(weekday) <= 0.0:
+			return {}
+		result["weekday"] = float(weekday)
 	# Old forecasts have no viral factor and stay neutral without a shape change.
 	if forecast.has("viral"):
 		var viral: Variant = forecast["viral"]

@@ -1,7 +1,7 @@
 extends TestCase
 ## Two-day snapshot of current deterministic traffic in the historical FK-083
 ## thick-divider shop: default hours, food-only menu, seed7, manual stock,
-## neutral demand and the fixture's $30 rent. Original rows came from main
+## the authored weekday factors and the fixture's $30 rent. Original rows came from main
 ## 6f6495d and later economy/mess updates; FK-124 records the changed physical
 ## service, cash and review consumption while retaining this complete context.
 ## #307 (staff serve the most impatient guests first) re-ordered which waiting
@@ -12,12 +12,16 @@ extends TestCase
 ## #490 sizes the weekly review target from the first day's result. It stays
 ## open after day two, so the same operating sales close without the $100 reward.
 ## #491 skips reviews for pre-seating walkouts, changing the first day's review RNG state.
+## The quieter Monday and Tuesday change the traffic, books and stream states.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
-const EXPECTED: Array = [[18, 3, 166, 338, "-3340690172320019757", "759273845251939063"], [17, 2, 154, 349, "1894290104310310707", "6227064950443097254"]]
+const EXPECTED: Array = [
+	[15, 1, 141, 293, "1735181905615594380", "-7351475014487353182"],
+	[17, 1, 157, 320, "8827733613648338141", "-2904874033639707141"],
+]
 
 var _main: Node
 var _layout_backup: Dictionary = {}
