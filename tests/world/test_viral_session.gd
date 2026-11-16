@@ -112,6 +112,51 @@ func test_close_rolls_once_without_saving_and_report_queries_are_pure() -> void:
 	assert_eq(FileAccess.get_file_as_string(_path()), checkpoint)
 
 
+func test_tomorrows_forecast_projects_one_open_service_before_close() -> void:
+	_start()
+	_qualifying_close()
+	assert_true(Clock.sim.next_day())
+	var book: ViralReview = _main.get("viral_review") as ViralReview
+	var morning: Dictionary = book.to_dict()
+	var random: Dictionary = GameState._capture_save()
+	Clock.sim.opening_refusal = "This fixture cannot open today."
+	assert_almost_eq((_main.call("forecast_next_demand") as Dictionary)["viral"], 1.35)
+	Clock.sim.opening_refusal = ""
+	assert_almost_eq(book.factor(2), 1.35)
+	var before_close: Dictionary = _main.call("forecast_next_demand") as Dictionary
+	assert_almost_eq(before_close["viral"], 1.0 + 0.35 * 2.0 / 3.0)
+	assert_eq(book.to_dict(), morning)
+	assert_eq(GameState._capture_save(), random)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	_main.call("_on_service_closed", 2)
+	assert_almost_eq((_main.call("forecast_next_demand") as Dictionary)["viral"], before_close["viral"])
+	assert_true(Clock.sim.next_day())
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	_main.call("_on_service_closed", 3)
+	assert_true(Clock.sim.next_day())
+	assert_almost_eq(book.factor(4), 1.0 + 0.35 / 3.0)
+	assert_false((_main.call("forecast_next_demand") as Dictionary).has("viral"))
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	_main.call("_on_service_closed", 4)
+	assert_false((_main.call("forecast_next_demand") as Dictionary).has("viral"))
+
+
+func test_morning_viral_notice_tracks_the_current_demand_cap() -> void:
+	_start()
+	_qualifying_close()
+	var tuning: DemandTuning = (_main.get("demand_tuning") as DemandTuning).duplicate() as DemandTuning
+	var normal_cap: float = tuning.total_cap
+	tuning.total_cap = 1.0
+	_main.set("demand_tuning", tuning)
+	assert_true(Clock.sim.next_day())
+	var notice: Label = _main.get_node("Overlay/MenuPanel/%ViralNotice") as Label
+	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], tuning.total_cap)
+	assert_eq(notice.text, "Trending online")
+	tuning.total_cap = normal_cap
+	_main.call("_refresh_demand")
+	assert_true(notice.text.contains("Trending online: +35%"))
+
+
 func test_next_morning_saves_and_reload_preserves_remaining_services_and_stream() -> void:
 	_start()
 	_qualifying_close()
