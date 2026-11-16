@@ -176,8 +176,10 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 		var visible: Rect2 = window.get_visible_rect()
 		var panel: ScrollContainer = _panel.get_node("Panel") as ScrollContainer
 		var rect: Rect2 = panel.get_global_rect()
+		var wide: bool = dimensions.x == 1600
+		var max_width: float = StockPanel.WIDE_PANEL_MAX_WIDTH if wide else StockPanel.PANEL_MAX_WIDTH
 		assert_almost_eq(rect.size.x, minf(visible.size.x - 2.0 * StockPanel.PANEL_SIDE_MARGIN,
-			StockPanel.PANEL_MAX_WIDTH), 0.5, "content never widens the panel at %s" % dimensions)
+			max_width), 0.5, "content never widens the panel at %s" % dimensions)
 		assert_true(visible.grow(0.5).encloses(rect), "the panel stays on screen at %s: %s in %s" % [dimensions, rect, visible])
 		for path: String in ["%Close", "%Order", "%Cancel", "%Clear", "%Haggle", "%HaggleResult", "%DeliveryBar"]:
 			var control: Control = _panel.get_node(path) as Control
@@ -188,7 +190,17 @@ func test_panel_fits_the_usual_window_and_150_percent_scale() -> void:
 		assert_true(scroll.size.y >= 100.0, "rows keep a scrolling area at %s" % dimensions)
 		var bar_end: float = (_panel.get_node("%DeliveryBar") as Control).get_global_rect().end.x
 		var rows_end: float = (_panel.get_node("%Rows") as Control).get_global_rect().end.x
-		assert_almost_eq(bar_end, rows_end, 1.0, "the delivery bar ends with the ingredient rows at %s" % dimensions)
+		if wide:
+			assert_true(scroll.size.x >= 960.0 and scroll.size.x <= StockPanel.PANEL_MAX_WIDTH,
+				"the wide card keeps the list near its stacked width")
+			assert_true(scroll.size.y >= 623.0, "the list uses the full card below the title")
+			for path: String in ["%Status", "%DeliveryBar", "%CartTotal", "%Order", "%Cancel"]:
+				var side: Control = _panel.get_node(path) as Control
+				assert_true(side.get_global_rect().position.x > scroll.get_global_rect().end.x,
+					"%s stays in the side column" % path)
+		else:
+			assert_almost_eq(bar_end, rows_end, 1.0,
+				"the stacked delivery bar ends with the ingredient rows at %s" % dimensions)
 		for data: Dictionary in _rows():
 			var row: Dictionary = _panel.row_for(data["id"])
 			var line: Rect2 = (row["root"] as Control).get_node("Line").get_global_rect()
