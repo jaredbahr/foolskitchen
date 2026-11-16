@@ -12,6 +12,36 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.collection(&"diner_classics").item_ids, [&"neon_open_sign", &"menu_board", &"diner_booth"])
 
 
+func test_lot_access_defaults_to_everywhere_and_accepts_any_shared_tag() -> void:
+	var item: ItemDef = ItemDef.new()
+	var ingredient: IngredientDef = IngredientDef.new()
+	assert_true(LotAccess.allowed(item, []))
+	assert_true(LotAccess.allowed(ingredient, [&"rooftop"]))
+	item.lot_tags = [&"rooftop", &"seaside"]
+	ingredient.lot_tags = [&"seaside"]
+	assert_false(LotAccess.allowed(item, []))
+	assert_true(LotAccess.allowed(item, [&"other", &"seaside"]))
+	assert_true(LotAccess.allowed(item, [&"rooftop"]))
+	assert_false(LotAccess.allowed(ingredient, [&"rooftop"]))
+	assert_true(LotAccess.allowed(ingredient, [&"seaside"]))
+	assert_false(LotAccess.allowed(null, [&"seaside"]))
+
+
+func test_definition_validation_rejects_empty_and_malformed_lot_tags() -> void:
+	var item: ItemDef = ItemDef.new()
+	item.id = &"cart"
+	item.lot_tags = [&""]
+	var ingredient: IngredientDef = IngredientDef.new()
+	ingredient.id = &"catch"
+	ingredient.lot_tags = [&"by the sea"]
+	var errors: PackedStringArray = ContentDB.validate_definitions([ingredient], [], [item])
+	assert_true(errors.has("item 'cart': lot tags must be non-empty ids"))
+	assert_true(errors.has("ingredient 'catch': lot tags must be non-empty ids"))
+	item.lot_tags = [&"rooftop"]
+	ingredient.lot_tags = [&"seaside"]
+	assert_eq(ContentDB.validate_definitions([ingredient], [], [item]), PackedStringArray())
+
+
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.ingredient(&"beef_patty").display_name, "Beef patty")
