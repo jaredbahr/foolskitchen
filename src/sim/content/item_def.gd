@@ -66,6 +66,9 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 ## Owner level required for new purchases. Existing placed items remain valid.
 @export var unlock_level: int = 1
 @export var charm: int = 0
+## Recognition from one placed item and its optional cap on the site score.
+@export var prestige: int = 0
+@export var prestige_cap: int = -1
 @export var theme_tags: Array[StringName] = []
 ## Empty keeps legacy content unchanged; the first authored look is the default.
 @export var variants: Array[ItemVariant] = []

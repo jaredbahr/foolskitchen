@@ -157,6 +157,7 @@ jobs:
           SCREENSHOT_TIMEOUT_SECONDS=240 bash tools/screenshot.sh --out=screens/visual-review/business-trend-30 --scene=res://tools/business_trend_review.tscn --speed=0 --frames=60 --trend-days=30
           bash tools/screenshot.sh --out=screens/visual-review/regulars-review --scene=res://tools/regulars_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/food-critic --scene=res://tools/critic_review.tscn --frames=12,90 --speed=0
+          bash tools/screenshot.sh --out=screens/visual-review/prestige --scene=res://tools/prestige_review.tscn --frames=30,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/rush-hour --scene=res://tools/rush_hour_review.tscn --frames=12,90 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/service-event --scene=res://tools/service_event_review.tscn --frames=60 --speed=0
           bash tools/screenshot.sh --out=screens/visual-review/paint --paint --speed=0 --frames=60

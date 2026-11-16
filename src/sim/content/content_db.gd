@@ -575,6 +575,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': footprint components must be >= 1" % definition.id)
 		if definition.price < 0:
 			errors.append("item '%s': price must be >= 0" % definition.id)
+		if definition.prestige < 0 or definition.prestige_cap < -1:
+			errors.append("item '%s': prestige must be >= 0 and its cap must be -1 or higher" % definition.id)
 		if not is_finite(definition.seated_forward_offset) or definition.seated_forward_offset < 0.0 \
 				or definition.seated_forward_offset > ItemDef.MAX_SEATED_FORWARD_OFFSET:
 			errors.append("item '%s': seated_forward_offset must be finite and between 0 and 0.05 m" % definition.id)

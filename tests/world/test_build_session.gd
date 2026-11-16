@@ -1117,6 +1117,9 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	var bad_meter: Dictionary = catalogue["vibe"].duplicate(true)
 	bad_meter["meter"]["caption_bounds"][0] = float(bad_meter["meter"]["panel_bounds"][0]) - 10.0
 	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, 90), "the native meter cannot be clipped out of its panel or scroll viewport")
+	bad_meter = (catalogue["vibe"] as Dictionary).duplicate(true)
+	bad_meter["meter"]["tooltip"] = String(bad_meter["meter"]["tooltip"]).get_slice("\n", 0)
+	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, 90), "the native tooltip must include the current prestige")
 	if DisplayServer.get_name() == "headless":
 		assert_false(catalogue["cache"]["supported"])
 		assert_false(catalogue["cache"]["icons_match"])
