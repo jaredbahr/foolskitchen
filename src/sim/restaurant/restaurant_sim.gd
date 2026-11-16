@@ -139,6 +139,8 @@ var restroom_tuning: RestroomTuning = RESTROOM_TUNING
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
+var _visiting_types: Dictionary[int, StringName] = {}
+var _visitor_types_today: Dictionary[StringName, Dictionary] = {}
 var _rush_cohort_ids: Dictionary[int, bool] = {}
 ## Restroom toilets and dining seats, recounted after a layout change.
 var _layout_counted: bool = false
@@ -326,6 +328,8 @@ func start_day(career_tier: int = 1) -> void:
 	reputation_before_day = review_book.average()
 	review_book.begin_day()
 	_departed.clear()
+	_visiting_types.clear()
+	_visitor_types_today.clear()
 	# Nothing stays in transit overnight: a delivery still waiting is stored.
 	if dock != null:
 		dock.store_all()
@@ -1205,6 +1209,12 @@ func _record_regular_visit(customer: CustomerAgent) -> void:
 
 
 func _publish_customer_arrival(customer: CustomerAgent) -> void:
+	var kind: StringName = customer.customer_type_id
+	_visiting_types[customer.id] = kind
+	if not _visitor_types_today.has(kind):
+		_visitor_types_today[kind] = {"name": customer.customer_type_report_name,
+			"count": 0, "departed": 0, "mood_total": 0.0}
+	_visitor_types_today[kind]["count"] += 1
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)
 
@@ -1349,6 +1359,18 @@ func customers() -> Array[CustomerAgent]:
 	return out
 
 
+## Per-type visitor counts and the average of moods recorded so far. The
+## evening report reads this after all guests, including those still waiting
+## outside at closing, have departed.
+func visitor_breakdown() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for entry: Dictionary in _visitor_types_today.values():
+		var departed: int = entry["departed"]
+		var average: Variant = float(entry["mood_total"]) / departed if departed > 0 else null
+		rows.append({"name": entry["name"], "count": entry["count"], "average_mood": average})
+	return rows
+
+
 ## Called once by a paying guest; listeners connect economy or reports here.
 func pay(customer: CustomerAgent, order: Order) -> void:
 	if customer.paid:
@@ -1370,6 +1392,11 @@ func record_departure(customer: CustomerAgent) -> void:
 		return
 	_departed[customer.id] = true
 	customer.departure_recorded = true
+	if _visiting_types.has(customer.id):
+		var entry: Dictionary = _visitor_types_today[_visiting_types[customer.id]]
+		entry["departed"] += 1
+		entry["mood_total"] += customer.departure_mood()
+		_visiting_types.erase(customer.id)
 	_record_regular_visit(customer)
 	# A takeaway leaves no crumbs at a table: they never sat (#293).
 	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL and not customer.takeaway:

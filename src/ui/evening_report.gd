@@ -161,6 +161,7 @@ func show_report(report: DayReport) -> void:
 	if guest_total == 0:
 		_guests.text = "No guests visited today"
 	_show_takeaways(report.takeaways)
+	_show_visitor_breakdown(report.visitor_breakdown)
 	(get_node("%FoodQuality") as Label).text = report.food_quality_text()
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
@@ -297,6 +298,30 @@ func _show_takeaways(count: int) -> void:
 		_guest_bar.get_parent().move_child(label, _guest_bar.get_index() + 1)
 	label.text = "Takeaways: %d" % count
 	label.visible = count > 0
+
+
+func _show_visitor_breakdown(visitors: Array[Dictionary]) -> void:
+	var rows: Array[Dictionary] = visitors.duplicate()
+	rows.sort_custom(_visitor_row_before)
+	var parts: PackedStringArray = []
+	for row: Dictionary in rows:
+		var part: String = "%s %d" % [row["name"], row["count"]]
+		var mood: Variant = row["average_mood"]
+		if mood != null:
+			var word: String = "unhappy"
+			if mood >= CustomerAgent.MOOD_HAPPY_THRESHOLD:
+				word = "happy"
+			elif mood >= CustomerAgent.MOOD_WAITING_THRESHOLD:
+				word = "neutral"
+			part += " (%s)" % word
+		parts.append(part)
+	var label: Label = %VisitorBreakdown
+	label.text = " · ".join(parts)
+	label.visible = not parts.is_empty()
+
+
+static func _visitor_row_before(a: Dictionary, b: Dictionary) -> bool:
+	return a["name"] < b["name"] if a["count"] == b["count"] else a["count"] > b["count"]
 
 
 func _render_vibe() -> void:

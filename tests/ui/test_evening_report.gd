@@ -190,3 +190,22 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")
 	viewport.remove_child(_report)
 	viewport.free()
+
+
+func test_visitor_breakdown_shows_plain_names_counts_moods_and_clears_on_empty() -> void:
+	var day: DayReport = DayReport.new()
+	day.visitor_breakdown = [
+		{"name": "Students", "count": 2, "average_mood": 0.35},
+		{"name": "Families", "count": 2, "average_mood": 0.34},
+		{"name": "Regulars", "count": 3, "average_mood": 0.6},
+	]
+	_report.call("show_report", day)
+	var label: Label = _report.get_node("%VisitorBreakdown") as Label
+	assert_eq(label.text, "Regulars 3 (happy) · Families 2 (unhappy) · Students 2 (neutral)")
+	assert_true(label.visible)
+	assert_eq(day.visitor_breakdown[0]["name"], "Students", "display sorting does not mutate report data")
+	_report.call("show_report", DayReport.from_dict({"customers_served": 4}))
+	assert_eq(label.text, "")
+	assert_false(label.visible, "older reports have no visitor data")
+	_report.call("show_report", DayReport.new())
+	assert_false(label.visible, "there is no breakdown without guests")

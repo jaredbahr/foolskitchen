@@ -58,6 +58,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 	report.slowest_seller_snapshot = sources.sim.service_menu_report_snapshot()
 	report.customers_served = sources.sim.served_today
 	report.customers_lost = sources.sim.lost_today
+	report.visitor_breakdown = sources.sim.visitor_breakdown()
 	report.takeaways = sources.sim.takeaways_today
 	if sources.sim.mishaps != null:
 		report.mishaps_text = MishapText.daily(sources.sim.mishaps.spills_today,
