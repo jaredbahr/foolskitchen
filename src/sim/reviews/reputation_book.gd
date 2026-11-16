@@ -147,7 +147,7 @@ func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuote
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
 	var cause: StringName = &"critic_good" if stars >= critic.good_stars else &"critic_bad"
-	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
+	var quote_cause: StringName = &"signature_dish" if cause == &"critic_good" \
 			and visit.ate_signature_dish else cause
 	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
 	# Up to review_weight copies, but never more than a quarter of the reviews

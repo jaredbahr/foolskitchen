@@ -106,6 +106,22 @@ func test_invalid_special_never_installs_and_the_failed_checkpoint_is_preserved(
 	assert_eq(FileAccess.get_file_as_string(_path()), bad_bytes)
 
 
+func test_slowest_seller_snapshot_uses_the_listed_price_during_a_special() -> void:
+	var main: Node = _start(false)
+	assert_true(main.call("menu_set_price", &"burger", 13))
+	assert_true(main.call("menu_set_special", &"burger"))
+	assert_true(Clock.sim.start_service())
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var burger: RecipeDef = (main.get("content") as ContentDB).recipe(&"burger")
+	assert_eq(sim.price_of(burger), 12, "actual orders still get the special price")
+	var report: DayReport = main.call("build_report", Clock.sim.day) as DayReport
+	report.dishes_sold = {&"burger": 1, &"grilled_cheese": 2, &"tomato_soup": 2}
+	var slowest: Dictionary = report.slowest_dish_details()
+	assert_eq(slowest.get("id"), "burger")
+	assert_eq(slowest.get("price"), 13)
+	assert_eq(slowest.get("standard_price"), 12)
+
+
 func test_paid_service_captures_discounted_tickets_and_a_detached_special_report_line() -> void:
 	var main: Node = _start(false)
 	assert_true(main.call("menu_set_special", &"burger"))
@@ -134,6 +150,28 @@ func test_paid_service_captures_discounted_tickets_and_a_detached_special_report
 	assert_true(Clock.sim.next_day())
 	assert_eq((main.get("daily_special") as DailySpecial).recipe_id(), &"")
 	assert_eq(report.daily_special_line, "Today's special: Burger, %d sold" % sold)
+
+
+func test_signature_sales_match_every_dish_after_a_real_service() -> void:
+	var main: Node = _start(false)
+	var menu: MenuSettings = main.get("menu_settings") as MenuSettings
+	var signature: SignatureState = main.get("signature_state") as SignatureState
+	assert_true(Clock.sim.start_service())
+	for _guard: int in 30:
+		if Clock.sim.phase == SimClock.Phase.CLOSED:
+			break
+		main.call("run_ticks", 1000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var sold: Dictionary = main.get("dishes_sold_today")
+	assert_true(sold.size() > 1, "the real service sold more than one dish")
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var paid: Dictionary[StringName, int] = {}
+	for order: Order in sim.orders.orders_in_state(Order.State.DELIVERED):
+		if order.paid:
+			paid[order.recipe_id] = paid.get(order.recipe_id, 0) + 1
+	assert_eq(sold, paid)
+	for recipe: RecipeDef in menu.recipes():
+		assert_eq(signature.sales_for(recipe.id), sold.get(recipe.id, 0), recipe.display_name)
 
 
 func _start(saves: bool = true) -> Node:

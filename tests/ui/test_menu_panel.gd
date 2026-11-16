@@ -465,6 +465,18 @@ func test_signature_action_is_eligible_request_only_and_preserves_selected_label
 	assert_eq(_signature_requests.size(), 1)
 
 
+func test_dish_list_tracks_the_signature_when_another_dish_is_selected() -> void:
+	var recipes: Array[RecipeDef] = _menu.recipes()
+	_panel.set_recipe_details(recipes, {&"burger": {"signature": {"selected": true}}})
+	assert_true(_panel.select_recipe(&"tomato_soup"))
+	assert_eq(_panel.tree_item_for(&"burger").get_text(0), "Burger (signature)")
+	assert_eq(_panel.tree_item_for(&"tomato_soup").get_text(0), "Tomato soup")
+	_panel.set_recipe_details(recipes, {&"grilled_cheese": {"signature": {"selected": true}}})
+	assert_eq(_panel.tree_item_for(&"burger").get_text(0), "Burger")
+	assert_eq(_panel.tree_item_for(&"grilled_cheese").get_text(0), "Grilled cheese (signature)")
+	assert_eq(_panel.tree_item_for(&"tomato_soup").get_tree().get_selected().get_metadata(0), &"tomato_soup")
+
+
 func test_signature_action_explains_cooldown_and_nonmorning_refusals() -> void:
 	var signature: Dictionary = {"sales": 150, "unlock_sales": 150, "selected": false,
 		"eligible": true, "can_select": false, "next_change_day": 8, "cooldown_days": 7,

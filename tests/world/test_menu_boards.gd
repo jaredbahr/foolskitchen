@@ -55,6 +55,24 @@ func test_two_boards_keep_independent_sections_and_refresh_on_menu_and_name_edit
 	assert_false(_main.call("shop_menu_board_section", Vector3i(5, 5, WEST), RecipeDef.Section.MAINS))
 
 
+func test_accepted_special_updates_auto_and_matching_placed_boards() -> void:
+	await _start()
+	Economy.add_cash(500, Ledger.OTHER)
+	var auto_anchor: Vector3i = Vector3i(1, 6, WEST)
+	var explicit_anchor: Vector3i = Vector3i(1, 9, WEST)
+	assert_true(_main.call("shop_hang", &"menu_board", auto_anchor))
+	assert_true(_main.call("shop_hang", &"menu_board", explicit_anchor))
+	assert_true(_main.call("shop_menu_board_section", explicit_anchor, RecipeDef.Section.MAINS))
+	assert_true(_main.call("menu_set_special", &"burger"))
+	var line: String = "Today's special: B"
+	assert_true(_board_text(auto_anchor).contains(line))
+	assert_true(_board_text(explicit_anchor).contains(line))
+	assert_true(_main.call("shop_menu_board_section", explicit_anchor, RecipeDef.Section.DRINKS))
+	assert_false(_board_text(explicit_anchor).contains(line))
+	assert_true(_main.call("menu_set_special", &""))
+	assert_false(_board_text(auto_anchor).contains(line))
+
+
 func test_idle_wall_hit_selects_board_and_inspector_requests_section() -> void:
 	await _start()
 	Economy.add_cash(500, Ledger.OTHER)

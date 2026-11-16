@@ -782,7 +782,7 @@ func begin_service_menu_snapshot() -> void:
 		_service_menu_snapshot.append({
 			"id": String(recipe.id),
 			"display_name": recipe.display_name,
-			"price": price_of(recipe),
+			"price": _listed_price(recipe),
 			"standard_price": recipe.standard_price,
 		})
 
@@ -1038,8 +1038,11 @@ func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
 		return 0
-	var price: int = maxi(0, prices.get(recipe.id, recipe.standard_price))
-	return _price_with_special(recipe, price)
+	return _price_with_special(recipe, _listed_price(recipe))
+
+
+func _listed_price(recipe: RecipeDef) -> int:
+	return maxi(0, prices.get(recipe.id, recipe.standard_price))
 
 
 func _price_with_special(recipe: RecipeDef, price: int) -> int:

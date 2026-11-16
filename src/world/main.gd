@@ -5209,7 +5209,7 @@ func _refresh_menu_boards() -> void:
 			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
 			menu_settings.enabled_recipes(), prices,
-			DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
+			daily_special.recipe_id(),
 			signature_state.signature_recipe_id() if signature_state != null else &"")
 
 
