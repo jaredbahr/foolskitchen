@@ -220,11 +220,7 @@ func test_evening_schedule_switches_real_orders_and_round_trips_at_morning() -> 
 	assert_eq(dinner_order.recipe_id, &"grilled_cheese")
 	assert_eq(dinner_order.price, 7)
 
-	for guard: int in range(8):
-		if Clock.sim.phase == SimClock.Phase.CLOSED:
-			break
-		first.call("run_ticks", 1000)
-	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	_finish_preset_test_service(first)
 	assert_true(Clock.sim.next_day())
 	assert_false(sim.evening_active)
 	assert_eq(sim.menu[0].id, &"burger")
@@ -237,6 +233,40 @@ func test_evening_schedule_switches_real_orders_and_round_trips_at_morning() -> 
 	assert_eq(JSON.parse_string(JSON.stringify(restored.to_save())), saved)
 	var restored_sim: RestaurantSim = second.get("sim")
 	assert_eq(restored_sim.menu[0].id, &"burger")
+
+	var choices: MenuSettings = second.get("menu_settings")
+	var difficulty: Difficulty = second.get("difficulty")
+	var flags: Dictionary = Difficulty.DEFAULT_CUSTOM_FLAGS.duplicate()
+	flags[&"prices"] = true
+	assert_true(difficulty.request_change(&"custom", flags, Clock.sim.day + 1))
+	assert_true(Clock.sim.start_service())
+	_finish_preset_test_service(second)
+	assert_true(Clock.sim.next_day())
+	assert_true(choices.automatic_prices())
+	var burger: RecipeDef = choices.recipe(&"burger")
+	assert_eq(choices.price_of(burger), burger.standard_price)
+
+	assert_true(Clock.sim.start_service())
+	second.call("run_ticks", 180)
+	assert_true(restored_sim.evening_active)
+	var dinner_dish: RecipeDef = restored_sim.menu[0]
+	assert_eq(dinner_dish.id, &"grilled_cheese")
+	assert_eq(choices.price_of(dinner_dish), dinner_dish.standard_price)
+	assert_true(difficulty.request_change(&"normal", {}, Clock.sim.day + 1))
+	_finish_preset_test_service(second)
+	assert_true(Clock.sim.next_day())
+	assert_false(choices.automatic_prices())
+	assert_eq(restored_sim.menu[0].id, burger.id)
+	assert_eq(choices.price_of(burger), lunch_price, "restore the saved price before the shop opens")
+	assert_eq(restored_sim.prices.get(burger.id), lunch_price)
+
+
+func _finish_preset_test_service(main: Node) -> void:
+	for guard: int in range(8):
+		if Clock.sim.phase == SimClock.Phase.CLOSED:
+			break
+		main.call("run_ticks", 1000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
 
 
 func _order_at_menu(sim: RestaurantSim, seed: int) -> Order:

@@ -6531,6 +6531,8 @@ func _begin_morning() -> void:
 	daily_special.begin_morning(Clock.sim.day)
 	sim.schedule_evening(0, null)
 	if _evening_tick() > 0:
+		# The overnight mode change governs which saved prices can be applied.
+		menu_settings.set_automatic_prices(not GameMode.is_creative() and difficulty.auto(&"prices"))
 		_apply_menu_preset(menu_presets.index_of_name(evening_schedule.day_preset))
 	_apply_menu(sim, menu_settings)
 	day_notes.clear_records_and_goals()
