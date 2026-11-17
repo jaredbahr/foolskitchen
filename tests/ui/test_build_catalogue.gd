@@ -140,7 +140,7 @@ func test_content_names_then_ids_sort_and_zero_price_is_buyable() -> void:
 	assert_eq(_catalogue.ordered_ids().size(), 3, "diagnostics cannot change ordering")
 
 
-func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() -> void:
+func test_starter_catalogue_is_derived_from_every_available_non_door_definition() -> void:
 	var shipped: ContentDB = ContentDB.new()
 	assert_eq(shipped.load_all(), PackedStringArray())
 	_catalogue.bind_content(shipped)
@@ -148,7 +148,8 @@ func test_shipped_catalogue_is_derived_from_every_valid_non_door_definition() ->
 	assert_eq(shipped.item(&"chair").display_name, "Cushioned chair")
 	var expected_count: int = 0
 	for definition: ItemDef in shipped.items():
-		if definition.category == ItemDef.Category.DOOR or not definition.catalogue_visible:
+		if definition.category == ItemDef.Category.DOOR or not definition.catalogue_visible \
+				or not definition.lot_tags.is_empty():
 			assert_false(_catalogue.item_buttons.has(definition.id))
 			continue
 		expected_count += 1
@@ -721,7 +722,7 @@ func test_hygiene_card_closes_on_escape_or_a_click_elsewhere_and_returns_on_hove
 		click.pressed = pressed
 		tree.root.push_input(click, true)
 	assert_false(card.visible, "a right click on the card puts it away like one anywhere else")
-	assert_eq(probe.right, 1, "and still reaches Build, which drops the ghost")
+	assert_eq(probe.right, 1, "outside the catalogue the click reaches the shop")
 	assert_true(_catalogue.hygiene_enabled)
 	assert_eq(toggles, [true] as Array[bool], "putting the card away never switches Hygiene off")
 	_mouse(button.get_global_rect().get_center(), true)

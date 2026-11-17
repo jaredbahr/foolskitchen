@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="PrestigeTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/prestige_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+thresholds = Vector3i(20, 40, 60)

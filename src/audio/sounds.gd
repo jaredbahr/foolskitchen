@@ -20,10 +20,10 @@ static func play_clink(kind: StringName, world_position: Vector3 = Vector3.ZERO,
 	return sfx != null and bool(sfx.call(&"play_clink", kind, world_position, positioned))
 
 
-static func set_loop_level(loop: StringName, level: float) -> void:
+static func set_loop_level(loop: StringName, level: float, track: AudioStream = null) -> void:
 	var sfx: Node = _sfx()
 	if sfx != null:
-		sfx.call(&"set_loop_level", loop, level)
+		sfx.call(&"set_loop_level", loop, level, track)
 
 
 static func stop_loops() -> void:
@@ -33,10 +33,10 @@ static func stop_loops() -> void:
 
 
 ## Where the game is, for the music (`MusicTracks`): "" for none.
-static func set_music_context(context: StringName) -> void:
+static func set_music_context(context: StringName, day: int = 0) -> void:
 	var sfx: Node = _sfx()
 	if sfx != null:
-		sfx.call(&"set_music_context", context)
+		sfx.call(&"set_music_context", context, day)
 
 
 static func set_music_ducked(ducked: bool) -> void:

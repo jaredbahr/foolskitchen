@@ -38,6 +38,9 @@ func _ready() -> void:
 	if sim.cleanliness.spot_count() != 2 or not set_build_active(true):
 		push_error("Hygiene review could not prepare its two floor spots and Build view")
 		return
+	if scale_percent == 150:
+		sim.inspection.last_day = 1
+		sim.inspection.last_grade = &"B"
 	var state: HygieneOverview.Snapshot = HygieneOverview.capture(sim)
 	print("HYGIENE_REVIEW ", JSON.stringify({"fixture": "seed 1; unsaved morning restroom edits, one held dirty table and two seeded floor spots",
 		"lines": HygieneOverview.lines(state), "use_saves": use_saves, "world_tick": world.now}))

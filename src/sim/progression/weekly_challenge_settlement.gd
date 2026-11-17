@@ -13,16 +13,16 @@ var report_text: String = ""
 
 static func prepare(live_state: WeeklyChallengeState, observation: MilestoneDay,
 		ledger_cash: int, first_week_pool: WeeklyChallengePool = null,
-		seats: int = 0) -> WeeklyChallengeSettlement:
+		seats: int = 0, business_day: bool = true) -> WeeklyChallengeSettlement:
 	if live_state == null or not live_state.is_active() or observation == null \
 			or observation.day <= live_state.last_evaluated_day:
 		return null
 	var staged: WeeklyChallengeState = WeeklyChallengeState.new()
 	if not staged.from_dict(live_state.to_dict()):
 		return null
-	if first_week_pool != null:
+	if business_day and first_week_pool != null:
 		staged.size_first_week(first_week_pool, observation, seats)
-	var outcome: Dictionary = staged.apply_day(observation)
+	var outcome: Dictionary = staged.apply_day(observation, business_day)
 	if outcome.is_empty():
 		return null
 	var reward: int = int(outcome.get("reward_cash", 0))

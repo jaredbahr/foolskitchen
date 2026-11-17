@@ -191,6 +191,20 @@ func test_positive_critic_quote_uses_consumed_signature_without_changing_score()
 	assert_true(QUOTES.groups[&"signature_dish"].has(named["quote"]))
 
 
+func test_a_four_star_critic_below_the_good_threshold_uses_the_bad_quote() -> void:
+	var strict: CriticTuning = CRITIC.duplicate() as CriticTuning
+	strict.good_stars = 5
+	var visit: ReviewVisit = _visit(0.0, 0.0)
+	visit.quality_weight = 2.0
+	visit.ate_signature_dish = true
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 30331
+	var review: Dictionary = ReputationBook.new().record_critic(visit, REVIEWS, QUOTES, random, strict)
+	assert_eq(review["stars"], 4)
+	assert_eq(review["cause"], &"critic_bad")
+	assert_true(QUOTES.groups[&"critic_bad"].has(review["quote"]))
+
+
 func test_the_review_moves_reputation_by_the_data_weight() -> void:
 	var random: RandomNumberGenerator = RandomNumberGenerator.new()
 	random.seed = 1

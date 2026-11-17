@@ -329,6 +329,27 @@ func test_settlement_is_prepared_without_mutating_live_state_and_pays_once() -> 
 		"the cash overflow is refused before state installation")
 
 
+func test_settlement_expires_the_challenge_after_a_closed_final_day() -> void:
+	var live: WeeklyChallengeState = _started(WeeklyChallenge.Kind.NO_LOSS_DAYS, 1)
+	for day: int in range(1, WeeklyChallengeState.WEEK_DAYS):
+		assert_false(live.apply_day(_day(day, 0, 1)).is_empty())
+	var before: Dictionary = live.to_dict()
+	var day_closed: MilestoneDay = _day(WeeklyChallengeState.WEEK_DAYS, 0)
+	var settlement: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(live, day_closed, 10, null, 0, false)
+	assert_not_null(settlement)
+	if settlement == null:
+		return
+	assert_eq(live.to_dict(), before)
+	assert_true(settlement.expired)
+	assert_false(settlement.completed)
+	assert_eq(settlement.cash_reward, 0)
+	assert_eq(settlement.state.progress, 0)
+	assert_eq(settlement.state.last_evaluated_day, WeeklyChallengeState.WEEK_DAYS)
+	var restored: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(restored.from_dict(settlement.state.to_dict()))
+	assert_eq(restored.status, WeeklyChallengeState.Status.EXPIRED)
+
+
 func _started(kind: int, target: int, recipe: RecipeDef = null) -> WeeklyChallengeState:
 	var challenge: WeeklyChallenge = _challenge(kind, target)
 	var state: WeeklyChallengeState = WeeklyChallengeState.new()

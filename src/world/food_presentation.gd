@@ -115,7 +115,7 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 		if STATION_LOOPS.has(definition.id):
 			_station_loops[item.id] = STATION_LOOPS[definition.id]
 		var serving_surface: bool = definition.category == ItemDef.Category.TABLE or definition.category == ItemDef.Category.PASS
-		var surface: Surface = _surface(visual, serving_surface)
+		var surface: Surface = measure_surface(visual, serving_surface)
 		surfaces[item.id] = surface.point
 		surface_bounds[item.id] = surface.bounds
 		if serving_surface:
@@ -322,7 +322,7 @@ func _available() -> DishVisual:
 
 ## Find the broad horizontal surface of the real model, excluding seat parts.
 ## Measuring once avoids chair backs and sink taps becoming a table/counter top.
-static func _surface(visual: ItemVisual, serving: bool = false) -> Surface:
+static func measure_surface(visual: ItemVisual, serving: bool = false) -> Surface:
 	var areas: Dictionary[int, float] = {}
 	var centers: Dictionary[int, Vector3] = {}
 	var bounds: Dictionary[int, AABB] = {}

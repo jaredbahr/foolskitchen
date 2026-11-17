@@ -43,6 +43,7 @@ var _next_player: int = 0
 var _pitch_step: Dictionary[StringName, int] = {}
 var _loop_players: Dictionary[StringName, AudioStreamPlayer] = {}
 var _loop_levels: Dictionary[StringName, float] = {}
+var _loop_tracks: Dictionary[StringName, AudioStream] = {}
 var _clink_players: Array[AudioStreamPlayer3D] = []
 var _plain_clink_players: Array[AudioStreamPlayer] = []
 var _plain_clink_next: int = 0
@@ -52,7 +53,8 @@ var _clink_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _music_players: Dictionary[AudioStream, AudioStreamPlayer] = {}
 var _music_levels: Dictionary[AudioStream, float] = {}
 var _music_context: StringName = &""
-## Which of the context's tracks is up (they alternate; 0 on entering a context).
+var _music_day: int = 0
+## Position in the fallback playlist or the selected day's theme index.
 var _music_index: int = 0
 var _music_ducked: bool = false
 
@@ -184,17 +186,20 @@ func play_clink(kind: StringName, world_position: Vector3 = Vector3.ZERO, positi
 ## Sets a looped ambience from 0 (off) to 1 (its full tuned level). Station
 ## and jukebox loops play on the Effects bus, the room tone and chatter on the
 ## Ambience bus. A known loop with no file yet keeps its level and plays nothing.
-func set_loop_level(loop: StringName, level: float) -> void:
+func set_loop_level(loop: StringName, level: float, track: AudioStream = null) -> void:
 	var ambient: bool = ambience.loops.has(loop)
 	if not ambient and not tuning.loops.has(loop):
 		return
 	level = clampf(level, 0.0, 1.0) if _unlocked else 0.0
 	_loop_levels[loop] = level
-	var stream: AudioStream = ambience.loops[loop] if ambient else tuning.loops[loop]
-	if _headless or stream == null:
+	var stream: AudioStream = track if track != null else (ambience.loops[loop] if ambient else tuning.loops[loop])
+	var previous: AudioStream = _loop_tracks.get(loop)
+	if level >= SILENT_LEVEL:
+		_loop_tracks[loop] = stream
+	if _headless:
 		return
 	var player: AudioStreamPlayer = _loop_players.get(loop)
-	if level < SILENT_LEVEL:
+	if stream == null or level < SILENT_LEVEL:
 		if player != null and player.playing:
 			player.stop()
 		return
@@ -202,28 +207,32 @@ func set_loop_level(loop: StringName, level: float) -> void:
 		player = AudioStreamPlayer.new()
 		player.name = "Loop_" + String(loop)
 		player.bus = AMBIENCE_BUS if ambient else BUS
-		player.stream = _looping(stream)
 		add_child(player)
 		_loop_players[loop] = player
+	if player.stream == null or stream != previous:
+		player.stop()
+		player.stream = _looping(stream)
 	var gain: float = ambience.loop_gain_db(loop) if ambient else tuning.loop_gain_db(loop)
 	player.volume_db = gain + linear_to_db(level)
 	if not player.playing:
 		player.play()
 
 
-## Music for one part of the game (`MusicTracks`); an empty or unknown context
-## fades the music out. Looping, fading and silence in headless runs are handled
-## here, so callers only say where the game is.
-func set_music_context(context: StringName) -> void:
-	if context != _music_context:
-		_music_index = 0
+## An empty context fades the music out. For a themed context the service
+## day selects the track, while a fallback playlist starts with its first.
+func set_music_context(context: StringName, day: int = 0) -> void:
+	var selected_day: int = day if MusicTracks.BY_THEME.has(context) else 0
+	if context != _music_context or selected_day != _music_day:
+		_music_day = selected_day
+		_music_index = selected_day
 	_music_context = context
 
 
 ## The current context's next track takes over (the one playing has ended).
 ## Several tracks alternate in order, wrapping round; one just repeats.
 func advance_music() -> void:
-	_music_index = posmod(_music_index + 1, maxi(MusicTracks.track_count(_music_context), 1))
+	if not MusicTracks.BY_THEME.has(_music_context):
+		_music_index = posmod(_music_index + 1, maxi(MusicTracks.track_count(_music_context), 1))
 
 
 func music_track() -> AudioStream:
@@ -283,6 +292,8 @@ func _apply_music_player(track: AudioStream, level: float, target: float) -> voi
 		player.finished.connect(_on_music_finished.bind(track))
 		add_child(player)
 		_music_players[track] = player
+	if target > 0.0:
+		_set_loop_mode(player.stream, MusicTracks.BY_THEME.has(_music_context) or not MusicTracks.in_playlist(track))
 	player.volume_db = linear_to_db(maxf(level, 0.0001))
 	if not player.playing and target > 0.0 and level >= SILENT_LEVEL:
 		player.play()
@@ -291,12 +302,16 @@ func _apply_music_player(track: AudioStream, level: float, target: float) -> voi
 ## A playlist track ran out: if it is the one wanted, the next follows (and
 ## fades in while this one, already silent, fades out).
 func _on_music_finished(track: AudioStream) -> void:
-	if track == music_track() and MusicTracks.in_playlist(track):
+	if track == music_track() and not MusicTracks.BY_THEME.has(_music_context) and MusicTracks.in_playlist(track):
 		advance_music()
 
 
 func loop_level(loop: StringName) -> float:
 	return float(_loop_levels.get(loop, 0.0))
+
+
+func loop_track(loop: StringName) -> AudioStream:
+	return _loop_tracks.get(loop) if loop_level(loop) >= SILENT_LEVEL else null
 
 
 func stop_loops() -> void:
@@ -333,25 +348,20 @@ func _free_clink_player() -> AudioStreamPlayer3D:
 ## and hand over to the next (its import loops, which would never end); any
 ## other track loops.
 static func music_stream_for(track: AudioStream) -> AudioStream:
-	return _once(track) if MusicTracks.in_playlist(track) else _looping(track)
+	return _looping(track, not MusicTracks.in_playlist(track))
 
 
-static func _once(stream: AudioStream) -> AudioStream:
+static func _looping(stream: AudioStream, looping: bool = true) -> AudioStream:
 	var copy: AudioStream = stream.duplicate()
-	if copy is AudioStreamOggVorbis:
-		(copy as AudioStreamOggVorbis).loop = false
-	elif copy is AudioStreamWAV:
-		(copy as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+	_set_loop_mode(copy, looping)
 	return copy
 
 
-static func _looping(stream: AudioStream) -> AudioStream:
-	var copy: AudioStream = stream.duplicate()
-	if copy is AudioStreamOggVorbis:
-		(copy as AudioStreamOggVorbis).loop = true
-	elif copy is AudioStreamWAV:
-		(copy as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
-	return copy
+static func _set_loop_mode(stream: AudioStream, looping: bool) -> void:
+	if stream is AudioStreamOggVorbis:
+		(stream as AudioStreamOggVorbis).loop = looping
+	elif stream is AudioStreamWAV:
+		(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD if looping else AudioStreamWAV.LOOP_DISABLED
 
 
 # --- Buttons ------------------------------------------------------------------

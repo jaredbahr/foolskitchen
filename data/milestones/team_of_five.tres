@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Milestone" format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="1_goal"]
+
+[resource]
+script = ExtResource("1_goal")
+id = &"team_of_five"
+title = "A team of five"
+description = "Grow the staff roster to five people."
+condition = 5
+target = 5.0
+reward_xp = 35
+reward_cash = 40
+unlock_level = 4

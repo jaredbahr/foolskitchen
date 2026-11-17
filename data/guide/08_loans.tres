@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Loans"
+body = "If the day's closing costs leave your cash below zero, the bank automatically advances enough to cover the shortfall. The advance is rounded up in steps of {loan_step}. There is no game over, but borrowing has a cost. Outstanding principal accrues {loan_interest} interest each day.\n\nWhen you make a profit, {loan_repay_share} of positive operating profit is applied to repayment, up to what you owe and what cash is available after interest. You can also open the loan balance from the HUD to repay some or all of it early when you have cash. While a balance remains, property purchases and larger upgrades are restricted. Keep an eye on the evening report's full cash movements. A profitable service can still end with less cash if interest or repayments are due."

@@ -9,6 +9,8 @@ enum Storage { SHELF, FRIDGE, FREEZER }
 
 @export var id: StringName = &""
 @export var display_name: String = ""
+## Empty allows the definition at every lot.
+@export var lot_tags: Array[StringName] = []
 ## Whole currency per unit, before supplier discounts.
 @export var unit_cost: int = 0
 ## Number of service days before a stocked unit expires. Freezer ingredients

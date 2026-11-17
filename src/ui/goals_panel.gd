@@ -39,6 +39,12 @@ func set_career_tier_line(text: String) -> void:
 	label.visible = not text.is_empty()
 
 
+func set_golden_ladles(prestige_score: int, earned: int) -> void:
+	var label: Label = %GoldenLadles as Label
+	label.text = "Golden Ladles: %d of %d" % [earned, PrestigeTuning.MAX_LADLES]
+	label.visible = prestige_score > 0
+
+
 ## Detached display text only; Main owns the saved lifetime observations.
 func set_records(lines: Array[String]) -> void:
 	_record_lines = lines.duplicate()
@@ -118,7 +124,6 @@ func _render() -> void:
 	var completed_rows: VBoxContainer = %CompletedRows as VBoxContainer
 	var active_heading: Label = %ActiveHeading as Label
 	var completed_heading: Label = %CompletedHeading as Label
-	var empty_state: Label = %EmptyState as Label
 	var previous_weekly: Node = (%List as VBoxContainer).get_node_or_null("WeeklyChallenge")
 	if previous_weekly != null:
 		previous_weekly.get_parent().remove_child(previous_weekly)
@@ -141,16 +146,13 @@ func _render() -> void:
 		var list: VBoxContainer = %List as VBoxContainer
 		list.add_child(opening_card)
 		list.move_child(opening_card, 0)
-		weekly_card = opening_card if weekly_card == null else weekly_card
 	_active_ids.clear()
 	_completed_known_ids.clear()
 	active_heading.visible = false
 	completed_heading.visible = false
-	empty_state.visible = weekly_card == null
 
 	if _catalogue == null or not _catalogue.is_valid():
-		empty_state.visible = weekly_card == null and \
-			(_collection_result == null or _collection_result.entries.is_empty())
+		_refresh_empty_state()
 		return
 
 	var completed_lookup: Dictionary[StringName, bool] = {}
@@ -177,8 +179,7 @@ func _render() -> void:
 
 	active_heading.visible = not _active_ids.is_empty()
 	completed_heading.visible = not _completed_known_ids.is_empty()
-	empty_state.visible = weekly_card == null and _active_ids.is_empty() and _completed_known_ids.is_empty() \
-		and (_collection_result == null or _collection_result.entries.is_empty())
+	_refresh_empty_state()
 
 
 func _render_collections() -> void:
@@ -205,11 +206,16 @@ func _render_collections() -> void:
 			if entry.completed:
 				_add_label(rows, "Collection%dComplete" % index, "Complete!")
 	heading.visible = rows.get_child_count() > 0
+	_refresh_empty_state()
+
+
+func _refresh_empty_state() -> void:
 	var empty_state: Label = %EmptyState as Label
+	var list: VBoxContainer = %List as VBoxContainer
+	var collections: VBoxContainer = %CollectionsRows as VBoxContainer
 	empty_state.visible = _active_ids.is_empty() and _completed_known_ids.is_empty() \
-		and rows.get_child_count() == 0 and (_weekly_challenge == null \
-		or _weekly_challenge.status == WeeklyChallengeState.Status.EMPTY) \
-		and (_opening_week == null or not _opening_week.is_active())
+		and collections.get_child_count() == 0 and not list.has_node("WeeklyChallenge") \
+		and not list.has_node("OpeningWeek")
 
 
 func _make_weekly_card() -> Control:
