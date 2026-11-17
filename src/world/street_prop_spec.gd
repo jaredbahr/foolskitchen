@@ -8,9 +8,12 @@ extends Resource
 ## are the seaside street's (data/streets/seaside.tres).
 
 ## New kinds go on the end: presets store the number.
-enum Kind { TREE_PLANTER, BENCH, BIN, BIKE_RACK, HYDRANT, BUS_STOP, POSTBOX, ROPE_BOLLARD, LIFEBUOY, CATCH_CRATES, BUNTING }
+enum Kind { TREE_PLANTER, BENCH, BIN, BIKE_RACK, HYDRANT, BUS_STOP, POSTBOX, ROPE_BOLLARD, LIFEBUOY, CATCH_CRATES, BUNTING,
+	PLANTER, ICE_CREAM_CART, IRON_BOLLARD }
 ## KERB props stand along the kerb side of the pavement, WALL props against the shop fronts.
-enum Zone { KERB, WALL }
+## On a promenade (#596) MID props stand on its centre band (benches there face the shops
+## and the sea beyond them) and FAR props line its far edge.
+enum Zone { KERB, WALL, MID, FAR }
 
 @export var kind: Kind = Kind.BENCH
 @export_range(0, 8) var count: int = 1
@@ -49,6 +52,12 @@ static func size_of(prop_kind: Kind) -> Vector3:
 			return Vector3(0.66, 0.4, 0.42)
 		Kind.BUNTING:
 			return Vector3(1.9, 1.0, 0.14)
+		Kind.PLANTER:
+			return Vector3(0.9, 0.62, 0.42)
+		Kind.ICE_CREAM_CART:
+			return Vector3(0.95, 1.25, 0.5)
+		Kind.IRON_BOLLARD:
+			return Vector3(0.16, 0.36, 0.16)
 		_:
 			return Vector3(0.28, 0.54, 0.28)
 
@@ -64,5 +73,9 @@ static func spacing_of(prop_kind: Kind) -> float:
 			return 4.5
 		Kind.ROPE_BOLLARD:
 			return 2.6
+		Kind.PLANTER:
+			return 4.0
+		Kind.IRON_BOLLARD:
+			return 1.6
 		_:
 			return 8.0

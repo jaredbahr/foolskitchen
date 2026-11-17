@@ -1,7 +1,7 @@
 extends "res://src/world/main.gd"
 ## Unsaved street review fixture (#425): the seed-1 first morning with the seaside
-## lot added as a second site and made the active one, so the view shows the
-## seaside street (data/streets/seaside.tres). Nothing is saved or bought.
+## lot added as a second site and made the active one, so the view shows its
+## street (the promenade, data/streets/promenade.tres, #596). Nothing is saved or bought.
 ## Use: bash tools/screenshot.sh --scene=res://tools/seaside_street_review.tscn
 ##   --speed=0 --frames=60 [--quarter=N]. Set SEASIDE_STREET_REVIEW_HOME=1 to stay
 ## on the home site's starter street instead, for a side-by-side comparison.
@@ -9,6 +9,10 @@ extends "res://src/world/main.gd"
 ## day, the first morning): the clock is set for display only and never runs.
 ## SEASIDE_STREET_BEACH=<zoom> frames the beach behind the shop (#588) at that zoom
 ## (the default view is about 15; 22 shows the beach and sea well).
+## SEASIDE_STREET_FOR_SALE=1 shows every terrace neighbour closed and for sale; a
+## neighbour's id (surf_hire, beach_goods, ...) shows just that one (#596).
+## SEASIDE_STREET_PRESET=<path> stands the lot on another street for the capture (for
+## example res://data/streets/seaside.tres, the seaside road).
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
@@ -30,6 +34,10 @@ func _ready() -> void:
 	if OS.get_environment("SEASIDE_STREET_REVIEW_HOME") == "1":
 		return
 	var lot: LotDef = _lot_def(SEASIDE)
+	var street_override: String = OS.get_environment("SEASIDE_STREET_PRESET")
+	if lot != null and not street_override.is_empty():
+		# This process only: the review saves nothing, so the loaded lot may change.
+		lot.street_preset = street_override
 	var sections: Dictionary = _new_site_sections(lot) if lot != null else {}
 	if sections.is_empty() or not site_book.add_site(SEASIDE, SEASIDE, lot.display_name, Clock.sim.day, sections):
 		push_error("Seaside street review could not add the seaside site")
@@ -42,6 +50,7 @@ func _ready() -> void:
 		var node: Node = get_node_or_null(panel)
 		if node != null:
 			node.set("visible", false)
+	_show_for_sale(OS.get_environment("SEASIDE_STREET_FOR_SALE"))
 	_close_up()
 	_frame_beach()
 	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
@@ -56,6 +65,15 @@ func _ready() -> void:
 		print("PLAN ", " ".join(summary))
 	print("SEASIDE_STREET_REVIEW ", JSON.stringify({"site": String(site_book.active_id),
 		"street": String(($ShopView as ShopView).street_preset.id), "minute": day_light_minute()}))
+
+
+func _show_for_sale(which: String) -> void:
+	if which.is_empty() or which == "0":
+		return
+	var dressing: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
+	for id: StringName in dressing.neighbour_ids():
+		if which == "1" or which == String(id):
+			dressing.set_neighbour_state(id, NeighbourhoodDressing.NeighbourState.FOR_SALE)
 
 
 ## Sets the clock's phase for display only (dusk mid-evening service, night after

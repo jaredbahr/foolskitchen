@@ -15,11 +15,18 @@ const STARTER: String = "res://data/streets/starter.tres"
 @export var buildings: StreetSet
 ## The beach and sea behind the back lane (#588); none keeps the meadow and tree line.
 @export var shore: ShoreSkin
+## A car-free promenade instead of the road (#596); none keeps the road and its traffic.
+@export var promenade: PromenadeSkin
 
 
 ## The starter street, the one every site had before presets (#422, #423).
 static func starter() -> StreetPreset:
 	return load(STARTER) as StreetPreset
+
+
+## True when cars drive past: every street but a promenade.
+func has_traffic() -> bool:
+	return promenade == null
 
 
 ## The preset at `path`, or the starter street when `path` is empty, missing or
@@ -83,6 +90,16 @@ func errors() -> PackedStringArray:
 	for style: ShopStyle in buildings.shops:
 		if style == null or String(style.id).is_empty():
 			problems.append("a neighbour shop has no id")
+	var named: Dictionary[StringName, bool] = {}
+	for style: ShopStyle in buildings.terrace_left + buildings.terrace_right:
+		if style == null or String(style.id).is_empty():
+			problems.append("a terrace neighbour has no id")
+		elif named.has(style.id):
+			problems.append("two terrace neighbours are both %s" % style.id)
+		else:
+			named[style.id] = true
+	if promenade != null:
+		problems.append_array(promenade.errors())
 	if shore != null:
 		problems.append_array(shore.errors())
 	for spec: StreetPropSpec in buildings.furniture:

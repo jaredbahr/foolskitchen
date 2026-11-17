@@ -250,3 +250,27 @@ on the beach are unchanged Mini Characters.
 
 The sea is one shader (`src/world/sea.gdshader`): flat bands of colour, a foam edge,
 rolling crests and glints, driven by the street's display clock.
+
+## Seaside promenade and beach-shop terrace (#596)
+
+Code-built like the beach (#588) and the rest of the street: chunky, flat-shaded,
+vertex-coloured meshes from boxes, discs, six- and eight-sided drums and low-poly
+lumps, with no textures, imported models or lights. Not files under `assets/made/`.
+Colours come from `data/streets/promenade.tres` (its `PromenadeSkin`, `StreetSet`
+and the terrace's `ShopStyle`s), drawn from the shared swatches (Milk, Cream, Oat,
+Birch, Mint, Blush, Peach, Powder blue, Lilac, Coral, Tomato, Teal, Sky, Navy,
+Sunflower, Berry, Brass, Honey, Walnut, Dusty rose) and the seaside street's blues.
+The painted names are `Label3D`s in the game's theme font. The arcade's bulbs and
+screens join the street's lit-window glow; nothing adds a light.
+
+| Piece | Built in | Based on |
+|---|---|---|
+| Promenade paving pattern: slab joints, centre band with its edging and an inlaid wave | `neighbourhood_promenade.gd` | the boardwalk's plank seams (#588), flat on the kit `floorHalf` paving |
+| Double-lantern lamp post (bulbs, pools of light and halos as the street lamps) | `neighbourhood_promenade.gd` | `street_lamp.glb`'s height and glow (#423), the kit's soft box edges |
+| Bicycle, pram, and a trotting dog on a lead | `neighbourhood_promenade.gd`, `neighbourhood_dressing.gd` | the street's birds and furniture lumps, at person scale |
+| Seaside planter, ice-cream tricycle, cast-iron bollard | `neighbourhood_furniture.gd` | the street furniture (#423): bench, bin and bollard proportions, the awnings' stripes |
+| Terrace shop (Surf Hire, Bucket & Spade): surfboards and wetsuits, a bucket stand, beach balls and a rubber ring | `neighbourhood_buildings.gd`, `neighbourhood_terrace.gd` | the neighbour shops (#422): same body, awning, sign board and window |
+| Fish-and-chip kiosk: serving hatch, counter, tall fascia, chip cones and an A-board | `neighbourhood_terrace.gd` | the shop front's door, window and awning parts |
+| Beach hut: boards, double doors, gable window, deck and a striped deckchair | `neighbourhood_terrace.gd` | the houses' front gable and the shop door (#422) |
+| Arcade front: open front with glowing cabinets, bulb-ringed parapet sign, rocket ride | `neighbourhood_terrace.gd` | the false-front roof (#422), the shop's awning, the street lamp's glow |
+| Closed and for sale: rolled-up awning, whitewashed window or roller shutter, agent's board on a post | `neighbourhood_terrace.gd` | the hatch shutter (#589), the shop sign board |

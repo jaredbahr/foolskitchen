@@ -86,6 +86,10 @@ class Plan extends RefCounted:
 	var bounds: AABB = AABB()
 	var lot: Rect2 = Rect2()
 	var lot_index: int = 0
+	## A named terrace neighbour's id (#596); empty for the hashed row and the houses.
+	var neighbour_id: StringName = &""
+	## ShopStyle.Form: a shop, kiosk, hut or arcade.
+	var form: int = 0
 
 	func total_height() -> float:
 		return wall_h + roof_h
@@ -105,6 +109,8 @@ var lawn_shadow: Color = Color(0.3, 0.4, 0.2)
 var _glow_soups: Array[NeighbourhoodGround.Soup] = []
 var _glow_key: int = 0
 var _glow_count: int = 0
+## While a terrace neighbour is meshed: the pen its stock goes into, so it can be taken in.
+var _stock: Pen
 ## One flat-shaded vertex-colour material shared by every building this builder meshes.
 var _material: StandardMaterial3D
 
@@ -134,8 +140,16 @@ func plan() -> void:
 	_glow_soups.clear()
 	if street == null:
 		street = StreetSet.standard()
-	_plan_shops()
+	if street.has_terrace():
+		_terrace_helper().plan_rows()
+	else:
+		_plan_shops()
 	_plan_houses()
+
+
+## A fresh helper each time: it holds this builder, so keeping it here would be a cycle.
+func _terrace_helper() -> NeighbourhoodTerrace:
+	return NeighbourhoodTerrace.new(self)
 
 
 func _shop_order() -> Array[int]:
@@ -300,7 +314,7 @@ func footprints() -> Array[AABB]:
 func signs() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for p: Plan in plans:
-		if p.is_shop and p.style != null:
+		if p.is_shop and p.style != null and p.form == ShopStyle.Form.SHOP:
 			result.append({"pivot": p.xf * Vector3(p.sign_x, SIGN_Y, 0.0), "main": p.style.awning_a,
 				"accent": p.style.awning_b, "seed": p.seed_value})
 	return result
@@ -419,13 +433,55 @@ class Pen extends RefCounted:
 			tri(ring[next], ring[index], base, middle - Vector3.UP * 0.5, bottom)
 
 
+## A named terrace neighbour's three parts (#596): its shell, the stock it sets out
+## (`<id>_Trade`) and its closed, for-sale front (`<id>_ForSale`). Same frame as build_mesh.
+func build_parts(p: Plan) -> Array[MeshInstance3D]:
+	_stock = Pen.new()
+	_stock.xf = p.xf
+	var shell: MeshInstance3D = build_mesh(p)
+	var trade: MeshInstance3D = _instance(String(p.id) + "_Trade", _stock)
+	_stock = null
+	var sale: Pen = Pen.new()
+	sale.xf = p.xf
+	_terrace_helper().for_sale(sale, p)
+	var parts: Array[MeshInstance3D] = [shell, trade, _instance(String(p.id) + "_ForSale", sale)]
+	return parts
+
+
+func _instance(label: String, pen: Pen) -> MeshInstance3D:
+	var instance: MeshInstance3D = MeshInstance3D.new()
+	instance.name = label
+	instance.mesh = pen.soup.to_mesh() if not pen.soup.is_empty() else null
+	instance.material_override = _shared_material()
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
+
+
+func _shared_material() -> StandardMaterial3D:
+	if _material == null:
+		_material = StandardMaterial3D.new()
+		_material.vertex_color_use_as_albedo = true
+		_material.roughness = 1.0
+		_material.metallic_specular = 0.0
+		_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+		_material.disable_receive_shadows = true
+	return _material
+
+
+## The pen a shop's stock goes into: its own while a terrace neighbour is meshed.
+func _stock_pen(pen: Pen) -> Pen:
+	return _stock if _stock != null else pen
+
+
 func build_mesh(p: Plan) -> MeshInstance3D:
 	var pen: Pen = Pen.new()
 	pen.xf = p.xf
 	_glow_key = p.seed_value
 	_glow_count = 0
 	_body(pen, p)
-	if p.is_shop:
+	if p.is_shop and p.form != ShopStyle.Form.SHOP:
+		_terrace_helper().front(pen, _stock_pen(pen), p)
+	elif p.is_shop:
 		_shop_front(pen, p)
 	else:
 		_house_front(pen, p)
@@ -548,12 +604,17 @@ func _shop_front(pen: Pen, p: Plan) -> void:
 		for index: int in range(1, panes):
 			var mx: float = x0 + (x1 - x0) * float(index) / float(panes)
 			pen.box(Vector3(mx - 0.014, 0.35, 0.0), Vector3(mx + 0.014, 1.08, 0.04), street.trim)
-	_awning(pen, p)
+	var stock: Pen = _stock_pen(pen)
+	_awning(stock, p)
 	var displays: bool = style != null and (style.accent == ShopStyle.Accent.TOYS or style.accent == ShopStyle.Accent.PETS)
-	if displays:
-		_window_display(pen, p, style, x0, x1)
+	if style != null and style.accent == ShopStyle.Accent.SURFBOARDS:
+		_terrace_helper().surf(stock, p, x0, x1)
+	elif style != null and style.accent == ShopStyle.Accent.BEACH_GOODS:
+		_terrace_helper().beach_goods(stock, p, x0, x1)
+	elif displays:
+		_window_display(stock, p, style, x0, x1)
 	elif not porthole:
-		_window_box(pen, x0, x1, p)
+		_window_box(stock, x0, x1, p)
 	_sign_bracket(pen, p)
 	# Blank sign board above the awning, framed in trim.
 	var board_top: float = minf(p.wall_h - 0.08, 1.64)
@@ -570,7 +631,7 @@ func _shop_front(pen: Pen, p: Plan) -> void:
 			var wx: float = 0.0 if count == 1 else (-1.0 if index == 0 else 1.0) * (hw * 0.45)
 			_window(pen, wx, (win_lo + win_hi) * 0.5, 0.36, win_hi - win_lo, p.shutters, p.flowers, p.seed_value + index)
 	if style != null:
-		_accent(pen, p, style, centre_x)
+		_accent(stock, p, style, centre_x)
 
 
 ## A flower box on the shop window's sill, blooms from the street's bloom palette (#423).
@@ -618,6 +679,9 @@ func _accent(pen: Pen, p: Plan, style: ShopStyle, ax: float) -> void:
 	var y0: float = paving_top
 	var reach: float = 0.1
 	match style.accent:
+		ShopStyle.Accent.SURFBOARDS, ShopStyle.Accent.BEACH_GOODS, ShopStyle.Accent.CHIPS, ShopStyle.Accent.PRIZES, \
+				ShopStyle.Accent.DECKCHAIRS:
+			pass
 		ShopStyle.Accent.CRATE:
 			pen.box(Vector3(ax - 0.3, y0, reach), Vector3(ax + 0.3, y0 + 0.17, reach + 0.26), street.wood)
 			for index: int in 3:
@@ -658,17 +722,27 @@ func _side_and_back(pen: Pen, p: Plan) -> void:
 	var hw: float = p.width * 0.5
 	var saved: Transform3D = pen.xf
 	var cy: float = 1.0 if p.is_shop else minf(0.85, p.wall_h * 0.56)
+	# A hut or kiosk (#596) is too small for the shop's side windows and back door.
+	var small: bool = p.form == ShopStyle.Form.HUT or p.form == ShopStyle.Form.KIOSK
+	if small:
+		cy = p.wall_h * 0.6
 	for side: int in 2:
 		var bit: int = 1 if side == 0 else 2
-		if p.exposed & bit == 0:
+		if p.exposed & bit == 0 or p.form == ShopStyle.Form.HUT:
 			continue
 		var sign_x: float = 1.0 if side == 0 else -1.0
 		pen.xf = saved * Transform3D(Basis(Vector3.UP, PI * 0.5 * sign_x), Vector3(sign_x * hw, 0.0, -p.depth * 0.5))
+		if small:
+			_door(pen, 0.0, 0.42, p.door_col, false)
+			continue
 		_window(pen, 0.0, cy, 0.4, 0.4, false, p.flowers and not p.is_shop, p.seed_value + 5 + side)
 		if p.is_shop and p.depth > 3.8:
 			_window(pen, -p.depth * 0.28, cy, 0.4, 0.4, false, false, p.seed_value + 7)
 	pen.xf = saved * Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 0.0, -p.depth))
-	if p.is_shop:
+	if small:
+		if p.form == ShopStyle.Form.KIOSK:
+			_window(pen, 0.0, cy, 0.34, 0.3, false, false, p.seed_value + 9)
+	elif p.is_shop:
 		_window(pen, -p.door_x * 0.6, cy, 0.4, 0.4, p.shutters, false, p.seed_value + 9)
 		_door(pen, p.door_x * 0.5, 0.46, street.wood, false)
 	else:
@@ -975,6 +1049,20 @@ func _glow(pen: Pen, cx: float, cy: float, hw: float, hh: float, z: float = GLOW
 		var d: Vector3 = pen.xf * Vector3(cx - hw, y0 + hh, z)
 		soup.tri(a, b, c, hint, colour)
 		soup.tri(a, c, d, hint, colour)
+
+
+## A bulb or a lit screen (#596): always on the first light tier, so it stays lit all night.
+func _glow_lamp(pen: Pen, cx: float, cy: float, half: float, z: float) -> void:
+	while _glow_soups.size() < GLOW_TIERS:
+		_glow_soups.append(NeighbourhoodGround.Soup.new())
+	var tint: Color = street.window_glows[0] if not street.window_glows.is_empty() else Color(1.0, 0.8, 0.45)
+	var hint: Vector3 = pen.xf.basis * Vector3.BACK
+	var a: Vector3 = pen.xf * Vector3(cx - half, cy - half, z)
+	var b: Vector3 = pen.xf * Vector3(cx + half, cy - half, z)
+	var c: Vector3 = pen.xf * Vector3(cx + half, cy + half, z)
+	var d: Vector3 = pen.xf * Vector3(cx - half, cy + half, z)
+	_glow_soups[0].tri(a, b, c, hint, tint.lightened(0.2))
+	_glow_soups[0].tri(a, c, d, hint, tint.lightened(0.2))
 
 
 ## The lit-window meshes, one per light tier (null when a tier has no window), in the
