@@ -4442,10 +4442,11 @@ func _staff_state() -> Dictionary:
 		if row == null:
 			continue
 		var button: Button = row.get_node("Top/Action") as Button
+		var trait_label: Label = row.get_node("Top/Person/Details/Trait") as Label
 		rows.append({"id": String(member.id), "name_and_wage": " ".join([(row.get_node("Top/Person/Name") as Label).text,
 				(row.get_node("Top/Skill/Level") as Label).text.to_lower(),
 				(row.get_node("Top/Wage") as Label).text]),
-			"trait": (row.get_node("Top/Person/Details/Trait") as Label).text, "action": button.text,
+			"trait": trait_label.text, "trait_tooltip": trait_label.tooltip_text, "action": button.text,
 			"disabled": button.disabled, "visible_in_tree": row.is_visible_in_tree()})
 	var state: Dictionary = {"visible": panel.is_visible_in_tree(), "roster": roster.to_dict(), "rows": rows,
 		"member_count": members.size(), "candidate_count": candidates.size()}
@@ -4479,8 +4480,11 @@ func _staff_capture_valid(state: Dictionary) -> bool:
 		if row.get("visible_in_tree") != true or not title.contains(person["name"]) \
 				or not title.contains("skill %d" % int(person["skill"])) \
 				or not title.contains("$%d/day" % int(person["wage"])) \
-				or row.get("action") != action or definition == null \
-				or not String(row.get("trait", "")).begins_with(definition.display_name + ":"):
+				or row.get("action") != action or definition == null:
+			return false
+		var description: String = definition.description_for(StringName(person["role"]))
+		if row.get("trait") != definition.display_name \
+				or row.get("trait_tooltip") != "%s: %s" % [definition.display_name, description]:
 			return false
 	return staff_priority_grid_valid(state.get("priority_grid", {}), members)
 
