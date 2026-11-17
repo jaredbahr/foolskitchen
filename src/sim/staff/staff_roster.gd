@@ -67,8 +67,7 @@ func nicknames() -> Array[String]:
 	return result
 
 
-## A service event's mood nudge (#495). Mood stays between 1 and 3, so an
-## event never makes anyone quit; a worker already leaving is left alone.
+## Mood nudges stay between 1 and 3 and leave a departing worker alone.
 ## Returns the new mood, or -1 when nobody changed.
 func adjust_mood(member_id: StringName, delta: int) -> int:
 	var index: int = _find(_members, member_id)
@@ -171,6 +170,32 @@ func decline_raise(member_id: StringName, day: int, phase: int) -> bool:
 	var protected_minimum: bool = [&"cook", &"server"].has(member.role) \
 		and _role_count(member.role) <= 1
 	return member.growth_state().decline_raise(day, protected_minimum)
+
+
+## Compare each request with the same role/skill wage table used by the hiring
+## pool. A secondary skill can earn a request above that role's usual wage.
+func settle_morning_raises(day: int, phase: int) -> Array[String]:
+	var notes: Array[String] = []
+	if day < 1 or phase != SimClock.Phase.MORNING:
+		return notes
+	for member: StaffMember in _members:
+		var fair: int = _tuning.staff_wage(member.role, member.skill)
+		var offer: Dictionary = _raise_offer(member)
+		while not offer.is_empty():
+			var proposed: int = int(offer["new_wage"])
+			var raises_pay: bool = bool(offer["requires_raise"])
+			if not raises_pay or proposed <= fair:
+				if not accept_raise(member.id, phase):
+					break
+				if raises_pay:
+					adjust_mood(member.id, 1)
+			else:
+				if not decline_raise(member.id, day, phase):
+					break
+				notes.append("%s's pay stays at $%d a day. The request was above the usual wage for their role and skill." \
+					% [member.display_name, member.wage])
+			offer = _raise_offer(member)
+	return notes
 
 
 ## Settle due departures once, in roster order. A last cook or server must

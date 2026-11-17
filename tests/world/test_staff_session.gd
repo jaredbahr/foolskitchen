@@ -141,6 +141,80 @@ func test_completed_work_closes_growth_then_morning_applies_skill_and_requested_
 		"the accepted wage joins only the next ordinary morning save")
 
 
+func test_easy_settles_queued_raises_before_the_shift_and_morning_save() -> void:
+	var main: Node = _start()
+	_install_queued_raises(main, false, true)
+	var cook: StaffMember = _member(main, &"starter_cook")
+	var server: StaffMember = _member(main, &"starter_server")
+	assert_eq(cook.growth_state().mood, 1)
+	var original_cook_wage: int = cook.wage
+	var original_server_wage: int = server.wage
+	main.call("_charge_closing_costs")
+	var old_wages: int = Economy.ledger.day_totals(1).get(Ledger.WAGES)
+	assert_eq(old_wages, -original_cook_wage - original_server_wage)
+	var rules: Difficulty = main.get("difficulty") as Difficulty
+	assert_true(rules.request_change(&"easy", {}, 2))
+	reset_weekly_for_synthetic_day_jump(main)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+
+	var fair: int = TUNING.staff_wage(&"cook", 5)
+	assert_eq(_member(main, &"starter_cook").wage, fair)
+	assert_eq(_live_staff(main, &"starter_cook").wage, fair)
+	assert_eq(_member(main, &"starter_cook").growth_state().mood, 3)
+	assert_eq(_member(main, &"starter_cook").growth_state().pending_raise_count(), 0)
+	assert_eq(_member(main, &"starter_server").wage, original_server_wage)
+	assert_eq(_live_staff(main, &"starter_server").wage, original_server_wage)
+	assert_eq(_member(main, &"starter_server").growth_state().mood, 2)
+	assert_eq(_member(main, &"starter_server").growth_state().pending_raise_count(), 0)
+	assert_eq(Economy.ledger.day_totals(1).get(Ledger.WAGES), old_wages)
+
+	var saved: Dictionary = _document()["data"]["staff"]
+	assert_eq(int(saved["members"][0]["wage"]), fair)
+	assert_eq(int(saved["members"][1]["wage"]), original_server_wage)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	assert_false(panel.is_visible_in_tree(), "automatic decisions do not interrupt the morning")
+	assert_true(main.call("set_staff_visible", true))
+	var title: Label = panel.get_node("%RaiseTitle") as Label
+	assert_true(title.is_visible_in_tree())
+	assert_eq(title.text, "Wages: handled for you")
+	assert_null(panel.offer_row_for(&"starter_cook"))
+	assert_null(panel.offer_row_for(&"starter_server"))
+
+	var hud: Node = main.get_node("HUD")
+	var notice: Label = hud.get_node("CollectionToast/Text") as Label
+	assert_eq(notice.text, "Sam's pay stays at $%d a day. The request was above the usual wage for their role and skill." \
+		% original_server_wage)
+	main.call("_begin_morning")
+	assert_true((hud.get("_collection_toast_queue") as Array).is_empty())
+	assert_eq(_document()["data"]["staff"], saved, "repeating the morning does not settle any raise twice")
+	_close(main)
+	var restored: Node = _start()
+	assert_eq(_document()["data"]["staff"], saved)
+	assert_eq(_live_staff(restored, &"starter_cook").wage, fair)
+
+
+func test_hard_keeps_the_existing_manual_raise_buttons_and_decision() -> void:
+	var main: Node = _start()
+	_install_queued_raises(main, false, true)
+	var rules: Difficulty = main.get("difficulty") as Difficulty
+	assert_true(rules.request_change(&"hard", {}, 2))
+	reset_weekly_for_synthetic_day_jump(main)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_true(Clock.sim.next_day())
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	assert_true(panel.is_visible_in_tree())
+	assert_eq((panel.get_node("%RaiseTitle") as Label).text, "Staff updates")
+	assert_eq(_member(main, &"starter_cook").growth_state().pending_raise_count(), 4)
+	var card: Control = panel.offer_row_for(&"starter_server")
+	assert_not_null(card)
+	if card == null:
+		return
+	(card.get_node("Actions/Accept") as Button).pressed.emit()
+	assert_eq(_member(main, &"starter_server").wage, TUNING.staff_wage(&"server", 5))
+	assert_eq(_live_staff(main, &"starter_server").wage, TUNING.staff_wage(&"server", 5))
+
+
 func test_cleanup_completed_after_service_close_is_flushed_before_morning_save() -> void:
 	var main: Node = _start()
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
@@ -663,7 +737,7 @@ func _bus_task_for(sim: RestaurantSim, table_id: int) -> SimTask:
 	return null
 
 
-func _install_queued_raises(main: Node, extra_cook: bool) -> void:
+func _install_queued_raises(main: Node, extra_cook: bool, server_over_ask: bool = false) -> void:
 	var saved: Dictionary = _roster(main).to_dict()
 	if extra_cook:
 		var backup: Dictionary = saved["members"][0].duplicate(true)
@@ -680,6 +754,11 @@ func _install_queued_raises(main: Node, extra_cook: bool) -> void:
 		{"skill": "cooking", "level": 3},
 		{"skill": "cooking", "level": 4},
 		{"skill": "cooking", "level": 5}]
+	if server_over_ask:
+		cook["growth"]["mood"] = 1
+		var server: Dictionary = saved["members"][1]
+		server["growth"]["skills"]["cooking"] = 5
+		server["growth"]["raises"] = [{"skill": "cooking", "level": 5}]
 	var choices: StaffRoster = StaffRoster.new(TUNING)
 	assert_true(choices.from_dict(saved))
 	assert_true((main.get("sim") as RestaurantSim).set_staff_roster(choices.members()))

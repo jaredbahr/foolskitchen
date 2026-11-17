@@ -5907,9 +5907,14 @@ func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[Stri
 func _refresh_difficulty() -> void:
 	var creative: bool = GameMode.is_creative()
 	_settings_panel.set_difficulty(null if creative else difficulty)
+	_staff_panel.set_auto_wages(_uses_auto_wages())
 	var label: Label = $HUD/Top/Row/Difficulty
 	label.text = Difficulty.mode_name(difficulty.mode())
 	label.visible = not creative and difficulty.mode() != &"normal"
+
+
+func _uses_auto_wages() -> bool:
+	return not GameMode.is_creative() and difficulty.auto(&"wages")
 
 
 func _on_difficulty_requested(mode_id: StringName, flags: Dictionary) -> void:
@@ -6401,12 +6406,18 @@ func _begin_morning() -> void:
 		push_error("Cannot restore the morning staff roster")
 		return
 	var notices: Array[Dictionary] = choices.process_morning_quits(Clock.sim.day, Clock.sim.phase)
+	var auto_wages: bool = _uses_auto_wages()
+	var wage_notes: Array[String] = []
+	if auto_wages:
+		wage_notes = choices.settle_morning_raises(Clock.sim.day, Clock.sim.phase)
 	# The morning install removes departures and applies skills earned at the
 	# previous close before any staff are sent to their posts.
 	if not sim.set_staff_roster(choices.members()):
 		push_error("Cannot install the morning staff roster")
 		return
 	staff_roster = choices
+	for line: String in wage_notes:
+		$HUD.queue_toast(line)
 	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
 	_refresh_staff_transfer_sites()
@@ -6494,7 +6505,7 @@ func _begin_morning() -> void:
 	# A new raise or departure must be visible without making the player find
 	# the Staff button. Ordinary mornings still leave the panel closed.
 	if not _staff_notices.is_empty() \
-			or not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty():
+			or (not auto_wages and not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty()):
 		set_staff_visible(true)
 	# A legacy layout may already have every cooking station blocked. The
 	# normal editor prevents new empty catalogues; opening still explains old ones.

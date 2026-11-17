@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Easy fills missing cook and server jobs, replaces staff who quit, and hires for busy kitchens or dining rooms when cash covers five days of the new wage. Look for the hire in the morning news. (#579)
+- Easy handles fair raise requests each morning. In Custom you can turn on automatic wages, and the Staff panel shows who is handling raises. (#580)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
