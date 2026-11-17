@@ -68,7 +68,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 25
 text = "Day 1: Closed"
 vertical_alignment = 1
-horizontal_alignment = 1
 
 [node name="Profit" type="Label" parent="Panel/Column/Headline"]
 unique_name_in_owner = true
@@ -256,6 +255,13 @@ text = "Guests"
 unique_name_in_owner = true
 layout_mode = 2
 text = "No guests visited today"
+
+[node name="VisitorBreakdown" type="Label" parent="Panel/Column/Scroll/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+autowrap_mode = 3
 
 [node name="Cleanliness" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true

@@ -118,6 +118,10 @@ func test_candidate_trait_text_describes_only_the_bonus_available_to_their_role(
 			"text": "Cheerful: Guests they serve have 10% more patience for food."},
 		{"role": &"cleaner", "trait": &"cheerful",
 			"text": "Cheerful: Friendly manner. No special bonus in this role."},
+		{"role": &"cook", "trait": &"night_owl",
+			"text": "Night owl: Walks and works 10% faster from 6 pm and 5% slower before noon."},
+		{"role": &"server", "trait": &"neat_freak",
+			"text": "Neat freak: Clears dirt from the seats when bussing a table, but takes 10% longer."},
 	]
 	for example: Dictionary in cases:
 		var saved: Dictionary = _roster.to_dict()
@@ -476,6 +480,55 @@ func test_server_cleaning_stays_a_configurable_conditional_fallback_and_stale_ce
 	assert_true(_priority_requests.is_empty(), "a stale same-ID button is not a current cell")
 
 
+func test_five_staff_rows_stay_short_and_pinned_headings_stop_clicks() -> void:
+	for candidate: StaffMember in _roster.candidates():
+		assert_true(_roster.hire(candidate.id))
+	assert_eq(_roster.members().size(), 5)
+	_panel.refresh()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	_native_host = SubViewport.new()
+	_native_host.size = Vector2i(1600, 900)
+	_native_host.handle_input_locally = true
+	_native_host.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	tree.root.add_child(_native_host)
+	_native_host.add_child(_panel)
+	_panel.show()
+	_panel.set_phase(SimClock.Phase.OPEN)
+	await _priority_frames(4)
+	for member: StaffMember in _roster.members():
+		var row: Control = _panel.row_for(member.id)
+		assert_true(row.size.y <= 56.0, "%s uses %.1f px" % [member.display_name, row.size.y])
+		assert_false((row.get_node("Top/TransferSpace") as Control).visible)
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
+	var grid: GridContainer = _panel.get_node("%PriorityGrid") as GridContainer
+	var pinned: Panel = _panel.get_node("%PinnedPriorities") as Panel
+	var column: int = StaffJobPriorities.JOBS.find(&"bussing") + 1
+	var original: Label = grid.get_child(column) as Label
+	var cell: Button = _panel.priority_button_for(&"starter_server", &"bussing")
+	var top: float = scroll.get_global_rect().position.y
+	scroll.scroll_vertical += roundi(cell.get_global_rect().get_center().y - top - original.size.y / 2.0)
+	await _priority_frames(2)
+	assert_true(pinned.visible)
+	var heading: Label = pinned.get_child(column) as Label
+	assert_eq(heading.tooltip_text, original.tooltip_text)
+	assert_false(heading.tooltip_text.is_empty())
+	var point: Vector2 = Vector2(cell.get_global_rect().get_center().x, top + heading.size.y / 2.0)
+	assert_true(cell.get_global_rect().has_point(point), "click overlaps the hidden priority cell")
+	assert_true(pinned.get_global_rect().has_point(point))
+	_native_host.push_input(_priority_mouse(point, true), true)
+	_native_host.push_input(_priority_mouse(point, false), true)
+	assert_true(_priority_requests.is_empty(), "the pinned heading owns the click")
+
+	var space: Control = Control.new()
+	space.custom_minimum_size.y = 800.0
+	grid.get_parent().add_child(space)
+	await _priority_frames(2)
+	var last_row: Control = grid.get_child(grid.get_child_count() - grid.columns) as Control
+	scroll.scroll_vertical += roundi(last_row.get_global_rect().position.y - top + 1.0)
+	await _priority_frames(2)
+	assert_false(pinned.visible, "the pinned header clears when the last row reaches it")
+
+
 func test_native_priority_down_growth_refresh_up_keeps_one_cell_and_one_request() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame
@@ -778,3 +831,103 @@ func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> voi
 	_native_host.push_input(_priority_mouse(point, false), true)
 	assert_eq(_requests, [id] as Array[StringName])
 	assert_eq(_roster.to_dict(), before, "the panel still only requests a hire")
+
+
+func test_hiring_sort_orders_visible_rows_and_keeps_pool_order_on_every_tie() -> void:
+	_set_hiring_pool()
+	var a: StringName = &"candidate_1_0"
+	var b: StringName = &"candidate_1_1"
+	var c: StringName = &"candidate_1_2"
+	var sort_picker: OptionButton = _panel.get_node("%HiringSort") as OptionButton
+	var hire: Button = _panel.row_for(a).get_node("Top/Action") as Button
+	var before: Dictionary = _roster.to_dict()
+	var random_state: Dictionary = GameState._capture_save()
+	assert_eq(sort_picker.get_selected_id(), StaffPanel.HiringSort.SKILL)
+	assert_eq(_visible_candidates(), [b, c, a] as Array[StringName])
+	_pick_hiring_option(sort_picker, 1)
+	assert_eq(_visible_candidates(), [a, c, b] as Array[StringName])
+	_pick_hiring_option(sort_picker, 2)
+	assert_eq(_visible_candidates(), [c, a, b] as Array[StringName])
+	_pick_hiring_option(sort_picker, 0)
+	assert_eq(_visible_candidates(), [b, c, a] as Array[StringName])
+	assert_eq(_panel.row_for(a).get_node("Top/Action"), hire)
+	assert_eq(_roster.to_dict(), before)
+	assert_eq(GameState._capture_save(), random_state)
+
+
+func test_hiring_roles_include_manager_and_keep_choices_through_refresh_and_reopen() -> void:
+	_set_hiring_pool()
+	var role_picker: OptionButton = _panel.get_node("%HiringRole") as OptionButton
+	var sort_picker: OptionButton = _panel.get_node("%HiringSort") as OptionButton
+	var empty: Label = _panel.get_node("%Empty") as Label
+	assert_eq(role_picker.selected, 0)
+	var roles: Array[String] = []
+	for index: int in role_picker.item_count:
+		roles.append(role_picker.get_item_text(index))
+	assert_eq(roles, ["All", "Cook", "Server", "Cleaner", "Manager"] as Array[String])
+	for option: int in [1, 2, 3]:
+		_pick_hiring_option(role_picker, option)
+		assert_eq(_visible_candidates(), [StringName("candidate_1_%d" % (option - 1))] as Array[StringName])
+		assert_false(empty.visible)
+	_pick_hiring_option(role_picker, 4)
+	_pick_hiring_option(sort_picker, 2)
+	assert_true(_visible_candidates().is_empty())
+	assert_true(empty.visible)
+	assert_eq(empty.text, "No candidates for this role today.")
+	var next_pool: Dictionary = _roster.to_dict()
+	next_pool["candidate_day"] = 2
+	var manager: Dictionary = next_pool["candidates"][0]
+	manager["role"] = "manager"
+	manager.erase("growth")
+	manager.erase("priorities")
+	assert_true(_roster.from_dict(next_pool))
+	_panel.hide()
+	_panel.set_morning(2, [])
+	_panel.bind_roster(_roster)
+	_panel.show()
+	assert_eq(_visible_candidates(), [&"candidate_1_0"] as Array[StringName])
+	assert_false(empty.visible)
+	assert_eq(role_picker.selected, 4)
+	assert_eq(sort_picker.get_selected_id(), StaffPanel.HiringSort.TRAIT)
+	_pick_hiring_option(role_picker, 0)
+	assert_eq(_visible_candidates(), [&"candidate_1_2", &"candidate_1_0", &"candidate_1_1"] as Array[StringName])
+	var fresh: StaffPanel = PANEL.instantiate() as StaffPanel
+	fresh.bind_roster(_roster)
+	assert_eq((fresh.get_node("%HiringRole") as OptionButton).selected, 0)
+	assert_eq((fresh.get_node("%HiringSort") as OptionButton).get_selected_id(), StaffPanel.HiringSort.SKILL)
+	fresh.free()
+
+
+func _set_hiring_pool() -> void:
+	var saved: Dictionary = _roster.to_dict()
+	var roles: Array[String] = ["cook", "server", "cleaner"]
+	var skills: Array[int] = [2, 5, 5]
+	var wages: Array[int] = [30, 50, 30]
+	var traits: Array[String] = ["quick", "quick", "careful"]
+	for index: int in 3:
+		var member: Dictionary = saved["candidates"][index]
+		member["role"] = roles[index]
+		member["skill"] = skills[index]
+		member["wage"] = wages[index]
+		member["trait"] = traits[index]
+		member.erase("growth")
+		member.erase("priorities")
+	assert_true(_roster.from_dict(saved))
+	_panel.refresh()
+
+
+func _pick_hiring_option(picker: OptionButton, index: int) -> void:
+	picker.select(index)
+	picker.item_selected.emit(index)
+
+
+func _visible_candidates() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for row: Node in _panel.get_node("%Candidates").get_children():
+		if not (row as Control).visible:
+			continue
+		for member: StaffMember in _roster.candidates():
+			if _panel.row_for(member.id) == row:
+				ids.append(member.id)
+				break
+	return ids

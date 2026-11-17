@@ -99,6 +99,21 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	restored.free()
 
 
+func test_morning_paper_preference_round_trips_and_defaults_for_legacy_files() -> void:
+	assert_true(_model.morning_paper_enabled)
+	assert_true(_model.set_morning_paper_enabled(false))
+	var restored: SettingsPreferences = SettingsPreferences.new(_path)
+	assert_true(restored.load_from_disk())
+	assert_false(restored.morning_paper_enabled)
+	var config: ConfigFile = ConfigFile.new()
+	assert_eq(config.load(_path), OK)
+	config.erase_section_key(SettingsPreferences.SECTION, "morning_paper")
+	assert_eq(config.save(_path), OK)
+	assert_true(restored.load_from_disk())
+	assert_true(restored.morning_paper_enabled)
+	restored.free()
+
+
 func test_auto_pause_uses_defaults_for_legacy_preferences_and_rejects_invalid_values() -> void:
 	var config: ConfigFile = ConfigFile.new()
 	assert_true(_model.set_volume_percent(&"Master", 37))
@@ -319,16 +334,6 @@ func test_failed_explicit_flush_reports_the_pending_write_and_recovers_after_the
 	for frame: int in 3:
 		await tree.process_frame
 	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
-	assert_almost_eq(window.get_visible_rect().size.y, 900.0, 0.01, "use the real project canvas, not the headless root")
-	var columns: GridContainer = panel.get_node("Panel/Column/Scroll/Content/Columns") as GridContainer
-	var display: Control = columns.get_node("DisplayAndPlay") as Control
-	assert_eq(columns.columns, 2, "the 1600x900 layout has two settings columns")
-	assert_false(PanelScroll.overflows(scroll), "all settings fit without scrolling")
-	assert_true(scroll.get_global_rect().encloses(display.get_global_rect()))
-	for toggle_name: String in ["%PauseOnSoldOut", "%PauseOnInspector", "%PauseOnAngryGuest"]:
-		var toggle: CheckButton = panel.get_node(toggle_name) as CheckButton
-		assert_true(toggle.is_visible_in_tree() and scroll.get_global_rect().encloses(toggle.get_global_rect()),
-			"%s is visible without scrolling" % toggle.name)
 	assert_true(scroll.size.y > 0.0 and status.size.y > 0.0, "the visible controls have settled native bounds")
 	assert_true(scroll.get_global_rect().encloses(status.get_global_rect()),
 		"the reported error must be visible inside the settings scroll area")
@@ -345,6 +350,39 @@ func test_failed_explicit_flush_reports_the_pending_write_and_recovers_after_the
 	assert_eq(restored.master_volume_percent, 60)
 	restored.free()
 	panel.free()
+	host.free()
+
+
+func test_settings_columns_keep_desktop_choices_in_view() -> void:
+	var panel: SettingsPanel = PANEL.instantiate() as SettingsPanel
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var host: SubViewport = SubViewport.new()
+	host.size = Vector2i(1600, 900)
+	host.gui_embed_subwindows = true
+	tree.root.add_child(host)
+	var window: Window = Window.new()
+	window.size = Vector2i(1600, 900)
+	window.content_scale_size = Vector2i(1600, 900)
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	host.add_child(window)
+	window.add_child(panel)
+	panel.bind_preferences(_model)
+	window.show()
+	panel.show()
+	for frame: int in 4:
+		await tree.process_frame
+	var scroll: ScrollContainer = panel.get_node("Panel/Column/Scroll") as ScrollContainer
+	assert_almost_eq(window.get_visible_rect().size.y, 900.0, 0.01, "use the real project canvas, not the headless root")
+	var columns: GridContainer = panel.get_node("Panel/Column/Scroll/Content/Columns") as GridContainer
+	var display: Control = columns.get_node("DisplayAndPlay") as Control
+	assert_eq(columns.columns, 2, "the 1600x900 layout has two settings columns")
+	assert_false(PanelScroll.overflows(scroll), "all settings fit without scrolling")
+	assert_true(scroll.get_global_rect().encloses(display.get_global_rect()))
+	for toggle_name: String in ["%PauseOnSoldOut", "%PauseOnInspector", "%PauseOnAngryGuest"]:
+		var toggle: CheckButton = panel.get_node(toggle_name) as CheckButton
+		assert_true(toggle.is_visible_in_tree() and scroll.get_global_rect().encloses(toggle.get_global_rect()),
+			"%s is visible without scrolling" % toggle.name)
 	host.free()
 
 

@@ -15,6 +15,13 @@ const GAP: String = "—"
 const PERCENT_CHANGE: String = "%s is %s %.0f%% on %s."
 const MONEY_CHANGE: String = "%s is %s %s than %s."
 const FLAT: String = "%s is unchanged from %s."
+const AVERAGE_SUBJECT: String = "Average daily dish profit over the last %d recorded days"
+const AVERAGE_PREVIOUS: String = "the previous %d recorded days"
+const AVERAGE_PERCENT_CHANGE: String = "%s is %s %.0f%% compared with %s."
+const AVERAGE_MONEY_CHANGE: String = "%s is %s %s than over %s."
+const UNDER_A_CENT: String = "less than $0.01"
+const MONTH_MINIMUM_DAYS: int = 20
+const MONTH_COMPARISON_DAYS: int = 15
 const MAX_TOTAL: int = 9223372036854775807
 const MIN_TOTAL: int = -MAX_TOTAL - 1
 
@@ -41,9 +48,10 @@ static func display_rows(rows: Array[Dictionary], today: int) -> Array[Dictionar
 	return result
 
 
-static func summary(rows: Array[Dictionary], today: int) -> String:
+static func summary(rows: Array[Dictionary], today: int, range_days: int = 7) -> String:
 	var clean: Array[Dictionary] = display_rows(rows, today)
-	# The range toggle changes the chart, not the existing two-week comparison.
+	if range_days == 30 and clean.size() >= MONTH_MINIMUM_DAYS:
+		return _monthly_summary(clean)
 	clean = clean.slice(maxi(0, clean.size() - 14))
 	if clean.size() < 2:
 		return EMPTY
@@ -75,6 +83,36 @@ static func summary(rows: Array[Dictionary], today: int) -> String:
 			return PERCENT_CHANGE % [subject, "up" if delta > 0 else "down", percent, comparison]
 	return MONEY_CHANGE % [subject, Fmt.money(delta).trim_prefix("-"),
 		"higher" if delta > 0 else "lower", comparison]
+
+
+static func _monthly_summary(rows: Array[Dictionary]) -> String:
+	var recent_days: int = MONTH_COMPARISON_DAYS
+	var previous_days: int = rows.size() - recent_days
+	var previous: Variant = _total(rows, 0, previous_days)
+	var recent: Variant = _total(rows, previous_days, recent_days)
+	if previous == null or recent == null:
+		return UNAVAILABLE
+	var old_total: int = previous
+	var current_total: int = recent
+	# Subtract whole parts before converting to float so a small change between
+	# large, signed totals remains visible. The remainder products are bounded.
+	var divisor: int = recent_days * previous_days
+	var numerator: int = current_total % recent_days * previous_days - old_total % previous_days * recent_days
+	var whole: int = current_total / recent_days - old_total / previous_days + numerator / divisor
+	var remainder: int = numerator % divisor
+	var delta: float = float(whole) + float(remainder) / float(divisor)
+	var subject: String = AVERAGE_SUBJECT % recent_days
+	var comparison: String = AVERAGE_PREVIOUS % previous_days
+	if whole == 0 and remainder == 0:
+		return FLAT % [subject, comparison]
+	if old_total > 0 and current_total > 0:
+		var percent: float = roundf(absf(delta) / (float(old_total) / float(previous_days)) * 100.0)
+		if percent >= 1.0:
+			return AVERAGE_PERCENT_CHANGE % [subject, "up" if delta > 0.0 else "down", percent, comparison]
+	var amount: String = Fmt.money(absi(whole)) if remainder == 0 else "$%.2f" % absf(delta)
+	if absf(delta) < 0.005:
+		amount = UNDER_A_CENT
+	return AVERAGE_MONEY_CHANGE % [subject, amount, "higher" if delta > 0.0 else "lower", comparison]
 
 
 static func day_label(day: int) -> String:

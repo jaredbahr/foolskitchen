@@ -5,6 +5,8 @@ extends Resource
 
 @export var id: StringName = &""
 @export var display_name: String = ""
+## Optional group label for the evening report, such as "Families".
+@export var report_name: String = ""
 @export var budget_multiplier: float = 1.0
 @export var patience_multiplier: float = 1.0
 @export var quality_weight: float = 0.0

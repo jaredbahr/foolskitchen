@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/cereal.tres" id="ingredient_cereal"]
+[ext_resource type="Resource" path="res://data/ingredients/milk.tres" id="ingredient_milk"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/bowl-cereal.glb" id="view_model"]
+
+[sub_resource type="Resource" id="Step_prep"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 16
+
+[resource]
+script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
+id = &"cereal"
+display_name = "Cereal"
+section = 6
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_cereal"), ExtResource("ingredient_milk")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_prep")])
+base_quality = 0.52
+standard_price = 6
+unlock_tier = 1
+unlock_level = 2
+default_enabled = false
+theme_tags = Array[StringName]([&"cafe", &"cosy"])

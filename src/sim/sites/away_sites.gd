@@ -120,12 +120,17 @@ static func best_manager(staff: Dictionary) -> StringName:
 ## LotDef's rent, expanded or not (#465). UNKNOWN_RENT when `definition` is
 ## not that lot (a lot missing from the data).
 static func lot_rent(lot: StringName, home_rent: int, definition: LotDef = null,
-		expanded: bool = false) -> int:
-	if lot == SiteBook.HOME_LOT:
-		return maxi(0, home_rent)
-	if definition == null or definition.id != lot:
-		return UNKNOWN_RENT
-	return maxi(0, definition.rent(expanded))
+		expanded: bool = false, multiplier: float = 1.0) -> int:
+	var rent: int = home_rent
+	if lot != SiteBook.HOME_LOT:
+		if definition == null or definition.id != lot:
+			return UNKNOWN_RENT
+		rent = definition.rent(expanded)
+	return adjusted_rent(rent, multiplier)
+
+
+static func adjusted_rent(rent: int, multiplier: float) -> int:
+	return maxi(0, rent if multiplier == 1.0 else roundi(rent * multiplier))
 
 
 ## Whether a saved `shop` section's lease is expanded (FK-087: the lease is
@@ -162,7 +167,7 @@ static func lapse_booking(section: Dictionary, day: int, tuning: BookingTuning) 
 ## with renovation days left is closed whatever its manager: call this before
 ## the close's countdown, so the last renovation day is still one.
 static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteManagerTuning,
-		booking_tuning: BookingTuning, lots: Array[LotDef] = []) -> Array[Dictionary]:
+		booking_tuning: BookingTuning, lots: Array[LotDef] = [], rent_multiplier: float = 1.0) -> Array[Dictionary]:
 	var plans: Array[Dictionary] = []
 	if book == null:
 		return plans
@@ -190,7 +195,8 @@ static func plan_close(book: SiteBook, day: int, home_rent: int, tuning: SiteMan
 				movements.append({"amount": earned, "category": Ledger.AWAY_SITE_INCOME, "note": INCOME_NOTE})
 		else:
 			var lot: StringName = book.lot_id(id)
-			var rent: int = lot_rent(lot, home_rent, _find_lot(lots, lot), shop_lease_expanded(sections))
+			var rent: int = lot_rent(lot, home_rent, _find_lot(lots, lot),
+				shop_lease_expanded(sections), rent_multiplier)
 			if rent == UNKNOWN_RENT:
 				plan["rent_known"] = false
 			else:

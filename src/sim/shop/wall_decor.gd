@@ -111,7 +111,7 @@ func add(def_id: StringName, anchor: Vector3i, width: int, window: bool = false,
 
 ## -1 is automatic; otherwise only RecipeDef.Section values are accepted.
 static func valid_menu_section(section: int) -> bool:
-	return section >= -1 and section <= RecipeDef.Section.BAKERY
+	return section == -1 or RecipeDef.Section.values().has(section)
 
 
 ## Changes one placed board's section. A repeated choice has no side effects.

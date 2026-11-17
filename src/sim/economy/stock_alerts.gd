@@ -79,7 +79,7 @@ static func forecast_lines(forecast_data: Dictionary, content: ContentDB) -> Arr
 		if low:
 			parts.append("%d left, target %d" % [usable, target])
 		var text: String = "%s: %s." % [_ingredient_name(row.get("id", &""), content), ", ".join(parts)]
-		if low and not enabled:
+		if not enabled:
 			text += " Auto-reorder is off."
 		elif unfit > 0:
 			text += " %s to reorder %d." % [StorageSpace.refusal(int(row.get("kind", StorageSpace.DRY))), unfit]
@@ -99,6 +99,12 @@ static func join_names(names: Array[String]) -> String:
 	if names.size() <= 1:
 		return "" if names.is_empty() else names[0]
 	return ", ".join(names.slice(0, names.size() - 1)) + " and " + names[names.size() - 1]
+
+
+static func today_stock_line(ingredient: IngredientDef, usable: int) -> String:
+	var label: String = ingredient.display_name
+	return "Ran out of %s" % label.to_lower() if usable == 0 \
+		else "Low stock: %s (%d left)" % [label, usable]
 
 
 ## Minutes since midnight as a 24-hour clock.

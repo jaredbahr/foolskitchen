@@ -39,6 +39,12 @@ func set_career_tier_line(text: String) -> void:
 	label.visible = not text.is_empty()
 
 
+func set_golden_ladles(prestige_score: int, earned: int) -> void:
+	var label: Label = %GoldenLadles as Label
+	label.text = "Golden Ladles: %d of %d" % [earned, PrestigeTuning.MAX_LADLES]
+	label.visible = prestige_score > 0
+
+
 ## Detached display text only; Main owns the saved lifetime observations.
 func set_records(lines: Array[String]) -> void:
 	_record_lines = lines.duplicate()
@@ -118,7 +124,6 @@ func _render() -> void:
 	var completed_rows: VBoxContainer = %CompletedRows as VBoxContainer
 	var active_heading: Label = %ActiveHeading as Label
 	var completed_heading: Label = %CompletedHeading as Label
-	var empty_state: Label = %EmptyState as Label
 	var previous_weekly: Node = (%List as VBoxContainer).get_node_or_null("WeeklyChallenge")
 	if previous_weekly != null:
 		previous_weekly.get_parent().remove_child(previous_weekly)
@@ -141,16 +146,13 @@ func _render() -> void:
 		var list: VBoxContainer = %List as VBoxContainer
 		list.add_child(opening_card)
 		list.move_child(opening_card, 0)
-		weekly_card = opening_card if weekly_card == null else weekly_card
 	_active_ids.clear()
 	_completed_known_ids.clear()
 	active_heading.visible = false
 	completed_heading.visible = false
-	empty_state.visible = weekly_card == null
 
 	if _catalogue == null or not _catalogue.is_valid():
-		empty_state.visible = weekly_card == null and \
-			(_collection_result == null or _collection_result.entries.is_empty())
+		_refresh_empty_state()
 		return
 
 	var completed_lookup: Dictionary[StringName, bool] = {}
@@ -177,8 +179,7 @@ func _render() -> void:
 
 	active_heading.visible = not _active_ids.is_empty()
 	completed_heading.visible = not _completed_known_ids.is_empty()
-	empty_state.visible = weekly_card == null and _active_ids.is_empty() and _completed_known_ids.is_empty() \
-		and (_collection_result == null or _collection_result.entries.is_empty())
+	_refresh_empty_state()
 
 
 func _render_collections() -> void:
@@ -205,11 +206,16 @@ func _render_collections() -> void:
 			if entry.completed:
 				_add_label(rows, "Collection%dComplete" % index, "Complete!")
 	heading.visible = rows.get_child_count() > 0
+	_refresh_empty_state()
+
+
+func _refresh_empty_state() -> void:
 	var empty_state: Label = %EmptyState as Label
+	var list: VBoxContainer = %List as VBoxContainer
+	var collections: VBoxContainer = %CollectionsRows as VBoxContainer
 	empty_state.visible = _active_ids.is_empty() and _completed_known_ids.is_empty() \
-		and rows.get_child_count() == 0 and (_weekly_challenge == null \
-		or _weekly_challenge.status == WeeklyChallengeState.Status.EMPTY) \
-		and (_opening_week == null or not _opening_week.is_active())
+		and collections.get_child_count() == 0 and not list.has_node("WeeklyChallenge") \
+		and not list.has_node("OpeningWeek")
 
 
 func _make_weekly_card() -> Control:
@@ -301,19 +307,19 @@ func _make_opening_card() -> Control:
 		var line: HBoxContainer = _goal_line(row, "Line")
 		var name_label: Label = _add_label(line, "Title", "□ " + goal.title)
 		name_label.add_theme_font_size_override(&"font_size", 18)
-		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		name_label.tooltip_text = goal.description
 		var raw: float = _opening_values.get(goal.condition, 0.0)
 		var progress_text: String = OpeningWeekText.progress_line(goal, raw)
 		if not progress_text.is_empty():
-			var progress: Label = _add_label(line, "ProgressText", progress_text)
-			progress.size_flags_horizontal = Control.SIZE_SHRINK_END
+			var detail: HBoxContainer = _goal_line(row, "Detail")
+			var progress: Label = _add_label(detail, "ProgressText", progress_text)
 			progress.add_theme_font_size_override(&"font_size", 15)
-		var description: Label = _add_label(row, "Description", goal.description)
-		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		description.add_theme_font_size_override(&"font_size", 15)
-		var details: HBoxContainer = _goal_line(row, "Detail")
-		_progress_bar(details, clampf(raw / goal.target, 0.0, 1.0) if is_finite(raw) else 0.0)
-		var reward: Label = _add_label(details, "Reward", "$%d" % goal.reward_cash)
+			var bar: ProgressBar = _progress_bar(detail, clampf(raw / goal.target, 0.0, 1.0) if is_finite(raw) else 0.0)
+			bar.custom_minimum_size.x = 100.0
+			bar.size_flags_horizontal = Control.SIZE_SHRINK_END
+		var reward: Label = _add_label(line, "Reward", "$%d" % goal.reward_cash)
 		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		reward.size_flags_horizontal = Control.SIZE_SHRINK_END
 		reward.add_theme_font_size_override(&"font_size", 15)
@@ -350,6 +356,8 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	description.add_theme_font_size_override(&"font_size", 15)
 	var bar: ProgressBar = _progress_bar(body, 1.0 if completed else _progress_ratio(goal))
+	bar.custom_minimum_size.x = 120.0
+	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	var reward: Label = _add_label(detail, "Reward", "Reward: %d XP   Cash: $%d" % [goal.reward_xp, goal.reward_cash])
 	reward.size_flags_horizontal = Control.SIZE_SHRINK_END
 	reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

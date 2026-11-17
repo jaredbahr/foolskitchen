@@ -37,6 +37,7 @@ var _wash_task: int = 0
 var _wash_blocked: bool = false
 var _wash_retry_tick: int = 0
 var _plate_cycle_enabled: bool = false
+var _plate_shortage_active: bool = false
 ## Retain bypass decisions until morning, including after a cook task completes.
 var _plate_bypassed_orders: Dictionary[int, bool] = {}
 var _tidying: bool = false
@@ -169,6 +170,7 @@ func mark_table_dirty(table_item_id: int, order_id: int = 0) -> void:
 ## The staff tidy up after hours: every table is clean and no kitchen job
 ## carries over into the next morning. Called at the start of each day.
 func tidy_overnight() -> void:
+	_plate_shortage_active = false
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	_tidying = true
 	if sim != null:
@@ -352,6 +354,8 @@ func _take_ingredients(agent: SimAgent) -> bool:
 	order.ingredient_cost = int(used["cost"])
 	order.ingredient_cost_recorded = bool(used["recorded"])
 	task.payload["ingredients_taken"] = true
+	for id: StringName in needs:
+		sim.record_today_stock(_content.ingredient(id), needs[id])
 	return true
 
 
@@ -407,6 +411,9 @@ func _take_clean_plate(agent: SimAgent) -> bool:
 	staff.task.payload["waiting_for_plate"] = not accepted
 	if not accepted:
 		_expedite_wash()
+		if not _plate_shortage_active and _plates.clean == 0:
+			_plate_shortage_active = true
+			sim.log_today(DayLog.Kind.PLATE_SHORTAGE, "The kitchen is waiting for clean plates")
 	if _plates.clean != before:
 		_notify_plates()
 	return accepted
@@ -711,6 +718,9 @@ func _on_task_completed(task: SimTask) -> void:
 			mark_table_dirty(table_id)
 		else:
 			dirty_tables.erase(table_id)
+			var worker: StaffAgent = sim.world.agent(task.claimed_by) as StaffAgent
+			if worker != null and worker.cleans_bussed_seats():
+				sim.clean_bussed_seats(sim.world.grid.item(table_id))
 		_ensure_wash_task()
 		return
 	if task.kind == &"wash":
@@ -852,6 +862,8 @@ func _wash_one_plate(agent: SimAgent) -> bool:
 
 
 func _notify_plates() -> void:
+	if _plates.clean > 0 or not _plate_cycle_enabled:
+		_plate_shortage_active = false
 	plates_changed.emit(_plates.clean, _plates.total, _plates.dirty, _plates.in_use)
 
 

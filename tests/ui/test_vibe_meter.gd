@@ -166,3 +166,16 @@ func _assert_unavailable() -> void:
 	assert_eq(_meter.score_bar.value, 0.0)
 	assert_eq(_meter.caption_label.tooltip_text, "Vibe unavailable")
 	assert_eq(_meter.score_bar.tooltip_text, "Vibe unavailable")
+
+
+func test_prestige_tooltip_explains_the_lowest_cap_without_changing_vibe() -> void:
+	var prestige: Prestige.Result = Prestige.Result.new()
+	prestige.uncapped_score = 23
+	_meter.set_vibe(_result(42.0), prestige)
+	assert_true(_meter.tooltip_text.ends_with("Prestige 23"))
+	var neon: ItemDef = load("res://data/items/neon_open_sign.tres") as ItemDef
+	prestige.cap_item = neon
+	_meter.set_vibe(_result(42.0), prestige)
+	assert_true(_meter.tooltip_text.ends_with("Prestige 23 (capped at 10 by Neon OPEN sign)"))
+	assert_eq(_meter.caption_label.text, "Vibe 42 / 100")
+	assert_eq(_meter.score_bar.value, 42.0)

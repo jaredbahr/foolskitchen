@@ -7,6 +7,7 @@ extends TestCase
 const MAIN: PackedScene = preload("res://src/world/main.tscn")
 const SLOT: String = "opening_week_session"
 const CHAIN: OpeningWeekSet = preload("res://data/balance/opening_week.tres")
+const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
 const WEEK_TWO: OpeningWeekSet = preload("res://data/balance/week_two.tres")
 const LEASE: LeaseUpgrade = preload("res://data/balance/lease_upgrade.tres")
 const CAREER: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
@@ -523,6 +524,71 @@ func test_a_calm_day_below_three_and_a_half_stars_does_not_pay() -> void:
 	assert_true(stars.average() < 3.45, "the starting rating is below 3.5 stars")
 	_close_day(main)
 	assert_false(_state(main).is_completed(&"calm_day"))
+
+
+func test_closed_day_neither_pays_goals_nor_loses_the_weekly_calendar_on_reload() -> void:
+	var main: Node = await _start(true)
+	_to_week_two(main)
+	var pool: WeeklyChallengePool = WeeklyChallengePool.new()
+	pool.challenges = [WEEKLY_CHALLENGES.by_id(&"lose_no_guests_three_days")]
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 476
+	var weekly: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(weekly.begin_week(Clock.sim.day, 1, pool, [], random))
+	main.set("weekly_challenge", weekly)
+	# Earn two qualifying service days so the next one would pay the reward.
+	for day: int in 2:
+		_close_day(main)
+		assert_true(Clock.sim.next_day())
+
+	weekly = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_true(weekly.is_active())
+	assert_eq(weekly.progress, 2)
+	var stars: ReputationBook = main.get("reputation") as ReputationBook
+	for review: int in 5:
+		stars.record_event_review(5)
+	assert_true(stars.average() >= WEEK_TWO.by_id(&"calm_day").target)
+	assert_true(_add_member(main, &"cleaner", &"test_closed_day_cleaner"))
+	# Set up a roster still waiting for a cook. Staff cannot dismiss the last one.
+	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	var staff: Dictionary = roster.to_dict()
+	staff["members"] = staff["members"].filter(func(row: Dictionary) -> bool: return row["role"] != "cook")
+	assert_true(roster.from_dict(staff))
+	assert_true((main.get("sim") as RestaurantSim).set_staff_roster(roster.members()))
+	main.call("_refresh_opening_block")
+	assert_false(Clock.sim.start_service(), "a shop without a cook cannot open")
+	var closed_day: int = Clock.sim.day
+	assert_true(main.call("close_for_today"))
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_false(_state(main).is_completed(&"calm_day"))
+	assert_false(_state(main).is_completed(&"hire_cleaner"))
+	assert_eq(_bonus_entries(), [] as Array[int])
+	assert_eq(Economy.ledger.day_totals(closed_day).get(Ledger.WEEKLY_CHALLENGE_BONUS, 0), 0,
+		"no-lost-guests reward requires a service day")
+	weekly = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_true(weekly.is_active(), "the closed day cannot complete the weekly challenge")
+	assert_eq(weekly.progress, 2, "the closed day cannot earn weekly progress")
+	assert_eq(weekly.last_evaluated_day, closed_day)
+	var expected: Dictionary = weekly.to_dict()
+
+	assert_true(Clock.sim.next_day())
+	_close(main)
+	main = await _start(true)
+	assert_eq(Clock.sim.day, closed_day + 1)
+	weekly = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_eq(weekly.to_dict(), expected, "the same active challenge loaded the next morning")
+	assert_false(_state(main).is_completed(&"calm_day"))
+	assert_false(_state(main).is_completed(&"hire_cleaner"))
+	roster = main.get("staff_roster") as StaffRoster
+	var candidate: StaffMember = roster.candidates()[0]
+	assert_eq(candidate.role, &"cook")
+	assert_true(main.call("staff_hire", candidate.id))
+	_close_day(main)
+	weekly = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_eq(weekly.status, WeeklyChallengeState.Status.COMPLETED)
+	assert_eq(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.WEEKLY_CHALLENGE_BONUS, 0), weekly.reward_cash)
+	assert_true(_state(main).is_completed(&"calm_day"))
+	assert_true(_state(main).is_completed(&"hire_cleaner"))
 
 
 func test_week_two_progress_survives_the_morning_save_and_reload() -> void:

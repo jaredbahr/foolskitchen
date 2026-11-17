@@ -114,7 +114,7 @@ func test_heads_clear_the_counter_top_from_every_facing_stool() -> void:
 	for definition: ItemDef in content.items():
 		if definition.serve_across:
 			counters.append(definition)
-	assert_eq(counters.size(), 5, "the long counter plus section, both ends and the corner")
+	assert_eq(counters.size(), 6, "both long counters, the section, both ends and the corner")
 	var measured: int = 0
 	var stools: Array[StringName] = [&"bar_stool", &"square_bar_stool", &"diner_stool"]
 	for counter: ItemDef in counters:
@@ -123,7 +123,7 @@ func test_heads_clear_the_counter_top_from_every_facing_stool() -> void:
 				if stool_id != &"bar_stool" and turns != 0:
 					continue
 				measured += await _measure_counter_heads(tree.root, counter, content.item(stool_id), turns)
-	assert_true(measured >= 5 * 4 * 3 * PersonPresentation.GUEST_MODELS.size(), "every case was measured (%d)" % measured)
+	assert_true(measured >= counters.size() * 4 * 3 * PersonPresentation.GUEST_MODELS.size(), "every case was measured (%d)" % measured)
 
 
 ## Guest sides in unrotated cells: in front (-y) of every piece; the corner

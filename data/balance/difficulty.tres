@@ -1,0 +1,64 @@
+[gd_resource type="Resource" script_class="DifficultyTuning" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/difficulty_tuning.gd" id="1_tuning"]
+[ext_resource type="Script" path="res://src/sim/progression/difficulty_mode_tuning.gd" id="2_mode"]
+
+[sub_resource type="Resource" id="easy"]
+script = ExtResource("2_mode")
+id = &"easy"
+auto_buy = true
+auto_buy_premium = false
+auto_hire = true
+auto_wages = true
+auto_prices = true
+auto_jobs = true
+patience = 1.25
+rent = 0.9
+messes = 0.7
+review_bonus = 0.2
+
+[sub_resource type="Resource" id="normal"]
+script = ExtResource("2_mode")
+id = &"normal"
+auto_buy = true
+auto_buy_premium = true
+auto_hire = false
+auto_wages = false
+auto_prices = false
+auto_jobs = false
+patience = 1.0
+rent = 1.0
+messes = 1.0
+review_bonus = 0.0
+
+[sub_resource type="Resource" id="hard"]
+script = ExtResource("2_mode")
+id = &"hard"
+auto_buy = false
+auto_buy_premium = false
+auto_hire = false
+auto_wages = false
+auto_prices = false
+auto_jobs = false
+patience = 0.9
+rent = 1.1
+messes = 1.2
+review_bonus = -0.1
+
+[sub_resource type="Resource" id="custom"]
+script = ExtResource("2_mode")
+id = &"custom"
+auto_buy = true
+auto_buy_premium = true
+auto_hire = false
+auto_wages = false
+auto_prices = false
+auto_jobs = false
+patience = 1.0
+rent = 1.0
+messes = 1.0
+review_bonus = 0.0
+
+[resource]
+script = ExtResource("1_tuning")
+modes = Array[ExtResource("2_mode")]([SubResource("easy"), SubResource("normal"), SubResource("hard"), SubResource("custom")])

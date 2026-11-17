@@ -219,6 +219,13 @@ unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 
+[node name="MorningPaperToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show The Daily Ladle at the start of each day."
+button_pressed = true
+text = "Show the morning paper"
+
 [node name="ShowGuideButton" type="Button" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 visible = false
@@ -245,3 +252,33 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 text = "Quit to title"
+
+[node name="Difficulty" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Columns/Audio"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
+layout_mode = 2
+text = "Career difficulty"
+
+[node name="DifficultyChoice" type="OptionButton" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="DifficultySchedule" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="AutoBuy" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="AutoBuyPremium" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Divider" type="HSeparator" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
+layout_mode = 2

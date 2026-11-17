@@ -1647,12 +1647,14 @@ static func prepare_catalogue_review(main: Node, context_root: Node, profile: St
 
 ## Expected identities come from all valid visible data, including locked cards
 ## and other categories, independently of the catalogue's actual button list.
+## These furnishing captures use the untagged starter lot.
 static func _catalogue_content_expectations(content: ContentDB, selected: Dictionary[StringName, StringName] = {}) -> Dictionary:
 	var cards: Array[Dictionary] = []
 	var wrappers: Array[String] = []
 	for definition: ItemDef in content.items():
-		if definition == null or not definition.catalogue_visible or definition.id.is_empty() \
-				or definition.display_name.strip_edges().is_empty() or definition.price < 0 or definition.unlock_level < 1 \
+		if definition == null or not definition.catalogue_visible or not definition.lot_tags.is_empty() \
+				or definition.id.is_empty() or definition.display_name.strip_edges().is_empty() \
+				or definition.price < 0 or definition.unlock_level < 1 \
 				or definition.footprint.x < 1 or definition.footprint.y < 1 or not definition.placement_layer_valid() \
 				or not [ItemDef.Category.TABLE, ItemDef.Category.CHAIR, ItemDef.Category.STATION,
 					ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DECOR,
@@ -1923,7 +1925,12 @@ static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: Conten
 	for recipe: RecipeDef in menu.enabled_recipes():
 		recipes.append(String(recipe.id))
 	recipes.sort()
+	var prestige: Prestige.Result = Prestige.evaluate(world.grid, content, editor.decor)
+	var prestige_line: String = "Prestige %d" % prestige.uncapped_score
+	if prestige.uncapped_score > prestige.value():
+		prestige_line += " (capped at %d by %s)" % [prestige.value(), prestige.cap_item.display_name]
 	return {"available": true, "expected": _vibe_result_record(expected), "main": _vibe_result_record(actual),
+		"expected_prestige": prestige_line,
 		"inputs": {"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_vibe_swatch()),
 			"menu_ids": recipes, "item_count": world.grid.items().size()},
 		"meter": {"visible": meter.is_visible_in_tree(), "caption_visible": caption.is_visible_in_tree(),
@@ -1994,6 +2001,10 @@ static func catalogue_vibe_valid(state: Dictionary, frame: int) -> bool:
 	var tooltip: String = "Decor %d, Variety %d, Theme: %s +%d, Lamps %d, Crowding %d" % [
 		roundi(float(expected["decor_points"])), roundi(float(expected["variety_points"])), theme,
 		roundi(float(expected["theme_points"])), roundi(float(expected["lamp_points"])), -roundi(float(expected["crowding_penalty"]))]
+	var prestige_line: String = state.get("expected_prestige", "")
+	if prestige_line.is_empty():
+		return false
+	tooltip += "\n" + prestige_line
 	var value: Variant = meter.get("value")
 	var cached_value: Variant = view.get("value")
 	if (typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT) or not is_finite(float(value)) \
@@ -3200,7 +3211,8 @@ static func settings_tab_to_close(panel: SettingsPanel, window: Window) -> Dicti
 	var close: Button = panel.get_node("%CloseButton") as Button
 	var replay: Button = panel.get_node("%ShowGuideButton") as Button
 	# The Service events toggle (#495) sits with the other toggles, after the grids.
-	var targets: Array[Control] = [play, build, panel.get_node("%ServiceEventsToggle") as CheckButton]
+	var targets: Array[Control] = [play, build, panel.get_node("%ServiceEventsToggle") as CheckButton,
+		panel.get_node("%MorningPaperToggle") as CheckButton]
 	if replay.is_visible_in_tree():
 		targets.append(replay)
 	targets.append(panel.get_node("%WhatsNewButton") as Button)

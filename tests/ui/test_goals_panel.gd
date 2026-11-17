@@ -34,6 +34,26 @@ func test_selection_keeps_authored_order_limits_active_goals_and_shows_known_com
 	assert_true((_panel.get_node("Panel/Content/Scroll/List/CompletedHeading") as Label).visible)
 
 
+func test_opening_checkboxes_stay_one_line_and_counted_goals_get_short_bars() -> void:
+	var chain: OpeningWeekSet = preload("res://data/balance/opening_week.tres")
+	_panel.set_opening_week(OpeningWeek.new(), chain, {OpeningGoal.Condition.SERVED_TODAY: 2.0}, 1)
+	var card: Control = _panel.get_node("Panel/Content/Scroll/List/OpeningWeek/Body") as Control
+	var checkbox: Control = card.get_node("Goal0") as Control
+	assert_eq(checkbox.get_child_count(), 1)
+	assert_true(checkbox.has_node("Line/Reward"))
+	assert_false((checkbox.get_node("Line/Title") as Label).tooltip_text.is_empty())
+	var counted: int = 0
+	for row: Node in card.get_children():
+		var bar: ProgressBar = row.get_node_or_null("Detail/ProgressBar") as ProgressBar
+		if bar != null:
+			counted += 1
+			assert_eq(bar.custom_minimum_size.x, 100.0)
+	assert_true(counted > 0, "the fixture shows a numeric goal")
+	var milestone: ProgressBar = _panel.goal_card_for(&"first").get_node("Body/ProgressBar") as ProgressBar
+	assert_eq(milestone.custom_minimum_size.x, 120.0)
+	assert_eq(milestone.size_flags_horizontal, Control.SIZE_SHRINK_BEGIN)
+
+
 func test_progress_is_finite_bounded_and_rewards_are_player_readable() -> void:
 	var catalogue: MilestoneSet = _single_goal_catalogue([
 		_goal(&"partway", "One busy lunch", 10.0, 1),
@@ -200,6 +220,29 @@ func test_empty_or_invalid_catalogue_shows_friendly_state_without_leaking_ids() 
 	assert_true((_panel.get_node("Panel/Content/Scroll/List/EmptyState") as Label).visible)
 	assert_eq((_panel.get_node("Panel/Content/Scroll/List/ActiveRows") as VBoxContainer).get_child_count(), 0)
 	assert_eq((_panel.get_node("Panel/Content/Scroll/List/CompletedRows") as VBoxContainer).get_child_count(), 0)
+
+
+func test_empty_state_agrees_after_goals_or_collections_refresh() -> void:
+	var no_goals: Array[StringName] = []
+	var no_progress: Dictionary[StringName, float] = {}
+	var empty: Label = _panel.get_node("%EmptyState") as Label
+	_panel.set_goals(null, no_goals, no_progress, 1)
+	var result: CollectionModel.Result = CollectionModel.Result.new()
+	var entry: CollectionModel.Entry = CollectionModel.Entry.new()
+	entry.definition = CollectionDef.new()
+	entry.definition.display_name = "Diner Classics"
+	result.entries = [entry]
+	_panel.set_collections(result)
+	assert_true(empty.visible, "An invalid collection is not rendered")
+	_panel.set_goals(null, no_goals, no_progress, 1)
+	assert_true(empty.visible, "A goal refresh must agree with the collection refresh")
+	result.valid = true
+	_panel.set_collections(result)
+	assert_false(empty.visible, "A collection card supplies content on its own")
+	_panel.set_goals(null, no_goals, no_progress, 1)
+	assert_false(empty.visible)
+	_panel.set_collections(null)
+	assert_true(empty.visible)
 
 
 func test_close_emits_request_and_responsive_layout_uses_native_scroll_controls() -> void:
