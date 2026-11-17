@@ -990,6 +990,7 @@ func _build_recipe_tree() -> void:
 	_recipe_tree.column_titles_visible = false
 	_recipe_tree.set_column_expand_ratio(0, 4)
 	_recipe_tree.set_column_expand_ratio(1, 5)
+	_recipe_tree.set_column_clip_content(0, true)
 	_recipe_tree.set_column_clip_content(1, true)
 	_recipe_tree.hide_root = true
 	_recipe_tree.select_mode = Tree.SELECT_ROW
