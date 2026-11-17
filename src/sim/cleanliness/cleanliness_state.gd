@@ -99,6 +99,12 @@ func clear_spot(cell: Vector2i) -> bool:
 	return dirt or restroom or mess
 
 
+## Extra table care picks up ordinary dirt near the seats. Spills and the
+## day's historical high still belong to the usual cleanliness systems.
+func clear_seat_dirt(cell: Vector2i) -> bool:
+	return _spots.erase(cell)
+
+
 ## A floor spot or a restroom tidy job on this cell.
 func has_spot(cell: Vector2i) -> bool:
 	return _spots.has(cell) or _restroom_spots.has(cell) or _messes.has(cell)
