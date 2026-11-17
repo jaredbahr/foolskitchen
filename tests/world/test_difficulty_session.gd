@@ -131,6 +131,116 @@ func test_save_without_difficulty_section_loads_normal() -> void:
 	assert_false((_main.get_node("HUD/Top/Row/Difficulty") as Label).visible)
 
 
+func test_automatic_prices_lock_charges_without_locking_the_menu() -> void:
+	_start()
+	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings
+	var burger: RecipeDef = menu.recipe(&"burger")
+	var standard: int = burger.standard_price
+	assert_true(_main.call("menu_set_price", burger.id, standard + 2))
+	assert_true(_main.call("menu_set_enabled", &"grilled_cheese", false))
+	var presets: MenuPresetLibrary = _main.get("menu_presets") as MenuPresetLibrary
+	assert_true(presets.save_menu("Alternate menu", menu))
+	assert_true(_main.call("menu_set_enabled", &"grilled_cheese", true))
+	var flags: Dictionary = Difficulty.DEFAULT_CUSTOM_FLAGS.duplicate()
+	flags[&"prices"] = true
+	assert_true(_difficulty().request_change(&"custom", flags, 2))
+	assert_eq(menu.price_of(burger), standard + 2, "queued automation leaves today's prices alone")
+	_finish_service()
+	assert_true(Clock.sim.next_day())
+	assert_false(_difficulty().auto(&"jobs"), "the Custom flags are independent")
+	for recipe: RecipeDef in menu.recipes():
+		assert_eq(menu.price_of(recipe), recipe.standard_price)
+	assert_false(_main.call("menu_set_price", burger.id, standard + 1))
+	assert_false(_main.call("menu_reset_prices"))
+	assert_true(_main.call("set_menu_visible", true))
+	var panel: MenuPanel = _main.get_node("Overlay/MenuPanel") as MenuPanel
+	var row: Control = panel.row_for(burger.id)
+	for action: String in ["Plus", "Minus"]:
+		var button: Button = row.get_node("Price/" + action) as Button
+		assert_true(button.disabled)
+		assert_false(button.visible, "locked controls leave room for the price label")
+	assert_eq((row.get_node("Price/Amount") as Label).text, "$%d · Standard price (auto)" % standard)
+	for action: String in ["PlusTen", "MinusTen", "Reset"]:
+		var button: Button = panel.get_node("%List/BulkPrices/" + action) as Button
+		assert_true(button.disabled)
+		assert_false(button.visible)
+	assert_true(_main.call("set_menu_visible", false))
+	var result: Dictionary = _main.call("menu_load_preset", 0)
+	assert_true(bool(result.get("enabled_changed", false)))
+	assert_false(menu.is_enabled(&"grilled_cheese"))
+	assert_eq(menu.price_of(burger), standard, "a saved preset cannot bypass automatic prices")
+	assert_true(_main.call("menu_set_special", burger.id))
+	assert_true(_difficulty().request_change(&"normal", {}, 3))
+	_finish_service()
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var paid_burgers: int = 0
+	for order: Order in sim.orders.orders_in_state(Order.State.DELIVERED):
+		if order.recipe_id == burger.id and order.paid:
+			paid_burgers += 1
+			assert_eq(order.price, standard, "the advertised special also sells at standard")
+	assert_true(paid_burgers > 0, "a real service took payment for the dish")
+	assert_true(Clock.sim.next_day())
+	assert_false(menu.automatic_prices())
+	assert_eq(menu.price_of(burger), standard)
+	assert_false(menu.is_enabled(&"grilled_cheese"))
+	assert_true(_main.call("menu_set_price", burger.id, standard + 1))
+
+
+func test_automatic_jobs_reset_every_morning_and_leave_defaults_when_turned_off() -> void:
+	_start()
+	var roster: StaffRoster = _main.get("staff_roster") as StaffRoster
+	var server_id: StringName = &""
+	for member: StaffMember in roster.members():
+		if member.role == &"server":
+			server_id = member.id
+	assert_false(server_id.is_empty())
+	var high: int = StaffJobPriorities.Level.HIGH
+	assert_true(_main.call("staff_set_job_priority", server_id, &"bussing", high))
+	var flags: Dictionary = Difficulty.DEFAULT_CUSTOM_FLAGS.duplicate()
+	flags[&"jobs"] = true
+	assert_true(_difficulty().request_change(&"custom", flags, 2))
+	_finish_service()
+	assert_true(Clock.sim.next_day())
+	assert_false(_difficulty().auto(&"prices"))
+	assert_true(_main.call("menu_set_price", &"burger", 13))
+	_assert_default_jobs(server_id)
+	var panel: StaffPanel = _main.get_node("Overlay/StaffPanel") as StaffPanel
+	var heading: Label = panel.get_node("%Priorities/Heading") as Label
+	assert_eq(heading.text, "Jobs: handled for you")
+	assert_true(panel.priority_button_for(server_id, &"bussing").disabled)
+	assert_false(_main.call("staff_set_job_priority", server_id, &"bussing", high))
+	# A stale saved choice must be reset even when the mode does not change.
+	roster = _main.get("staff_roster") as StaffRoster
+	assert_true(roster.set_job_priority(server_id, &"bussing", high))
+	_finish_service()
+	assert_true(Clock.sim.next_day())
+	_assert_default_jobs(server_id)
+	_close()
+	_start()
+	assert_eq(Clock.sim.day, 3)
+	assert_true(_difficulty().auto(&"jobs"))
+	_assert_default_jobs(server_id)
+	assert_true(_difficulty().request_change(&"normal", {}, 4))
+	_finish_service()
+	assert_true(Clock.sim.next_day())
+	_assert_default_jobs(server_id)
+	panel = _main.get_node("Overlay/StaffPanel") as StaffPanel
+	assert_false(panel.priority_button_for(server_id, &"bussing").disabled)
+	assert_true(_main.call("staff_set_job_priority", server_id, &"bussing", high))
+
+
+func _assert_default_jobs(server_id: StringName) -> void:
+	var roster: StaffRoster = _main.get("staff_roster") as StaffRoster
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	for member: StaffMember in roster.members():
+		assert_eq(roster.job_priorities(member.id).to_dict(), StaffJobPriorities.new(member.role).to_dict())
+	var employee: StaffAgent = sim.employee(server_id)
+	assert_not_null(employee)
+	if employee != null:
+		var priorities: StaffJobPriorities = employee.get("_job_priorities") as StaffJobPriorities
+		assert_eq(priorities.priority(&"bussing"), StaffJobPriorities.Level.NORMAL)
+
+
 func _start(mode_id: StringName = &"normal") -> void:
 	GameMode.request_new_game(false, mode_id)
 	_main = MAIN.instantiate()

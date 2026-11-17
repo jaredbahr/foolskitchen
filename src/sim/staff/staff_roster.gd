@@ -88,6 +88,11 @@ func set_job_priority(member_id: StringName, job: StringName, value: int) -> boo
 	return index >= 0 and _members[index].priority_state().set_priority(job, value)
 
 
+func reset_job_priorities() -> void:
+	for member: StaffMember in _members:
+		member.priority_state().reset_to_defaults()
+
+
 ## Detached command input for the live agent; a caller cannot edit the roster.
 func job_priorities(member_id: StringName) -> StaffJobPriorities:
 	var index: int = _find(_members, member_id)

@@ -1125,7 +1125,9 @@ func _listed_price(recipe: RecipeDef) -> int:
 
 
 func _price_with_special(recipe: RecipeDef, price: int) -> int:
-	return daily_special.price_for(recipe, price) if daily_special != null else price
+	if daily_special != null and not difficulty.auto(&"prices"):
+		return daily_special.price_for(recipe, price)
+	return price
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.

@@ -29,6 +29,7 @@ const LOCKED_COLOR: Color = Color("766b60")
 const ADVICE_COLOR: Color = Color("7F5100")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
+const AUTO_PRICE_TEXT: String = "Standard price (auto)"
 ## Widest panel; narrower windows (or a large UI scale) keep a margin each side.
 const PANEL_MAX_WIDTH: float = 1000.0
 const PANEL_SIDE_MARGIN: float = 12.0
@@ -85,6 +86,7 @@ var _open_minute: int = 11 * 60
 var _close_minute: int = 21 * 60
 var _hours_tuning: OpeningHoursTuning = null
 var _bulk_controls: Dictionary[String, Button] = {}
+var _bulk_price_label: Label
 
 
 func _ready() -> void:
@@ -275,6 +277,7 @@ func refresh() -> void:
 	if _needs_rebuild or _catalogue_changed():
 		_rebuild_rows()
 	var editable: bool = _phase == SimClock.Phase.MORNING
+	var prices_automatic: bool = _menu != null and _menu.automatic_prices()
 	# Only outside the morning: the controls themselves say what to choose.
 	_status.text = MORNING_HINT
 	_status.visible = not editable
@@ -288,7 +291,7 @@ func refresh() -> void:
 		_preset_controls.set_open(false)
 	_name_edit.tooltip_text = "Name your restaurant (up to 24 characters)." if editable else MORNING_HINT
 	_name_apply.tooltip_text = "Use this restaurant name." if editable else MORNING_HINT
-	_refresh_bulk_controls(editable)
+	_refresh_bulk_controls(editable, prices_automatic)
 	_refresh_hours(editable)
 	_refresh_drinks_section()
 	if _menu == null or not _menu.is_valid():
@@ -332,11 +335,13 @@ func refresh() -> void:
 		toggle.text = "Locked" if locked else ("Remove from menu" if enabled else "Add to menu")
 		toggle.disabled = locked or not available or not editable or last_enabled or at_limit
 		toggle.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else (limit_hint if at_limit else "Offer this dish today.")))
-		minus.disabled = locked or not available or not editable or price <= minimum
-		plus.disabled = locked or not available or not editable or price >= maximum
+		minus.visible = not prices_automatic
+		plus.visible = not prices_automatic
+		minus.disabled = prices_automatic or locked or not available or not editable or price <= minimum
+		plus.disabled = prices_automatic or locked or not available or not editable or price >= maximum
 		minus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Minimum price: $%d" % minimum)
 		plus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Maximum price: $%d" % maximum)
-		amount.text = "$%d" % price
+		amount.text = "$%d · %s" % [price, AUTO_PRICE_TEXT] if prices_automatic else "$%d" % price
 		var walkout: Label = row["walkout"]
 		var chance: float = float(_details.get(definition.id, {}).get("price_walkout_chance", -1.0))
 		walkout.visible = not locked and chance >= 0.0
@@ -546,8 +551,8 @@ func _build_sections() -> void:
 	special_line.add_child(_special_option)
 	var bulk_line: HBoxContainer = _add_line(list, "BulkPrices")
 	bulk_line.add_theme_constant_override("separation", 6)
-	var bulk_label: Label = _add_label(bulk_line, "Label", "All prices")
-	bulk_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_bulk_price_label = _add_label(bulk_line, "Label", "All prices")
+	_bulk_price_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	var lower: Button = _add_button(bulk_line, "MinusTen", "−10%")
 	lower.pressed.connect(_on_bulk_price.bind(-1))
 	_bulk_controls["MinusTen"] = lower
@@ -602,7 +607,9 @@ func _refresh_special_picker() -> void:
 				selected = item_index
 	_special_option.select(selected)
 	_special_option.disabled = _phase != SimClock.Phase.MORNING
-	_special_option.tooltip_text = MORNING_HINT if _special_option.disabled else DailySpecialText.selection_hint()
+	var prices_automatic: bool = _menu != null and _menu.automatic_prices()
+	_special_option.tooltip_text = MORNING_HINT if _special_option.disabled \
+		else DailySpecialText.selection_hint(prices_automatic)
 	_special_option.set_block_signals(false)
 
 
@@ -813,7 +820,8 @@ static func _price_walkout_text(chance: float) -> String:
 
 
 func _on_price_step(recipe_id: StringName, direction: int) -> void:
-	if _phase != SimClock.Phase.MORNING or _menu == null or (direction != -1 and direction != 1):
+	if _phase != SimClock.Phase.MORNING or _menu == null or _menu.automatic_prices() \
+			or (direction != -1 and direction != 1):
 		return
 	var definition: RecipeDef = _menu.recipe(recipe_id)
 	if definition == null or definition.unlock_level > _menu.owner_level():
@@ -832,17 +840,19 @@ func _on_price_step(recipe_id: StringName, direction: int) -> void:
 	refresh()
 
 
-func _refresh_bulk_controls(editable: bool) -> void:
+func _refresh_bulk_controls(editable: bool, prices_automatic: bool) -> void:
+	_bulk_price_label.text = AUTO_PRICE_TEXT if prices_automatic else "All prices"
 	for button_name: String in _bulk_controls:
 		var button: Button = _bulk_controls[button_name]
-		button.disabled = not editable or _menu == null or not _menu.is_valid()
+		button.visible = not prices_automatic
+		button.disabled = prices_automatic or not editable or _menu == null or not _menu.is_valid()
 		button.tooltip_text = MORNING_HINT if not editable else "Change prices through today's menu."
 
 
 ## The session handles each request through its existing single-dish path.
 func _on_bulk_price(direction: int) -> void:
 	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid() \
-			or (direction != -1 and direction != 1):
+			or _menu.automatic_prices() or (direction != -1 and direction != 1):
 		return
 	var model: MenuSettings = _menu
 	for definition: RecipeDef in model.enabled_recipes():
@@ -859,7 +869,7 @@ func _on_bulk_price(direction: int) -> void:
 
 ## The session resets all known prices, including disabled and stashed dishes.
 func _on_bulk_reset() -> void:
-	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid():
+	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid() or _menu.automatic_prices():
 		return
 	reset_prices_requested.emit()
 	refresh()

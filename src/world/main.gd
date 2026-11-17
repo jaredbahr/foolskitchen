@@ -4815,7 +4815,7 @@ func staff_rename(id: StringName, text: String) -> bool:
 ## existing employee before committing saved choices; never reinstall staff.
 ## The runtime copy also retains XP earned during the current service.
 func staff_set_job_priority(id: StringName, job: StringName, value: int) -> bool:
-	if not can_view_staff():
+	if not can_view_staff() or _automatic_staff_jobs():
 		return false
 	var choices: StaffRoster = staff_roster.copy()
 	if choices == null or not choices.set_job_priority(id, job, value):
@@ -5359,6 +5359,7 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
+	choices.set_automatic_prices(not GameMode.is_creative() and difficulty.auto(&"prices"))
 	restaurant.menu = choices.enabled_recipes()
 	daily_special.reconcile(restaurant.menu)
 	restaurant.daily_special = daily_special
@@ -5454,13 +5455,14 @@ func _on_restaurant_name_requested(value: String) -> void:
 
 
 func menu_set_price(recipe_id: StringName, price: int) -> bool:
-	if not can_edit_menu() or menu_settings.recipe(recipe_id) == null:
+	if not can_edit_menu() or menu_settings.automatic_prices() or menu_settings.recipe(recipe_id) == null:
 		return false
-	var before: int = menu_settings.price_of(menu_settings.recipe(recipe_id))
+	var definition: RecipeDef = menu_settings.recipe(recipe_id)
+	var before: int = menu_settings.price_of(definition)
 	menu_settings.set_price(recipe_id, price)
 	_apply_menu(sim, menu_settings)
 	_refresh_menu_details()
-	if menu_settings.price_of(menu_settings.recipe(recipe_id)) != before:
+	if menu_settings.price_of(definition) != before:
 		_observe_opening(OpeningGoal.Condition.PRICE_CHANGED, 1.0)
 	return true
 
@@ -5481,7 +5483,7 @@ func menu_load_preset(index: int) -> Dictionary:
 
 
 func menu_reset_prices() -> bool:
-	if not can_edit_menu() or not menu_settings.reset_all_prices_to_standard():
+	if not can_edit_menu() or menu_settings.automatic_prices() or not menu_settings.reset_all_prices_to_standard():
 		return false
 	_apply_menu(sim, menu_settings)
 	_refresh_menu_details()
@@ -6034,9 +6036,14 @@ func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[Stri
 	return snapshot
 
 
+func _automatic_staff_jobs() -> bool:
+	return not GameMode.is_creative() and difficulty.auto(&"jobs")
+
+
 func _refresh_difficulty() -> void:
 	var creative: bool = GameMode.is_creative()
 	_settings_panel.set_difficulty(null if creative else difficulty)
+	_staff_panel.set_automatic_jobs(_automatic_staff_jobs())
 	var label: Label = $HUD/Top/Row/Difficulty
 	label.text = Difficulty.mode_name(difficulty.mode())
 	label.visible = not creative and difficulty.mode() != &"normal"
@@ -6531,6 +6538,8 @@ func _begin_morning() -> void:
 		push_error("Cannot restore the morning staff roster")
 		return
 	var notices: Array[Dictionary] = choices.process_morning_quits(Clock.sim.day, Clock.sim.phase)
+	if _automatic_staff_jobs():
+		choices.reset_job_priorities()
 	# The morning install removes departures and applies skills earned at the
 	# previous close before any staff are sent to their posts.
 	if not sim.set_staff_roster(choices.members()):

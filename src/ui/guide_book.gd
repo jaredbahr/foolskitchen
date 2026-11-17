@@ -76,8 +76,9 @@ static func _career_unlock_example() -> String:
 
 
 static func _menu_special_rule() -> String:
-	return "Any enabled dish can be selected as today's special each morning. It receives a %d%% price discount." % \
+	var text: String = "Any enabled dish can be selected as today's special each morning. It receives a %d%% price discount." % \
 		roundi(MENU_TUNING.special_discount * 100.0)
+	return text + " With automatic prices on, today's special sells at its standard price."
 
 
 static func _signature_rule() -> String:

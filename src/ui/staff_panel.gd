@@ -54,6 +54,7 @@ var _tray_level: int = 0
 var _tray_prices: PackedInt32Array = PackedInt32Array()
 var _tray_lock_reason: String = ""
 var _cash: int = 0
+var _automatic_jobs: bool = false
 var _priority_headers_ready: bool = false
 var _priority_names: Dictionary[StringName, Label] = {}
 var _priority_buttons: Dictionary[StringName, Dictionary] = {}
@@ -158,6 +159,13 @@ func set_trays(level: int, prices: PackedInt32Array, cash: int, loan_lock_reason
 	refresh()
 
 
+func set_automatic_jobs(enabled: bool) -> void:
+	if enabled == _automatic_jobs:
+		return
+	_automatic_jobs = enabled
+	refresh()
+
+
 func set_wage_factor(factor: float) -> void:
 	if not is_finite(factor) or factor <= 0.0 or factor == _wage_factor:
 		return
@@ -211,7 +219,9 @@ func refresh() -> void:
 	var editable: bool = _phase == SimClock.Phase.MORNING
 	(%Status as Label).text = ("Hiring is free. Keep a cook and a server." if GameMode.is_creative()
 		else "No hiring fee. Wages are paid at closing. Keep a cook and a server.") if editable \
-		else "Hiring, letting staff go, raises and upgrades are available in the morning. Job priorities can change now."
+		else "Hiring, letting staff go, raises and upgrades are available in the morning."
+	if not editable and not _automatic_jobs:
+		(%Status as Label).text += " Job priorities can change now."
 	(%RosterTitle as Label).text = "Your team (%d/%d)" % [_roster.members().size(), StaffRoster.CAPACITY] \
 		+ ("" if GameMode.is_creative() else " - $%d a day" % _team_day_wages())
 	_refresh_hiring_rows()
@@ -419,6 +429,9 @@ func priority_button_for(id: StringName, job: StringName) -> Button:
 func _refresh_priorities() -> void:
 	var section: VBoxContainer = %Priorities as VBoxContainer
 	var grid: GridContainer = %PriorityGrid as GridContainer
+	(section.get_node("Heading") as Label).text = "Jobs: handled for you" if _automatic_jobs else "Job priorities"
+	(section.get_node("Hint") as Label).visible = not _automatic_jobs
+	(%MainJobNote as Label).visible = not _automatic_jobs
 	if not _priority_headers_ready:
 		grid.columns = StaffJobPriorities.JOBS.size() + 1
 		var heading: Label = Label.new()
@@ -490,7 +503,7 @@ func _refresh_priorities() -> void:
 			index += 1
 			var supported: bool = StaffJobPriorities.supports(choices.role, job)
 			var value: int = choices.priority(job) if supported else StaffJobPriorities.Level.OFF
-			button.disabled = not supported
+			button.disabled = _automatic_jobs or not supported
 			button.text = StaffJobPriorities.level_label(value) if supported else "—"
 			button.tooltip_text = _priority_tooltip(choices, job, has_cleaner)
 			if int(button.get_meta(&"priority_level", -1)) != value \
