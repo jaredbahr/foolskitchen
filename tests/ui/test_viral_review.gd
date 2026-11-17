@@ -12,6 +12,8 @@ func test_shared_plain_words_and_zero_state() -> void:
 	assert_eq(ViralReviewText.evening(""),
 		"A guest's post about your food is going viral! Expect more guests for a few days.")
 	assert_true(ViralReviewText.morning(1.35).contains("Trending online: +35%"))
+	assert_eq(ViralReviewText.evening("Tomato soup"),
+		"A guest's post about your tomato soup is going viral! Expect more guests for a few days.")
 
 
 func test_report_line_is_below_existing_reviews_and_clears_for_next_report() -> void:

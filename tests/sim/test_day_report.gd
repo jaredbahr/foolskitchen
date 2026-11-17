@@ -796,3 +796,27 @@ func _record_food_cost(report: DayReport, cost: int) -> void:
 
 func _on_next_day() -> void:
 	_next_day_count += 1
+
+
+func test_visitor_breakdown_round_trips_without_unknown_or_legacy_fields() -> void:
+	var legacy: DayReport = DayReport.from_dict({"customers_served": 7})
+	assert_true(legacy.visitor_breakdown.is_empty())
+	assert_false(legacy.to_dict().has("visitor_breakdown"))
+	var report: DayReport = DayReport.from_dict({"visitor_breakdown": [
+		{"name": "Families", "count": 3.0, "average_mood": 0.48, "internal": "family"},
+		{"name": "Regulars", "count": 1, "average_mood": 1.0},
+		{"name": "Foodies", "count": 1, "average_mood": null},
+		{"name": "Wrong", "count": 2.5, "average_mood": 0.4},
+		{"name": "Wrong", "count": 2, "average_mood": 3.0},
+		false,
+	]})
+	assert_eq(report.visitor_breakdown, [
+		{"name": "Families", "count": 3, "average_mood": 0.48},
+		{"name": "Regulars", "count": 1, "average_mood": 1.0},
+		{"name": "Foodies", "count": 1, "average_mood": null},
+	])
+	var serialized: Dictionary = report.to_dict()
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(serialized)))
+	assert_eq(restored.visitor_breakdown, report.visitor_breakdown)
+	serialized["visitor_breakdown"][0]["name"] = "Changed"
+	assert_eq(report.visitor_breakdown[0]["name"], "Families")

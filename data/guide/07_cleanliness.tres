@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Cleanliness"
+body = "Guests can leave a little dirt where they enter or after they finish a meal. Floor spots are tracked separately from dirty tables and kitchen mess, and they do not block movement. A cleaner can take cleaning work. Without one, staff may mop when their other priorities allow. You can also put the owner on Floor duty to help clear spots.\n\nCleanliness around guest seats affects the impression they take away, and the evening report summarizes the shop's condition. A clear route to dirty spots helps staff reach them. If grime keeps building up, consider raising cleaning priority or hiring help, then check whether the dining room stays comfortable through a full service. Cleaning is one part of the guest experience alongside prompt service, food quality and a layout that feels welcoming."

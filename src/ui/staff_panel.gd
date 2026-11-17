@@ -10,8 +10,11 @@ signal tray_requested(level: int)
 signal close_requested()
 signal job_priority_requested(id: StringName, job: StringName, value: int)
 signal owner_look_requested()
+signal rename_requested(id: StringName, text: String)
 ## Send an employee to another of the owner's restaurants (#473).
 signal transfer_requested(id: StringName, site: StringName)
+
+enum HiringSort { SKILL, WAGE, TRAIT }
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const GROWTH_RULES: StaffGrowthTuning = preload("res://data/balance/staff_growth.tres")
@@ -57,6 +60,9 @@ var _priority_buttons: Dictionary[StringName, Dictionary] = {}
 var _owner_name: String = OwnerAppearance.DEFAULT_NAME
 var _team_activity: Dictionary = {}
 var _transfer_sites: Array[TransferSite] = []
+var _employee_titles: Dictionary[StringName, Label] = {}
+var _editing_employee: StringName = &""
+var _name_edit: LineEdit
 
 
 func _ready() -> void:
@@ -165,6 +171,7 @@ func _day_wage(wage: int) -> int:
 
 
 func refresh() -> void:
+	_setup_hiring_choices()
 	if not (%OwnerLook as Button).pressed.is_connected(_on_owner_look):
 		(%OwnerLook as Button).pressed.connect(_on_owner_look)
 	# These controls share the heading row, but retain ordinary body sizing.
@@ -189,9 +196,11 @@ func refresh() -> void:
 		for member: Dictionary in snapshot.get(section, []):
 			member.erase("priorities")
 			member.erase("work")
+			member.erase("nickname")
 	if snapshot != _snapshot:
 		_rebuild_rows()
 		_snapshot = snapshot
+	_refresh_employee_names()
 	_refresh_work()
 	var offers: Array[Dictionary] = _roster.morning_raise_offers(_morning_day, _phase)
 	var morning_snapshot: Dictionary = {"offers": offers,
@@ -205,7 +214,7 @@ func refresh() -> void:
 		else "Hiring, letting staff go, raises and upgrades are available in the morning. Job priorities can change now."
 	(%RosterTitle as Label).text = "Your team (%d/%d)" % [_roster.members().size(), StaffRoster.CAPACITY] \
 		+ ("" if GameMode.is_creative() else " - $%d a day" % _team_day_wages())
-	(%Empty as Label).visible = _roster.candidates().is_empty()
+	_refresh_hiring_rows()
 	(%Carry as Label).text = "Servers carry %d plate%s" % [1 << _tray_level, "" if _tray_level == 0 else "s"]
 	for level: int in [1, 2]:
 		var price: int = _tray_prices[level - 1] if _tray_prices.size() >= level else -1
@@ -244,8 +253,156 @@ func _team_day_wages() -> int:
 	return total
 
 
+## The controls live for the lifetime of the panel and need no saved state.
+func _setup_hiring_choices() -> void:
+	var role_picker: OptionButton = %HiringRole
+	if role_picker.item_count > 0:
+		return
+	var roles: Array[StringName] = [&""]
+	roles.append_array(StaffMember.ROLES)
+	roles.append(StaffMember.MANAGER)
+	for role: StringName in roles:
+		role_picker.add_item("All" if role.is_empty() else _role_name(role))
+		role_picker.set_item_metadata(role_picker.item_count - 1, role)
+	var sort_picker: OptionButton = %HiringSort
+	sort_picker.add_item("Skill high to low", HiringSort.SKILL)
+	sort_picker.add_item("Wage low to high", HiringSort.WAGE)
+	sort_picker.add_item("Trait A–Z", HiringSort.TRAIT)
+	role_picker.select(0)
+	sort_picker.select(0)
+	role_picker.item_selected.connect(_refresh_hiring_rows)
+	sort_picker.item_selected.connect(_refresh_hiring_rows)
+
+
+## Insert from the pool in order, shifting only strictly better entries.
+## Keep the existing row and Hire button when the player changes the view.
+func _refresh_hiring_rows(_selection: int = -1) -> void:
+	if _roster == null:
+		return
+	var role_picker: OptionButton = %HiringRole
+	var role: StringName = role_picker.get_item_metadata(role_picker.selected)
+	var mode: int = (%HiringSort as OptionButton).get_selected_id()
+	var shown: Array[StaffMember] = []
+	for member: StaffMember in _roster.candidates():
+		var row: Control = _rows[member.id]
+		row.visible = role.is_empty() or member.role == role
+		if not row.visible:
+			continue
+		var position: int = shown.size()
+		while position > 0 and _hiring_precedes(member, shown[position - 1], mode):
+			position -= 1
+		shown.insert(position, member)
+	var candidates: VBoxContainer = %Candidates
+	for index: int in shown.size():
+		var row: Control = _rows[shown[index].id]
+		if row.get_index() != index:
+			candidates.move_child(row, index)
+	var empty: Label = %Empty
+	empty.visible = shown.is_empty()
+	empty.text = "Everyone has been hired. More candidates arrive next morning." if role.is_empty() \
+		else "No candidates for this role today."
+
+
+func _hiring_precedes(first: StaffMember, second: StaffMember, mode: int) -> bool:
+	match mode:
+		HiringSort.WAGE:
+			return _day_wage(first.wage) < _day_wage(second.wage)
+		HiringSort.TRAIT:
+			var first_trait: String = _roster.catalogue.find_trait(first.trait_id).display_name
+			var second_trait: String = _roster.catalogue.find_trait(second.trait_id).display_name
+			return first_trait.nocasecmp_to(second_trait) < 0
+	return first.skill > second.skill
+
+
 func row_for(id: StringName) -> Control:
 	return _rows.get(id) as Control
+
+
+func name_edit_has_focus() -> bool:
+	return is_instance_valid(_name_edit) and _name_edit.has_focus()
+
+
+func _input(event: InputEvent) -> void:
+	if not name_edit_has_focus():
+		return
+	var key: InputEventKey = event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_finish_name_edit(false)
+		return
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT \
+			and not _name_edit.get_global_rect().has_point(mouse.position):
+		_finish_name_edit(true)
+
+
+## Both Staff row layouts own their existing title. Bind the editor to the
+## actual name label, keeping the surrounding columns and their controls.
+func _bind_employee_name(member: StaffMember) -> void:
+	var title: Label = _rows[member.id].find_child("Name", true, false) as Label
+	title.set_meta(&"name_suffix", title.text.substr(member.display_name.length()))
+	title.mouse_filter = Control.MOUSE_FILTER_STOP
+	title.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	title.focus_mode = Control.FOCUS_ALL
+	title.gui_input.connect(_on_employee_name_input.bind(member.id))
+	_employee_titles[member.id] = title
+
+
+func _refresh_employee_names() -> void:
+	for member: StaffMember in _roster.members():
+		var title: Label = _employee_titles[member.id]
+		title.text = member.display_name + String(title.get_meta(&"name_suffix"))
+		title.tooltip_text = "Rename " + member.display_name
+
+
+func _on_employee_name_input(event: InputEvent, id: StringName) -> void:
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if not (mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT) \
+			and not event.is_action_pressed(&"ui_accept"):
+		return
+	var title: Label = _employee_titles[id]
+	for member: StaffMember in _roster.members():
+		if member.id != id:
+			continue
+		_finish_name_edit(true)
+		_editing_employee = id
+		_name_edit = LineEdit.new()
+		_name_edit.name = "NameEdit"
+		_name_edit.max_length = StaffMember.MAX_NICKNAME_LENGTH
+		_name_edit.text = member.display_name
+		_name_edit.placeholder_text = member.original_name
+		_name_edit.tooltip_text = "Up to 20 characters. Clear the name to restore the original."
+		_name_edit.text_submitted.connect(_on_name_submitted)
+		_name_edit.focus_exited.connect(_finish_name_edit.bind(true))
+		title.add_child(_name_edit)
+		_name_edit.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		title.custom_minimum_size.y = _name_edit.get_combined_minimum_size().y
+		title.self_modulate.a = 0.0
+		title.accept_event()
+		_name_edit.grab_focus()
+		_name_edit.select_all()
+		return
+
+
+func _on_name_submitted(_text: String) -> void:
+	_finish_name_edit(true)
+
+
+func _finish_name_edit(save_name: bool) -> void:
+	if not is_instance_valid(_name_edit):
+		return
+	var editor: LineEdit = _name_edit
+	var id: StringName = _editing_employee
+	var text: String = editor.text
+	_name_edit = null
+	_editing_employee = &""
+	var title: Label = editor.get_parent() as Label
+	title.custom_minimum_size.y = 0.0
+	title.self_modulate.a = 1.0
+	editor.hide()
+	editor.queue_free()
+	if save_name:
+		rename_requested.emit(id, text)
 
 
 func offer_row_for(id: StringName) -> Control:
@@ -450,6 +607,8 @@ func _on_priority_request(id: StringName, job: StringName, source: Button) -> vo
 
 
 func _rebuild_rows() -> void:
+	_finish_name_edit(false)
+	_employee_titles.clear()
 	for parent: VBoxContainer in [%Members, %Candidates]:
 		for child: Node in parent.get_children():
 			parent.remove_child(child)
@@ -461,6 +620,7 @@ func _rebuild_rows() -> void:
 	_rows.clear()
 	for member: StaffMember in _roster.members():
 		_add_row(%Members as VBoxContainer, member, false)
+		_bind_employee_name(member)
 	for member: StaffMember in _roster.candidates():
 		_add_row(%Candidates as VBoxContainer, member, true)
 

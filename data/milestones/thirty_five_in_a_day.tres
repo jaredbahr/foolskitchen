@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Milestone" format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="1_goal"]
+
+[resource]
+script = ExtResource("1_goal")
+id = &"thirty_five_in_a_day"
+title = "Thirty-five in a day"
+description = "Serve 35 guests in one day."
+condition = 0
+target = 35.0
+reward_xp = 50
+reward_cash = 50
+unlock_level = 4

@@ -56,12 +56,40 @@ func test_music_plays_only_while_the_shop_is_open_and_follows_the_style() -> voi
 	Clock.set_speed(1)
 	main.call("refresh_presentation")
 	assert_eq(_loops_playing(), [&"jukebox_diner_rock"] as Array[StringName], "the default style plays once open")
+	assert_eq(Sfx.loop_track(&"jukebox_diner_rock"), MusicTracks.track_for(&"diner", Clock.sim.day))
+	assert_almost_eq(Sfx.music_target(), 0.0, 0.0001, "only the quiet jukebox is heard")
 	assert_true(bool(main.call("shop_item_look", jukebox.id, &"jukebox_bar_blues")), "a style can change during service")
 	main.call("refresh_presentation")
 	assert_eq(_loops_playing(), [&"jukebox_bar_blues"] as Array[StringName], "changing style swaps the music")
+	assert_eq(Sfx.loop_track(&"jukebox_bar_blues"), MusicTracks.track_for(&"bar", Clock.sim.day))
+	assert_null(Sfx.loop_track(&"jukebox_diner_rock"), "old style stops")
 	Clock.set_speed(0)
 	main.call("refresh_presentation")
 	assert_eq(_loops_playing(), [] as Array[StringName], "paused is silent")
+	assert_null(Sfx.loop_track(&"jukebox_bar_blues"))
+
+
+func test_an_unmapped_style_keeps_the_made_loop_and_existing_quiet_gain() -> void:
+	var main: Node = _start()
+	assert_true(bool(main.call("shop_buy", &"jukebox", SPOT, 0)))
+	var world: SimWorld = main.get("world")
+	var jukebox: PlacedItem = world.grid.item_at(SPOT)
+	assert_true(Clock.sim.start_service())
+	Clock.set_speed(1)
+	main.call("refresh_presentation")
+	var style: StringName = &"jukebox_diner_rock"
+	assert_eq(Sfx.loop_track(style), MusicTracks.track_for(&"diner"))
+	# No shipped jukebox style is unmapped. Give this placed item its own
+	# variant with an unmapped theme, retaining the style's existing loop id.
+	var definition: ItemDef = jukebox.def.duplicate() as ItemDef
+	var look: ItemVariant = definition.variant(style).duplicate() as ItemVariant
+	look.theme_tags = [&"cosy"] as Array[StringName]
+	definition.variants = [look] as Array[ItemVariant]
+	jukebox.def = definition
+	main.call("refresh_presentation")
+	assert_eq(Sfx.loop_track(style), Sfx.tuning.loops[style], "the real jukebox route falls back to the made loop")
+	assert_eq(Sfx.loop_level(style), 1.0)
+	assert_eq(Sfx.tuning.loop_gain_db(style), -16.0)
 
 
 func test_the_inspect_panel_picks_the_music_style() -> void:
@@ -97,6 +125,7 @@ func test_headless_runs_create_no_audio_player() -> void:
 	Clock.set_speed(1)
 	main.call("refresh_presentation")
 	assert_eq(_loops_playing(), [&"jukebox_diner_rock"] as Array[StringName], "the level is still tracked")
+	assert_eq(Sfx.loop_track(&"jukebox_diner_rock"), MusicTracks.track_for(&"diner"))
 	var players: int = 0
 	for child: Node in Sfx.get_children():
 		if child is AudioStreamPlayer:

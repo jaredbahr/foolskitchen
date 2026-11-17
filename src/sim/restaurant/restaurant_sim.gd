@@ -9,6 +9,7 @@ const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 const INSPECTION_TUNING: InspectionTuning = preload("res://data/balance/inspection.tres")
 const AQUARIUM_TUNING: AquariumTuning = preload("res://data/balance/aquarium.tres")
 const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres")
+const TIP_JAR_TUNING: TipJarTuning = preload("res://data/balance/tip_jar.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -23,6 +24,8 @@ signal service_closed(day: int)
 
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
+var day_log: DayLog = DayLog.new()
+var _today_low_stock: Dictionary[StringName, bool] = {}
 var menu: Array[RecipeDef] = []
 ## Effective selected-and-enabled recipe for this service. Empty keeps the
 ## historical review path unchanged, including its seeded quote draw.
@@ -35,6 +38,14 @@ var visit_tuning: VisitTuning = VISIT_TUNING
 ## Session-latched deterministic growth, independent of visit-kind/hour weights.
 var demand_factor: float = 1.0
 var demand_tuning: DemandTuning = null
+## Current per-run difficulty; Main shares the same object with forecast users.
+var difficulty: Difficulty = Difficulty.new():
+	set(value):
+		difficulty = value if value != null else Difficulty.new()
+		if cleanliness != null:
+			cleanliness.difficulty = difficulty
+		if mishaps != null:
+			mishaps.difficulty = difficulty
 ## Shop-wide server capacity. Morning upgrades select one of these three values.
 var carry_capacity: int:
 	get:
@@ -139,6 +150,8 @@ var restroom_tuning: RestroomTuning = RESTROOM_TUNING
 var staff_spawns: Dictionary[StringName, Vector2i] = {}
 
 var _departed: Dictionary[int, bool] = {}
+var _visiting_types: Dictionary[int, StringName] = {}
+var _visitor_types_today: Dictionary[StringName, Dictionary] = {}
 var _rush_cohort_ids: Dictionary[int, bool] = {}
 ## Restroom toilets and dining seats, recounted after a layout change.
 var _layout_counted: bool = false
@@ -294,6 +307,8 @@ func patio_keeping_up() -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day(career_tier: int = 1) -> void:
+	day_log.clear()
+	_today_low_stock.clear()
 	# Daily weather can close patio seats without a layout edit. Indoor-only
 	# shops retain their existing cache and exact morning behavior.
 	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
@@ -326,6 +341,8 @@ func start_day(career_tier: int = 1) -> void:
 	reputation_before_day = review_book.average()
 	review_book.begin_day()
 	_departed.clear()
+	_visiting_types.clear()
+	_visitor_types_today.clear()
 	# Nothing stays in transit overnight: a delivery still waiting is stored.
 	if dock != null:
 		dock.store_all()
@@ -416,6 +433,8 @@ func advance() -> void:
 		# Anything not put away by closing is stored, before the day's books.
 		if dock != null:
 			dock.store_all()
+		if critic.arrived:
+			day_log.reveal_critic()
 		service_closed.emit(world.clock.day)
 
 
@@ -486,6 +505,7 @@ func _advance_inspection() -> void:
 	inspector = arrival
 	_inspector_looked = 0
 	world.add_agent(arrival)
+	log_today(DayLog.Kind.INSPECTOR, "The health inspector arrived")
 	health_inspector_arrived.emit()
 
 
@@ -517,6 +537,7 @@ func record_event_review(stars: int, quote: String) -> Dictionary:
 		return {}
 	var row: Dictionary = {"stars": result["stars"], "quote": quote,
 		"before": result["before"], "after": result["after"]}
+	_log_today_review(int(row["stars"]))
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
 	return row
@@ -572,6 +593,17 @@ func clean_all_spots() -> int:
 	return cleaned
 
 
+## A careful bussed table clears ordinary dirt from its own seats.
+func clean_bussed_seats(table: PlacedItem) -> void:
+	if cleanliness == null or table == null:
+		return
+	var changed: bool = false
+	for seat: Vector2i in table.seat_cells:
+		changed = cleanliness.clear_seat_dirt(seat) or changed
+	if changed and clean_tasks != null:
+		clean_tasks.sync_spots()
+
+
 ## Uses `random` for arrivals (the spawner and future guests). The game session
 ## passes GameState.rng(&"customers") so the stream is saved and seeded per run.
 func use_rng(random: RandomNumberGenerator) -> void:
@@ -603,6 +635,7 @@ func configure_cleanliness(state: CleanlinessState, tuning: CleanlinessTuning) -
 	if world == null or state == null or tuning == null or not tuning.is_valid() or cleanliness != null:
 		return false
 	cleanliness = state
+	cleanliness.difficulty = difficulty
 	clean_tasks = CleanTaskController.new(world, state, tuning)
 	clean_tasks.bind_tanks(aquarium)
 	clean_tasks.sync_spots()
@@ -614,6 +647,7 @@ func configure_messes(tuning: MessTuning, random: RandomNumberGenerator) -> bool
 	if cleanliness == null or tuning == null or not tuning.is_valid() or random == null or mishaps != null:
 		return false
 	mishaps = MishapState.new(tuning, random)
+	mishaps.difficulty = difficulty
 	clean_tasks.bind_mishaps(mishaps)
 	return true
 
@@ -748,6 +782,16 @@ static func _vibe_patience(budget: int, multiplier: float, tuning: VibeTuning = 
 	return roundi(scaled)
 
 
+## Difficulty scales the final arrival budget after cleanliness, vibe and events.
+static func _difficulty_patience(budget: int, multiplier: float) -> int:
+	if budget <= 0 or not is_finite(multiplier) or multiplier <= 0.0:
+		return budget
+	var scaled: float = float(budget) * multiplier
+	if not is_finite(scaled) or scaled >= float(9223372036854775807):
+		return 9223372036854775807
+	return maxi(1, roundi(scaled))
+
+
 ## Latches every menu dish the fridge itself can no longer cover. It stays
 ## sold out until a delivery during service covers it again
 ## (restock_sold_out, FK-087) or the next morning.
@@ -760,6 +804,11 @@ func refresh_sold_out() -> void:
 		var short: StringName = _short_ingredient(recipe, {})
 		if not short.is_empty():
 			_mark_sold_out(recipe.id, short)
+			for ingredient: IngredientDef in recipe.ingredients:
+				if ingredient != null and ingredient.id == short:
+					record_today_stock(ingredient, stock.count(short))
+					break
+			log_today(DayLog.Kind.SOLD_OUT, "%s sold out" % recipe.display_name)
 			dish_sold_out.emit(recipe.display_name)
 
 
@@ -782,7 +831,7 @@ func begin_service_menu_snapshot() -> void:
 		_service_menu_snapshot.append({
 			"id": String(recipe.id),
 			"display_name": recipe.display_name,
-			"price": price_of(recipe),
+			"price": _listed_price(recipe),
 			"standard_price": recipe.standard_price,
 		})
 
@@ -812,8 +861,10 @@ func restock_sold_out() -> int:
 
 
 ## Goods put away (or stored at closing) can bring sold-out dishes back.
-func _on_dock_stored(_lines: Array[Dictionary]) -> void:
+func _on_dock_stored(lines: Array[Dictionary]) -> void:
 	if _in_service():
+		for line: Dictionary in lines:
+			_today_low_stock.erase(StringName(line.get("id", "")))
 		restock_sold_out()
 
 
@@ -1034,12 +1085,43 @@ func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 	world.log_event("%s ran out: %s sold out" % [ingredient_id, recipe_id])
 
 
+## Presentation observes the current clock, including the final departures at close.
+func log_today(kind: DayLog.Kind, text: String) -> void:
+	if world == null or world.clock.phase == SimClock.Phase.MORNING:
+		return
+	day_log.clock = world.clock
+	day_log.add(world.clock.tick, kind, text)
+
+
+## Report a serving's last ingredients or a shortfall found by the menu check.
+## A delivery re-arms the notice. Repeated checks of the same stock state don't.
+func record_today_stock(ingredient: IngredientDef, serving_units: int) -> void:
+	if ingredient == null or not _in_service():
+		return
+	var usable: int = stock.count(ingredient.id)
+	if usable > serving_units:
+		_today_low_stock.erase(ingredient.id)
+		return
+	var ran_out: bool = usable == 0
+	if _today_low_stock.has(ingredient.id) and _today_low_stock[ingredient.id] == ran_out:
+		return
+	_today_low_stock[ingredient.id] = ran_out
+	log_today(DayLog.Kind.STOCK_LOW, StockAlerts.today_stock_line(ingredient, usable))
+
+
+func _log_today_review(stars: int) -> void:
+	log_today(DayLog.Kind.REVIEW, "New %d-star review" % stars)
+
+
 ## Missing overrides use the unchanged content price.
 func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
 		return 0
-	var price: int = maxi(0, prices.get(recipe.id, recipe.standard_price))
-	return _price_with_special(recipe, price)
+	return _price_with_special(recipe, _listed_price(recipe))
+
+
+func _listed_price(recipe: RecipeDef) -> int:
+	return maxi(0, prices.get(recipe.id, recipe.standard_price))
 
 
 func _price_with_special(recipe: RecipeDef, price: int) -> int:
@@ -1097,6 +1179,7 @@ func try_disguise_critic(customer: CustomerAgent) -> bool:
 	if not customer.disguise_as_critic(critic.tells, critic.tuning):
 		return false
 	critic.mark_arrived(world.clock.day)
+	log_today(DayLog.Kind.CRITIC, "A food critic arrived")
 	# The critic is not a repeat guest: give back the cohort slot they took, so
 	# later arrivals get the same cohort keys as without a critic.
 	if had_cohort_slot:
@@ -1131,6 +1214,9 @@ func _install_customer(entry: Vector2i, random: RandomNumberGenerator,
 		if event_patience_multiplier != 1.0:
 			customer.queue_patience = maxi(1, roundi(customer.queue_patience * event_patience_multiplier))
 			customer.food_patience = maxi(1, roundi(customer.food_patience * event_patience_multiplier))
+		var difficulty_patience: float = difficulty.mult(&"patience") if difficulty != null else 1.0
+		customer.queue_patience = _difficulty_patience(customer.queue_patience, difficulty_patience)
+		customer.food_patience = _difficulty_patience(customer.food_patience, difficulty_patience)
 		if _vibe_result.score > 0.0 and not _vibe_result.active_theme.is_empty():
 			customer.vibe_theme_label = _vibe_result.theme_label
 	if publish:
@@ -1174,11 +1260,15 @@ func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> 
 	return visit
 
 
+func tip_jar_multiplier() -> float:
+	return TIP_JAR_TUNING.multiplier(world.grid if world != null else null)
+
+
 func regular_tip(customer: CustomerAgent, order: Order) -> int:
 	if regulars == null or customer == null or customer.regular_profile == null or order == null:
 		return 0
 	var amount: float = order.price * regulars.tip_rate(customer.regular_profile,
-		customer.regular_favourite_available)
+		customer.regular_favourite_available) * tip_jar_multiplier()
 	# Cash is whole units. Rounding the favourite bonus up keeps a modest
 	# drink's extra tip visible instead of rounding it away on every visit.
 	return maxi(0, ceili(amount) if customer.regular_favourite_available else roundi(amount))
@@ -1205,6 +1295,12 @@ func _record_regular_visit(customer: CustomerAgent) -> void:
 
 
 func _publish_customer_arrival(customer: CustomerAgent) -> void:
+	var kind: StringName = customer.customer_type_id
+	_visiting_types[customer.id] = kind
+	if not _visitor_types_today.has(kind):
+		_visitor_types_today[kind] = {"name": customer.customer_type_report_name,
+			"count": 0, "departed": 0, "mood_total": 0.0}
+	_visitor_types_today[kind]["count"] += 1
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)
 
@@ -1349,6 +1445,18 @@ func customers() -> Array[CustomerAgent]:
 	return out
 
 
+## Per-type visitor counts and the average of moods recorded so far. The
+## evening report reads this after all guests, including those still waiting
+## outside at closing, have departed.
+func visitor_breakdown() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for entry: Dictionary in _visitor_types_today.values():
+		var departed: int = entry["departed"]
+		var average: Variant = float(entry["mood_total"]) / departed if departed > 0 else null
+		rows.append({"name": entry["name"], "count": entry["count"], "average_mood": average})
+	return rows
+
+
 ## Called once by a paying guest; listeners connect economy or reports here.
 func pay(customer: CustomerAgent, order: Order) -> void:
 	if customer.paid:
@@ -1370,6 +1478,11 @@ func record_departure(customer: CustomerAgent) -> void:
 		return
 	_departed[customer.id] = true
 	customer.departure_recorded = true
+	if _visiting_types.has(customer.id):
+		var entry: Dictionary = _visitor_types_today[_visiting_types[customer.id]]
+		entry["departed"] += 1
+		entry["mood_total"] += customer.departure_mood()
+		_visiting_types.erase(customer.id)
 	_record_regular_visit(customer)
 	# A takeaway leaves no crumbs at a table: they never sat (#293).
 	if cleanliness != null and customer.paid and customer.seat_cell != SimGrid.NO_CELL and not customer.takeaway:
@@ -1385,6 +1498,7 @@ func record_departure(customer: CustomerAgent) -> void:
 	if not customer.paid:
 		lost_today += 1
 	world.log_event("Guest #%d left: %s" % [customer.id, reason])
+	log_today(DayLog.Kind.GUEST_LEFT, LeaveReasonText.label(reason).to_lower())
 	if review_book != null and review_tuning != null and review_quotes != null and review_rng != null:
 		var standard_price: int = 0
 		if customer.order != null:
@@ -1393,6 +1507,7 @@ func record_departure(customer: CustomerAgent) -> void:
 					standard_price = recipe.standard_price
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		visit.difficulty_review_bonus = difficulty.review_bonus() if difficulty != null else 0.0
 		visit.ate_signature_dish = not effective_signature_recipe_id.is_empty() \
 			and visit.consumed_recipe_ids.has(effective_signature_recipe_id)
 		visit.sticky_floor = mishaps != null and cleanliness != null \
@@ -1416,6 +1531,7 @@ func record_departure(customer: CustomerAgent) -> void:
 		else:
 			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
 			if not result.is_empty():
+				_log_today_review(int(result["stars"]))
 				var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 					"before": result["before"], "after": result["after"]}
 				reviews_today.append(row)
@@ -1460,6 +1576,7 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 	booking_review_results[booking_id] = result.duplicate(true)
 	var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]}
+	_log_today_review(int(row["stars"]))
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
 	return result.duplicate(true)
@@ -1474,5 +1591,6 @@ func _record_critic_review(visit: ReviewVisit) -> void:
 	if result.is_empty():
 		return
 	critic_result = result
+	_log_today_review(int(result["stars"]))
 	review_recorded.emit({"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]})

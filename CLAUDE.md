@@ -13,3 +13,27 @@ Follow `AGENTS.md` (shared rules for all AI workers). Plans: `docs/DESIGN.md`, `
 - **Release notes:** `CHANGELOG.md` `## Unreleased` holds every merged change since the last published build (CI requires an entry per PR). When reviewing, check that the entry is accurate and player-readable. When publishing, use the *whole* Unreleased section as the "What's new". Never pick highlights. Then rename it to the version and date.
 - Light process: branch, then a PR into `main`, with one review before merge.
 - Commits: `git -c user.name=Jared -c user.email=jarebahr@gmail.com commit`.
+
+## Work routing: Claude, then Codex, then DeepSeek (Jared, 2026-11-15)
+
+Claude usage is the scarce resource across all four of Jared's games. Work goes to the cheapest tier that can do it
+well, so Claude's time goes to complex writing, hard problems and art. Any agent working here follows this.
+
+- **1. Claude** keeps complex writing, hard problems and art: architecture, deep bugs, story and dialogue, art
+  direction and judgment, design questions for Jared, reviews and merges. Claude also writes the issues for Codex and
+  calls DeepSeek directly for grunt work.
+- **2. Codex** takes the middle ground: well-specified, testable work that needs a real PR but no taste call. Codex
+  monitors this repo's issues and works only the ones assigned to it (labelled `codex` plus `worker-ready`); it never
+  picks up anything else. Keep its queue stocked with such issues, written with the files to read, Do, Don't and Done
+  when, and review its PRs like any other.
+- **3. DeepSeek** takes the grunt work, and is the default for anything trivial. Claude calls it directly, with no
+  issue or harness: boilerplate, test scaffolds, repetitive wiring, data and config edits, renames, log, diff and CI
+  summaries, first drafts of docs or comments. Run `python3 tools/deepseek.py "<brief>" -f <files> [--code --out F]`
+  (`--help` for the rest), briefed like an issue: the files, the rules, what done looks like. It never touches the
+  repo, so you read its output, apply it, run the checks and own the result. Never use it for art, story or
+  player-facing words, feel or design, or judgment calls, and never send it secrets. In cloud sessions the proxy adds
+  the key; elsewhere set `DEEPSEEK_API_KEY`. Prefer it over a Sonnet or Haiku subagent for anything it can do from
+  the files you send it.
+
+Rule of thumb: needs taste, the story or deep reasoning, Claude. Fully specified and needs a real PR, a Codex issue.
+Fits in a paragraph and can be checked by running something, DeepSeek.

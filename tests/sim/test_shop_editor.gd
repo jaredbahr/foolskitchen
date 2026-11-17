@@ -653,45 +653,64 @@ func test_version_one_rug_and_table_round_trip_in_either_wire_order() -> void:
 	assert_eq(_changes.size(), 1)
 
 
-func test_snapshot_item_cap_accepts_two_layers_but_rejects_same_layer_duplicates() -> void:
-	var normal: ItemDef = ItemDef.new()
-	normal.id = &"tiny_normal"
-	normal.category = ItemDef.Category.DECOR
-	normal.solid = false
-	var floor_def: ItemDef = normal.duplicate(true) as ItemDef
-	floor_def.id = &"tiny_floor"
-	floor_def.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
-	_content.extra[normal.id] = normal
-	_content.extra[floor_def.id] = floor_def
+func test_snapshot_item_cap_accepts_three_layers_but_rejects_same_layer_duplicates() -> void:
+	var table: ItemDef = ItemDef.new()
+	table.id = &"tiny_table"
+	table.category = ItemDef.Category.TABLE
+	table.solid = false
+	var rug: ItemDef = ItemDef.new()
+	rug.id = &"tiny_rug"
+	rug.category = ItemDef.Category.DECOR
+	rug.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
+	rug.solid = false
+	var jar: ItemDef = rug.duplicate(true) as ItemDef
+	jar.id = &"tiny_jar"
+	jar.placement_layer = ItemDef.PlacementLayer.SURFACE_DECOR
+	var definitions: Array[ItemDef] = [table, rug, jar]
+	var rows: Array[Dictionary] = []
+	for definition: ItemDef in definitions:
+		_content.extra[definition.id] = definition
+		rows.append({"def_id": String(definition.id), "origin": [0, 0], "quarter_turns": 0, "swatch_id": ""})
 	var template: ShopLayout = ShopLayout.new()
-	template.id = &"two_layers"
+	template.id = &"layered_cell"
 	template.rows = PackedStringArray(["."])
-	var rows: Array[Dictionary] = [
-		{"def_id": "tiny_normal", "origin": [0, 0], "quarter_turns": 0, "swatch_id": ""},
-		{"def_id": "tiny_floor", "origin": [0, 0], "quarter_turns": 0, "swatch_id": ""},
-	]
+	var legacy: Dictionary = {"version": 1, "items": [rows[0], rows[1]]}
+	var current: Dictionary = {"version": ShopEditor.SNAPSHOT_VERSION, "items": rows,
+		"walls": [], "floor": [], "patio": [], "rooms": []}
 	var before: Dictionary = _editor.to_dict()
-	for reverse_order: bool in [false, true]:
-		var ordered: Array[Dictionary] = rows.duplicate(true)
-		if reverse_order:
-			ordered.reverse()
-		var errors: Array[String] = []
-		var layout: ShopLayout = ShopEditor.from_dict({"version": 1, "items": ordered}, template, _content, errors)
-		assert_not_null(layout)
-		assert_eq(errors, [] as Array[String])
-		if layout == null:
-			continue
-		var restored: SimWorld = ShopBuilder.build(layout, _content, errors)
-		assert_eq(errors, [] as Array[String])
-		assert_eq(restored.grid.items_at(Vector2i.ZERO).size(), 2)
-		assert_true(restored.grid.is_walkable(Vector2i.ZERO))
 	var errors: Array[String] = []
-	var duplicate: Array[Dictionary] = [rows[0], rows[0]]
-	assert_null(ShopEditor.from_dict({"version": 1, "items": duplicate}, template, _content, errors))
-	assert_false(errors.is_empty())
+	for saved: Dictionary in [legacy, current]:
+		var count: int = saved["items"].size()
+		for reverse_order: bool in [false, true]:
+			var snapshot: Dictionary = saved.duplicate(true)
+			if reverse_order:
+				(snapshot["items"] as Array).reverse()
+			errors.clear()
+			var layout: ShopLayout = ShopEditor.from_dict(snapshot, template, _content, errors)
+			assert_not_null(layout, "all distinct layers load, regardless of wire order")
+			assert_eq(errors, [] as Array[String])
+			if layout == null:
+				continue
+			var restored: SimWorld = ShopBuilder.build(layout, _content, errors)
+			assert_eq(errors, [] as Array[String])
+			assert_eq(restored.grid.items_at(Vector2i.ZERO).size(), count)
+			for index: int in count:
+				var def: ItemDef = definitions[index]
+				var placed: PlacedItem = restored.grid.item_on_layer(Vector2i.ZERO, def.placement_layer)
+				assert_true(placed != null and placed.def == def, String(def.id))
+			assert_true(restored.grid.is_walkable(Vector2i.ZERO))
+
+	for other_row: Dictionary in rows:
+		errors.clear()
+		var duplicate: Dictionary = current.duplicate()
+		duplicate["items"] = [rows[0], other_row, other_row]
+		assert_null(ShopEditor.from_dict(duplicate, template, _content, errors))
+		assert_eq(errors, ["Saved item does not fit on the layout's floor"] as Array[String])
 	errors.clear()
-	assert_null(ShopEditor.from_dict({"version": 1, "items": [rows[0], rows[1], rows[1]]}, template, _content, errors))
-	assert_true(errors.has("Too many shop items"))
+	var oversized: Dictionary = current.duplicate()
+	oversized["items"] = [rows[0], rows[1], rows[2], rows[2]]
+	assert_null(ShopEditor.from_dict(oversized, template, _content, errors))
+	assert_eq(errors, ["Too many shop items"] as Array[String])
 	assert_eq(_editor.to_dict(), before)
 	assert_eq(_entries.size(), 0)
 	assert_eq(_changes.size(), 0)

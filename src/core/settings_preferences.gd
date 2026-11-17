@@ -18,7 +18,7 @@ const INTEGER_KEYS: Array[String] = ["version", "master_volume", "music_volume",
 	"effects_volume", "ui_scale", "default_open_speed"]
 const BOOL_KEYS: Array[String] = ["fullscreen", "edge_pan"]
 ## Later additions: a file without them still loads, with their defaults.
-const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid", "service_events"]
+const OPTIONAL_BOOL_KEYS: Array[String] = ["build_grid", "play_grid", "service_events", "morning_paper"]
 const PAUSE_ON_SOLD_OUT: StringName = &"pause_on_sold_out"
 const PAUSE_ON_INSPECTOR: StringName = &"pause_on_inspector"
 const PAUSE_ON_ANGRY_GUEST: StringName = &"pause_on_angry_guest"
@@ -47,6 +47,7 @@ var build_grid_enabled: bool = true
 var play_grid_enabled: bool = true
 ## Small choice cards during service (#495). On by default.
 var service_events_enabled: bool = true
+var morning_paper_enabled: bool = true
 ## The release whose What's new panel opened last ("" = none yet). It lives
 ## here, in user settings, so loading or replacing a game save never changes it.
 var last_seen_version: String = ""
@@ -91,6 +92,7 @@ func load_from_disk() -> bool:
 	var build_grid: Variant = config.get_value(SECTION, "build_grid", true)
 	var play_grid: Variant = config.get_value(SECTION, "play_grid", true)
 	var service_events: Variant = config.get_value(SECTION, "service_events", true)
+	var morning_paper: Variant = config.get_value(SECTION, "morning_paper", true)
 	var last_seen: Variant = config.get_value(SECTION, LAST_SEEN_KEY, "")
 	if not version is int or version != VERSION or not last_seen is String \
 			or not _valid_volume(master) or not _valid_volume(music) \
@@ -98,7 +100,7 @@ func load_from_disk() -> bool:
 			or not UI_SCALES.has(scale) or not speed is int \
 			or not OPEN_SPEEDS.has(speed) or not fullscreen is bool \
 			or not edge_pan is bool or not build_grid is bool or not play_grid is bool \
-			or not service_events is bool:
+			or not service_events is bool or not morning_paper is bool:
 		return false
 	master_volume_percent = master
 	music_volume_percent = music
@@ -111,6 +113,7 @@ func load_from_disk() -> bool:
 	build_grid_enabled = build_grid
 	play_grid_enabled = play_grid
 	service_events_enabled = service_events
+	morning_paper_enabled = morning_paper
 	last_seen_version = last_seen
 	for key: StringName in AUTO_PAUSE_DEFAULTS:
 		_auto_pause[key] = config.get_value(SECTION, String(key), AUTO_PAUSE_DEFAULTS[key])
@@ -178,6 +181,7 @@ func save_to_disk() -> bool:
 	config.set_value(SECTION, "build_grid", build_grid_enabled)
 	config.set_value(SECTION, "play_grid", play_grid_enabled)
 	config.set_value(SECTION, "service_events", service_events_enabled)
+	config.set_value(SECTION, "morning_paper", morning_paper_enabled)
 	config.set_value(SECTION, LAST_SEEN_KEY, last_seen_version)
 	for key: StringName in _auto_pause:
 		config.set_value(SECTION, String(key), _auto_pause[key])
@@ -357,6 +361,15 @@ func set_service_events_enabled(value: bool) -> bool:
 	return saved
 
 
+func set_morning_paper_enabled(value: bool) -> bool:
+	if morning_paper_enabled == value:
+		return true
+	morning_paper_enabled = value
+	var saved: bool = save_to_disk()
+	changed.emit(&"morning_paper")
+	return saved
+
+
 ## Remembers which release's What's new panel was shown. Like the grid
 ## choices, it holds for the session even if the file cannot be written.
 func set_last_seen_version(value: String) -> bool:
@@ -435,5 +448,6 @@ func _reset_defaults() -> void:
 	build_grid_enabled = true
 	play_grid_enabled = true
 	service_events_enabled = true
+	morning_paper_enabled = true
 	last_seen_version = ""
 	_auto_pause = AUTO_PAUSE_DEFAULTS.duplicate()

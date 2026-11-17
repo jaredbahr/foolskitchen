@@ -247,6 +247,8 @@ func refresh() -> void:
 	var valid: bool = snapshot.get("check_ok", false)
 	var selected_id: int = snapshot.get("item_id", -1)
 	if snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.BLUEPRINT:
+		var supports: Dictionary[Vector2i, ItemVisual] = {}
+		var decorations: Dictionary[Vector2i, ItemVisual] = {}
 		for entry: Dictionary in snapshot.get("blueprint_visuals", []):
 			var entry_definition: ItemDef = entry.get("definition") as ItemDef
 			if entry_definition == null:
@@ -256,6 +258,17 @@ func refresh() -> void:
 				swatch.color if swatch != null else entry_definition.placeholder_color, entry.get("variant_id", &""))
 			ghost_mesh.name = "BlueprintItem%d" % blueprint_ghosts.size()
 			blueprint_ghosts.append(ghost_mesh)
+			if entry_definition.sits_on_surface():
+				decorations[entry["origin"]] = ghost_mesh
+			elif entry_definition.supports_surface_decor():
+				for y: int in entry_definition.footprint.y:
+					for x: int in entry_definition.footprint.x:
+						var cell: Vector2i = entry["origin"] + GridMath.rotate_cell(Vector2i(x, y),
+							entry_definition.footprint, entry["turns"])
+						supports[cell] = ghost_mesh
+		for cell: Vector2i in decorations:
+			if supports.has(cell):
+				decorations[cell].position.y = FoodPresentation.measure_surface(supports[cell]).point.y
 		if not valid:
 			reason = snapshot.get("why", "")
 	elif snapshot.get("active", false) and snapshot.get("state", -1) == BuildMode.State.SELECT:
@@ -494,7 +507,10 @@ func _build_ghost(definition: ItemDef, origin: Vector2i, turns: int, valid: bool
 	ghost_mesh.set_ghost_tint(tint)
 	ghost_mesh.name = "Furniture"
 	ghost_mesh.transform = ItemVisual.placed_transform(definition, origin, turns)
-	ghost_mesh.position.y += _shop_view.ground_height(origin)
+	if definition.sits_on_surface():
+		ghost_mesh.position = _shop_view.surface_decor_position(origin)
+	else:
+		ghost_mesh.position.y += _shop_view.ground_height(origin)
 	ghost_mesh.rotation.y = -turns * PI * 0.5
 	ghost_mesh.set_meta("valid", valid)
 	_ghost_root.add_child(ghost_mesh)

@@ -40,6 +40,7 @@ func after_each() -> void:
 
 
 func test_every_catalogue_item_has_a_known_room_and_group() -> void:
+	_catalogue.set_lot_tags(LotDef.KNOWN_TAGS)
 	var rooms: Dictionary[StringName, int] = {}
 	for definition: ItemDef in _content.items():
 		if not _catalogue.item_buttons.has(definition.id):
@@ -370,7 +371,7 @@ func test_room_readout_shows_vibe_and_theme() -> void:
 	result.active_theme = &""
 	_catalogue.set_vibe(result)
 	assert_eq(_catalogue.theme_label.text, "No theme yet")
-	assert_eq(_catalogue.get_node("Panel/Margin/Rows/Toolbars/Categories/Readout/VibeMeter"), _catalogue.vibe_meter)
+	assert_eq(_catalogue.get_node("Panel/Margin/Rows/Toolbars/Bar/Readout/VibeMeter"), _catalogue.vibe_meter)
 
 
 func _on_mode(mode: StringName) -> void:

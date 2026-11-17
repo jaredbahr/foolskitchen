@@ -91,11 +91,13 @@ func test_event_plan_and_rush_stream_survive_morning_autosave_without_reroll() -
 	assert_true(_sim().rush_hour.has_event())
 	var planned: Dictionary = _sim().rush_hour.to_dict()
 	assert_true(_sim().rush_hour.start_minute >= 390)
+	assert_eq(_sim().rush_hour.start_minute % 15, 0)
 	assert_true(_sim().rush_hour.start_minute + _sim().rush_hour.duration_minutes <= 540)
 	assert_eq(_sim().rush_hour.occasion, _main.get_node("Overlay/MenuPanel").get("_rush_notice_text").split(":")[0])
 	var first_stream_state: int = int(GameState.rng(&"rush").state)
 	assert_true(_main.call("set_opening_hours", 600, 840), "A valid four-hour edit shifts today's rush into the new hours")
 	assert_true(_sim().rush_hour.start_minute >= 630)
+	assert_eq(_sim().rush_hour.start_minute % 15, 0)
 	assert_true(_sim().rush_hour.start_minute + _sim().rush_hour.duration_minutes <= 780)
 	assert_eq(GameState.rng(&"rush").state, first_stream_state, "Editing hours never draws a new plan")
 	planned = _sim().rush_hour.to_dict()
@@ -136,6 +138,26 @@ func test_live_spawner_uses_clock_ramp_and_records_real_arrival_cohort() -> void
 	assert_eq(busy["report_lines"].size(), 1)
 	assert_true(String(busy["report_lines"][0]).contains("Book club"))
 	assert_true(String(busy["report_lines"][0]).contains("%d guests" % int(busy["arrivals"])))
+
+
+func test_morning_autosave_loads_a_legacy_rush_unchanged() -> void:
+	_start(true)
+	_level(2)
+	var saved_rush: RushHour = _sim().rush_hour
+	saved_rush.rolled_day = 2
+	saved_rush.occasion = "Book club"
+	saved_rush.start_minute = 712
+	saved_rush.duration_minutes = 45
+	_morning(2)
+	var plan: Dictionary = saved_rush.to_dict()
+	_close()
+	_start(true)
+	assert_eq(Clock.sim.day, 2)
+	assert_eq(_sim().rush_hour.to_dict(), plan)
+	assert_eq(_main.get_node("Overlay/MenuPanel").get("_rush_notice_text"),
+		"Book club: expect a rush around 11:52 am.")
+	assert_false((GameState._capture_save()["rngs"] as Dictionary).has("rush"),
+		"Reloading an already rolled legacy day does not draw another rush")
 
 
 func _run_fixed_gap_window(with_rush: bool) -> Dictionary:

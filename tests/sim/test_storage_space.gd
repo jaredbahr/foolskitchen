@@ -70,8 +70,8 @@ func test_starter_storage_holds_the_starter_order_with_headroom() -> void:
 	assert_eq(dry, 50, "bread, buns, soup stock and tomatoes on the shelves")
 	assert_true(fridge < space.capacity(StorageSpace.FRIDGE) and dry < space.capacity(StorageSpace.DRY))
 	for id: StringName in TUNING.station_stock:
-		# Dough, mussels and lemon keep cold; fish, shrimp and bar fries are frozen.
-		var expected: int = StorageSpace.FRIDGE if id in [&"dough", &"mussels", &"lemon"] else StorageSpace.DRY
+		# Fresh catch, dough, mussels and lemon keep cold; fish, shrimp and bar fries are frozen.
+		var expected: int = StorageSpace.FRIDGE if id in [&"fresh_catch", &"dough", &"mussels", &"lemon"] else StorageSpace.DRY
 		if id in [&"frozen_fries", &"fish_fillet", &"shrimp"]:
 			expected = StorageSpace.FREEZER
 		assert_eq(int(_content.ingredient(id).storage), expected, "%s storage kind" % id)

@@ -19,6 +19,7 @@ station_type = &""
 capacity = 1
 quality_bonus = 0.0
 price = 40
+prestige = 4
 unlock_level = 4
 charm = 3
 theme_tags = Array[StringName]([&"modern", &"bar"])

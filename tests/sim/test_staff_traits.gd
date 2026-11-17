@@ -4,6 +4,7 @@ extends TestCase
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const CATALOGUE: StaffCatalogue = preload("res://data/staff/traits.tres")
+const CLEANLINESS: CleanlinessTuning = preload("res://data/balance/cleanliness.tres")
 
 var _content: ContentDB
 
@@ -38,6 +39,64 @@ func test_quick_advances_real_walk_progress_fifteen_percent_faster() -> void:
 	assert_true(quick_distance > steady_distance)
 	assert_almost_eq(quick_distance / steady_distance, 1.15, 0.000001)
 	assert_almost_eq(quick.work_speed(&"cook"), steady.work_speed(&"cook"))
+
+
+func test_night_owl_walks_and_works_at_the_authored_rate_at_each_shift_boundary() -> void:
+	for sample: Vector2 in [Vector2(11 * 60 + 59, 0.95), Vector2(12 * 60, 1.0),
+			Vector2(17 * 60 + 59, 1.0), Vector2(18 * 60, 1.1)]:
+		var world: SimWorld = SimWorld.new(SimGrid.from_ascii(PackedStringArray(["............", "............"])))
+		world.clock.display_open_minute = int(sample.x)
+		var steady: StaffAgent = _employee(&"steady_walker", &"cook", &"steady")
+		var owl: StaffAgent = _employee(&"owl_walker", &"cook", &"night_owl")
+		steady.cell = Vector2i(0, 0)
+		owl.cell = Vector2i(0, 1)
+		for worker: StaffAgent in [steady, owl]:
+			world.add_agent(worker)
+			assert_true(worker.set_destination(world.grid, Vector2i(10, worker.cell.y)))
+		for tick: int in range(3):
+			assert_eq(steady.step_move(world), SimAgent.MoveResult.MOVING)
+			assert_eq(owl.step_move(world), SimAgent.MoveResult.MOVING)
+		var start: float = GridMath.cell_to_world(Vector2i.ZERO).x
+		assert_almost_eq((_drawn_x(owl) - start) / (_drawn_x(steady) - start), sample.y, 0.000001)
+		assert_almost_eq(owl.work_speed(&"cook") / steady.work_speed(&"cook"), sample.y)
+
+
+func test_neat_freak_busses_longer_and_clears_ordinary_dirt_from_its_table() -> void:
+	for trait_id: StringName in [&"steady", &"neat_freak"]:
+		var people: Array[StaffMember] = CATALOGUE.defaults(TUNING)
+		people[1].trait_id = trait_id
+		var sim: RestaurantSim = _restaurant(people)
+		var tables: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, &"table_2")
+		var table: PlacedItem = tables[0]
+		var seat: Vector2i = table.seat_cells[0]
+		var other_seat: Vector2i = tables[1].seat_cells[0]
+		var tuning: CleanlinessTuning = CLEANLINESS.duplicate() as CleanlinessTuning
+		tuning.seat_departure_chance = 1.0
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 377
+		var dirt: CleanlinessState = CleanlinessState.new(sim.world.grid, tuning, random)
+		assert_true(sim.configure_cleanliness(dirt, tuning))
+		assert_true(dirt.try_spawn_at_departed_seat(seat))
+		assert_true(dirt.try_spawn_at_departed_seat(other_seat))
+		sim.clean_tasks.sync_spots()
+		sim.kitchen.mark_table_dirty(table.id)
+		assert_true(sim.world.clock.start_service())
+		var server: StaffAgent = sim.world.agents[1] as StaffAgent
+		assert_eq(server.trait_id, trait_id)
+		var first_work_seen: bool = false
+		for tick: int in range(220):
+			sim.advance()
+			if not first_work_seen and server.task != null and server.task.kind == &"bus_table" \
+					and server._step_started and server.task.steps[server.step_index].kind == TaskStep.Kind.WORK:
+				first_work_seen = true
+				var authored_work: float = 44.0 if trait_id == &"neat_freak" else 40.0
+				assert_almost_eq(server.work_left, authored_work - server.work_speed(&"server"))
+			if not sim.kitchen.is_table_dirty(table.id):
+				break
+		assert_true(first_work_seen)
+		assert_false(sim.kitchen.is_table_dirty(table.id))
+		assert_eq(dirt.has_spot(seat), trait_id == &"steady")
+		assert_true(dirt.has_spot(other_seat))
 
 
 func test_default_factory_keeps_legacy_order_stats_and_customer_random_draws() -> void:

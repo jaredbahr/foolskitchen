@@ -9,6 +9,10 @@ var _review_frame: int = 0
 
 func _ready() -> void:
 	use_saves = false
+	# HYGIENE_REVIEW_SCALE=125 or 150 shows the card at the larger UI sizes (#542).
+	var scale_percent: int = OS.get_environment("HYGIENE_REVIEW_SCALE").to_int()
+	if scale_percent in [125, 150]:
+		get_window().content_scale_factor = float(scale_percent) / 100.0
 	new_game_seed_override = 1
 	super._ready()
 	if sim == null:
@@ -34,6 +38,9 @@ func _ready() -> void:
 	if sim.cleanliness.spot_count() != 2 or not set_build_active(true):
 		push_error("Hygiene review could not prepare its two floor spots and Build view")
 		return
+	if scale_percent == 150:
+		sim.inspection.last_day = 1
+		sim.inspection.last_grade = &"B"
 	var state: HygieneOverview.Snapshot = HygieneOverview.capture(sim)
 	print("HYGIENE_REVIEW ", JSON.stringify({"fixture": "seed 1; unsaved morning restroom edits, one held dirty table and two seeded floor spots",
 		"lines": HygieneOverview.lines(state), "use_saves": use_saves, "world_tick": world.now}))

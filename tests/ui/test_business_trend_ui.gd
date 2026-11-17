@@ -74,6 +74,48 @@ func test_signed_money_overflow_cannot_reverse_a_profit_trend() -> void:
 		_row(1, BusinessTrendText.MIN_TOTAL), _row(2, BusinessTrendText.MIN_TOTAL + 1)], 2).contains("$1 higher"))
 
 
+func test_monthly_summary_compares_daily_averages_and_names_both_recorded_spans() -> void:
+	var rows: Array[Dictionary] = _history(30)
+	for row: Dictionary in rows:
+		row["dish_profit"] = 10
+	assert_eq(BusinessTrendText.summary(rows.slice(0, 19), 19, 30), BusinessTrendText.summary(rows, 19))
+	assert_eq(BusinessTrendText.summary(rows.slice(0, 20), 20, 30),
+		"Average daily dish profit over the last 15 recorded days is unchanged from the previous 5 recorded days.")
+	for index: int in range(15, 30):
+		rows[index]["dish_profit"] = 20
+	assert_eq(BusinessTrendText.summary(rows, 30, 30),
+		"Average daily dish profit over the last 15 recorded days is up 100% compared with the previous 15 recorded days.")
+	var partial: Array[Dictionary] = rows.slice(0, 26)
+	# Reassign the change at the boundary of the 15 newest rows (day 12).
+	for index: int in range(11, 26):
+		partial[index]["dish_profit"] = 20
+	_report.call("show_history", partial, 26)
+	var summary: Label = _report.get_node("%BusinessTrendSummary") as Label
+	assert_eq(summary.text, "Dish profit is unchanged from last week.")
+	_range_button(30).pressed.emit()
+	assert_eq(summary.text,
+		"Average daily dish profit over the last 15 recorded days is up 100% compared with the previous 11 recorded days.")
+	_range_button(7).pressed.emit()
+	assert_eq(summary.text, "Dish profit is unchanged from last week.")
+
+
+func test_monthly_averages_preserve_loss_unknown_and_fractional_changes() -> void:
+	var rows: Array[Dictionary] = _history(20)
+	for index: int in rows.size():
+		rows[index]["dish_profit"] = -10 if index < 5 else -5
+	assert_eq(BusinessTrendText.summary(rows, 20, 30),
+		"Average daily dish profit over the last 15 recorded days is $5 higher than over the previous 5 recorded days.")
+	rows[0]["dish_profit_recorded"] = false
+	assert_eq(BusinessTrendText.summary(rows, 20, 30), BusinessTrendText.UNAVAILABLE)
+	var large: int = 600_000_000_000_000_000
+	for row: Dictionary in rows:
+		row["dish_profit"] = large
+		row["dish_profit_recorded"] = true
+	rows[-1]["dish_profit"] = large + 1
+	assert_true(BusinessTrendText.summary(rows, 20, 30).contains("$0.07 higher"),
+		"a real fractional difference survives large signed-integer totals")
+
+
 func test_chart_uses_last_seven_calendar_days_and_explicit_today() -> void:
 	var rows: Array[Dictionary] = _history(14)
 	_report.call("show_history", rows, 14)
@@ -121,7 +163,8 @@ func test_month_range_uses_existing_rows_without_padding_or_zero_division() -> v
 	rows = [_row(10, 0)]
 	_report.call("show_history", rows, 10)
 	snapshot = _chart().review_snapshot()
-	assert_true(_chart().visible)
+	assert_false(_chart().visible)
+	assert_eq((_report.get_node("%BusinessTrendSummary") as Label).text, BusinessTrendText.EMPTY)
 	assert_eq(snapshot["days"], [10])
 	assert_eq(snapshot["tracks"]["profit"]["bars"].size(), 1, "a known zero is a real mark")
 	assert_eq(snapshot["tracks"]["served"]["bars"].size(), 1)
@@ -134,36 +177,61 @@ func test_month_range_uses_existing_rows_without_padding_or_zero_division() -> v
 	assert_true(is_finite(float(snapshot["tracks"]["profit"]["zero_y"])))
 
 
-func test_month_labels_every_fifth_day_and_fit_native_report_widths() -> void:
-	_report.call("show_history", _history(30), 30)
+func test_month_labels_every_fifth_day_and_the_latest_at_native_widths() -> void:
 	_range_button(30).pressed.emit()
 	for dimensions: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
 		_host.size = dimensions
-		for frame: int in 3:
-			await (Engine.get_main_loop() as SceneTree).process_frame
-		var labels: Array = _chart().review_snapshot()["labels"]
-		var bounds: Rect2 = Rect2(Vector2.ZERO, _chart().size).grow(0.5)
-		var font: Font = _chart().get_theme_font("font", "Label")
-		var font_size: int = _chart().get_theme_font_size("font_size", "Label")
+		for dashboard_day: int in [30, 26, 27]:
+			var last_recorded: int = mini(dashboard_day, 26) if dashboard_day != 30 else 30
+			_report.call("show_history", _history(last_recorded), dashboard_day)
+			for frame: int in 3:
+				await (Engine.get_main_loop() as SceneTree).process_frame
+			var expected_days: Array[String] = ["Day 5", "Day 10", "Day 15", "Day 20"]
+			if last_recorded == 30:
+				expected_days.append("Day 25")
+			expected_days.append("Day %d" % last_recorded)
+			_assert_month_labels(expected_days, last_recorded, dashboard_day)
+
+
+func _assert_month_labels(expected_days: Array[String], latest: int, today: int) -> void:
+	var chart: BusinessTrendChart = _chart()
+	var snapshot: Dictionary = chart.review_snapshot()
+	var labels: Array = snapshot["labels"]
+	var bounds: Rect2 = Rect2(Vector2.ZERO, chart.size).grow(0.5)
+	var font: Font = chart.get_theme_font("font", "Label")
+	var font_size: int = chart.get_theme_font_size("font_size", "Label")
+	for key: String in ["profit", "served"]:
 		var days: Array[String] = []
+		var latest_value: String = BusinessTrendText.profit_label(latest * 10) if key == "profit" \
+			else BusinessTrendText.served_label(latest)
+		var has_latest_value: bool = false
+		var bars: Array = snapshot["tracks"][key]["bars"]
+		var has_today: bool = false
 		for label: Dictionary in labels:
-			assert_true(bounds.encloses(_rect(label["rect"])), "monthly font bounds fit")
+			if label["track"] != key:
+				continue
+			var text_rect: Rect2 = _rect(label["rect"])
+			assert_true(bounds.encloses(text_rect), "monthly font bounds fit")
 			assert_true(font.get_string_size(String(label["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x \
 				<= float(label["width"]), "monthly text is not truncated to its slot")
-			if label["kind"] == "day" and label["track"] == "profit":
+			if label["kind"] == "day":
 				days.append(label["text"])
 				var day: int = String(label["text"]).trim_prefix("Day ").to_int()
-				var bars: Array = _chart().review_snapshot()["tracks"]["profit"]["bars"]
 				var bar: Rect2 = _rect(bars[day - 1]["rect"])
-				var text_rect: Rect2 = _rect(label["rect"])
 				assert_true(absf(text_rect.get_center().x - bar.get_center().x) <= text_rect.size.x * 0.5,
 					"monthly day label stays aligned with its own bar")
+			if label["kind"] == "value" and label["text"] == latest_value:
+				var latest_bar: Rect2 = _rect(bars[-1]["rect"])
+				has_latest_value = text_rect.position.x <= latest_bar.get_center().x \
+					and text_rect.end.x >= latest_bar.get_center().x
+			if label["kind"] == "today":
+				has_today = true
 			for other: Dictionary in labels:
-				if label != other and label["track"] == other["track"] \
-						and label["kind"] == other["kind"]:
-					assert_false(_rect(label["rect"]).intersects(_rect(other["rect"])),
-						"monthly labels on one line do not overlap")
-		assert_eq(days, ["Day 5", "Day 10", "Day 15", "Day 20", "Day 25", "Day 30"])
+				if label != other and label["track"] == other["track"] and label["kind"] == other["kind"]:
+					assert_false(text_rect.intersects(_rect(other["rect"])), "monthly labels on one line do not overlap")
+		assert_eq(days, expected_days, "%s latest record %d, viewport %s" % [key, latest, _host.size])
+		assert_true(has_latest_value, "%s labels the newest bar, even when today's record is missing" % key)
+		assert_eq(has_today, latest == today)
 
 
 func test_negative_bars_zero_and_unknown_profit_gap_preserve_served_track() -> void:
@@ -196,10 +264,16 @@ func test_short_history_and_legacy_rebind_replace_the_entire_previous_view() -> 
 	assert_eq((_report.get_node("%BusinessTrendSummary") as Label).text,
 		"Come back tomorrow to see your trend.")
 	assert_eq(_chart().review_snapshot()["days"], [])
-	var single: Array[Dictionary] = [_row(1, 10)]
-	_report.call("show_history", single, 1)
-	assert_true(_chart().visible)
+	var invalid: Dictionary = _row(2, 20)
+	invalid["served"] = -1
+	var single: Array[Dictionary] = [_row(1, 10), _row(1, 11), invalid]
+	_report.call("show_history", single, 2)
+	assert_false(_chart().visible, "duplicate and invalid rows cannot make a second chart day")
 	assert_eq((_report.get_node("%BusinessTrendSummary") as Label).text, BusinessTrendText.EMPTY)
+	single.append(_row(2, 20))
+	_report.call("show_history", single, 2)
+	assert_true(_chart().visible)
+	assert_eq(_chart().review_snapshot()["days"], [1, 2])
 
 
 func test_section_follows_team_and_chart_fits_native_report_widths() -> void:

@@ -117,12 +117,12 @@ func _hook(control: Control) -> void:
 			or control is TextEdit or control is TabBar):
 		return
 	control.set_meta(HOOKED_META, true)
-	control.gui_input.connect(_on_gui_input.bind(control))
+	control.gui_input.connect(forward_wheel.bind(control))
 
 
 ## gui_input is emitted before a control's own handling, so accepting here
 ## keeps sliders and lists from ever seeing the wheel.
-func _on_gui_input(event: InputEvent, control: Control) -> void:
+func forward_wheel(event: InputEvent, control: Control) -> void:
 	var button: InputEventMouseButton = event as InputEventMouseButton
 	if button == null or not is_open():
 		return

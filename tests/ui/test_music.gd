@@ -47,7 +47,7 @@ func test_every_track_loads_and_is_mapped() -> void:
 			assert_true(track is AudioStreamOggVorbis, "%s %d loads" % [context, i])
 			assert_true(track.get_length() > 60.0, "%s %d is a whole track" % [context, i])
 	assert_true(MusicTracks.track_for(&"nothing") == null, "unmapped contexts have none")
-	assert_eq(MusicTracks.all_tracks().size(), 4)
+	assert_eq(MusicTracks.all_tracks().size(), 7, "the bar and evening share one Smoky Vamp stream")
 	assert_eq(MusicTracks.track_count(MusicTracks.SERVICE_DAY), 2, "daytime service has two tracks")
 
 
@@ -55,9 +55,52 @@ func test_service_context_follows_phase_and_dusk() -> void:
 	assert_eq(MusicTracks.service_context(false, 1.0), &"", "closed is silent")
 	assert_eq(MusicTracks.service_context(true, 0.0), MusicTracks.SERVICE_DAY)
 	assert_eq(MusicTracks.service_context(true, MusicTracks.EVENING_LIGHT), MusicTracks.SERVICE_EVENING)
-	assert_eq(MusicTracks.service_context(false, 1.0, true), MusicTracks.SERVICE_EVENING, "the report keeps the evening service track")
-	assert_eq(MusicTracks.service_context(false, 0.0, true), MusicTracks.SERVICE_DAY, "the report keeps the day service track")
-	assert_eq(MusicTracks.service_context(true, 0.0, true), MusicTracks.SERVICE_DAY, "a report shown during service changes nothing")
+	for theme: StringName in [&"", &"modern", &"cosy", &"rustic"]:
+		assert_eq(MusicTracks.service_context(true, 0.0, theme), MusicTracks.SERVICE_DAY)
+		assert_eq(MusicTracks.service_context(true, 1.0, theme), MusicTracks.SERVICE_EVENING)
+	assert_true(MusicTracks.track_for(MusicTracks.SERVICE_EVENING).resource_path.ends_with("smoky_vamp.ogg"))
+	assert_null(MusicTracks.track_for(MusicTracks.MORNING))
+	assert_null(MusicTracks.track_for(MusicTracks.REPORT), "the report has no separate song")
+
+
+func test_themes_have_the_expected_playable_loop_imports() -> void:
+	var expected: Dictionary[StringName, String] = {&"bar": "smoky_vamp.ogg",
+		&"diner": "diner_boogie.ogg", &"cafe": "coffee_shop_morning.ogg", &"seafood": "coastal_afternoon.ogg"}
+	for theme: StringName in expected:
+		assert_eq(MusicTracks.service_context(true, 0.0, theme), theme)
+		assert_eq(MusicTracks.service_context(true, 1.0, theme), theme)
+		assert_eq(MusicTracks.track_for(theme).resource_path, "res://assets/music/" + expected[theme])
+	for theme: StringName in MusicTracks.BY_THEME:
+		var tracks: Array = MusicTracks.BY_THEME[theme]
+		assert_false(tracks.is_empty())
+		for track: AudioStreamOggVorbis in tracks:
+			assert_true(track.get_length() > 60.0 and track.loop, track.resource_path)
+			assert_true(FileAccess.file_exists(track.resource_path), track.resource_path)
+			var sidecar: ConfigFile = ConfigFile.new()
+			assert_eq(sidecar.load(track.resource_path + ".import"), OK)
+			assert_eq(sidecar.get_value("params", "loop", false), true, track.resource_path)
+	for reserved: String in ["hazy_breakbeat.ogg", "sleek_groove.ogg", "buoyant_sea_shanty.ogg"]:
+		for track: AudioStream in MusicTracks.all_tracks():
+			assert_false(track.resource_path.ends_with(reserved), reserved + " is still reserved")
+
+
+func test_themed_selection_uses_the_day_and_loops_its_pick() -> void:
+	var diner: AudioStream = MusicTracks.track_for(&"diner")
+	var cafe: AudioStream = MusicTracks.track_for(&"cafe")
+	var pair: Array[AudioStream] = [diner, cafe]
+	assert_eq(MusicTracks.track_at(pair, 1), cafe)
+	assert_eq(MusicTracks.track_at(pair, 2), diner)
+	assert_eq(MusicTracks.track_at(pair, 3), cafe)
+	Sfx.set_music_context(&"diner", 3)
+	assert_eq(Sfx._music_index, 3, "the selector passes the day to the wrap for a theme list")
+	Sfx.advance_music()
+	assert_eq(Sfx._music_index, 3, "the room's selected song loops until the day changes")
+	Sfx.set_music_context(MusicTracks.MORNING)
+	Sfx.set_music_context(&"diner", 3)
+	assert_eq(Sfx._music_index, 3, "selecting service again on the saved day picks the same song")
+	assert_eq(Sfx.music_track(), diner)
+	Sfx.set_music_context(&"diner", 4)
+	assert_eq(Sfx._music_index, 4)
 
 
 func test_title_plays_stir_it_slow_the_full_take() -> void:
@@ -98,11 +141,64 @@ func test_track_change_in_one_context_crossfades() -> void:
 	assert_almost_eq(Sfx.music_level(jamboree), 0.5, 0.01)
 
 
-func test_report_keeps_the_service_track() -> void:
-	var context: StringName = MusicTracks.service_context(false, 1.0, true)
-	Sfx.set_music_context(MusicTracks.service_context(true, 1.0))
-	Sfx.set_music_context(context)
-	assert_eq(Sfx.music_context(), MusicTracks.SERVICE_EVENING, "no change of context when the report opens")
+func test_report_keeps_the_actual_service_track_even_when_the_light_changes() -> void:
+	var director: SoundDirector = SoundDirector.new()
+	director._refresh_service_music(true, 0.0, false, 0)
+	Sfx.advance_music()
+	var track: AudioStream = MusicTracks.track_for(MusicTracks.SERVICE_DAY, 1)
+	Sfx._step_music(Sfx.MUSIC_FADE_SECONDS)
+	director._refresh_service_music(false, 1.0, true, 100)
+	assert_eq(Sfx.music_context(), MusicTracks.SERVICE_DAY)
+	assert_eq(Sfx.music_track(), track, "the report keeps the second song, even if it opens at dusk")
+	assert_eq(Sfx.music_level(track), 1.0)
+	director._refresh_service_music(false, 1.0, false, 200)
+	assert_null(Sfx.music_track(), "closing the report fades to silence")
+	director._refresh_service_music(false, 1.0, true, 300)
+	assert_null(Sfx.music_track(), "reopening the report does not start a song")
+	director.free()
+
+
+func test_theme_changes_hold_for_sixty_seconds_of_monotonic_time() -> void:
+	var director: SoundDirector = SoundDirector.new()
+	var vibe: VibeModel.Result = VibeModel.Result.new()
+	vibe.valid = true
+	vibe.active_theme = &"diner"
+	director.set_vibe(vibe)
+	var started: int = 1743
+	director._refresh_service_music(true, 0.0, false, started)
+	assert_eq(Sfx.music_context(), &"diner")
+	vibe.active_theme = &"bar"
+	director.set_vibe(vibe)
+	director._refresh_service_music(true, 0.0, false, started + 1)
+	assert_eq(Sfx.music_context(), &"diner")
+	vibe.active_theme = &"seafood"
+	director.set_vibe(vibe)
+	director._refresh_service_music(true, 1.0, false, started + 59_999_999)
+	assert_eq(Sfx.music_context(), &"diner")
+	var diner: AudioStream = Sfx.music_track()
+	Sfx._step_music(Sfx.MUSIC_FADE_SECONDS)
+	director._refresh_service_music(true, 1.0, false, started + 60_000_000)
+	assert_eq(Sfx.music_context(), &"seafood", "choose the latest room theme at the exact boundary")
+	var seafood: AudioStream = Sfx.music_track()
+	Sfx._step_music(Sfx.MUSIC_FADE_SECONDS / 2.0)
+	assert_almost_eq(Sfx.music_level(diner), 0.5, 0.01)
+	assert_almost_eq(Sfx.music_level(seafood), 0.5, 0.01)
+	vibe.active_theme = &""
+	director.set_vibe(vibe)
+	director._refresh_service_music(true, 1.0, false, started + 119_999_999)
+	assert_eq(Sfx.music_context(), &"seafood")
+	director._refresh_service_music(true, 1.0, false, started + 120_000_000)
+	assert_eq(Sfx.music_context(), MusicTracks.SERVICE_EVENING)
+	director.free()
+
+
+func test_default_service_still_changes_at_dusk() -> void:
+	var director: SoundDirector = SoundDirector.new()
+	director._refresh_service_music(true, 0.0, false, 0)
+	assert_eq(Sfx.music_context(), MusicTracks.SERVICE_DAY)
+	director._refresh_service_music(true, MusicTracks.EVENING_LIGHT, false, 1)
+	assert_eq(Sfx.music_context(), MusicTracks.SERVICE_EVENING)
+	director.free()
 
 
 func test_music_is_silent_in_headless_runs() -> void:

@@ -9,6 +9,7 @@ var broken_plates_today: int = 0
 var degreases_today: int = 0
 var _random: RandomNumberGenerator
 var _grease: Dictionary[int, int] = {}
+var difficulty: Difficulty = Difficulty.new()
 
 
 func _init(config: MessTuning, random: RandomNumberGenerator) -> void:
@@ -29,7 +30,9 @@ func spill_chance(clumsy: bool, nearby_people: int) -> float:
 		return 0.0
 	var chance: float = tuning.spill_chance_per_cell * (tuning.clumsy_multiplier if clumsy else 1.0)
 	var crowded: int = maxi(0, nearby_people - tuning.pass_crowding_threshold + 1)
-	return minf(tuning.maximum_spill_chance, chance + crowded * tuning.crowding_spill_bonus)
+	var bounded: float = minf(tuning.maximum_spill_chance, chance + crowded * tuning.crowding_spill_bonus)
+	var multiplier: float = difficulty.mult(&"messes") if difficulty != null else 1.0
+	return clampf(bounded * multiplier, 0.0, 1.0)
 
 
 func roll_spill(clumsy: bool, nearby_people: int) -> bool:
@@ -38,8 +41,9 @@ func roll_spill(clumsy: bool, nearby_people: int) -> bool:
 
 
 func roll_breakage() -> bool:
-	return tuning != null and tuning.is_valid() and tuning.broken_plate_chance > 0.0 \
-		and _random != null and _random.randf() < tuning.broken_plate_chance
+	var chance: float = clampf(tuning.broken_plate_chance * (difficulty.mult(&"messes") if difficulty != null else 1.0),
+		0.0, 1.0) if tuning != null and tuning.is_valid() else 0.0
+	return chance > 0.0 and _random != null and _random.randf() < chance
 
 
 func record_spill(broken: bool) -> void:

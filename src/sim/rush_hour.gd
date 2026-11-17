@@ -4,6 +4,12 @@ extends RefCounted
 
 const SAVE_VERSION: int = 1
 const MAX_DAY: int = 9007199254740991
+const START_STEP_MINUTES: int = 15
+## Restore plans already written by the previous occasion list.
+const LEGACY_OCCASIONS: Array[String] = [
+	"Book club", "Chess meet", "Garden circle", "Craft morning",
+	"Walking group", "Choir practice", "Sketch club", "Local meetup",
+]
 
 var tuning: RushTuning
 var last_rush_day: int = 0
@@ -28,7 +34,7 @@ func has_event() -> bool:
 func can_roll(day: int, level: int, open_minute: int, close_minute: int) -> bool:
 	return tuning != null and tuning.is_valid() and day >= 1 and level >= tuning.unlock_level \
 		and (last_rush_day == 0 or day - last_rush_day >= tuning.min_gap_days) \
-		and latest_start(open_minute, close_minute, tuning) >= earliest_start(open_minute, tuning)
+		and latest_start(open_minute, close_minute, tuning) >= _quarter_at_or_after(earliest_start(open_minute, tuning))
 
 
 ## Idempotent for a morning. Even no-event days are stamped, so loading cannot
@@ -44,15 +50,16 @@ func plan_day(day: int, level: int, open_minute: int, close_minute: int,
 	var random: RandomNumberGenerator = random_provider.call() as RandomNumberGenerator
 	if random == null or random.randf() >= tuning.daily_chance:
 		return
-	var max_duration: int = mini(tuning.max_duration_minutes,
-		close_minute - tuning.last_orders_margin_minutes - earliest_start(open_minute, tuning))
-	# Draw a duration, then a legal start inside the configured service margins.
-	var duration: int = random.randi_range(tuning.min_duration_minutes, maxi(tuning.min_duration_minutes, max_duration))
 	var first: int = earliest_start(open_minute, tuning)
+	var first_quarter: int = _quarter_at_or_after(first)
+	# Even the longest possible duration must leave one legal quarter-hour start.
+	var max_duration: int = mini(tuning.max_duration_minutes,
+		close_minute - tuning.last_orders_margin_minutes - first_quarter)
+	var duration: int = random.randi_range(tuning.min_duration_minutes, max_duration)
 	var last: int = close_minute - tuning.last_orders_margin_minutes - duration
-	if last < first:
-		return
-	start_minute = random.randi_range(first, last)
+	var drawn: int = random.randi_range(first, last)
+	var nearest: int = roundi(float(drawn) / START_STEP_MINUTES) * START_STEP_MINUTES
+	start_minute = clampi(nearest, first_quarter, _quarter_at_or_before(last))
 	duration_minutes = duration
 	occasion = tuning.occasions[random.randi_range(0, tuning.occasions.size() - 1)]
 
@@ -65,6 +72,14 @@ static func latest_start(open_minute: int, close_minute: int, config: RushTuning
 	if config == null or not config.is_valid():
 		return -1
 	return close_minute - config.last_orders_margin_minutes - config.min_duration_minutes
+
+
+static func _quarter_at_or_after(minute: int) -> int:
+	return ceili(float(minute) / START_STEP_MINUTES) * START_STEP_MINUTES
+
+
+static func _quarter_at_or_before(minute: int) -> int:
+	return floori(float(minute) / START_STEP_MINUTES) * START_STEP_MINUTES
 
 
 func is_active_minute(minute: int) -> bool:
@@ -87,13 +102,20 @@ func multiplier_at(minute: int) -> float:
 func fit_to_hours(open_minute: int, close_minute: int) -> void:
 	if not has_event() or tuning == null or not tuning.is_valid():
 		return
+	# Older plans could use any minute, including plans with a still-current occasion.
+	var legacy: bool = start_minute % START_STEP_MINUTES != 0 \
+		or (occasion in LEGACY_OCCASIONS and occasion not in tuning.occasions)
 	var first: int = earliest_start(open_minute, tuning)
+	if not legacy:
+		first = _quarter_at_or_after(first)
 	var latest_duration: int = close_minute - tuning.last_orders_margin_minutes - first
 	if latest_duration < tuning.min_duration_minutes:
 		_clear_event()
 		return
 	duration_minutes = mini(duration_minutes, latest_duration)
 	var last: int = close_minute - tuning.last_orders_margin_minutes - duration_minutes
+	if not legacy:
+		last = _quarter_at_or_before(last)
 	start_minute = clampi(start_minute, first, last)
 
 
@@ -183,10 +205,11 @@ func from_dict(value: Variant, open_minute: int = -1, close_minute: int = -1) ->
 	var restored_start: int = int(row["start_minute"])
 	var restored_duration: int = int(row["duration_minutes"])
 	var empty_event: bool = restored_occasion.is_empty() and restored_start == -1 and restored_duration == 0
+	var valid_occasion: bool = restored_occasion in tuning.occasions or restored_occasion in LEGACY_OCCASIONS
 	var valid_event: bool = not restored_occasion.is_empty() and restored_start >= 0 \
 			and restored_duration >= tuning.min_duration_minutes \
 			and restored_duration <= tuning.max_duration_minutes \
-			and restored_start + restored_duration <= 1440 and restored_occasion in tuning.occasions
+			and restored_start + restored_duration <= 1440 and valid_occasion
 	if not empty_event and not valid_event:
 		return false
 	if empty_event and has_counters:

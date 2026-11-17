@@ -7,6 +7,10 @@ extends Resource
 @export var description: String = "Reliable, with no special bonus."
 @export var role_descriptions: Dictionary[StringName, String] = {}
 @export var walk_multiplier: float = 1.0
+@export var early_speed_multiplier: float = 1.0
+@export var late_speed_multiplier: float = 1.0
+@export var bussing_duration_multiplier: float = 1.0
+@export var cleans_seat_dirt: bool = false
 @export var cook_quality_bonus: float = 0.0
 @export var food_patience_multiplier: float = 1.0
 

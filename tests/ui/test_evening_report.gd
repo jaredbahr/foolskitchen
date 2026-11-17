@@ -49,7 +49,7 @@ func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() 
 	var wage: Label = grid.get_child(grid.columns * 4 + 3) as Label
 	assert_eq(wage.text, "-$40")
 	assert_eq(wage.get_theme_color("font_color"), Color("a83e35"))
-	assert_eq((grid.get_child(grid.columns * 9) as Label).text, "Total")
+	assert_eq((grid.get_child(grid.columns * 9) as Label).text, "Net cash")
 	assert_eq((grid.get_child(grid.columns * 9 + 3) as Label).text, "-$40")
 
 	tabs.current_tab = 0
@@ -58,10 +58,39 @@ func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() 
 	assert_eq(scroll.main_scroll(), today)
 	assert_eq(next_day.get_parent(), today_next_day_parent)
 	tabs.current_tab = 1
+	_report.call("show_report", day)
+	_report.call("show_week_cash_flow", ledger.week_cash_flow(day.day))
+	assert_eq(tabs.current_tab, 1, "refreshing the same day keeps Week selected")
+	assert_eq(grid.get_child_count(), 80)
 	_report.call("show_report", DayReport.new())
 	assert_eq(tabs.current_tab, 0)
 	assert_false(tabs.visible)
 	assert_eq(grid.get_child_count(), 0)
+
+
+func test_week_categories_retain_width_at_large_ui_scale() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(854, 480)
+	tree.root.add_child(viewport)
+	viewport.add_child(_report)
+	var ledger: Ledger = Ledger.new()
+	var report: DayReport = DayReport.new()
+	report.day = 7
+	for day: int in range(1, 8):
+		ledger.record(day, 9999999, Ledger.SALE)
+		ledger.record(day, -999999, Ledger.WAGES)
+	_report.call("show_report", report)
+	_report.call("show_week_cash_flow", ledger.week_cash_flow(7))
+	(_report.get_node("%ReportTabs") as TabBar).current_tab = 1
+	for frame: int in 4:
+		await tree.process_frame
+	var grid: GridContainer = _report.get_node("%WeekCashFlow") as GridContainer
+	for row: int in range(10):
+		var category: Label = grid.get_child(row * grid.columns) as Label
+		assert_true(category.size.x >= 140.0, category.text)
+	viewport.remove_child(_report)
+	viewport.free()
 
 
 func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> void:
@@ -88,6 +117,25 @@ func test_haggle_note_uses_actual_saving_and_is_not_serialized_or_reused() -> vo
 	assert_false(day.to_dict().has("haggle_percent"))
 	_report.call("show_report", DayReport.new())
 	assert_false((rows.get_child(1) as Label).text.contains("haggle"))
+
+
+func test_visitor_breakdown_shows_plain_names_counts_moods_and_clears_on_empty() -> void:
+	var day: DayReport = DayReport.new()
+	day.visitor_breakdown = [
+		{"name": "Students", "count": 2, "average_mood": 0.35},
+		{"name": "Families", "count": 2, "average_mood": 0.34},
+		{"name": "Regulars", "count": 3, "average_mood": 0.6},
+	]
+	_report.call("show_report", day)
+	var label: Label = _report.get_node("%VisitorBreakdown") as Label
+	assert_eq(label.text, "Regulars 3 (happy) · Families 2 (unhappy) · Students 2 (neutral)")
+	assert_true(label.visible)
+	assert_eq(day.visitor_breakdown[0]["name"], "Students", "display sorting does not mutate report data")
+	_report.call("show_report", DayReport.from_dict({"customers_served": 4}))
+	assert_eq(label.text, "")
+	assert_false(label.visible, "older reports have no visitor data")
+	_report.call("show_report", DayReport.new())
+	assert_false(label.visible, "there is no breakdown without guests")
 
 
 func test_booking_cash_rows_name_deposit_refund_and_applied_advance() -> void:
@@ -241,3 +289,17 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")
 	viewport.remove_child(_report)
 	viewport.free()
+
+
+func test_tip_row_retains_its_amount_and_shows_the_active_bonus_after_restore() -> void:
+	var day: DayReport = DayReport.new()
+	day.income[Ledger.TIP] = 6
+	assert_false(day.to_dict().has("tip_jar_percent"), "no jar preserves the old report shape")
+	var rows: GridContainer = _report.get_node("%IncomeRows") as GridContainer
+	_report.call("show_report", day)
+	assert_eq((rows.get_child(0) as Label).text, "Tip")
+	day.tip_jar_percent = 10
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	_report.call("show_report", restored)
+	assert_eq((rows.get_child(0) as Label).text, "Tip (tip jar +10%)")
+	assert_eq((rows.get_child(1) as Label).text, "$6")

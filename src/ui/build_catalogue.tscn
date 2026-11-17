@@ -33,17 +33,18 @@ theme_override_constants/margin_bottom = 0
 [node name="Rows" type="VBoxContainer" parent="Panel/Margin"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 5
 
 [node name="Toolbars" type="VBoxContainer" parent="Panel/Margin/Rows"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 5
 
-[node name="Bar" type="HBoxContainer" parent="Panel/Margin/Rows/Toolbars"]
+[node name="Bar" type="HFlowContainer" parent="Panel/Margin/Rows/Toolbars"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 6
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 4
 
 [node name="Title" type="Label" parent="Panel/Margin/Rows/Toolbars"]
 layout_mode = 2
@@ -76,8 +77,8 @@ theme_override_constants/separation = 6
 [node name="Items" type="GridContainer" parent="Panel/Margin/Rows/Scroll/Content"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 8
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
 columns = 2
 
 [node name="Empty" type="Label" parent="Panel/Margin/Rows/Scroll/Content"]

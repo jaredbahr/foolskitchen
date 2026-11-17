@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Stock"
+body = "Stock is bought in the Stock panel. Ingredients are grouped by storage, and the cart shows its total before you place an order. Morning orders arrive together. Orders placed while open come on the next daytime delivery. A driver leaves crates inside, then your cleaner puts them away, or a server does it if you have no cleaner. Anything still waiting at closing is stored, so a late delivery is not lost.\n\nWatch quantities against the recipes you offer. A cook cannot complete a dish without its ingredients, and the low-stock advice can help estimate what the next service needs. Optional automatic reordering buys toward a target with a small premium. It is convenient but costs more. Ingredients can expire, especially fresh goods, so avoid ordering far beyond likely demand. Throwing food out is available in the stock list, but removes it from your pantry."

@@ -71,6 +71,7 @@ var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 var _owner_level: int = 1
+var _lot_tags: Array[StringName] = []
 var _career_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
@@ -127,6 +128,10 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 ## This does not change saved placements, including starter furniture.
 func set_career_tier(tier: int) -> void:
 	_career_tier = clampi(tier, 1, CareerTierTuning.TOP_TIER)
+
+
+func set_lot_tags(tags: Array[StringName]) -> void:
+	_lot_tags = tags.duplicate()
 
 
 func set_owner_level(level: int) -> void:
@@ -325,7 +330,9 @@ func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exa
 	var definition: ItemDef = _content.item(def_id)
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "Unknown or invalid item definition")
-	# Undo/redo put back an item the shop already had; only new buys need the level.
+	# Undo and redo restore the shop's existing items. New buys check access.
+	if exact == null and not LotAccess.allowed(definition, _lot_tags):
+		return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 	if exact == null and definition.unlock_level > _owner_level:
 		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	if _books == null or not _books.is_ready():
@@ -373,6 +380,8 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 			return EditCheck.new(false, CatalogueText.BLUEPRINT_INVALID)
 		if not entry.swatch_id.is_empty() and (not definition.paintable or _content.swatch(entry.swatch_id) == null):
 			return EditCheck.new(false, "Unknown colour")
+		if exact == null and not LotAccess.allowed(definition, _lot_tags):
+			return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 		if exact == null and definition.unlock_level > _owner_level:
 			return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 		total += definition.variant_price(entry.variant_id)
@@ -395,6 +404,9 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 		# Distinct non-live ids let dining and room rules identify every entry.
 		ids[placed.id] = -1 - proposed.size()
 		proposed.append(placed.id)
+	var surface_problem: String = _surface_decor_problem(preview)
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	var people_problem: String = _placement_people_problem(preview)
 	if not people_problem.is_empty():
 		return EditCheck.new(false, people_problem)
@@ -511,6 +523,9 @@ func _check_remove_stamp(item_ids: Array[int], exact: Exact) -> EditCheck:
 		if seen.has(ids[preview_id]):
 			preview.remove(preview_id)
 			ids.erase(preview_id)
+	var surface_problem: String = _surface_decor_problem(preview, true)
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	for placed: PlacedItem in preview.items():
 		required.erase(_required_key(placed.def as ItemDef))
 	if not required.is_empty():
@@ -560,6 +575,9 @@ func check_sell(item_id: int, exact: Exact = null) -> EditCheck:
 	var preview: SimGrid = _preview_without(item_id, ids)
 	if preview == null:
 		return EditCheck.new(false, "The current shop has invalid placements")
+	var surface_problem: String = _surface_decor_problem(preview, true)
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	var dining: EditCheck = EditCheck.new(true) if exact != null \
 		else EditCheck.validate_dining(_sim.world.grid, preview, ids, -1, item_id)
 	if not dining.ok:
@@ -706,8 +724,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		return null
 	var patio_set: Dictionary[Vector2i, bool] = ShopFootprint.to_set(patio_cells)
 	var rows: Array = data["items"]
-	# Two grid layers (normal and floor decor); wall decor is saved separately.
-	if rows.size() > preview.size.x * preview.size.y * 2:
+	# Wall decor is saved separately from the overlapping grid layers.
+	if rows.size() > preview.size.x * preview.size.y * SimGrid.GRID_PLACEMENT_LAYERS.size():
 		errors.append("Too many shop items")
 		return null
 	var layout: ShopLayout = ShopLayout.new()
@@ -766,6 +784,9 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 			errors.append("Saved item does not fit on the layout's floor")
 			return null
 		layout.placements.append(placement)
+	if not _surface_decor_problem(preview).is_empty():
+		errors.append("Saved tabletop item has no table or counter")
+		return null
 	var minimums: Dictionary[String, int] = {}
 	for placement: ShopPlacement in template_layout.placements:
 		var definition: ItemDef = content.item(placement.item_id)
@@ -1010,7 +1031,7 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 			continue
 		var section: int = -1
 		if boarded and definition.id == WallDecor.MENU_BOARD_ID and mount != ItemDef.WallMount.EXTERIOR \
-				and _integer_in(row[4], -1, RecipeDef.Section.BAKERY):
+				and _integer_in(row[4], -1, RecipeDef.Section.BREAKFAST):
 			section = int(row[4])
 		staged.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch, section)
 		layout.wall_items[anchor] = definition.id
@@ -1610,6 +1631,8 @@ func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null, swatc
 	var definition: ItemDef = _content.item(def_id)
 	if definition == null or not definition.hangs_on_wall() or not _valid_definition(definition):
 		return EditCheck.new(false, WallDecor.NOT_WALL_DECOR)
+	if exact == null and not LotAccess.allowed(definition, _lot_tags):
+		return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 	if exact == null and definition.unlock_level > _owner_level:
 		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	var why: String = decor.problem(_sim.world.grid, definition, anchor)
@@ -2246,6 +2269,9 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		proposed_id = placed.id
 	if proposed_id < 0:
 		return EditCheck.new(false, "The shop changed; check the placement again")
+	var surface_problem: String = _surface_decor_problem(preview, exclude_id >= 0 and not definition.sits_on_surface())
+	if not surface_problem.is_empty():
+		return EditCheck.new(false, surface_problem)
 	var people_problem: String = _placement_people_problem(preview)
 	if not people_problem.is_empty():
 		return EditCheck.new(false, people_problem)
@@ -2397,6 +2423,16 @@ func _preview_without(exclude_id: int, ids: Dictionary[int, int], replacement: I
 			return null
 		ids[copy.id] = placed.id
 	return preview
+
+
+## Check the final layout, so grouped edits and undo keep supported decor
+## in place regardless of saved placement order.
+static func _surface_decor_problem(grid: SimGrid, moving_support: bool = false) -> String:
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.sits_on_surface() and grid.surface_support_at(placed.origin) == null:
+			return "Move the item on top first" if moving_support else "Choose a table or counter"
+	return ""
 
 
 ## A furnishing's customer reservation belongs to its physical table, not to
