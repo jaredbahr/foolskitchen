@@ -186,47 +186,91 @@ func _path() -> String:
 	return _save_dir.path_join(SLOT + ".json")
 
 
-func test_small_tips_pay_one_bonus_at_close_even_if_the_jar_leaves_midday() -> void:
+func test_each_guest_can_drop_change_once_while_the_jar_is_placed() -> void:
 	var main: Node = _start(false)
 	var profile: RegularProfile = _promote(main)
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var counter: PlacedItem = ShopBuilder.items_with_def(sim.world, &"pass_counter")[0]
-	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
-	assert_true(main.call("shop_buy", &"tip_jar", counter.origin))
-	var jar: PlacedItem = ShopBuilder.items_with_def(sim.world, &"tip_jar")[0]
 	Clock.sim.open_ticks = 1
 	Clock.sim.last_orders_max_ticks = 1
 	assert_true(Clock.sim.start_service())
 	sim.spawner._remaining = 100000
-	for index: int in range(6):
-		if index == 3:
+	var arrival_state: int = sim.spawner.rng.state
+	var expected_change: int = 0
+	var guest_count: int = 24
+	var base_tips: int = 12
+	var jar: PlacedItem = null
+	for index: int in guest_count:
+		if index == 1:
+			# Stage the live placement boundary. Build mode only opens when closed.
+			jar = sim.world.grid.place_def(preload("res://data/items/tip_jar.tres"), counter.origin)
+			assert_not_null(jar)
+			if jar == null:
+				return
+		if index == 20:
 			assert_true(sim.world.grid.remove(jar.id))
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = 51 + index
 		var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], random)
-		guest.regular_profile = profile
+		if index % 2 == 0:
+			guest.regular_profile = profile
+		var control: RandomNumberGenerator = RandomNumberGenerator.new()
+		control.seed = random.seed
+		control.state = random.state
+		if index >= 1 and index < 20 and control.randf() < RestaurantSim.TIP_JAR_TUNING.drop_chance:
+			expected_change += RestaurantSim.TIP_JAR_TUNING.drop_amount
 		var order: Order = Order.new()
 		order.price = 25
 		order.recipe_id = profile.favourite_dish
+		var drink: Order = Order.new()
+		drink.price = 5
+		drink.recipe_id = &"coffee"
+		drink.state = Order.State.DELIVERED
+		guest.extra_order = drink
 		sim.pay(guest, order)
 		sim.pay(guest, order)
+		assert_eq(random.state, control.state, "one draw per eligible guest, none without a jar")
+		assert_eq(sim.tip_jar_total(), expected_change)
+	assert_true(expected_change > 0, "the seeded guests exercise a nonzero payout")
+	assert_eq(sim.spawner.rng.state, arrival_state, "payments leave the arrival stream alone")
 	var day: int = Clock.sim.day
-	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), 6, "one dollar per sale before close")
+	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), base_tips, "one base tip per regular's meal before close")
 	main.call("run_ticks", 5)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
 	var report: DayReport = main.get("shown_report") as DayReport
 	assert_not_null(report)
 	if report == null:
 		return
-	assert_eq(report.income.get(Ledger.TIP), 7)
-	assert_eq(report.tip_jar_bonus, 1)
+	assert_eq(report.income.get(Ledger.TIP), base_tips + expected_change)
+	assert_eq(report.tip_jar_bonus, expected_change)
 	var payments: Array[Dictionary] = []
 	for entry: Dictionary in Economy.ledger.entries_for_day(day):
 		if entry["note"] == TipJarTuning.LEDGER_NOTE:
 			payments.append(entry)
 	assert_eq(payments.size(), 1)
 	assert_true(main.call("show_closed_report"))
-	assert_eq((main.get("shown_report") as DayReport).tip_jar_bonus, 1)
-	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), 7)
+	assert_eq((main.get("shown_report") as DayReport).tip_jar_bonus, expected_change)
+	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), base_tips + expected_change)
 	assert_true(Clock.sim.next_day())
-	assert_eq(sim.tip_jar_bonus(6), -1, "jar eligibility starts over each morning")
+	assert_eq(sim.tip_jar_total(), 0, "spare change starts over each morning")
+
+
+func test_jar_placement_restores_through_the_existing_morning_save() -> void:
+	var main: Node = _start(true)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var counter: PlacedItem = ShopBuilder.items_with_def(sim.world, &"pass_counter")[0]
+	var location: Vector2i = counter.origin
+	var before: String = FileAccess.get_file_as_string(_path())
+	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
+	assert_true(main.call("shop_buy", &"tip_jar", location))
+	assert_eq(FileAccess.get_file_as_string(_path()), before, "buying a jar does not save")
+	main.call("_begin_morning")
+	_close(main)
+	var loaded: Node = _start(true)
+	var restored: RestaurantSim = loaded.get("sim") as RestaurantSim
+	var jars: Array[PlacedItem] = ShopBuilder.items_with_def(restored.world, &"tip_jar")
+	assert_eq(jars.size(), 1)
+	if not jars.is_empty():
+		assert_eq(jars[0].origin, location)
+	assert_true(RestaurantSim.TIP_JAR_TUNING.has_eligible_jar(restored.world.grid))
+	assert_eq(restored.tip_jar_total(), 0)

@@ -7581,10 +7581,11 @@ func _on_service_closed(day: int) -> void:
 	# entries count (FK-087), and other sites' money never does.
 	var site: StringName = Economy.active_site
 	var day_movements: Dictionary = Economy.ledger.day_totals(day, site)
-	day_notes.tip_jar_day = day
-	day_notes.tip_jar_bonus = sim.tip_jar_bonus(int(day_movements.get(Ledger.TIP, 0)))
-	if day_notes.tip_jar_bonus > 0:
-		Economy.add_cash(day_notes.tip_jar_bonus, Ledger.TIP, TipJarTuning.LEDGER_NOTE)
+	var jar_total: int = sim.tip_jar_total()
+	if jar_total > 0:
+		day_notes.tip_jar_day = day
+		day_notes.tip_jar_bonus = jar_total
+		Economy.add_cash(jar_total, Ledger.TIP, TipJarTuning.LEDGER_NOTE)
 	var operating_profit: int = Economy.ledger.day_profit(day, site)
 	# Deliberately not all of DayReport.NON_OPERATING_CATEGORIES: same-day
 	# financing posted before the close keeps its existing profit basis

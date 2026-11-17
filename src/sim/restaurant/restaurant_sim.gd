@@ -164,7 +164,8 @@ var sold_out_today: Dictionary[StringName, bool] = {}
 ## current sold-out set, a later delivery never clears this service history.
 var service_stockouts_today: Dictionary[StringName, bool] = {}
 ## Detached menu/price facts captured once after opening deliveries land.
-var _tip_jar_used: bool = false
+## Spare change from today's paid visits, including before a jar was sold.
+var _tip_jar_total: int = 0
 var _service_menu_count: int = -1
 var _service_menu_snapshot: Array[Dictionary] = []
 ## Ingredients that sold dishes out today, in the order it happened:
@@ -336,7 +337,7 @@ func start_day(career_tier: int = 1) -> void:
 	critic.plan_day(world.clock.day, career_tier, critic_rng_provider)
 	sold_out_today.clear()
 	service_stockouts_today.clear()
-	_tip_jar_used = false
+	_tip_jar_total = 0
 	_service_menu_count = -1
 	_service_menu_snapshot.clear()
 	stock_outs_today.clear()
@@ -820,7 +821,6 @@ func refresh_sold_out() -> void:
 func begin_service_menu_snapshot() -> void:
 	if _service_menu_count >= 0 or not _in_service():
 		return
-	_observe_service_tip_jar()
 	_service_menu_count = 0
 	_service_menu_snapshot.clear()
 	var seen: Dictionary[StringName, bool] = {}
@@ -1263,15 +1263,9 @@ func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> 
 	return visit
 
 
-## An eligible jar qualifies the entire day, including tips earned before its
-## placement and after its removal. -1 means no jar qualified during service.
-func tip_jar_bonus(base_tips: int) -> int:
-	return roundi(float(base_tips) * (TIP_JAR_TUNING.tip_jar_multiplier - 1.0)) if _tip_jar_used else -1
-
-
-func _observe_service_tip_jar() -> void:
-	if not _tip_jar_used and _in_service():
-		_tip_jar_used = TIP_JAR_TUNING.multiplier(world.grid) > 1.0
+## Pending until the world posts one ledger entry at service close.
+func tip_jar_total() -> int:
+	return _tip_jar_total
 
 
 func regular_tip(customer: CustomerAgent, order: Order) -> int:
@@ -1424,7 +1418,6 @@ func restroom_used(spot: Vector2i) -> void:
 
 func _on_layout_changed(_cells: Array[Vector2i]) -> void:
 	_layout_counted = false
-	_observe_service_tip_jar()
 	if cat != null:
 		cat.layout_changed(world.grid)
 	aquarium.track(world.grid, world.clock.day)
@@ -1473,6 +1466,9 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 	if customer.paid:
 		return
 	customer.paid = true
+	# One roll on this guest's private stream, even for a meal and a drink.
+	if TIP_JAR_TUNING.has_eligible_jar(world.grid) and customer.rng.randf() < TIP_JAR_TUNING.drop_chance:
+		_tip_jar_total += TIP_JAR_TUNING.drop_amount
 	served_today += 1
 	if customer.takeaway:
 		takeaways_today += 1

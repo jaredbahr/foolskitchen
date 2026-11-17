@@ -4,13 +4,14 @@ extends Resource
 
 const LEDGER_NOTE: String = "Tip jar"
 
-@export_range(1.0, 2.0, 0.01) var tip_jar_multiplier: float = 1.10
+@export_range(0.0, 1.0, 0.01) var drop_chance: float = 0.18
+@export_range(1, 10, 1) var drop_amount: int = 1
 @export_range(0, 10, 1) var range_cells: int = 3
 
 
-func multiplier(grid: SimGrid) -> float:
+func has_eligible_jar(grid: SimGrid) -> bool:
 	if grid == null:
-		return 1.0
+		return false
 	var items: Array[PlacedItem] = grid.items()
 	for jar: PlacedItem in items:
 		var definition: ItemDef = jar.def as ItemDef
@@ -24,5 +25,5 @@ func multiplier(grid: SimGrid) -> float:
 			for cell: Vector2i in counter.cells:
 				var delta: Vector2i = cell - jar.origin
 				if absi(delta.x) + absi(delta.y) <= range_cells:
-					return tip_jar_multiplier
-	return 1.0
+					return true
+	return false
