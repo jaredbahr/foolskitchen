@@ -56,6 +56,28 @@ focus_mode = 0
 text = "Close"
 tooltip_text = "Hide the report (Esc). Next day is also on the top bar."
 
+[node name="Headline" type="HBoxContainer" parent="Panel/Column"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="Header" type="Label" parent="Panel/Column/Headline"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "Day 1: Closed"
+vertical_alignment = 1
+
+[node name="Profit" type="Label" parent="Panel/Column/Headline"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 27
+text = "$0 profit"
+horizontal_alignment = 1
+vertical_alignment = 1
+tooltip_text = "Uses the purchase cost of food served. Stock bought or spoiled, loans and milestone bonuses are outside operating profit."
+
 [node name="Scroll" type="ScrollContainer" parent="Panel/Column"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -66,22 +88,6 @@ horizontal_scroll_mode = 0
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
-
-[node name="Header" type="Label" parent="Panel/Column/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-text = "Day 1: Closed"
-horizontal_alignment = 1
-
-[node name="Profit" type="Label" parent="Panel/Column/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 36
-text = "$0 profit"
-horizontal_alignment = 1
-autowrap_mode = 3
-tooltip_text = "Uses the purchase cost of food served. Stock bought or spoiled, loans and milestone bonuses are outside operating profit."
 
 [node name="LevelUpCallout" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
 visible = false
@@ -386,10 +392,14 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 2
 
-[node name="NextDay" type="Button" parent="Panel/Column/Scroll/Content"]
+[node name="Footer" type="HBoxContainer" parent="Panel/Column"]
+layout_mode = 2
+alignment = 2
+mouse_filter = 2
+
+[node name="NextDay" type="Button" parent="Panel/Column/Footer"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 4
 text = "Next day"
 
 [connection signal="pressed" from="Panel/Column/TitleBar/Close" to="." method="_on_close_pressed"]

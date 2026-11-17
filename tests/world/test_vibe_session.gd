@@ -455,7 +455,7 @@ func test_native_meter_hud_and_report_fit_scaled_windows_without_changing_header
 	assert_true(meter.visible)
 	report.call("show_report", main.call("build_report", Clock.sim.day))
 	assert_true((report.get_node("Panel/Column/Scroll/Content/VibeSummary") as Label).text.begins_with("Vibe: Modern"))
-	assert_true((report.get_node("Panel/Column/Scroll/Content/Profit") as Label).text.contains("operating profit"))
+	assert_true((report.get_node("%Profit") as Label).text.contains("operating profit"))
 
 
 func test_departure_signal_fixture_attributes_arrival_theme_not_later_repaint_and_resets_each_morning() -> void:

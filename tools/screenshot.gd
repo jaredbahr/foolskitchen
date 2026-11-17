@@ -1093,7 +1093,7 @@ static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
 	if weekly_node != null:
 		var weekly_fields: Dictionary = {}
 		for field: String in ["Title", "ProgressText", "DaysLeft", "Reward"]:
-			var path: String = "Body/Title" if field == "Title" else "Body/Details/" + field
+			var path: String = "Body/Summary/" + field if field in ["Title", "ProgressText"] else "Body/Details/" + field
 			var control: Control = weekly_node.get_node_or_null(path) as Control
 			weekly_fields[field] = _loan_control_evidence(control) if control != null else {"visible": false}
 		weekly_card = {"available": true, "visible": weekly_node.is_visible_in_tree(),
@@ -1106,7 +1106,12 @@ static func _milestone_goals_panel_evidence(goals: GoalsPanel) -> Dictionary:
 			return {"available": false}
 		var fields: Dictionary = {}
 		for field: String in ["Title", "Description", "ProgressText", "ProgressBar", "Reward"]:
-			var control: Control = card.get_node_or_null("Body/" + field) as Control
+			var path: String = "Body/" + field
+			if field in ["Title", "ProgressText"]:
+				path = "Body/Summary/" + field
+			elif field in ["Description", "Reward"]:
+				path = "Body/Detail/" + field
+			var control: Control = card.get_node_or_null(path) as Control
 			fields[field] = _loan_control_evidence(control) if control != null else {"visible": false}
 		cards.append({"name": card.name, "goal_id": String(card.get_meta(&"goal_id", &"")),
 			"completed": bool(card.get_meta(&"completed", false)), "native": _loan_control_evidence(card),
@@ -1402,7 +1407,7 @@ static func loan_review_evidence(main: Node, context_root: Node) -> Dictionary:
 	var ledger: Ledger = economy.get("ledger") as Ledger if economy != null else null
 	var panel: Control = main.get_node_or_null("Overlay/EveningReport") as Control
 	var notice: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/LoanNotice") as Label
-	var headline: Label = main.get_node_or_null("Overlay/EveningReport/Panel/Column/Scroll/Content/Profit") as Label
+	var headline: Label = main.get_node_or_null("Overlay/EveningReport/%Profit") as Label
 	var hud: Label = main.get_node_or_null("HUD/Top/Row/Loan") as Label
 	if time == null or account == null or ledger == null or panel == null or notice == null or headline == null or hud == null:
 		return {"available": false}
@@ -3078,7 +3083,7 @@ func _open_settings_control(from_gear: bool, percent: int) -> void:
 	if not bool(_main.call("is_settings_visible")) or bool(_main.call("is_menu_visible")):
 		_fail_capture("native Settings request did not open the production panel")
 		return
-	var scale: OptionButton = panel.get_node_or_null("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton
+	var scale: OptionButton = panel.get_node_or_null("%ScaleChoice") as OptionButton
 	if scale == null or scale.get_item_index(percent) < 0:
 		_fail_capture("Settings panel does not offer the requested UI scale")
 		return
@@ -3092,7 +3097,7 @@ func _open_settings_control(from_gear: bool, percent: int) -> void:
 func _settings_state() -> Dictionary:
 	var preferences: SettingsPreferences = root.get_node_or_null("Preferences") as SettingsPreferences
 	var panel: SettingsPanel = _main.get_node_or_null("Overlay/SettingsPanel") as SettingsPanel
-	var scale: OptionButton = panel.get_node_or_null("Panel/Column/Scroll/Content/ScaleChoice") as OptionButton if panel != null else null
+	var scale: OptionButton = panel.get_node_or_null("%ScaleChoice") as OptionButton if panel != null else null
 	if preferences == null or panel == null or scale == null:
 		return {}
 	var actual_size: Vector2i = DisplayServer.window_get_size()
@@ -4437,8 +4442,11 @@ func _staff_state() -> Dictionary:
 		if row == null:
 			continue
 		var button: Button = row.get_node("Top/Action") as Button
-		rows.append({"id": String(member.id), "name_and_wage": (row.get_node("Top/Name") as Label).text,
-			"trait": (row.get_node("Trait") as Label).text, "action": button.text,
+		var trait_label: Label = row.get_node("Top/Person/Details/Trait") as Label
+		rows.append({"id": String(member.id), "name_and_wage": " ".join([(row.get_node("Top/Person/Name") as Label).text,
+				(row.get_node("Top/Skill/Level") as Label).text.to_lower(),
+				(row.get_node("Top/Wage") as Label).text]),
+			"trait": trait_label.text, "trait_tooltip": trait_label.tooltip_text, "action": button.text,
 			"disabled": button.disabled, "visible_in_tree": row.is_visible_in_tree()})
 	var state: Dictionary = {"visible": panel.is_visible_in_tree(), "roster": roster.to_dict(), "rows": rows,
 		"member_count": members.size(), "candidate_count": candidates.size()}
@@ -4472,8 +4480,11 @@ func _staff_capture_valid(state: Dictionary) -> bool:
 		if row.get("visible_in_tree") != true or not title.contains(person["name"]) \
 				or not title.contains("skill %d" % int(person["skill"])) \
 				or not title.contains("$%d/day" % int(person["wage"])) \
-				or row.get("action") != action or definition == null \
-				or not String(row.get("trait", "")).begins_with(definition.display_name + ":"):
+				or row.get("action") != action or definition == null:
+			return false
+		var description: String = definition.description_for(StringName(person["role"]))
+		if row.get("trait") != definition.display_name \
+				or row.get("trait_tooltip") != "%s: %s" % [definition.display_name, description]:
 			return false
 	return staff_priority_grid_valid(state.get("priority_grid", {}), members)
 

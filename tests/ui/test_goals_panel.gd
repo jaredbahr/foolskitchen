@@ -34,6 +34,26 @@ func test_selection_keeps_authored_order_limits_active_goals_and_shows_known_com
 	assert_true((_panel.get_node("Panel/Content/Scroll/List/CompletedHeading") as Label).visible)
 
 
+func test_opening_checkboxes_stay_one_line_and_counted_goals_get_short_bars() -> void:
+	var chain: OpeningWeekSet = preload("res://data/balance/opening_week.tres")
+	_panel.set_opening_week(OpeningWeek.new(), chain, {OpeningGoal.Condition.SERVED_TODAY: 2.0}, 1)
+	var card: Control = _panel.get_node("Panel/Content/Scroll/List/OpeningWeek/Body") as Control
+	var checkbox: Control = card.get_node("Goal0") as Control
+	assert_eq(checkbox.get_child_count(), 1)
+	assert_true(checkbox.has_node("Line/Reward"))
+	assert_false((checkbox.get_node("Line/Title") as Label).tooltip_text.is_empty())
+	var counted: int = 0
+	for row: Node in card.get_children():
+		var bar: ProgressBar = row.get_node_or_null("Detail/ProgressBar") as ProgressBar
+		if bar != null:
+			counted += 1
+			assert_eq(bar.custom_minimum_size.x, 100.0)
+	assert_true(counted > 0, "the fixture shows a numeric goal")
+	var milestone: ProgressBar = _panel.goal_card_for(&"first").get_node("Body/ProgressBar") as ProgressBar
+	assert_eq(milestone.custom_minimum_size.x, 120.0)
+	assert_eq(milestone.size_flags_horizontal, Control.SIZE_SHRINK_BEGIN)
+
+
 func test_progress_is_finite_bounded_and_rewards_are_player_readable() -> void:
 	var catalogue: MilestoneSet = _single_goal_catalogue([
 		_goal(&"partway", "One busy lunch", 10.0, 1),
@@ -50,8 +70,8 @@ func test_progress_is_finite_bounded_and_rewards_are_player_readable() -> void:
 	assert_almost_eq(_bar_value(&"negative"), 0.0, 0.00001)
 	assert_almost_eq(_bar_value(&"over"), 1.0, 0.00001)
 	var card: Control = _panel.goal_card_for(&"partway")
-	assert_eq((card.get_node("Body/ProgressText") as Label).text, "Progress: 2 / 10 guests")
-	assert_eq((card.get_node("Body/Reward") as Label).text, "Reward: 20 XP   Cash: $10")
+	assert_eq((card.get_node("Body/Summary/ProgressText") as Label).text, "Progress: 2 / 10 guests")
+	assert_eq((card.get_node("Body/Detail/Reward") as Label).text, "Reward: 20 XP   Cash: $10")
 	assert_false((card.get_node("Body/ProgressBar") as ProgressBar).show_percentage)
 
 
@@ -72,7 +92,7 @@ func test_non_finite_progress_falls_back_to_zero_within_active_goal_limit() -> v
 		var value: float = _bar_value(id)
 		assert_true(is_finite(value), "non-finite progress never reaches the native bar")
 		assert_almost_eq(value, 0.0, 0.00001, "non-finite progress falls back to zero")
-		var progress_label: Label = _panel.goal_card_for(id).get_node("Body/ProgressText") as Label
+		var progress_label: Label = _panel.goal_card_for(id).get_node("Body/Summary/ProgressText") as Label
 		assert_eq(progress_label.text, "Progress: 0 / 10 guests")
 
 
@@ -96,9 +116,9 @@ func test_weekly_challenge_is_the_top_card_and_updates_without_duplicate_nodes()
 		1, weekly, 1, observation)
 	var rows: VBoxContainer = _panel.get_node("Panel/Content/Scroll/List") as VBoxContainer
 	assert_eq(String(rows.get_child(0).name), "WeeklyChallenge")
-	assert_eq((rows.get_node("WeeklyChallenge/Body/Title") as Label).text,
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Summary/Title") as Label).text,
 		"Serve 12 guests in one day")
-	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/ProgressText") as Label).text, "Progress: 4 / 12 guests")
+	assert_eq((rows.get_node("WeeklyChallenge/Body/Summary/ProgressText") as Label).text, "Progress: 4 / 12 guests")
 	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/DaysLeft") as Label).text, "7 days left")
 	assert_eq((rows.get_node("WeeklyChallenge/Body/Details/Reward") as Label).text, "Cash reward: $60")
 	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
@@ -137,7 +157,7 @@ func test_clean_day_progress_waits_for_the_real_close_commit() -> void:
 	observation.lost_today = 0
 	_panel.set_goals(_catalogue, [] as Array[StringName], {} as Dictionary[StringName, float],
 		1, weekly, 1, observation)
-	var progress_path: String = "Panel/Content/Scroll/List/WeeklyChallenge/Body/Details/ProgressText"
+	var progress_path: String = "Panel/Content/Scroll/List/WeeklyChallenge/Body/Summary/ProgressText"
 	var progress_label: Label = _panel.get_node(progress_path) as Label
 	assert_eq(progress_label.text, "Progress: 0 / 2 days",
 		"a clean-looking open day is not shown as complete prematurely")
@@ -160,11 +180,11 @@ func test_reputation_profit_and_level_progress_use_readable_units() -> void:
 	var catalogue: MilestoneSet = _single_goal_catalogue([reputation, profit, level] as Array[Milestone])
 	var progress: Dictionary[StringName, float] = {&"reputation": 2.36, &"profit": 25.0, &"level": 2.0}
 	_panel.set_goals(catalogue, [] as Array[StringName], progress, 3)
-	assert_eq((_panel.goal_card_for(&"reputation").get_node("Body/ProgressText") as Label).text,
+	assert_eq((_panel.goal_card_for(&"reputation").get_node("Body/Summary/ProgressText") as Label).text,
 		"Progress: 2.4 / 3.5 stars")
-	assert_eq((_panel.goal_card_for(&"profit").get_node("Body/ProgressText") as Label).text,
+	assert_eq((_panel.goal_card_for(&"profit").get_node("Body/Summary/ProgressText") as Label).text,
 		"Progress: $25 / $40")
-	assert_eq((_panel.goal_card_for(&"level").get_node("Body/ProgressText") as Label).text,
+	assert_eq((_panel.goal_card_for(&"level").get_node("Body/Summary/ProgressText") as Label).text,
 		"Progress: Level 2 / 3")
 
 
@@ -177,9 +197,9 @@ func test_completed_cards_are_full_greyed_and_do_not_mutate_inputs() -> void:
 	_panel.set_goals(_catalogue, completed, progress, 2)
 	var completed_card: Control = _panel.goal_card_for(&"done")
 	assert_almost_eq((completed_card.get_node("Body/ProgressBar") as ProgressBar).value, 1.0)
-	assert_eq((completed_card.get_node("Body/ProgressText") as Label).text, "Completed")
+	assert_eq((completed_card.get_node("Body/Summary/ProgressText") as Label).text, "Completed")
 	var original_label: Color = GoalsPanel.SHARED_THEME.get_color("font_color", "Label")
-	var completed_label: Label = completed_card.get_node("Body/Title") as Label
+	var completed_label: Label = completed_card.get_node("Body/Summary/Title") as Label
 	assert_true(completed_label.has_theme_color_override(&"font_color"))
 	assert_almost_eq(completed_label.get_theme_color(&"font_color").a, original_label.a * 0.55)
 	assert_eq(completed, saved_completed)
@@ -324,12 +344,20 @@ func _assert_full_catalogue_window(window_size: Vector2i) -> void:
 	var first_card: Control = _panel.goal_card_for(&"career_goal_00")
 	assert_true(first_card.size.x > 0.0 and first_card.size.y > 0.0, "long goal text has a measured card")
 	assert_true(panel_rect.encloses(first_card.get_global_rect()), "long card width stays within the panel")
-	var title: Label = first_card.get_node("Body/Title") as Label
-	var reward: Label = first_card.get_node("Body/Reward") as Label
+	var title: Label = first_card.get_node("Body/Summary/Title") as Label
+	var reward: Label = first_card.get_node("Body/Detail/Reward") as Label
 	assert_eq(title.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART)
-	assert_eq(reward.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART)
+	assert_eq(reward.horizontal_alignment, HORIZONTAL_ALIGNMENT_RIGHT)
 	assert_true(first_card.get_global_rect().encloses(title.get_global_rect()))
 	assert_true(first_card.get_global_rect().encloses(reward.get_global_rect()))
+	var second: Control = _panel.goal_card_for(&"career_goal_01")
+	var summary: HBoxContainer = second.get_node("Body/Summary") as HBoxContainer
+	var progress: Label = summary.get_node("ProgressText") as Label
+	var short_title: Label = summary.get_node("Title") as Label
+	var bar: ProgressBar = second.get_node("Body/ProgressBar") as ProgressBar
+	assert_true(second.size.y <= 72.0, "an ordinary goal occupies about 60 px")
+	assert_almost_eq(short_title.get_global_rect().get_center().y, progress.get_global_rect().get_center().y, 2.0)
+	assert_true(bar.size.y <= 12.0, "a compact bar still shows the same goal progress")
 	var scroll_bar: VScrollBar = scroll.get_v_scroll_bar()
 	assert_true(scroll_bar.max_value > scroll_bar.page, "the full completed catalogue has scrollable overflow")
 	scroll.scroll_vertical = int(scroll_bar.max_value - scroll_bar.page)
