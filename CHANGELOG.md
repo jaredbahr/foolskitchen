@@ -147,6 +147,7 @@ Each line ends with its PR number.
 - Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
 - The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
 - Build a seafood menu with fish and chips, mussels in broth, salmon maki, shrimp skewers and seafood stew, using new ingredients that restock only while needed. Lay sea-coloured Deck planks at level 4. (#229)
+- Add five diner classics as you reach owner levels 2–4. Hot dog, pizza slice, taco and club sandwich join Mains, and ice cream sundae joins Desserts. On wide screens, Stock puts checkout beside the ingredient list. (#558)
 - Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
 
 - Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
