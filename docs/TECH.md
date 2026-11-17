@@ -3812,7 +3812,7 @@ decimal, like `CareerTier`). `PropertyText` (`src/ui`) holds every line of the
 screen, including tag perks ("Fresh catch", "Rooftop bar", plus "Room for an
 upstairs") and the guest summary from the customer types' own names ("mostly
 foodies" from half the mix, else the top two). The Menu's header has a
-Property button from Tier 3 (`MenuPanel.set_property_available`, set by
+Property button from Tier 2 (`MenuPanel.set_property_available`, set by
 `set_menu_visible`); it opens `PropertyPanel` (`main.gd`
 `set_property_visible`, a morning view like Goals that closes back to the
 Menu and is dismissed wherever Goals is).
@@ -3822,7 +3822,7 @@ with $9,000 on the live owner: the fixer-upper's Buy button enabled).
 **Buying a lot (#464, part 1b).** `PropertyMarket.purchase_refusal(lot, tier,
 reputation, owned, site_count, limits, cash, loan)` gives the first reason,
 in order: `OWNED`, `LOCKED` (tier, stars, or below the market tier), `LIMIT`
-(`SiteLimitTuning`, `data/balance/sites.tres`: `sites_by_tier` = 1, 1, 2, 2,
+(`SiteLimitTuning`, `data/balance/sites.tres`: `sites_by_tier` = 1, 2, 2, 2,
 3, unlimited for Tiers 1 to 6), `LOAN` (an open loan, like the lease), `CASH`
 (less than `cost_to_open`); `NONE` when it can be bought.
 `purchase_charges(lot)` is the price as `LOT_PURCHASE`, or the fixer price as

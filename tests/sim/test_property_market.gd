@@ -46,7 +46,7 @@ func _has_error(errors: PackedStringArray, fragment: String) -> bool:
 	return false
 
 
-func test_three_starter_lots_load_with_their_own_layouts() -> void:
+func test_lots_load_with_their_own_layouts() -> void:
 	var db: ContentDB = _db()
 	var ids: Array[StringName] = []
 	var layouts: Dictionary[ShopLayout, bool] = {}
@@ -55,9 +55,9 @@ func test_three_starter_lots_load_with_their_own_layouts() -> void:
 		ids.append(lot.id)
 		layouts[lot.base_layout] = true
 		sizes[lot.size_cells()] = true
-	assert_eq(ids, [&"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper"])
-	assert_eq(layouts.size(), 3, "each lot has its own layout")
-	assert_eq(sizes.size(), 3, "each lot is a different size")
+	assert_eq(ids, [&"beachfront_boardwalk", &"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper"])
+	assert_eq(layouts.size(), 4, "each lot has its own layout")
+	assert_eq(sizes.size(), 4, "each lot is a different size")
 	var fixer: LotDef = db.lot(&"town_fixer_upper")
 	assert_true(fixer.is_fixer_upper())
 	assert_eq(fixer.renovation_days, 3)
@@ -217,7 +217,7 @@ func test_a_bad_lot_file_fails_the_whole_load() -> void:
 	assert_eq(db.lots().size(), 0, "nothing is published from a failed load")
 	assert_null(db.recipe(&"burger"))
 	assert_eq(db.load_all(), PackedStringArray(), "the restored lot loads again")
-	assert_eq(db.lots().size(), 3)
+	assert_eq(db.lots().size(), 4)
 
 
 func test_listing_is_cheapest_to_open_first() -> void:
@@ -225,8 +225,7 @@ func test_listing_is_cheapest_to_open_first() -> void:
 	var ids: Array[StringName] = []
 	for lot: LotDef in PropertyMarket.listing(db.lots()):
 		ids.append(lot.id)
-	# Fixer-upper $6,000 + $2,500 work, seaside $18,000, rooftop $30,000.
-	assert_eq(ids, [&"town_fixer_upper", &"seaside_cliff", &"skyscraper_rooftop"])
+	assert_eq(ids, [&"town_fixer_upper", &"beachfront_boardwalk", &"seaside_cliff", &"skyscraper_rooftop"])
 	var cheap_fixer: LotDef = _good_lot(&"b_fixer")
 	cheap_fixer.price = 0
 	cheap_fixer.fixer_price = 700
@@ -241,9 +240,9 @@ func test_listing_is_cheapest_to_open_first() -> void:
 	assert_eq(order, [&"c_tie", &"a_ready", &"b_fixer"], "cost, then name; nulls dropped")
 
 
-func test_market_shows_from_tier_three() -> void:
+func test_market_shows_from_tier_two() -> void:
 	assert_false(PropertyMarket.shown(1))
-	assert_false(PropertyMarket.shown(2))
+	assert_true(PropertyMarket.shown(2))
 	assert_true(PropertyMarket.shown(3))
 	assert_true(PropertyMarket.shown(6))
 

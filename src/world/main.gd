@@ -4576,11 +4576,8 @@ func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
 	if StringName(identity) == LAYOUT.save_layout_id:
 		return LAYOUT
 	# A bought lot's own shell (FK-087, #464): its authored id, lot_<id>.
-	if content != null and not StringName(identity).is_empty():
-		for lot: LotDef in content.lots():
-			if lot.base_layout != null and lot.base_layout.save_layout_id == StringName(identity):
-				return lot.base_layout
-	return null
+	var lot: LotDef = content.lot_for_layout(StringName(identity)) if content != null else null
+	return lot.base_layout if lot != null else null
 
 
 ## Restore callbacks only stage decoded data. Live replacement waits for OK.
@@ -4989,22 +4986,25 @@ func _sync_report_button() -> void:
 	$HUD.call("set_report_hidden", _report != null and not _report.visible and shown_report != null)
 
 
-## Station definitions decide availability; temporary path/stock problems do not
-## rewrite the player's menu. Tier 1 remains the currently unlocked recipe set.
+## For an authored or staged shop, filter by its own lot and equipment before
+## considering the live world. A saved menu can belong to a different site.
 func _cookable_recipes(layout: ShopLayout) -> Array[RecipeDef]:
 	var definitions: Array[ItemDef] = []
 	for placement: ShopPlacement in layout.placements:
 		var definition: ItemDef = content.item(placement.item_id)
 		if definition != null:
 			definitions.append(definition)
-	return _cookable_from(definitions)
+	var lot: LotDef = content.lot_for_layout(layout.save_layout_id)
+	var tags: Array[StringName] = lot.tags if lot != null else ([] as Array[StringName])
+	return _cookable_from(definitions, content.recipes_for_lot(tags))
 
 
 ## The dishes the live shop's stations can make right now (FK-083).
 ## A station staff cannot reach (a bar or a fryer walled in on every side)
 ## does not count, so its dishes never go on sale only to be cancelled.
 func _cookable_live() -> Array[RecipeDef]:
-	return MenuAccess.cookable(world.grid, content.recipes(), 0, owner_progress.effective_tier())
+	return MenuAccess.cookable(world.grid, content.recipes_for_lot(_site_lot_tags()),
+		0, owner_progress.effective_tier())
 
 
 func _station_reachable(placed: PlacedItem) -> bool:
@@ -5015,7 +5015,7 @@ func _station_reachable(placed: PlacedItem) -> bool:
 	return false
 
 
-func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
+func _cookable_from(definitions: Array[ItemDef], lot_recipes: Array[RecipeDef]) -> Array[RecipeDef]:
 	var stations: Dictionary[StringName, bool] = {}
 	var fridge: bool = false
 	var pass_counter: bool = false
@@ -5029,7 +5029,7 @@ func _cookable_from(definitions: Array[ItemDef]) -> Array[RecipeDef]:
 	var recipes: Array[RecipeDef] = []
 	if not fridge or not pass_counter:
 		return recipes
-	for definition: RecipeDef in content.recipes():
+	for definition: RecipeDef in lot_recipes:
 		if definition.unlock_tier > owner_progress.effective_tier():
 			continue
 		var cookable: bool = true
@@ -5048,8 +5048,8 @@ func _refresh_menu_catalogue() -> void:
 	if menu_settings == null or world == null:
 		return
 	var cookable: Array[RecipeDef] = _cookable_live()
-	if MenuAccess.cookable(world.grid, content.recipes(), menu_settings.owner_level(),
-			owner_progress.effective_tier()).is_empty():
+	if MenuAccess.cookable(world.grid, content.recipes_for_lot(_site_lot_tags()),
+			menu_settings.owner_level(), owner_progress.effective_tier()).is_empty():
 		# An older or externally edited layout can already be broken. Explain
 		# why it cannot open rather than silently leaving stale dishes on sale.
 		_menu_access_error = MenuAccess.NO_DISH
@@ -5175,9 +5175,10 @@ func drink_station_hints() -> Array[String]:
 	var drink_stations: Dictionary[StringName, bool] = {}
 	# Drinks first, so a shared station's line names them before the food.
 	var waiting: Array[RecipeDef] = []
+	var lot_recipes: Array[RecipeDef] = content.recipes_for_lot(_site_lot_tags())
 	for drinks_pass: bool in [true, false]:
 		for kind: StringName in RecipeDef.ORDER_TYPES:
-			for recipe: RecipeDef in content.recipes():
+			for recipe: RecipeDef in lot_recipes:
 				if recipe.order_type == kind and recipe.is_drink() == drinks_pass and recipe.unlock_tier <= owner_progress.effective_tier() \
 						and recipe.unlock_level <= owner_progress.effective_level():
 					waiting.append(recipe)
@@ -8108,7 +8109,7 @@ func _unlocked_at_levels(previous_level: int, current_level: int,
 	if current_tier <= 0:
 		current_tier = owner_progress.career_tier
 	var unlocked: Array[String] = []
-	for recipe: RecipeDef in content.recipes():
+	for recipe: RecipeDef in content.recipes_for_lot(_site_lot_tags()):
 		if _newly_open(recipe.unlock_level, recipe.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
@@ -8211,7 +8212,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 		var vibe: VibeModel.Result = sim.vibe_result
 		budget = CustomerTypePicker.average_budget(sim.customer_types, sim.customer_level,
 			sim.review_book.average(), vibe.active_theme, vibe.arrival_theme_strength)
-	for recipe: RecipeDef in content.recipes():
+	for recipe: RecipeDef in content.recipes_for_lot(_site_lot_tags()):
 		var equipment: Array[Dictionary] = []
 		var required: Dictionary[StringName, bool] = {}
 		for step: RecipeStep in recipe.steps:
@@ -8313,7 +8314,7 @@ func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
 
 func _refresh_menu_details() -> void:
 	if _menu_panel != null and content != null:
-		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+		_menu_panel.set_recipe_details(content.recipes_for_lot(_site_lot_tags()), menu_recipe_details())
 		_menu_panel.set_dish_week(business_history.dish_week(Clock.sim.day - 1))
 		var favourites: Array[StringName] = []
 		for profile: RegularProfile in regulars.profiles:

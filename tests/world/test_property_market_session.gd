@@ -1,5 +1,5 @@
 extends TestCase
-## The morning Menu's Property button (FK-087 part 2): hidden below Tier 3,
+## The morning Menu's Property button (FK-087 part 2): hidden below Tier 2,
 ## then the market screen. Opening it changes no money, tier, save or sim
 ## state; buying is tests/world/test_lot_purchase_session.gd (#464).
 
@@ -38,17 +38,25 @@ func _panel() -> PropertyPanel:
 	return _main.get_node("Overlay/PropertyPanel") as PropertyPanel
 
 
-func test_property_is_hidden_below_tier_three() -> void:
+func test_tier_two_opens_the_market_and_lists_the_boardwalk() -> void:
 	await _start()
 	var owner: OwnerProgress = _main.get("owner_progress") as OwnerProgress
-	for tier: int in [1, 2]:
-		owner.career_tier = tier
-		assert_true(_main.call("set_menu_visible", true))
-		assert_false(_menu().is_property_available(), "no Property button at Tier %d" % tier)
-		assert_false((_menu().get_node("%PropertyButton") as Button).visible)
-		assert_false(_main.call("set_property_visible", true), "the screen refuses below Tier 3")
-		assert_false(_main.call("is_property_visible"))
-		_main.call("set_menu_visible", false)
+	owner.career_tier = 1
+	assert_true(_main.call("set_menu_visible", true))
+	assert_false(_menu().is_property_available())
+	assert_false((_menu().get_node("%PropertyButton") as Button).visible)
+	assert_false(_main.call("set_property_visible", true))
+	_main.call("set_menu_visible", false)
+
+	owner.career_tier = 2
+	assert_true(_main.call("set_menu_visible", true))
+	assert_true(_menu().is_property_available())
+	(_menu().get_node("%PropertyButton") as Button).pressed.emit()
+	assert_true(_main.call("is_property_visible"))
+	var boardwalk: Control = _panel().card_for(&"beachfront_boardwalk")
+	assert_not_null(boardwalk)
+	assert_false((boardwalk.get_node("Body/Lock") as Label).text.contains("needs Tier"))
+	assert_true(_panel().card_for(&"seaside_cliff").get_meta(&"locked"))
 
 
 func test_tier_three_browses_lots_cheapest_first_without_buying() -> void:
@@ -62,7 +70,8 @@ func test_tier_three_browses_lots_cheapest_first_without_buying() -> void:
 	(_menu().get_node("%PropertyButton") as Button).pressed.emit()
 	assert_true(_main.call("is_property_visible"))
 	assert_false(_main.call("is_menu_visible"), "the screen replaces the Menu")
-	assert_eq(_panel().lot_ids(), [&"town_fixer_upper", &"seaside_cliff", &"skyscraper_rooftop"] as Array[StringName])
+	assert_eq(_panel().lot_ids(), [&"town_fixer_upper", &"beachfront_boardwalk",
+		&"seaside_cliff", &"skyscraper_rooftop"] as Array[StringName])
 	for id: StringName in _panel().lot_ids():
 		var card: Control = _panel().card_for(id)
 		var buy: Button = card.get_node("Body/Top/Buy") as Button

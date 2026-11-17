@@ -304,6 +304,16 @@ func lot(id: StringName) -> LotDef:
 	return _lots.get(id) as LotDef
 
 
+## The authored layout identity also appears in site saves.
+func lot_for_layout(layout_id: StringName) -> LotDef:
+	if layout_id.is_empty():
+		return null
+	for definition: LotDef in _lots.values():
+		if definition.base_layout.save_layout_id == layout_id:
+			return definition
+	return null
+
+
 ## Every lot, sorted by id; a new array each call (PropertyMarket orders the listing).
 func lots() -> Array[LotDef]:
 	var result: Array[LotDef] = []
@@ -537,6 +547,14 @@ func recipes() -> Array[RecipeDef]:
 	return result
 
 
+func recipes_for_lot(tags: Array[StringName]) -> Array[RecipeDef]:
+	var result: Array[RecipeDef] = []
+	for definition: RecipeDef in recipes():
+		if LotAccess.allowed(definition, tags):
+			result.append(definition)
+	return result
+
+
 func items() -> Array[ItemDef]:
 	var result: Array[ItemDef] = []
 	var ids: Array[StringName] = []
@@ -626,6 +644,7 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("recipe[%d] is null" % index)
 			continue
 		_check_id(definition.id, "recipe", recipe_ids, errors)
+		_check_lot_tags(definition.lot_tags, declared_tags, "recipe '%s'" % definition.id, errors)
 		if not RecipeDef.Section.values().has(definition.section):
 			errors.append("recipe '%s': unknown menu section" % definition.id)
 		if definition.standard_price < 0:

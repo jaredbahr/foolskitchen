@@ -10,6 +10,7 @@ var recipe_id: StringName = &""
 var stage: StringName = &""
 var order_id: int = 0
 var footprint_radius: float = 0.0
+var _variant_models: Dictionary[StringName, Array] = {}
 var _shown: Node3D
 var _dirty: bool = false
 
@@ -43,15 +44,25 @@ func prepare(recipes: Array[RecipeDef]) -> void:
 			# A future unmapped dish still has an actual, already-warmed serving.
 			models[recipe.id] = plate
 			continue
-		var path: String = recipe.view_model.resource_path
-		var food: Node3D = by_scene.get(path) as Node3D
-		if food == null:
-			food = _model(recipe.view_model)
-			by_scene[path] = food
-		models[recipe.id] = food
-		# The same model is shared only by recipes with the same serving style.
-		food.position.y = plate_height if not recipe.is_drink() else 0.0
+		var height: float = plate_height if not recipe.is_drink() else 0.0
+		models[recipe.id] = _prepare_model(recipe.view_model, height, by_scene)
+		if not recipe.view_variants.is_empty():
+			var alternatives: Array[Node3D] = []
+			for variant: PackedScene in recipe.view_variants:
+				if variant != null:
+					alternatives.append(_prepare_model(variant, height, by_scene))
+			_variant_models[recipe.id] = alternatives
 	visible = false
+
+
+func _prepare_model(scene: PackedScene, height: float, by_scene: Dictionary[String, Node3D]) -> Node3D:
+	var model: Node3D = by_scene.get(scene.resource_path) as Node3D
+	if model == null:
+		model = _model(scene)
+		by_scene[scene.resource_path] = model
+	# The same model is shared only by recipes with the same serving style.
+	model.position.y = height
+	return model
 
 
 func show_dish(recipe: RecipeDef, dirty: bool) -> void:
@@ -64,6 +75,11 @@ func show_dish(recipe: RecipeDef, dirty: bool) -> void:
 		model = models.get(recipe.id, plate) as Node3D
 		if model == null:
 			model = plate
+	if _variant_models.has(recipe.id):
+		var alternatives: Array = _variant_models[recipe.id]
+		var index: int = posmod(order_id, alternatives.size() + 1) - 1
+		if index >= 0:
+			model = alternatives[index] as Node3D
 	if visible and recipe_id == recipe.id and _dirty == dirty and _shown == model:
 		return
 	_dirty = dirty

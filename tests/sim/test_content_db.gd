@@ -5,11 +5,36 @@ extends TestCase
 func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 31)
+	assert_eq(db.ingredients().size(), 32)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 83)
+	assert_eq(db.items().size(), 85)
 	assert_eq(db.collections().size(), 6)
 	assert_eq(db.collection(&"diner_classics").item_ids, [&"neon_open_sign", &"menu_board", &"diner_booth"])
+
+
+func test_seaside_recipes_use_their_equipment_and_are_marked_for_takeaway() -> void:
+	var db: ContentDB = _starter_db()
+	var seaside: Array[RecipeDef] = db.recipes_for_lot([&"seaside"])
+	var inland: Array[RecipeDef] = db.recipes_for_lot([&"rooftop"])
+	var equipment: Dictionary[StringName, StringName] = {
+		&"soft_serve": &"soft_serve_machine",
+		&"shaved_ice": &"shaved_ice_cart",
+		&"cone_fries": &"fryer",
+	}
+	for recipe_id: StringName in equipment:
+		var recipe: RecipeDef = db.recipe(recipe_id)
+		var item: ItemDef = db.item(equipment[recipe_id])
+		assert_true(recipe.takeaway_ok, recipe.display_name)
+		assert_true(seaside.has(recipe))
+		assert_false(inland.has(recipe))
+		assert_eq(recipe.steps.back().station_type, item.station_type)
+		if item.id != &"fryer":
+			assert_true(LotAccess.allowed(item, [&"seaside"]))
+			assert_false(LotAccess.allowed(item, []))
+	var sundae: RecipeDef = db.recipe(&"ice_cream_sundae")
+	assert_true(sundae.takeaway_ok)
+	assert_true(inland.has(sundae), "the existing diner sundae stays available")
+	assert_eq(sundae.steps[0].station_type, &"prep_counter")
 
 
 func test_lot_access_defaults_to_everywhere_and_accepts_any_shared_tag() -> void:
@@ -80,7 +105,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: IngredientDef in db.ingredients():
 		ingredient_ids.append(definition.id)
 	assert_eq(ingredient_ids, [&"bacon", &"beef_patty", &"beer", &"bread", &"bun", &"cereal", &"cheese", &"coffee_beans",
-		&"dough", &"egg", &"fish_fillet", &"flour", &"fresh_catch", &"frozen_fries", &"ice_cream", &"lemon", &"lettuce",
+		&"dough", &"egg", &"fish_fillet", &"flour", &"fresh_catch", &"frozen_fries", &"fruit_syrup", &"ice_cream", &"lemon", &"lettuce",
 		&"milk",
 		&"mussels", &"oil", &"pastry", &"potato", &"rice", &"sausage", &"shrimp", &"soda", &"soup_stock", &"tea",
 		&"tomato", &"tortilla", &"wine"])
@@ -88,9 +113,9 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
 	assert_eq(recipe_ids, [&"bacon_and_eggs", &"bar_fries", &"beer", &"burger", &"cereal", &"club_sandwich", &"coffee",
-		&"croissant", &"fish_and_chips", &"fried_eggs", &"fries", &"grilled_cheese", &"hot_dog", &"ice_cream_sundae",
+		&"cone_fries", &"croissant", &"fish_and_chips", &"fried_eggs", &"fries", &"grilled_cheese", &"hot_dog", &"ice_cream_sundae",
 		&"muffin", &"mussels_broth", &"pancakes", &"pizza_slice", &"salmon_maki", &"savoury_pie", &"seafood_stew",
-		&"shrimp_skewer", &"soft_drink", &"taco", &"tea", &"tomato_melt", &"tomato_soup", &"waffles", &"wine"])
+		&"shaved_ice", &"shrimp_skewer", &"soft_drink", &"soft_serve", &"taco", &"tea", &"tomato_melt", &"tomato_soup", &"waffles", &"wine"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
@@ -103,22 +128,23 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"order_counter", &"oven", &"pass_counter",
 		&"patio_chair", &"patio_table_2", &"patio_waiting_bench", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",
-		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"shop_name_sign", &"side_table", &"sink",
+		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"shaved_ice_cart",
+		&"shop_name_sign", &"side_table", &"sink", &"soft_serve_machine",
 		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"street_awning_2", &"street_awning_3", &"street_awning_4",
 		&"string_lights_2", &"string_lights_3", &"string_lights_4", &"table_2", &"table_4", &"television_vintage", &"tip_jar", &"toilet",
 		&"waiting_bench", &"wall_art_peaks", &"wall_art_sunrise", &"wall_hand_dryer", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 83)
+	assert_eq(db.items().size(), 85)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 31)
+	assert_eq(db.ingredients().size(), 32)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 83)
+	assert_eq(db.items().size(), 85)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -131,7 +157,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 143)
+	assert_eq(content_paths, 149)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

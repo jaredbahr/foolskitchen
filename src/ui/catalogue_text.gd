@@ -26,6 +26,8 @@ const STATION_TEXT: Dictionary[StringName, String] = {
 	&"sink": "Washes dirty plates",
 	&"fryer": "Fries dishes", &"oven": "Bakes dishes",
 	&"coffee": "Makes coffee and tea, and warms pastries",
+	&"soft_serve_machine": "Makes soft-serve cones",
+	&"shaved_ice_cart": "Makes shaved ice",
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
 	&"order_counter": "Café guests queue here to order and pay, then take a table or a takeaway",
@@ -44,6 +46,7 @@ const STORAGE_WORDS: Dictionary[int, String] = {
 const STATION_NAMES: Dictionary[StringName, String] = {
 	&"stove": "Stove", &"prep_counter": "Prep counter", &"sink": "Sink", &"fridge": "Fridge",
 	&"fryer": "Fryer", &"oven": "Oven", &"coffee": "Coffee machine",
+	&"soft_serve_machine": "Soft-serve machine", &"shaved_ice_cart": "Shaved-ice cart",
 	&"drinks_fridge": "Drinks fridge", &"drinks_shelf": "Drinks shelf",
 	&"order_counter": "Order counter", &"storage_shelf": "Storage shelf", &"freezer": "Freezer", &"toilet": "Toilet", &"wash_basin": "Wash basin",
 }

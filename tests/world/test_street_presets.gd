@@ -227,9 +227,11 @@ func test_the_view_builds_the_active_sites_street() -> void:
 	assert_true(view.neighbourhood_dressing.street_set == StreetPreset.starter().buildings)
 
 
-func test_the_seaside_lot_stands_on_the_promenade() -> void:
-	var lot: LotDef = load(LOTS + "seaside_cliff.tres") as LotDef
-	assert_eq(lot.street_preset, PROMENADE, "the seaside lot names the promenade (#596) until it has its cliff path")
+func test_the_boardwalk_lot_stands_on_the_promenade() -> void:
+	var lot: LotDef = load(LOTS + "beachfront_boardwalk.tres") as LotDef
+	var cliff: LotDef = load(LOTS + "seaside_cliff.tres") as LotDef
+	assert_eq(cliff.street_preset, SEASIDE)
+	assert_eq(lot.street_preset, PROMENADE)
 	var promenade: StreetPreset = StreetPreset.for_lot(lot)
 	assert_eq(promenade.id, &"promenade")
 	assert_false(promenade.has_traffic(), "a car-free front")

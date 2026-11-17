@@ -20,6 +20,24 @@ func test_authored_strip_reserves_the_street_approach() -> void:
 	assert_false(patio.can_hold(_street(-1, 4)))
 
 
+func test_rear_patio_preserves_the_street_and_uses_the_back_door() -> void:
+	var layout: ShopLayout = LAYOUT.duplicate() as ShopLayout
+	layout.patio_at_back = true
+	var rows: PackedStringArray = layout.rows.duplicate()
+	rows[0] = rows[0].substr(0, 4) + "." + rows[0].substr(5)
+	layout.rows = rows
+	var grid: SimGrid = SimGrid.from_ascii(layout.rows)
+	var entries: Array[Vector2i] = grid.entries()
+	var patio: PatioArea = PatioArea.from_layout(layout)
+	assert_eq(patio.area, Rect2i(0, -layout.patio_depth, rows[0].length(), layout.patio_depth))
+	assert_true(patio.can_hold(Vector2i(entries[0].x, -1)))
+	assert_false(patio.can_hold(_street(-1, 0)))
+	assert_true(patio.apply(grid, patio.cells()))
+	assert_eq(grid.entries(), entries)
+	assert_true(grid.is_reachable(Vector2i(4, 0), Vector2i(4, -2)))
+	assert_true(grid.is_outdoor_floor(Vector2i(4, -2)))
+
+
 func test_empty_ownership_and_older_layouts_do_not_change_the_grid() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	var before: Rect2i = grid.bounds

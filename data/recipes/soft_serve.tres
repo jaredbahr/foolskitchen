@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/ice-cream.glb" id="4_view"]
+[ext_resource type="Resource" path="res://data/ingredients/ice_cream.tres" id="ingredient_ice_cream"]
+[ext_resource type="PackedScene" path="res://assets/props/ice_cream_cone_chocolate.tscn" id="view_alt_0"]
+[ext_resource type="PackedScene" path="res://assets/props/ice_cream_cone_mint.tscn" id="view_alt_1"]
+
+[sub_resource type="Resource" id="Step_0"]
+script = ExtResource("3_step")
+station_type = &"soft_serve_machine"
+duration_ticks = 9
+
+[resource]
+script = ExtResource("1_recipe")
+view_model = ExtResource("4_view")
+view_variants = Array[PackedScene]([ExtResource("view_alt_0"), ExtResource("view_alt_1")])
+id = &"soft_serve"
+display_name = "Soft serve"
+section = 4
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_ice_cream")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_0")])
+base_quality = 0.57
+standard_price = 6
+unlock_tier = 2
+unlock_level = 4
+default_enabled = false
+lot_tags = Array[StringName]([&"seaside"])
+takeaway_ok = true

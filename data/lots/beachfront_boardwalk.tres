@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="LotDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/lot_def.gd" id="1_lot"]
+[ext_resource type="Resource" path="res://data/layouts/lot_beachfront_boardwalk.tres" id="2_layout"]
+
+[resource]
+script = ExtResource("1_lot")
+id = &"beachfront_boardwalk"
+display_name = "Beachfront Boardwalk"
+blurb = "A little shop between the beach and the boardwalk. Families stop for something cold, and the regulars know the way to the back patio."
+base_layout = ExtResource("2_layout")
+street_preset = "res://data/streets/promenade.tres"
+price = 11500
+daily_rent = 90
+expansion_price = 6000
+expanded_daily_rent = 125
+expansion_west = 3
+expansion_east = 3
+expansion_north = 0
+min_tier = 2
+min_reputation = 3.8
+guest_mix = Dictionary[StringName, float]({
+&"family": 0.65,
+&"regular": 0.35
+})
+tags = Array[StringName]([&"seaside"])
