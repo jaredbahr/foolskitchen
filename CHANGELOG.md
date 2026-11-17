@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- People no longer shuffle back and forth in a dead-end aisle. When someone coming out of a dead end meets someone walking in, the one walking in backs out, waits beside the aisle until the other is through, and then goes in. Before, the two could trade places for a quarter of a minute before one got past. (#545)
 - The Hygiene overview in the Build and Buy catalogue now opens as a small card floating above the catalogue, by the Hygiene button, instead of pushing the item cards out of view: the item cards keep their space while it is open, and the card stays off the top bar, the build hints and the goals list. At 125% UI size the card is smaller, and at 150%, where there is no room above the catalogue, it is a short strip along the catalogue's bottom edge. Press Esc or click anywhere else to put the card away (with the card open, the first Esc only does that), and point at the Hygiene button to see it again. The floor highlights stay on until you switch Hygiene off. (#544)
 - The Build and Buy catalogue is wider instead of taller: it shows two full rows of 13 item cards (about as many as three of the old rows) and still leaves the middle of the screen free for the shop. The vibe, curb appeal and theme readout now sits at the right of the Build/Buy and tools row. At a larger UI scale fewer cards show per row and the readout can wrap under the tools. (#541)
 - People get past each other at tight doors. In a shop with only a one-tile way in behind the door, a guest who has been given a table waits outside until whoever is leaving has come out ("Letting someone out before I go in"), people leaving no longer get stuck behind guests waiting beside the door, and a guest with a table can get through the waiting crowd to sit down instead of losing the table. In any shop, three people reaching for the same free tile no longer all stand and wait for each other. (#535)
@@ -235,6 +236,7 @@ Each line ends with its PR number.
 
 ### Under the hood
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
+- The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#549)
 - Claude can hand small, self-contained coding tasks (boilerplate, test scaffolds, log summaries) to DeepSeek with `tools/deepseek.py`, and checks the result before it goes in. (#543)
 - The first piece taken out of the 8,000-line game session script: the facts a closing day leaves for the evening report (XP earned, goals reached, records, tier rises) now live in one small tested class, and `tools/main_map.py` prints which pieces can come out next. The evening report is unchanged. (#534)
 - The screenshot tool takes no new options: each new capture is its own review scene, and a test fails if a new option is added. (#532)
