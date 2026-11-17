@@ -46,6 +46,25 @@ const FAR_DEPTH: float = 2.20
 const PLANK_STEP: float = 0.32
 const PLANK_SEAM: float = 0.022
 const PLANK_LIFT: float = 0.004
+## The promenade's walking lanes (v), nearest the shops first (#596): one walker each,
+## each sweeping this far either side of its lane.
+const PROMENADE_LANES: Array[float] = [2.72, 3.58, 5.62, 6.5, 7.36]
+const PROMENADE_HALF: float = 0.38
+## How fast each kind of promenade walker goes (m/s) and how fast their legs move.
+const WALKER_SPEEDS: Dictionary[StringName, float] = {&"stroll": 0.65, &"dog": 0.6, &"pram": 0.5, &"jog": 1.35, &"cycle": 1.9}
+const WALKER_STRIDES: Dictionary[StringName, float] = {&"stroll": 1.0, &"dog": 1.0, &"pram": 0.85, &"jog": 1.9, &"cycle": 1.0}
+const PROMENADE_GUESTS: Array[int] = [1, 3, 6, 4, 7]
+## The cyclist's seat height, how far ahead the dog trots (path metres) and its leash.
+const BIKE_SEAT: float = 0.3
+const DOG_LEAD: float = 0.75
+const DOG_SIDE: float = 0.2
+const LEASH_HAND: Vector3 = Vector3(0.14, 0.42, 0.06)
+## How a terrace neighbour shows (#596): trading, or closed with a for-sale board.
+## A neighbour the player has bought and knocked through is #597's (TODO).
+enum NeighbourState { OCCUPIED, FOR_SALE }
+const SALE_TEXT: String = "FOR SALE"
+const SIGN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const SIGN_FONT_SIZE: int = 48
 
 ## Far street and ground meshes by street signature, shared by every dressing
 ## (a new game or a loaded save re-uses them instead of re-batching ~100k triangles).
@@ -140,6 +159,21 @@ var _night: float = 0.0
 var _late: float = 0.0
 var _window_nodes: Array[MeshInstance3D] = []
 var _window_materials: Array[StandardMaterial3D] = []
+## True when cars drive past; a promenade (#596) has none.
+var _traffic: bool = true
+## The people out walking, one entry per pedestrian: kind, lane (v), speed, stride rate and phase.
+var _walk_kinds: Array[StringName] = []
+var _walk_lanes: Array[float] = []
+var _walk_speeds: Array[float] = []
+var _walk_strides: Array[float] = []
+var _walk_phases: Array[float] = []
+## What each walker has with them (a bike, a pram, a dog), or null.
+var _walk_props: Array[Node3D] = []
+var _promenade: NeighbourhoodPromenade
+## The named terrace neighbours (#596): their nodes, plans and the state each shows.
+var _neighbours: Dictionary[StringName, Node3D] = {}
+var _neighbour_plans: Dictionary[StringName, NeighbourhoodBuildings.Plan] = {}
+var _neighbour_states: Dictionary[StringName, int] = {}
 
 
 func _init() -> void:
@@ -157,6 +191,11 @@ func use_preset(value: StreetPreset) -> void:
 	preset = value
 	ground_skin = value.ground if value != null else null
 	street_set = value.buildings if value != null else null
+
+
+## True when the street's preset is a car-free promenade (#596).
+func has_promenade() -> bool:
+	return preset != null and preset.promenade != null
 
 
 func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictionary],
@@ -187,6 +226,8 @@ func rebuild() -> void:
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
 		_frontages, _native_pavement, built, ground_skin.signature() if ground_skin != null else "standard",
 		street_set.signature(), preset.shore.signature() if has_shore() else ""]
+	if has_promenade():
+		key.append(preset.promenade.signature())
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -235,11 +276,19 @@ func rebuild() -> void:
 		far_count += 1
 	far_count = maxi(far_count, count)
 	_visual_half = float(far_count) * road_box.size.x * 0.5
-	_build_road(road_prop, road_box, count)
-	_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
-	_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
+	_traffic = not has_promenade()
+	_promenade = NeighbourhoodPromenade.new(preset.promenade, street_set) if has_promenade() else null
+	if _traffic:
+		_build_road(road_prop, road_box, count)
+		_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
+		_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
+	else:
+		# A promenade: one sweep of paving from the shop fronts to the far edge, no road.
+		_build_paving(paving, paving_box, PAVING_START, FAR_START + FAR_DEPTH - PAVING_START, "NearPavement", true)
+		_far_pavement = _near_pavement
 	_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
 	_build_planks()
+	_build_promenade_pattern()
 	road_prop.free()
 	if not patio.is_empty():
 		paving.set_body_tint(patio_color())
@@ -261,7 +310,7 @@ func rebuild() -> void:
 	ground_root.visible = _configured
 	far_root.visible = _configured
 	_actors_root.visible = _configured
-	_traffic_root.visible = _configured
+	_traffic_root.visible = _configured and _traffic
 	_life_root.visible = _configured
 	_shore_root.visible = _configured
 	_apply_night()
@@ -274,7 +323,7 @@ func _ensure_roots() -> void:
 	static_root = Node3D.new()
 	static_root.name = "Static"
 	add_child(static_root)
-	for label: String in ["Road", "Pavement", "Kerbs", "Buildings", "StreetLamps", "Furniture"]:
+	for label: String in ["Road", "Pavement", "Kerbs", "Buildings", "StreetLamps", "Furniture", "Neighbours"]:
 		var group: Node3D = Node3D.new()
 		group.name = label
 		static_root.add_child(group)
@@ -322,6 +371,8 @@ func _clear_static() -> void:
 	_window_nodes.clear()
 	_window_materials.clear()
 	_furniture.clear()
+	_neighbours.clear()
+	_neighbour_plans.clear()
 	_crowns.clear()
 	_building_signs.clear()
 	_shop_doors.clear()
@@ -456,6 +507,32 @@ func _build_planks() -> void:
 	_static_meshes.append(mesh)
 
 
+## The promenade's paving pattern (#596): slab joints, the centre band and its wave,
+## out to the street's visual ends. None on a street with a road.
+func _build_promenade_pattern() -> void:
+	if _promenade == null:
+		return
+	var holes: Array[Rect2] = []
+	var inverse: Transform3D = _frame.affine_inverse()
+	for bounds: AABB in _native_pavement:
+		var local: AABB = inverse * bounds
+		holes.append(Rect2(local.position.x, local.position.z - _shift, local.size.x, local.size.z))
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	material.disable_receive_shadows = true
+	var mesh: MeshInstance3D = MeshInstance3D.new()
+	mesh.name = "PromenadePattern"
+	mesh.mesh = _promenade.pattern(-_visual_half, _visual_half, FAR_START + FAR_DEPTH, _paving_top, holes)
+	mesh.material_override = material
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.transform = _frame * Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, _shift))
+	_groups["Pavement"].add_child(mesh)
+	_static_meshes.append(mesh)
+
+
 func _build_road(source: PropView, bounds: AABB, count: int) -> void:
 	var crossing: PropView = _made_prop("crossing_segment")
 	var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
@@ -468,17 +545,24 @@ func _build_road(source: PropView, bounds: AABB, count: int) -> void:
 		Vector3(_street_half * 2.0, bounds.size.y, ROAD_END - ROAD_START))
 
 
-func _build_paving(source: PropView, bounds: AABB, start: float, depth: float, label: String) -> void:
+## `fit` stretches the slabs across the street so a whole number of rows fills `depth`
+## exactly (the promenade's one wide band).
+func _build_paving(source: PropView, bounds: AABB, start: float, depth: float, label: String, fit: bool = false) -> void:
 	var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
 	var holes: Array[AABB] = _native_pavement.duplicate()
 	holes.append(_reserve)
 	var columns: int = ceili(_street_half * 2.0 / bounds.size.x)
 	var rows: int = roundi(depth / bounds.size.z)
+	var row_depth: float = depth / float(rows) if fit else bounds.size.z
+	var stretch: Basis = Basis.from_scale(Vector3(1.0, 1.0, row_depth / bounds.size.z))
 	for row: int in rows:
 		for column: int in columns:
 			var u: float = -_street_half + (float(column) + 0.5) * bounds.size.x
-			var v: float = start + (float(row) + 0.5) * bounds.size.z
-			batch.add_prop(source, _placement(u, _paving_top - bounds.end.y, v, PI), holes)
+			var v: float = start + (float(row) + 0.5) * row_depth
+			var placement: Transform3D = _placement(u, _paving_top - bounds.end.y, v, PI)
+			if fit:
+				placement.basis = placement.basis * stretch
+			batch.add_prop(source, placement, holes)
 	_add_batch(batch, label, "Pavement")
 	var box: AABB = _frame * AABB(Vector3(-_street_half, _paving_top - bounds.size.y, _shift + start),
 		Vector3(_street_half * 2.0, bounds.size.y, depth))
@@ -570,6 +654,8 @@ func _build_patio_edge(cells: Array[Vector2i]) -> void:
 func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_box: AABB,
 		count: int, far_count: int) -> void:
 	var key: Array = [_frame, _street_half, _shift, _paving_top, far_count, ground_skin.pavement]
+	if not _traffic:
+		key.append("promenade")
 	if key == _far_key and far_root.get_child_count() > 0:
 		far_root.transform = _frame
 		return
@@ -591,7 +677,8 @@ func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_
 		if absi(index - middle) <= inner:
 			continue
 		var u: float = (float(index) - float(far_count - 1) * 0.5) * width
-		road_batch.add_prop(road, _far_placement(u, -road_box.end.y, (ROAD_START + ROAD_END) * 0.5))
+		if _traffic:
+			road_batch.add_prop(road, _far_placement(u, -road_box.end.y, (ROAD_START + ROAD_END) * 0.5))
 	# Kerbs are long straight runs: each piece is stretched along the street to
 	# cover several tile widths, so far runs cost a fraction of the triangles.
 	var chunk: int = 6
@@ -605,6 +692,8 @@ func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_
 			var specs: Array[Vector2] = [Vector2(0.0, 3.355), Vector2(0.0, 5.855), Vector2(-0.03, PAVING_START - 0.05),
 				Vector2(-0.03, FAR_START + FAR_DEPTH + 0.05)]
 			for side: int in 4:
+				if side < 2 and not _traffic:
+					continue
 				kerb_batches[side].add_prop(kerb, Transform3D(stretch, Vector3(u, specs[side].x, _shift + specs[side].y)))
 			start = last + 1
 	kerb.free()
@@ -624,6 +713,17 @@ func _build_far_street(road: PropView, road_box: AABB, paving: PropView, paving_
 			var last: int = mini(first + span - 1, run.y)
 			var u: float = -_street_half + (float(first + last) * 0.5 + 0.5) * paving_box.size.x
 			var stretch: Basis = Basis(Vector3.UP, PI) * Basis.from_scale(Vector3(float(last - first + 1), 1.0, 1.0))
+			if not _traffic:
+				# The promenade's one wide band, its slabs stretched to fill it exactly.
+				var whole: float = FAR_START + FAR_DEPTH - PAVING_START
+				var rows: int = roundi(whole / paving_box.size.z)
+				var row_depth: float = whole / float(rows)
+				var fitted: Basis = stretch * Basis.from_scale(Vector3(1.0, 1.0, row_depth / paving_box.size.z))
+				for row: int in rows:
+					var v: float = PAVING_START + (float(row) + 0.5) * row_depth
+					pave.add_prop(paving, Transform3D(fitted, Vector3(u, _paving_top - paving_box.end.y, _shift + v)))
+				first = last + 1
+				continue
 			for spec: Vector3i in [Vector3i(0, rows_near, 0), Vector3i(1, rows_far, 1)]:
 				var start_v: float = PAVING_START if spec.x == 0 else FAR_START
 				for row: int in spec.y:
@@ -647,7 +747,7 @@ func _add_far(batch: NeighbourhoodMeshBatch, label: String) -> void:
 
 func _build_kerbs(width: float, count: int) -> void:
 	var prop: PropView = _made_prop("kerb_segment")
-	for side: int in 2:
+	for side: int in (2 if _traffic else 0):
 		var batch: NeighbourhoodMeshBatch = NeighbourhoodMeshBatch.new()
 		for index: int in count:
 			var u: float = (float(index) - float(count - 1) * 0.5) * width
@@ -705,15 +805,136 @@ func _build_buildings() -> void:
 				builder.build_mesh(plan).free()
 			_store_windows(builder, key)
 		_add_windows(_window_cache[key])
+		_collect_neighbours(builder)
 		return
 	for plan: NeighbourhoodBuildings.Plan in builder.plans:
-		var mesh: MeshInstance3D = builder.build_mesh(plan)
-		mesh.transform = _frame
-		group.add_child(mesh)
-		_static_meshes.append(mesh)
+		var parts: Array[MeshInstance3D] = []
+		if String(plan.neighbour_id).is_empty():
+			parts.append(builder.build_mesh(plan))
+		else:
+			parts = builder.build_parts(plan)
+		for mesh: MeshInstance3D in parts:
+			mesh.transform = _frame
+			group.add_child(mesh)
+			_static_meshes.append(mesh)
 	_store_cached(group, key)
 	_store_windows(builder, key)
 	_add_windows(_window_cache[key])
+	_collect_neighbours(builder)
+
+
+## Gathers each named terrace neighbour's parts under its own node (#596):
+## Neighbours/<id> holds Shell, Trade, ForSale and the painted Sign, placed on the
+## building's facade (local +z faces the street), then shows the state it was given.
+func _collect_neighbours(builder: NeighbourhoodBuildings) -> void:
+	var buildings: Node3D = _groups["Buildings"]
+	var group: Node3D = _groups["Neighbours"]
+	for plan: NeighbourhoodBuildings.Plan in builder.plans:
+		if String(plan.neighbour_id).is_empty():
+			continue
+		var node: Node3D = Node3D.new()
+		node.name = String(plan.neighbour_id)
+		node.transform = _frame * plan.xf
+		group.add_child(node)
+		var inverse: Transform3D = plan.xf.affine_inverse()
+		for part: Array in [["", "Shell"], ["_Trade", "Trade"], ["_ForSale", "ForSale"]]:
+			var mesh: Node3D = buildings.get_node_or_null(NodePath(plan.id + String(part[0]))) as Node3D
+			if mesh != null:
+				buildings.remove_child(mesh)
+				mesh.transform = inverse
+			else:
+				mesh = Node3D.new()
+			mesh.name = String(part[1])
+			node.add_child(mesh)
+		var board: Dictionary = NeighbourhoodTerrace.sign_board(plan)
+		if not board.is_empty():
+			var ink: Color = plan.style.sign_ink
+			var sign: Label3D = _painted_label("Sign", plan.style.sign_text, board, ink)
+			# An arcade's name is lit; the others are paint and darken with the night.
+			sign.shaded = plan.form != ShopStyle.Form.ARCADE
+			node.add_child(sign)
+		var sale: Dictionary = NeighbourhoodTerrace.sale_board(plan)
+		var sale_node: Node3D = node.get_node(^"ForSale") as Node3D
+		var words: Label3D = _painted_label("Words", SALE_TEXT, sale, street_set.signal_red.darkened(0.15))
+		words.transform = sale_node.transform.affine_inverse() * words.transform
+		sale_node.add_child(words)
+		_neighbours[plan.neighbour_id] = node
+		_neighbour_plans[plan.neighbour_id] = plan
+		_show_neighbour(plan.neighbour_id)
+
+
+## A line of painted lettering filling `board` (its building-local centre and size).
+func _painted_label(label: String, text: String, board: Dictionary, ink: Color) -> Label3D:
+	var words: Label3D = Label3D.new()
+	words.name = label
+	words.text = text
+	words.font = SIGN_THEME.default_font if SIGN_THEME.default_font != null else ThemeDB.fallback_font
+	words.font_size = SIGN_FONT_SIZE
+	words.outline_size = 0
+	words.modulate = ink
+	words.double_sided = false
+	words.shaded = true
+	words.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var size: Vector2 = board["size"]
+	var width: float = words.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, SIGN_FONT_SIZE).x
+	var height: float = words.font.get_height(SIGN_FONT_SIZE)
+	words.pixel_size = minf(size.x / maxf(width, 1.0), size.y / maxf(height, 1.0))
+	words.position = board["centre"] + Vector3(0.0, 0.0, 0.004)
+	return words
+
+
+# --- the terrace neighbours' API (#596, for #597) ------------------------------
+
+## The ids of the street's named terrace neighbours, nearest the lot first, left side
+## (-u) then right. Empty on a street without a named terrace (the starter street).
+func neighbour_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for id: StringName in _neighbours:
+		ids.append(id)
+	return ids
+
+
+## The neighbour's node (Neighbours/<id>: Shell, Trade, ForSale, Sign), or null. Its
+## transform is the facade's centre on the ground, +z facing the street.
+func neighbour(id: StringName) -> Node3D:
+	return _neighbours.get(id, null)
+
+
+## What a neighbour is (for tools and #597): its display name (the sign), the side of the
+## lot it stands on (-1 left, +1 right), its slot outward from the lot, its building form,
+## its width and its facade transform in the dressing's space.
+func neighbour_info(id: StringName) -> Dictionary:
+	if not _neighbour_plans.has(id):
+		return {}
+	var plan: NeighbourhoodBuildings.Plan = _neighbour_plans[id]
+	var side: float = signf(plan.xf.origin.x - _local_reserve.get_center().x)
+	var slot: int = (plan.seed_value - 40) % 10
+	return {"name": plan.style.sign_text, "side": int(side), "slot": slot, "form": plan.form, "width": plan.width,
+		"facade": _frame * plan.xf, "state": neighbour_state(id)}
+
+
+func neighbour_state(id: StringName) -> NeighbourState:
+	return _neighbour_states.get(id, NeighbourState.OCCUPIED) as NeighbourState
+
+
+## Shows a neighbour trading (the default) or closed with a for-sale board. The state is
+## kept across rebuilds. False when the street has no such neighbour.
+## TODO(#597): a KNOCKED_THROUGH state once a neighbour can be bought and joined to the shop.
+func set_neighbour_state(id: StringName, state: NeighbourState) -> bool:
+	if not _neighbours.has(id):
+		return false
+	_neighbour_states[id] = state
+	_show_neighbour(id)
+	return true
+
+
+func _show_neighbour(id: StringName) -> void:
+	var node: Node3D = _neighbours.get(id, null)
+	if node == null:
+		return
+	var for_sale: bool = neighbour_state(id) == NeighbourState.FOR_SALE
+	(node.get_node(^"Trade") as Node3D).visible = not for_sale
+	(node.get_node(^"ForSale") as Node3D).visible = for_sale
 
 
 func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
@@ -911,15 +1132,29 @@ func _clear_bounds(bounds: AABB) -> bool:
 
 
 func _ensure_actors() -> void:
-	if pedestrians.is_empty():
-		for index: int in 3:
+	_plan_walkers()
+	# Reconcile the walkers with the street's list: a site switch can change it.
+	while pedestrians.size() > _walk_kinds.size():
+		var spare: PersonView = pedestrians.pop_back()
+		_actors_root.remove_child(spare)
+		spare.free()
+		_directions.pop_back()
+	var guests: Array[int] = GUEST_IDS if _traffic else PROMENADE_GUESTS
+	for index: int in _walk_kinds.size():
+		if index >= pedestrians.size():
 			var person: PersonView = PERSON.instantiate() as PersonView
 			person.name = "Pedestrian%d" % index
 			person.role = &"guest"
-			person.guest_id = GUEST_IDS[index]
+			person.guest_id = guests[index % guests.size()]
 			_actors_root.add_child(person)
 			pedestrians.append(person)
 			_directions.append(_tangent)
+		elif pedestrians[index].guest_id != guests[index % guests.size()]:
+			pedestrians[index].guest_id = guests[index % guests.size()]
+			pedestrians[index].set_look(&"guest", pedestrians[index].guest_id)
+	_players.clear()
+	_animation_lengths.clear()
+	_build_walk_props()
 	if car == null:
 		car = _made_prop("compact_car")
 		car.name = "Car"
@@ -929,19 +1164,111 @@ func _ensure_actors() -> void:
 			(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
-func _initialize_players() -> void:
-	if pedestrians.size() != 3:
+## Who walks the street: three strollers on a road (#423); on a promenade (#596) the
+## preset's walkers, one per lane.
+func _plan_walkers() -> void:
+	_walk_kinds.clear()
+	_walk_lanes.clear()
+	_walk_speeds.clear()
+	_walk_strides.clear()
+	_walk_phases.clear()
+	if _traffic:
+		for index: int in 3:
+			_walk_kinds.append(&"stroll")
+			_walk_lanes.append(WALK_LANES[index])
+			_walk_speeds.append(WALK_SPEED)
+			_walk_strides.append(1.0)
+			_walk_phases.append(PHASES[index])
 		return
-	if _players.size() == 3 and _players[0] != null and _players[1] != null and _players[2] != null:
+	for index: int in mini(preset.promenade.walkers.size(), PROMENADE_LANES.size()):
+		var kind: StringName = preset.promenade.walkers[index]
+		_walk_kinds.append(kind)
+		_walk_lanes.append(PROMENADE_LANES[index])
+		_walk_speeds.append(WALKER_SPEEDS.get(kind, WALK_SPEED))
+		_walk_strides.append(WALKER_STRIDES.get(kind, 1.0))
+		_walk_phases.append(NeighbourhoodGround.hash01(index, 5, street_set.seed_salt))
+
+
+## The bike, pram or dog that goes with each promenade walker, rebuilt with the street.
+func _build_walk_props() -> void:
+	for prop: Node3D in _walk_props:
+		if prop != null:
+			if prop.has_meta(&"leash"):
+				var old_leash: Node = prop.get_meta(&"leash") as Node
+				old_leash.get_parent().remove_child(old_leash)
+				old_leash.free()
+			prop.get_parent().remove_child(prop)
+			prop.free()
+	_walk_props.clear()
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	material.disable_receive_shadows = true
+	for index: int in _walk_kinds.size():
+		var kind: StringName = _walk_kinds[index]
+		var prop: Node3D = null
+		if _promenade != null and (kind == &"cycle" or kind == &"pram" or kind == &"dog"):
+			var skin: PromenadeSkin = preset.promenade
+			prop = Node3D.new()
+			prop.name = "%s%d" % [String(kind).capitalize(), index]
+			var body: MeshInstance3D = MeshInstance3D.new()
+			body.name = "Body"
+			body.material_override = material
+			body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			prop.add_child(body)
+			match kind:
+				&"cycle":
+					body.mesh = _promenade.bike(skin.bike_colors[index % skin.bike_colors.size()])
+				&"pram":
+					body.mesh = _promenade.pram(skin.pram_colors[index % skin.pram_colors.size()])
+				_:
+					var coat: Color = skin.dog_colors[index % skin.dog_colors.size()]
+					body.mesh = _promenade.dog_body(coat)
+					var leg_mesh: ArrayMesh = _promenade.dog_leg(coat)
+					for leg: int in 4:
+						var limb: MeshInstance3D = MeshInstance3D.new()
+						limb.name = "Leg%d" % leg
+						limb.mesh = leg_mesh
+						limb.material_override = material
+						limb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+						limb.position = Vector3(-0.04 if leg % 2 == 0 else 0.04, 0.12, 0.07 if leg < 2 else -0.09)
+						prop.add_child(limb)
+					var leash: MeshInstance3D = MeshInstance3D.new()
+					leash.name = "Leash%d" % index
+					var line: BoxMesh = BoxMesh.new()
+					line.size = Vector3(0.012, 0.012, 1.0)
+					leash.mesh = line
+					var cord: StandardMaterial3D = StandardMaterial3D.new()
+					cord.albedo_color = street_set.signal_red.darkened(0.2)
+					cord.roughness = 1.0
+					leash.material_override = cord
+					leash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+					_actors_root.add_child(leash)
+					prop.set_meta(&"leash", leash)
+			_actors_root.add_child(prop)
+		_walk_props.append(prop)
+
+
+func _initialize_players() -> void:
+	if pedestrians.is_empty() or pedestrians.size() != _walk_kinds.size():
+		return
+	if _players.size() == pedestrians.size() and not _players.has(null):
 		return
 	_players.clear()
 	_animation_lengths.clear()
-	for person: PersonView in pedestrians:
+	for index: int in pedestrians.size():
+		var person: PersonView = pedestrians[index]
 		if not person.is_node_ready():
 			_players.clear()
 			_animation_lengths.clear()
 			return
-		person.set_pose(true, false, false, false)
+		var kind: StringName = _walk_kinds[index]
+		if kind == &"cycle":
+			person.set_pose(false, true, false, false, BIKE_SEAT)
+		else:
+			person.set_pose(true, false, kind == &"pram", false)
 		person.set_playback_speed(1.0)
 		var players: Array[Node] = person.find_children("*", "AnimationPlayer", true, false)
 		var player: AnimationPlayer = players[0] as AnimationPlayer if not players.is_empty() else null
@@ -950,7 +1277,8 @@ func _initialize_players() -> void:
 			return
 		player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 		_players.append(player)
-		_animation_lengths.append(player.get_animation(&"walk").length)
+		var clip: StringName = player.current_animation if _walk_kinds[index] != &"stroll" and player.current_animation != &"" else &"walk"
+		_animation_lengths.append(player.get_animation(clip).length)
 		for node: Node in person.find_children("*", "MeshInstance3D", true, false):
 			(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
@@ -958,12 +1286,17 @@ func _initialize_players() -> void:
 func _build_routes() -> void:
 	_routes.clear()
 	_pedestrian_sweeps.clear()
-	for lane: float in WALK_LANES:
-		var route: Vector2 = _safe_route(_shift + lane, WALK_HALF, WALK_HALF)
+	var half_z: float = WALK_HALF if _traffic else PROMENADE_HALF
+	for lane: float in _walk_lanes:
+		var route: Vector2 = _safe_route(_shift + lane, WALK_HALF, half_z)
 		_routes.append(route)
-		var box: AABB = AABB(Vector3(route.x - WALK_HALF, _paving_top + WALK_BOTTOM, _shift + lane - WALK_HALF),
-			Vector3(maxf(route.y - route.x, 0.0) + WALK_HALF * 2.0, WALK_TOP - WALK_BOTTOM, WALK_HALF * 2.0))
+		var box: AABB = AABB(Vector3(route.x - WALK_HALF, _paving_top + WALK_BOTTOM, _shift + lane - half_z),
+			Vector3(maxf(route.y - route.x, 0.0) + WALK_HALF * 2.0, WALK_TOP - WALK_BOTTOM, half_z * 2.0))
 		_pedestrian_sweeps.append(_frame * box)
+	if not _traffic:
+		_car_route = Vector2.ZERO
+		_car_sweep = AABB()
+		return
 	_car_rotation = _frame.basis * Basis(Vector3.UP, -PI * 0.5)
 	var rotated: AABB = Transform3D(Basis(Vector3.UP, -PI * 0.5), Vector3.ZERO) * _car_bounds
 	_car_route = _safe_route(_shift + CAR_LANE, rotated.size.x * 0.5, rotated.size.z * 0.5)
@@ -1009,7 +1342,7 @@ func _build_lamps() -> void:
 	var bulbs: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
 	var glow: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
 	var halo_at: Array[Vector3] = []
-	for index: int in 2:
+	for index: int in (2 if _promenade == null else 0):
 		var placement: Transform3D = _placement(-4.0 if index == 0 else 4.0, 0.0,
 			3.455 if index == 0 else 5.755, PI * 0.5)
 		var actual: AABB = placement * bounds
@@ -1032,6 +1365,8 @@ func _build_lamps() -> void:
 		else:
 			build_error = "A street lamp has no clear outside position"
 	prop.free()
+	if _promenade != null:
+		_build_promenade_lamps(bulbs, glow, halo_at)
 	if bulbs.soup.is_empty():
 		return
 	_bulb_material = StandardMaterial3D.new()
@@ -1080,6 +1415,47 @@ func _build_lamps() -> void:
 		halo.transform = _frame * Transform3D(Basis.IDENTITY, point)
 		_life_root.add_child(halo)
 		_lamp_halos.append(halo)
+
+
+## The promenade's double-lantern lamp posts along its centre band (#596): one batched
+## mesh, each lantern's bulb, pool of light and halo joining the street's night lights.
+func _build_promenade_lamps(bulbs: NeighbourhoodBuildings.Pen, glow: NeighbourhoodGround.Soup, halo_at: Array[Vector3]) -> void:
+	var holes: Array[Rect2] = []
+	var inverse: Transform3D = _frame.affine_inverse()
+	for bounds: AABB in _native_pavement + _door_approaches:
+		var local: AABB = inverse * bounds
+		holes.append(Rect2(local.position.x, local.position.z - _shift, local.size.x, local.size.z))
+	var centre: float = _local_reserve.get_center().x
+	var reach: float = FURNITURE_REACH + 6.0
+	var spots: Array[float] = _promenade.lamp_spots(centre, maxf(-_visual_half + 1.0, centre - reach),
+		minf(_visual_half - 1.0, centre + reach), holes)
+	var posts: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	for u: float in spots:
+		var local: Transform3D = Transform3D(Basis.IDENTITY, Vector3(u, _paving_top, _shift + NeighbourhoodPromenade.BAND_V))
+		posts.xf = local
+		var lanterns: Array[Vector3] = _promenade.lamp_post(posts)
+		_lamp_feet.append(Vector2(u, NeighbourhoodPromenade.BAND_V))
+		for lantern: Vector3 in lanterns:
+			bulbs.xf = local
+			bulbs.box(lantern - Vector3(0.045, 0.07, 0.045), lantern + Vector3(0.045, 0.07, 0.045), Color.WHITE)
+			halo_at.append(local * lantern)
+		_glow_disc(glow, Vector2(u, _shift + NeighbourhoodPromenade.BAND_V), _paving_top + 0.008)
+	if posts.soup.is_empty():
+		return
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	material.disable_receive_shadows = true
+	var mesh: MeshInstance3D = MeshInstance3D.new()
+	mesh.name = "PromenadeLamps"
+	mesh.mesh = posts.soup.to_mesh()
+	mesh.material_override = material
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.transform = _frame
+	_groups["StreetLamps"].add_child(mesh)
+	_static_meshes.append(mesh)
 
 
 ## A little camera-facing bloom round the lit bulb: rings fading to nothing.
@@ -1217,6 +1593,9 @@ func _build_furniture() -> void:
 			planner.exclusions.append(Rect2(local.position.x, local.position.z - _shift, local.size.x, local.size.z).grow(entry[1]))
 	for box: AABB in _building_boxes:
 		planner.exclusions.append(Rect2(box.position.x, box.position.z - _shift, box.size.x, box.size.z).grow(0.1))
+	if _promenade != null:
+		for foot: Vector2 in _lamp_feet:
+			planner.exclusions.append(Rect2(foot - NeighbourhoodPromenade.LAMP_FOOT * 0.5, NeighbourhoodPromenade.LAMP_FOOT).grow(0.25))
 	planner.doors = _shop_doors
 	planner.building_spans = _shop_spans
 	planner.plan()
@@ -1333,29 +1712,86 @@ func _apply_time(seconds: float) -> void:
 		_life.apply(seconds)
 	if _shore != null:
 		_shore.apply(seconds)
-	if pedestrians.size() != 3 or _routes.size() != 3 or car == null:
+	var walkers: int = _walk_kinds.size()
+	if walkers == 0 or pedestrians.size() != walkers or _routes.size() != walkers or car == null:
 		return
-	for index: int in 3:
+	for index: int in walkers:
 		var route: Vector2 = _routes[index]
 		var length: float = route.y - route.x
 		if length <= 0.0:
 			pedestrians[index].hide()
+			if _walk_props[index] != null:
+				_walk_props[index].hide()
 			continue
-		var progress: float = fposmod(seconds * WALK_SPEED + PHASES[index] * length * 2.0, length * 2.0)
+		var progress: float = fposmod(seconds * _walk_speeds[index] + _walk_phases[index] * length * 2.0, length * 2.0)
 		var forward: bool = progress <= length
 		var u: float = route.x + progress if forward else route.y - (progress - length)
 		var person: PersonView = pedestrians[index]
-		person.position = _frame * Vector3(u, _paving_top, _shift + WALK_LANES[index])
+		person.position = _frame * Vector3(u, _paving_top, _shift + _walk_lanes[index])
 		_directions[index] = _tangent if forward else -_tangent
 		person.face_direction(_directions[index])
 		person.show()
-		if _players.size() == 3:
-			_players[index].seek(fposmod(seconds + PHASES[index], _animation_lengths[index]), true)
+		if _players.size() == walkers:
+			_players[index].seek(fposmod(seconds * _walk_strides[index] + _walk_phases[index], _animation_lengths[index]), true)
+		if _walk_props[index] != null:
+			_place_walk_prop(index, seconds, route, progress)
+	if not _traffic:
+		car.hide()
+		return
 	var travel: float = (_car_route.y - _car_route.x) / CAR_SPEED
 	var phase: float = fposmod(seconds, maxf(travel + CAR_REST, 1.0))
 	car.visible = travel > 0.0 and phase >= 1.0 and phase <= travel + 1.0
 	var u: float = _car_route.x + clampf(phase - 1.0, 0.0, maxf(travel, 0.0)) * CAR_SPEED
 	car.transform = Transform3D(_car_rotation, _frame * Vector3(u, 0.0, _shift + CAR_LANE))
+
+
+## A walker's bike, pram or dog (#596), placed from the same closed-form path: the bike
+## under the rider, the pram ahead of the hands, and the dog trotting ahead on its leash
+## (further along the walker's own back-and-forth path, so it turns first at the ends).
+func _place_walk_prop(index: int, seconds: float, route: Vector2, progress: float) -> void:
+	var prop: Node3D = _walk_props[index]
+	var person: PersonView = pedestrians[index]
+	var facing: Basis = Basis(Vector3.UP, atan2(_directions[index].x, _directions[index].z))
+	prop.show()
+	match _walk_kinds[index]:
+		&"cycle":
+			prop.transform = Transform3D(facing, person.position + _directions[index] * 0.06)
+		&"pram":
+			prop.transform = Transform3D(facing, person.position + _directions[index] * 0.12)
+		&"dog":
+			var length: float = route.y - route.x
+			var lead: float = fposmod(progress + DOG_LEAD, length * 2.0)
+			var ahead: bool = lead <= length
+			var u: float = route.x + lead if ahead else route.y - (lead - length)
+			var heading: Vector3 = _tangent if ahead else -_tangent
+			var side: Vector3 = _outward * DOG_SIDE
+			var hop: float = absf(sin(seconds * 9.0 + float(index))) * 0.012
+			prop.transform = Transform3D(Basis(Vector3.UP, atan2(heading.x, heading.z)),
+				_frame * Vector3(u, _paving_top + hop, _shift + _walk_lanes[index]) + side)
+			for leg: int in 4:
+				var limb: Node3D = prop.get_node(NodePath("Leg%d" % leg)) as Node3D
+				var swing: float = sin(seconds * 9.0 + (PI if leg == 0 or leg == 3 else 0.0))
+				limb.rotation = Vector3(swing * 0.55, 0.0, 0.0)
+			var leash: MeshInstance3D = prop.get_meta(&"leash") as MeshInstance3D
+			var hand: Vector3 = person.position + Basis(Vector3.UP, person.rotation.y) * Vector3(LEASH_HAND.x, LEASH_HAND.y, -LEASH_HAND.z)
+			var collar: Vector3 = prop.transform * Vector3(0.0, 0.2, 0.08)
+			var span: Vector3 = collar - hand
+			if span.length() > 0.05:
+				var look: Basis = Basis.looking_at(span.normalized(), Vector3.UP)
+				leash.transform = Transform3D(look * Basis.from_scale(Vector3(1.0, 1.0, span.length())), (hand + collar) * 0.5)
+
+
+## Where the street's walkers are now (#596), for tests and tools: their kind, position
+## and heading in the dressing's space.
+func walker_state() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for index: int in mini(pedestrians.size(), _walk_kinds.size()):
+		var entry: Dictionary = {"kind": _walk_kinds[index], "position": pedestrians[index].position,
+			"direction": _directions[index], "visible": pedestrians[index].visible}
+		if index < _walk_props.size() and _walk_props[index] != null:
+			entry["prop"] = _walk_props[index].position
+		result.append(entry)
+	return result
 
 
 func capture_state() -> Dictionary:
@@ -1372,13 +1808,13 @@ func capture_state() -> Dictionary:
 			"playback_speed": player.speed_scale if player != null else 0.0})
 	return {"display_seconds": _display_seconds, "review_time": _review_time, "is_processing": is_processing(),
 		"process_mode": process_mode, "rebuild_generation": _generation, "build_error": build_error,
-		"static_mesh_count": _static_meshes.size(), "pedestrian_count": pedestrians.size(), "car_count": 1 if car != null else 0,
+		"static_mesh_count": _static_meshes.size(), "pedestrian_count": pedestrians.size(), "car_count": 1 if car != null and _traffic else 0,
 		"frame": {"origin": _v(_frame.origin), "normal": _v(_outward), "tangent": _v(_tangent), "reserve_shift": _shift},
 		"bounds": {"reserve": _box_state(_reserve), "near_pavement": _box_state(_near_pavement), "road": _box_state(_road),
 			"far_pavement": _box_state(_far_pavement), "door_approaches": _boxes_state(_door_approaches),
 			"native_pavement": _boxes_state(_native_pavement), "pedestrian_sweeps": _boxes_state(_pedestrian_sweeps),
 			"car_sweep": _box_state(_car_sweep)}, "actors": actors,
-		"car": {"visible": car.is_visible_in_tree(), "position": _v(car.position), "global_transform": _xf(car.global_transform if car.is_inside_tree() else car.transform)} if car != null else {}}
+		"car": {"visible": car.is_visible_in_tree(), "position": _v(car.position), "global_transform": _xf(car.global_transform if car.is_inside_tree() else car.transform)} if car != null and _traffic else {}}
 
 
 static func _v(value: Vector3) -> Array[float]:
