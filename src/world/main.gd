@@ -6249,6 +6249,9 @@ func _begin_morning() -> void:
 	# Keep authored gaps. Demand joins the existing scaled_gap exactly once.
 	# Derive actual editable facts before the first gap, without a random draw.
 	_recompute_vibe()
+	# Clear yesterday's notice first: _refresh_demand returns early on a bad
+	# vibe or factor and would otherwise leave it showing.
+	_menu_panel.set_viral_notice("")
 	if demand_state.begin_morning(Clock.sim.day, demand_tuning):
 		_demand_day = Clock.sim.day
 		_demand_reputation = reputation.average()
