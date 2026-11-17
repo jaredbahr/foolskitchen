@@ -26,6 +26,8 @@ const UNUSED_ALPHA: float = 0.55
 const CART_STEPS: Array[int] = [-1, 1, 5]
 const MAX_CART: int = 99
 const PANEL_MAX_WIDTH: float = 1048.0
+const WIDE_VIEWPORT: float = 1472.0
+const WIDE_PANEL_MAX_WIDTH: float = 1456.0
 const PANEL_SIDE_MARGIN: float = 12.0
 
 var _status: Label
@@ -101,7 +103,10 @@ func _align_delivery() -> void:
 		gap.name = "EndGap"
 		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		delivery.add_child(gap)
-	var width: float = maxf(0.0, scroll.get_global_rect().end.x - _rows_node.get_global_rect().end.x)
+	var layout: StockPanelLayout = $Panel/Content as StockPanelLayout
+	var width: float = 0.0
+	if not layout.wide:
+		width = maxf(0.0, scroll.get_global_rect().end.x - _rows_node.get_global_rect().end.x)
 	if absf(gap.custom_minimum_size.x - width) > 0.5:
 		gap.custom_minimum_size.x = width
 
@@ -110,9 +115,14 @@ func _fit_width() -> void:
 	var panel: Control = get_node_or_null("Panel") as Control
 	if panel == null:
 		return
-	var half: float = minf(PANEL_MAX_WIDTH, maxf(size.x - 2.0 * PANEL_SIDE_MARGIN, 0.0)) / 2.0
+	var wide: bool = size.x >= WIDE_VIEWPORT
+	var limit: float = WIDE_PANEL_MAX_WIDTH if wide else PANEL_MAX_WIDTH
+	var half: float = minf(limit, maxf(size.x - 2.0 * PANEL_SIDE_MARGIN, 0.0)) / 2.0
 	panel.offset_left = -half
 	panel.offset_right = half
+	var layout: StockPanelLayout = panel.get_node_or_null("Content") as StockPanelLayout
+	if layout != null:
+		layout.wide = wide
 
 
 ## View: {rows, groups, cash, editable, notes, premium, cart_total,

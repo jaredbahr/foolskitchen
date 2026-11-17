@@ -50,12 +50,36 @@ func candidates() -> Array[StaffMember]:
 	return _copies(_candidates)
 
 
+## A read-only check shared by the editor and the actual roster command.
+func rename_refusal(member_id: StringName, text: String) -> String:
+	var index: int = _find(_members, member_id)
+	if index < 0:
+		return "That employee is no longer on the team."
+	var normalized: Variant = StaffMember.normalized_nickname(text)
+	if normalized == null:
+		return "Use up to 20 characters on one line."
+	var current: StaffMember = _members[index]
+	var proposed: String = current.original_name if normalized == "" else String(normalized)
+	if proposed == current.display_name:
+		return ""
+	var key: String = proposed.to_lower()
+	for member: StaffMember in _members:
+		if member.id != member_id and member.display_name.to_lower() == key:
+			return "That name is already in use."
+	for candidate: StaffMember in _candidates:
+		if candidate.display_name.to_lower() == key:
+			return "That name is already in use."
+	return ""
+
+
 ## Employee-only cosmetic edit. Return the effective name for the live copy.
 func rename_member(member_id: StringName, text: String) -> String:
-	var index: int = _find(_members, member_id)
-	if index < 0 or not _members[index].set_nickname(text):
+	if not rename_refusal(member_id, text).is_empty():
 		return ""
-	return _members[index].display_name
+	var member: StaffMember = _members[_find(_members, member_id)]
+	if not member.set_nickname(text):
+		return ""
+	return member.display_name
 
 
 ## Only authored-by-player names need a separate label in the evening report.
@@ -67,8 +91,7 @@ func nicknames() -> Array[String]:
 	return result
 
 
-## A service event's mood nudge (#495). Mood stays between 1 and 3, so an
-## event never makes anyone quit; a worker already leaving is left alone.
+## Mood nudges stay between 1 and 3 and leave a departing worker alone.
 ## Returns the new mood, or -1 when nobody changed.
 func adjust_mood(member_id: StringName, delta: int) -> int:
 	var index: int = _find(_members, member_id)
@@ -86,6 +109,11 @@ func adjust_mood(member_id: StringName, delta: int) -> int:
 func set_job_priority(member_id: StringName, job: StringName, value: int) -> bool:
 	var index: int = _find(_members, member_id)
 	return index >= 0 and _members[index].priority_state().set_priority(job, value)
+
+
+func reset_job_priorities() -> void:
+	for member: StaffMember in _members:
+		member.priority_state().reset_to_defaults()
 
 
 ## Detached command input for the live agent; a caller cannot edit the roster.
@@ -173,6 +201,32 @@ func decline_raise(member_id: StringName, day: int, phase: int) -> bool:
 	return member.growth_state().decline_raise(day, protected_minimum)
 
 
+## Compare each request with the same role/skill wage table used by the hiring
+## pool. A secondary skill can earn a request above that role's usual wage.
+func settle_morning_raises(day: int, phase: int) -> Array[String]:
+	var notes: Array[String] = []
+	if day < 1 or phase != SimClock.Phase.MORNING:
+		return notes
+	for member: StaffMember in _members:
+		var fair: int = _tuning.staff_wage(member.role, member.skill)
+		var offer: Dictionary = _raise_offer(member)
+		while not offer.is_empty():
+			var proposed: int = int(offer["new_wage"])
+			var raises_pay: bool = bool(offer["requires_raise"])
+			if not raises_pay or proposed <= fair:
+				if not accept_raise(member.id, phase):
+					break
+				if raises_pay:
+					adjust_mood(member.id, 1)
+			else:
+				if not decline_raise(member.id, day, phase):
+					break
+				notes.append("%s's pay stays at $%d a day. The request was above the usual wage for their role and skill." \
+					% [member.display_name, member.wage])
+			offer = _raise_offer(member)
+	return notes
+
+
 ## Settle due departures once, in roster order. A last cook or server must
 ## remain, with mood restored to 1. Notices contain player-ready sentences;
 ## member_id is only an internal handle for the caller's panel state.
@@ -192,7 +246,7 @@ func process_morning_quits(day: int, phase: int) -> Array[Dictionary]:
 			and _role_count(member.role) <= 1
 		if growth_state.should_quit_this_morning(day, protected_minimum):
 			_members.erase(member)
-			notices.append({"member_id": member.id,
+			notices.append({"member_id": member.id, "departed_role": member.role,
 				"message": "%s left after their raise requests were refused." % member.display_name})
 		elif protected_minimum:
 			notices.append({"member_id": member.id,
@@ -252,6 +306,28 @@ func can_hire(id: StringName) -> bool:
 	return _members.size() < CAPACITY and _find(_candidates, id) >= 0
 
 
+func missing_service_roles() -> Array[StringName]:
+	var roles: Array[StringName] = []
+	for role: StringName in [&"cook", &"server"]:
+		if _role_count(role) == 0:
+			roles.append(role)
+	return roles
+
+
+## Offer order breaks equal skill-per-wage ties. A zero reserve allows a
+## necessary hire even if yesterday left the business short of cash.
+func best_value_candidate(role: StringName, cash: int, reserve_days: int) -> StaffMember:
+	if _members.size() >= CAPACITY:
+		return null
+	var best: StaffMember = null
+	for member: StaffMember in _candidates:
+		if member.role != role or (reserve_days > 0 and cash < member.wage * reserve_days):
+			continue
+		if best == null or member.skill * best.wage > best.skill * member.wage:
+			best = member
+	return best.copy() if best != null else null
+
+
 func hire(id: StringName) -> bool:
 	if not can_hire(id):
 		return false
@@ -300,7 +376,8 @@ func accept_transfer(member: StaffMember) -> bool:
 ## With `managers` (the manager hiring tier, FK-087) a candidate's role is
 ## drawn from the floor roles plus Manager; without it the draw is exactly
 ## the floor roles, as before, so lower tiers' pools never change.
-func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = false) -> bool:
+func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = false,
+		replacement: StringName = &"") -> bool:
 	if day <= 0 or day < candidate_day or random == null:
 		return false
 	if candidate_day == day:
@@ -322,13 +399,10 @@ func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = f
 	# A roster still missing a cook or a server (a new site, #464) is offered
 	# one of each first. The draws are the same, so a staffed roster's pool
 	# never changes.
-	var needed: Array[StringName] = []
-	for role: StringName in [&"cook", &"server"]:
-		var has_role: bool = false
-		for member: StaffMember in _members:
-			has_role = has_role or member.role == role
-		if not has_role:
-			needed.append(role)
+	var needed: Array[StringName] = missing_service_roles()
+	if (StaffMember.ROLES.has(replacement) or (managers and replacement == StaffMember.MANAGER)) \
+			and not needed.has(replacement):
+		needed.append(replacement)
 	var next: Array[StaffMember] = []
 	for index: int in range(CANDIDATE_COUNT):
 		var member: StaffMember = StaffMember.new()

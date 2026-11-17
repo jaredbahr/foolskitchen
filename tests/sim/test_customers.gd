@@ -112,6 +112,7 @@ func test_single_guest_seats_orders_eats_pays_and_leaves() -> void:
 	assert_not_null(guest.order)
 	assert_eq(_paid.get(guest.id, -1), _content.recipe(guest.order.recipe_id).standard_price)
 	assert_eq(_left.get(guest.id, &""), &"happy")
+	assert_eq(_sim.visitor_breakdown(), [{"name": "Regulars", "count": 1, "average_mood": 1.0}])
 	guest.on_removed(_sim.world)
 	_sim.record_departure(guest)
 	assert_eq(_sim.served_today, 1)
@@ -190,6 +191,7 @@ func test_patience_includes_order_taking() -> void:
 	_run(500)
 	assert_eq(_left.get(guest.id, &""), &"waited_too_long")
 	assert_true(guest.order == null)
+	assert_eq(_sim.visitor_breakdown(), [{"name": "Regulars", "count": 1, "average_mood": 0.0}])
 	_assert_drained()
 
 
@@ -277,6 +279,7 @@ func test_default_closing_deadline_clears_remaining_guests_same_day() -> void:
 	assert_eq(_left.get(guest.id, &""), &"closing")
 	assert_eq(_sim.lost_today, 1)
 	assert_eq(_sim.leave_reasons_today, {&"closing": 1})
+	assert_eq(_sim.visitor_breakdown(), [{"name": "Regulars", "count": 1, "average_mood": 0.5}])
 	_assert_drained()
 	assert_true(_sim.world.clock.next_day())
 	_sim.start_day()
@@ -315,6 +318,7 @@ func test_closing_preserves_paid_guest_accounting() -> void:
 	_sim.advance()
 	assert_eq(_sim.world.clock.phase, SimClock.Phase.CLOSED)
 	assert_eq(_left.get(guest.id, &""), &"happy", "a paid guest walking out at closing is not relabelled")
+	assert_eq(_sim.visitor_breakdown(), [{"name": "Regulars", "count": 1, "average_mood": 1.0}])
 	assert_eq(_paid.size(), 1)
 	assert_eq(_sim.served_today, 1)
 	assert_eq(_sim.lost_today, 0)

@@ -17,15 +17,67 @@ func test_placed_furniture_and_wall_art_sum_and_lowest_cap_wins() -> void:
 	assert_ne(grid.place_def(content.item(&"lamp_pendant"), Vector2i(2, 6)), null)
 	assert_true(decor.add(&"wall_art_peaks", Vector3i(2, 2, 0), 1))
 	assert_true(decor.add(&"wall_art_sunrise", Vector3i(4, 2, 0), 1))
-	assert_eq(Prestige.score(grid, content), 16)
-	assert_eq(Prestige.score(grid, content, decor), 20)
+	assert_eq(Prestige.score(grid, content), 14)
+	assert_eq(Prestige.score(grid, content, decor), 18)
 	assert_ne(grid.place_def(content.item(&"jukebox"), Vector2i(7, 6)), null)
 	assert_eq(Prestige.score(grid, content, decor), 15)
 	assert_true(decor.add(&"neon_open_sign", Vector3i(6, 2, 0), 1, true))
 	var evaluated: Prestige.Result = Prestige.evaluate(grid, content, decor)
-	assert_eq(evaluated.uncapped_score, 20)
+	assert_eq(evaluated.point_units, 74)
+	assert_eq(evaluated.uncapped_score, 18)
 	assert_eq(evaluated.value(), 10)
 	assert_eq(evaluated.cap_item.id, &"neon_open_sign")
+
+
+func test_fifteen_pendants_earn_twenty_seven_points() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var grid: SimGrid = SimGrid.new(Vector2i(16, 3))
+	for cell: Vector2i in grid.cells():
+		grid.set_terrain(cell, SimGrid.Terrain.FLOOR)
+	for x: int in range(15):
+		assert_not_null(grid.place_def(content.item(&"lamp_pendant"), Vector2i(x, 1)))
+	var result: Prestige.Result = Prestige.evaluate(grid, content)
+	assert_eq(result.value(), 27)
+	assert_eq(Prestige.ladles(result.value(), TUNING), 1)
+
+
+func test_a_varied_shop_reaches_three_ladles() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var grid: SimGrid = SimGrid.new(Vector2i(16, 10))
+	for cell: Vector2i in grid.cells():
+		grid.set_terrain(cell, SimGrid.Terrain.FLOOR)
+	for x: int in [2, 5, 8]:
+		assert_not_null(grid.place_def(content.item(&"cloth_table"), Vector2i(x, 6)))
+	for index: int in range(21):
+		@warning_ignore("integer_division")
+		var cell: Vector2i = Vector2i(index % 14 + 1, index / 14 + 1)
+		assert_not_null(grid.place_def(content.item(&"lamp_pendant"), cell))
+	var decor: WallDecor = WallDecor.new()
+	for index: int in range(6):
+		assert_true(decor.add(&"wall_art_sunrise", Vector3i(1 + 2 * index, 1, 0), 2))
+		assert_true(decor.add(&"wall_art_peaks", Vector3i(1 + 2 * index, 8, 2), 2))
+	var result: Prestige.Result = Prestige.evaluate(grid, content, decor)
+	assert_eq(result.value(), 60)
+	assert_eq(Prestige.ladles(result.value(), TUNING), 3)
+
+
+func test_fractional_contributions_are_combined_before_awarding() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var grid: SimGrid = SimGrid.new(Vector2i(16, 7))
+	for cell: Vector2i in grid.cells():
+		grid.set_terrain(cell, SimGrid.Terrain.FLOOR)
+	for index: int in range(4):
+		assert_not_null(grid.place_def(content.item(&"cloth_table"), Vector2i(1 + index * 3, 4)))
+	var decor: WallDecor = WallDecor.new()
+	for index: int in range(7):
+		assert_true(decor.add(&"wall_art_sunrise", Vector3i(1 + index * 2, 1, 0), 2))
+	var result: Prestige.Result = Prestige.evaluate(grid, content, decor)
+	assert_eq(result.contributions[0].point_units, 42, "tables contribute 10.5")
+	assert_eq(result.contributions[1].point_units, 38, "prints contribute 9.5")
+	assert_eq(Prestige.ladles(result.value(), TUNING), 1)
 
 
 func test_authored_thresholds_award_at_exact_boundaries() -> void:

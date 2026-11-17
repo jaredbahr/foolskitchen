@@ -128,11 +128,13 @@ func test_money_never_moves_through_building_stock_hiring_and_a_full_day() -> vo
 	assert_eq(report.weekly_challenge_line, "")
 	assert_eq(report.career_tier_line, "")
 	assert_true((main.get("milestones") as MilestoneTracker).completed_ids().is_empty())
-	var content: Node = main.get_node("Overlay/EveningReport/Panel/Column/Scroll/Content")
-	for hidden: String in ["Profit", "Finances", "CashChange", "OwnerLevel", "BusinessTrendSection"]:
+	var screen: Control = main.get_node("Overlay/EveningReport")
+	assert_false((screen.get_node("%Profit") as Label).visible, "profit is hidden")
+	var content: Node = screen.get_node("Panel/Column/Scroll/Content")
+	for hidden: String in ["Finances", "CashChange", "OwnerLevel", "BusinessTrendSection"]:
 		assert_false((content.get_node(hidden) as CanvasItem).visible, "%s is hidden" % hidden)
 	assert_true((content.get_node("Guests") as CanvasItem).visible, "guests stay")
-	(main.get_node("Overlay/EveningReport") as Control).emit_signal(&"next_day_pressed")
+	screen.emit_signal(&"next_day_pressed")
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(Economy.cash, cash)
 	assert_true(Economy.ledger.entries_for_day(2).is_empty())

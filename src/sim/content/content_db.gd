@@ -89,7 +89,7 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 			lot_defs.append(resource as LotDef)
 		else:
 			errors.append("%s: expected LotDef" % path)
-	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs))
+	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs, lot_defs))
 	errors.append_array(validate_lots(lot_defs, item_defs, _customer_type_ids(root)))
 	errors.append_array(validate_swatches(swatch_defs))
 	errors.append_array(validate_wall_kinds(wall_defs))
@@ -547,9 +547,25 @@ func items() -> Array[ItemDef]:
 	return result
 
 
+static func _check_lot_tags(tags: Array[StringName], declared_tags: Dictionary[StringName, bool],
+		owner: String, errors: PackedStringArray) -> void:
+	if not LotAccess.valid_tags(tags):
+		errors.append("%s: lot tags must be non-empty ids" % owner)
+		return
+	for tag: StringName in tags:
+		if not declared_tags.has(tag):
+			errors.append("%s: lot tag '%s' is not declared by any lot" % [owner, tag])
+
+
 ## Also accepts in-memory definitions, without adding broken files to data/.
-static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_defs: Array[RecipeDef], item_defs: Array[ItemDef]) -> PackedStringArray:
+static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_defs: Array[RecipeDef],
+		item_defs: Array[ItemDef], lot_defs: Array[LotDef] = []) -> PackedStringArray:
 	var errors: PackedStringArray = []
+	var declared_tags: Dictionary[StringName, bool] = {}
+	for lot: LotDef in lot_defs:
+		if lot != null:
+			for tag: StringName in lot.tags:
+				declared_tags[tag] = true
 	var ingredient_ids: Dictionary[StringName, bool] = {}
 	var recipe_ids: Dictionary[StringName, bool] = {}
 	var item_ids: Dictionary[StringName, bool] = {}
@@ -563,8 +579,7 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("ingredient[%d] is null" % index)
 			continue
 		_check_id(definition.id, "ingredient", ingredient_ids, errors)
-		if not LotAccess.valid_tags(definition.lot_tags):
-			errors.append("ingredient '%s': lot tags must be non-empty ids" % definition.id)
+		_check_lot_tags(definition.lot_tags, declared_tags, "ingredient '%s'" % definition.id, errors)
 		if definition.unit_cost < 0:
 			errors.append("ingredient '%s': unit_cost must be >= 0" % definition.id)
 	for index: int in range(item_defs.size()):
@@ -573,8 +588,7 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item[%d] is null" % index)
 			continue
 		_check_id(definition.id, "item", item_ids, errors)
-		if not LotAccess.valid_tags(definition.lot_tags):
-			errors.append("item '%s': lot tags must be non-empty ids" % definition.id)
+		_check_lot_tags(definition.lot_tags, declared_tags, "item '%s'" % definition.id, errors)
 		if definition.footprint.x < 1 or definition.footprint.y < 1:
 			errors.append("item '%s': footprint components must be >= 1" % definition.id)
 		if definition.price < 0:

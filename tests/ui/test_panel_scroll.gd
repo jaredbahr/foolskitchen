@@ -295,7 +295,7 @@ func _open(main: Node, panel_name: String) -> Dictionary:
 			main.call("_show_evening_report", main.call("build_report", Clock.sim.day))
 			var report: Control = main.get_node("Overlay/EveningReport") as Control
 			view = {"host": report, "frame": report.get_node("Panel"), "header": report.get_node("%Close"),
-				"body": report.get_node("Panel/Column/Scroll"), "footer": &"bottom"}
+				"body": report.get_node("Panel/Column/Scroll"), "footer": report.get_node("%NextDay")}
 		"settings":
 			assert_true(main.call("set_settings_visible", true))
 			var settings: Control = main.get_node("Overlay/SettingsPanel") as Control

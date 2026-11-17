@@ -151,6 +151,28 @@ func test_reset_includes_locked_disabled_and_station_removed_prices() -> void:
 	assert_false(menu.set_price(&"later", 18))
 
 
+func test_automatic_prices_keep_station_restores_and_loaded_prices_at_standard() -> void:
+	var coffee: RecipeDef = _recipe(&"coffee", 5)
+	var full_menu: Array[RecipeDef] = [_burger, _cheese, coffee]
+	var menu: MenuSettings = MenuSettings.new(full_menu)
+	assert_true(menu.set_price(coffee.id, 7))
+	assert_true(menu.set_price(_burger.id, 15))
+	var before: Dictionary = menu.to_dict()
+	assert_true(menu.set_catalogue([_burger, _cheese] as Array[RecipeDef]))
+	assert_eq(menu.shown_price(coffee), 7)
+	menu.set_automatic_prices(true)
+	assert_eq(menu.shown_price(coffee), 5)
+	assert_false(menu.set_price(_burger.id, 15))
+	assert_true(menu.set_catalogue(full_menu))
+	assert_eq(menu.price_of(coffee), 5)
+	assert_true(menu.from_dict(before))
+	assert_eq(menu.price_of(coffee), 5)
+	assert_eq(menu.price_of(_burger), _burger.standard_price)
+	menu.set_automatic_prices(false)
+	assert_eq(menu.price_of(coffee), 5)
+	assert_true(menu.set_price(coffee.id, 7))
+
+
 func test_preset_replaces_enabled_dishes_and_clamps_available_prices() -> void:
 	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
 	seasonal.unlock_level = 2

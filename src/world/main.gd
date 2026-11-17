@@ -40,6 +40,7 @@ const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const SERVICE_EVENT_TUNING: ServiceEventTuning = preload("res://data/balance/service_events.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
+const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
@@ -88,6 +89,7 @@ var _service_event_definitions: Array[ServiceEventDef] = []
 var _service_event_card: ServiceEventCard
 var _morning_paper: MorningPaperCard
 var _morning_paper_day: int = 0
+var _morning_paper_edition: Dictionary = {}
 ## The speed to return to once a card is answered.
 var _service_event_resume_speed: int = 1
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -113,6 +115,7 @@ var shown_report: DayReport = null
 var _last_team_activity: Dictionary = {}
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
+var _dish_metrics_today: Dictionary[StringName, Dictionary] = {}
 var _food_cost_today: Dictionary = PurchaseBasis.zero()
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
@@ -572,6 +575,9 @@ func _bind_world_presentation() -> void:
 		_shortcuts_panel.close_requested.connect(_on_shortcuts_close_requested)
 	_settings_panel.bind_preferences(Preferences)
 	_morning_paper = $Overlay/MorningPaper
+	_morning_paper.set_keep_clear_source($HUD.morning_card_rects, $HUD/Today)
+	if not $HUD.morning_cards_changed.is_connected(_morning_paper.refresh_layout):
+		$HUD.morning_cards_changed.connect(_morning_paper.refresh_layout)
 	if not Preferences.changed.is_connected(_on_morning_paper_preference_changed):
 		Preferences.changed.connect(_on_morning_paper_preference_changed)
 	_settings_panel.set_quit_to_title_available(true)
@@ -785,6 +791,7 @@ func start() -> void:
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	SaveSystem.register("viral", _capture_viral, _restore_viral)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
+	SaveSystem.register("morning_paper", _capture_morning_paper, _restore_morning_paper)
 	SaveSystem.register("shop_records", _capture_shop_records, _restore_shop_records)
 	SaveSystem.register("collection_toasts", _capture_collection_toasts, _restore_collection_toasts)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
@@ -911,6 +918,7 @@ func _connect_session() -> void:
 	if not _report.is_connected(&"close_requested", _on_report_close_requested):
 		_report.connect(&"close_requested", _on_report_close_requested)
 	sim.customer_paid.connect(_on_customer_paid)
+	sim.dish_visit_completed.connect(_on_dish_visit_completed)
 	if not sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.connect(_on_vibe_customer_left)
 	sim.dish_sold_out.connect(_on_dish_sold_out)
@@ -970,6 +978,8 @@ func _exit_tree() -> void:
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim != null and sim.dish_visit_completed.is_connected(_on_dish_visit_completed):
+		sim.dish_visit_completed.disconnect(_on_dish_visit_completed)
 	if sim != null and sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
 	_disconnect_service_alerts()
@@ -1147,7 +1157,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_today_pressed() -> void:
 	if is_site_card_visible() or is_service_event_visible() or is_settings_visible() \
-			or is_shortcuts_visible() or is_owner_picker_visible():
+			or is_shortcuts_visible() or is_owner_picker_visible() or is_build_active() or is_paint_active():
 		return
 	_align_today_panel()
 	_today_panel.toggle()
@@ -1155,6 +1165,8 @@ func _on_today_pressed() -> void:
 
 func _align_today_panel() -> void:
 	_today_panel.set_panel_top(($HUD/Today as Button).get_global_rect().end.y + 8.0)
+	if _morning_paper != null and _morning_paper.visible:
+		_morning_paper.refresh_layout()
 
 
 func _take_photo_key(photo: PhotoMode, key: InputEventKey) -> void:
@@ -2426,6 +2438,8 @@ func _on_build_changed() -> void:
 func _update_build_controls() -> void:
 	_sync_wall_build_preview()
 	var active: bool = is_build_active()
+	if (active or _paint_active) and _today_panel != null:
+		_today_panel.hide()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.feedback_text()
 	var summary: String = ""
@@ -2925,6 +2939,7 @@ func _report_sources(day: int) -> DayReportSources:
 	sources.notes = day_notes
 	sources.reputation_average = reputation.average()
 	sources.dishes_sold = dishes_sold_today
+	sources.dish_metrics = _dish_metrics_today
 	sources.food_cost = _food_cost_today
 	sources.haggle_receipt = _haggle_receipt
 	sources.stock_forecast = StockAlerts.forecast(Economy.stock,
@@ -2957,6 +2972,7 @@ func _new_game() -> void:
 	difficulty = GameMode.begin_new_game()
 	_staged.clear()
 	_morning_paper_day = 0
+	_morning_paper_edition.clear()
 	if _morning_paper != null:
 		_morning_paper.dismiss()
 	$HUD.clear_collection_toasts()
@@ -3015,6 +3031,7 @@ func _load_autosave() -> bool:
 
 
 func _load_autosave_sections() -> bool:
+	_morning_paper_edition.clear()
 	_staged.clear()
 	_booking_paid_total = 0
 	curb_appeal_score = 0.0
@@ -3487,6 +3504,8 @@ func _disconnect_session() -> void:
 		sim.aquarium.changed.disconnect(_on_aquarium_changed)
 	if sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim.dish_visit_completed.is_connected(_on_dish_visit_completed):
+		sim.dish_visit_completed.disconnect(_on_dish_visit_completed)
 	if sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
 	_disconnect_service_alerts()
@@ -3511,7 +3530,7 @@ func _disconnect_session() -> void:
 
 
 func _capture_business_history() -> Dictionary:
-	return business_history.capture()
+	return business_history.capture(Clock.sim.day - 1)
 
 
 func _capture_shop_records() -> Dictionary:
@@ -4688,7 +4707,7 @@ func staff_rename(id: StringName, text: String) -> bool:
 ## existing employee before committing saved choices; never reinstall staff.
 ## The runtime copy also retains XP earned during the current service.
 func staff_set_job_priority(id: StringName, job: StringName, value: int) -> bool:
-	if not can_view_staff():
+	if not can_view_staff() or _automatic_staff_jobs():
 		return false
 	var choices: StaffRoster = staff_roster.copy()
 	if choices == null or not choices.set_job_priority(id, job, value):
@@ -5232,6 +5251,7 @@ func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
+	choices.set_automatic_prices(not GameMode.is_creative() and difficulty.auto(&"prices"))
 	restaurant.menu = choices.enabled_recipes()
 	daily_special.reconcile(restaurant.menu)
 	restaurant.daily_special = daily_special
@@ -5327,13 +5347,14 @@ func _on_restaurant_name_requested(value: String) -> void:
 
 
 func menu_set_price(recipe_id: StringName, price: int) -> bool:
-	if not can_edit_menu() or menu_settings.recipe(recipe_id) == null:
+	if not can_edit_menu() or menu_settings.automatic_prices() or menu_settings.recipe(recipe_id) == null:
 		return false
-	var before: int = menu_settings.price_of(menu_settings.recipe(recipe_id))
+	var definition: RecipeDef = menu_settings.recipe(recipe_id)
+	var before: int = menu_settings.price_of(definition)
 	menu_settings.set_price(recipe_id, price)
 	_apply_menu(sim, menu_settings)
 	_refresh_menu_details()
-	if menu_settings.price_of(menu_settings.recipe(recipe_id)) != before:
+	if menu_settings.price_of(definition) != before:
 		_observe_opening(OpeningGoal.Condition.PRICE_CHANGED, 1.0)
 	return true
 
@@ -5354,7 +5375,7 @@ func menu_load_preset(index: int) -> Dictionary:
 
 
 func menu_reset_prices() -> bool:
-	if not can_edit_menu() or not menu_settings.reset_all_prices_to_standard():
+	if not can_edit_menu() or menu_settings.automatic_prices() or not menu_settings.reset_all_prices_to_standard():
 		return false
 	_apply_menu(sim, menu_settings)
 	_refresh_menu_details()
@@ -5507,7 +5528,7 @@ func _property_buyer() -> PropertyPanel.Buyer:
 	buyer.limits = SITE_LIMITS
 	buyer.cash = Economy.spendable()
 	buyer.loan = Economy.loan.principal
-	buyer.rent_multiplier = difficulty.mult(&"rent")
+	buyer.rent_multiplier = difficulty.for_day(Clock.sim.day + 1).mult(&"rent")
 	return buyer
 
 
@@ -5907,12 +5928,22 @@ func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[Stri
 	return snapshot
 
 
+func _automatic_staff_jobs() -> bool:
+	return not GameMode.is_creative() and difficulty.auto(&"jobs")
+
+
 func _refresh_difficulty() -> void:
 	var creative: bool = GameMode.is_creative()
 	_settings_panel.set_difficulty(null if creative else difficulty)
+	_staff_panel.set_auto_wages(_uses_auto_wages())
+	_staff_panel.set_automatic_jobs(_automatic_staff_jobs())
 	var label: Label = $HUD/Top/Row/Difficulty
 	label.text = Difficulty.mode_name(difficulty.mode())
 	label.visible = not creative and difficulty.mode() != &"normal"
+
+
+func _uses_auto_wages() -> bool:
+	return not GameMode.is_creative() and difficulty.auto(&"wages")
 
 
 func _on_difficulty_requested(mode_id: StringName, flags: Dictionary) -> void:
@@ -6404,12 +6435,20 @@ func _begin_morning() -> void:
 		push_error("Cannot restore the morning staff roster")
 		return
 	var notices: Array[Dictionary] = choices.process_morning_quits(Clock.sim.day, Clock.sim.phase)
+	var auto_wages: bool = _uses_auto_wages()
+	var wage_notes: Array[String] = []
+	if auto_wages:
+		wage_notes = choices.settle_morning_raises(Clock.sim.day, Clock.sim.phase)
+	if _automatic_staff_jobs():
+		choices.reset_job_priorities()
 	# The morning install removes departures and applies skills earned at the
 	# previous close before any staff are sent to their posts.
 	if not sim.set_staff_roster(choices.members()):
 		push_error("Cannot install the morning staff roster")
 		return
 	staff_roster = choices
+	for line: String in wage_notes:
+		$HUD.queue_toast(line)
 	_prune_site_manager()
 	_staff_panel.bind_roster(staff_roster)
 	_refresh_staff_transfer_sites()
@@ -6453,13 +6492,18 @@ func _begin_morning() -> void:
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	day_notes.clear_awards()
 	_closed_report_day = 0
-	# Loading today's persisted pool must not advance the saved hiring stream.
+	var auto_hire: bool = difficulty.auto(&"hire") and not GameMode.is_creative()
+	var replacement_role: StringName = _morning_replacement_role(notices) if auto_hire else &""
+	var morning_pool_drawn: bool = false
+	# The daily pool is saved with the rest of the roster. Loading the same
+	# morning must neither redraw it nor make a second hiring decision.
 	if staff_roster.candidate_day != Clock.sim.day:
-		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
-			_managers_on_offer())
+		morning_pool_drawn = staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
+			_managers_on_offer(), replacement_role)
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
+	_dish_metrics_today.clear()
 	_food_cost_today = PurchaseBasis.zero()
 	var yesterday: DayReport = shown_report
 	shown_report = null
@@ -6469,9 +6513,15 @@ func _begin_morning() -> void:
 	_refresh_sold_out_hud()
 	_expire_stock()
 	_restock()
+	var hire_note: String = ""
+	if auto_hire and morning_pool_drawn:
+		hire_note = _auto_hire_for_morning(replacement_role, yesterday)
+		if not hire_note.is_empty() and (_morning_paper == null or not Preferences.morning_paper_enabled):
+			$HUD.queue_toast(hire_note)
 	_plan_morning_booking()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
+	_prepare_morning_paper(yesterday, hire_note)
 	if use_saves and _skip_next_autosave:
 		var warning: AcceptDialog = $Overlay/AutosaveLoadFailure
 		warning.theme = ($Overlay/QuitToTitle as ConfirmationDialog).theme
@@ -6488,7 +6538,7 @@ func _begin_morning() -> void:
 	# A new raise or departure must be visible without making the player find
 	# the Staff button. Ordinary mornings still leave the panel closed.
 	if not _staff_notices.is_empty() \
-			or not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty():
+			or (not auto_wages and not staff_roster.morning_raise_offers(Clock.sim.day, Clock.sim.phase).is_empty()):
 		set_staff_visible(true)
 	# A legacy layout may already have every cooking station blocked. The
 	# normal editor prevents new empty catalogues; opening still explains old ones.
@@ -6496,14 +6546,49 @@ func _begin_morning() -> void:
 	_refresh_stock_panel()
 	refresh_presentation()
 	_offer_site_card()
-	_show_morning_paper(yesterday)
+	_show_morning_paper()
 
 
-func _show_morning_paper(yesterday: DayReport) -> void:
+func _morning_replacement_role(notices: Array[Dictionary]) -> StringName:
+	for notice: Dictionary in notices:
+		var role: StringName = notice.get("departed_role", &"")
+		if not role.is_empty() and _may_hire_role(role):
+			return role
+	return &""
+
+
+func _auto_hire_for_morning(replacement_role: StringName, yesterday: DayReport) -> String:
+	var needed: Array[StringName] = staff_roster.missing_service_roles()
+	var role: StringName
+	var reason: StringName
+	var reserve_days: int = 0
+	if not needed.is_empty():
+		role = needed[0]
+		reason = &"missing"
+	elif not replacement_role.is_empty():
+		role = replacement_role
+		reason = &"replacement"
+	elif yesterday != null and yesterday.day == Clock.sim.day - 1:
+		role = STAFF_ADVICE_RULES.recommendation(yesterday.staff_activity, yesterday.leave_reasons)
+		if role not in [&"cook", &"server"]:
+			return ""
+		reason = &"bottleneck"
+		reserve_days = difficulty.hire_wage_reserve_days()
+	else:
+		return ""
+	var candidate: StaffMember = staff_roster.best_value_candidate(role, Economy.cash, reserve_days)
+	if candidate == null or not staff_hire(candidate.id):
+		return ""
+	return StaffAdviceText.hire_notice(candidate, reason)
+
+
+## Select one edition before the existing morning autosave. A reload uses
+## that text even when yesterday's full closing report is gone.
+func _prepare_morning_paper(yesterday: DayReport, hire_note: String = "") -> void:
 	var day: int = Clock.sim.day
-	if _morning_paper == null or not Preferences.morning_paper_enabled or _morning_paper_day == day:
+	if _morning_paper == null or not Preferences.morning_paper_enabled \
+			or _morning_paper_edition.get("day", 0) == day:
 		return
-	_morning_paper_day = day
 	if yesterday != null and yesterday.day != day - 1:
 		yesterday = null
 	var history: Dictionary = {}
@@ -6513,7 +6598,7 @@ func _show_morning_paper(yesterday: DayReport) -> void:
 			history = recent[0]
 	var dishes: Dictionary = yesterday.dishes_sold if yesterday != null else history.get("dishes_sold", {})
 	var dish: String = MorningPaper.best_dish(dishes, content)
-	var notes: Array[String] = [sim.rush_hour.morning_notice()]
+	var notes: Array[String] = [hire_note, sim.rush_hour.morning_notice()]
 	if group_booking != null and group_booking.has_active_booking() \
 			and int(group_booking.booking.get("service_day", -1)) == day:
 		var booking: Dictionary = group_booking.booking
@@ -6521,9 +6606,46 @@ func _show_morning_paper(yesterday: DayReport) -> void:
 			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
 	if not dish.is_empty():
 		notes.append("%s was yesterday’s favorite." % dish)
+	_morning_paper_edition = MorningPaper.build(day, yesterday, world.weather.kind, notes,
+		GameState.rng(&"paper"), dish, history)
+	_morning_paper_edition["day"] = day
+
+
+func _show_morning_paper() -> void:
+	var day: int = Clock.sim.day
+	if _morning_paper == null or not Preferences.morning_paper_enabled \
+			or _morning_paper_day == day or _morning_paper_edition.get("day", 0) != day:
+		return
+	_morning_paper_day = day
 	_morning_paper.set_panel_top(float($HUD.call("panel_top")))
-	_morning_paper.show_paper(MorningPaper.build(day, yesterday, world.weather.kind, notes,
-		GameState.rng(&"paper"), dish, history))
+	_morning_paper.show_paper(_morning_paper_edition)
+
+
+func _capture_morning_paper() -> Dictionary:
+	if _morning_paper_edition.get("day", 0) != Clock.sim.day:
+		return {}
+	return {"day": Clock.sim.day, "headline": _morning_paper_edition["headline"],
+		"notes": _morning_paper_edition["notes"].duplicate()}
+
+
+func _restore_morning_paper(data: Dictionary) -> bool:
+	_morning_paper_edition.clear()
+	# An older or stale edition can be rebuilt from this morning's history.
+	var day: Variant = data.get("day")
+	var headline: Variant = data.get("headline")
+	var notes: Variant = data.get("notes")
+	if (not day is int and not day is float) or float(day) != float(Clock.sim.day) \
+			or not headline is String or headline.is_empty() \
+			or not notes is Array or notes.size() > MorningPaper.MAX_NOTES:
+		return true
+	var briefs: Array[String] = []
+	for note: Variant in notes:
+		if not note is String:
+			return true
+		briefs.append(note)
+	_morning_paper_edition = {"day": Clock.sim.day, "masthead": MorningPaper.MASTHEAD,
+		"headline": headline, "notes": briefs}
+	return true
 
 
 func _on_morning_paper_preference_changed(key: StringName) -> void:
@@ -7474,11 +7596,28 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 		if tip > 0:
 			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+	var metrics: Dictionary = _dish_metrics_for(order.recipe_id)
+	metrics["sold"] = dishes_sold_today[order.recipe_id]
+	metrics["quality_sum"] += order.quality
 	if signature_state != null:
 		signature_state.record_sale(order.recipe_id)
 	_observe_opening_state()
 	_observe_opening_party(customer)
 	_refresh_goals()
+
+
+func _on_dish_visit_completed(recipe_ids: Array[StringName], happy: bool) -> void:
+	for id: StringName in recipe_ids:
+		var metrics: Dictionary = _dish_metrics_for(id)
+		metrics["eaten"] += 1
+		if happy:
+			metrics["happy"] += 1
+
+
+func _dish_metrics_for(id: StringName) -> Dictionary:
+	if not _dish_metrics_today.has(id):
+		_dish_metrics_today[id] = {"sold": 0, "quality_sum": 0.0, "eaten": 0, "happy": 0}
+	return _dish_metrics_today[id]
 
 
 func _settle_booking_after_departure(customer: CustomerAgent, reason: StringName) -> void:
@@ -7552,6 +7691,7 @@ func _show_evening_report(report: DayReport) -> void:
 		business_history.record(report)
 	_report.call(&"show_report", report)
 	_report.call(&"show_history", business_history.summaries(), report.day)
+	_report.call(&"show_week_cash_flow", Economy.ledger.week_cash_flow(report.day))
 
 
 ## Service is over and every guest's departure is recorded: close the books.
@@ -8174,6 +8314,7 @@ func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
 func _refresh_menu_details() -> void:
 	if _menu_panel != null and content != null:
 		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+		_menu_panel.set_dish_week(business_history.dish_week(Clock.sim.day - 1))
 		var favourites: Array[StringName] = []
 		for profile: RegularProfile in regulars.profiles:
 			if profile.active and not favourites.has(profile.favourite_dish):

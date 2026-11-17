@@ -523,6 +523,16 @@ func test_first_three_review_quotes_fit_without_scrolling_at_both_capture_sizes(
 				and rect.position.y >= viewport.position.y - 1.0
 				and rect.end.y <= viewport.end.y + 1.0,
 				"review %d fits the unscrolled %dx%d report" % [index, int(bounds.x), int(bounds.y)])
+	var ledger: Ledger = Ledger.new()
+	_screen.call("show_week_cash_flow", ledger.week_cash_flow(1))
+	await tree.process_frame
+	await tree.process_frame
+	assert_true((_screen.get_node("%ReportTabs") as TabBar).is_visible_in_tree())
+	var with_tabs: Rect2 = scroll.get_global_rect().grow(1.0)
+	for index: int in range(3):
+		var quote: Label = rows.get_child(index) as Label
+		assert_true(with_tabs.encloses(quote.get_global_rect()),
+			"review %d still fits the 1280x720 report with the Week tab available" % index)
 
 
 func test_two_milestones_and_three_quotes_fit_native_1600x900_report() -> void:
