@@ -676,12 +676,16 @@ func _frame_shop(reset: bool) -> void:
 	# Pan around the shop itself, with a 2 m margin on every side.
 	camera.frame_area(low + half, half + Vector2(2.0, 2.0), zoom, reset)
 	var dressing: RoomDressing = ($ShopView as ShopView).room_dressing
+	var street: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
 	if dressing != null:
 		var runs: Array[Dictionary] = dressing.frontage_runs()
 		if not runs.is_empty():
-			camera.set_street_pan_extension(runs[0][&"normal"], STREET_PAN_EXTENSION)
+			var normal: Vector2i = runs[0][&"normal"]
+			camera.set_street_pan_extension(normal, STREET_PAN_EXTENSION)
+			# A beach behind the shop (#588) can be looked over as far as the street.
+			if street != null and street.has_shore():
+				camera.set_shore_pan_extension(-normal, STREET_PAN_EXTENSION)
 	# The dressed world ends in a tree line; the view never goes past it (#424).
-	var street: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
 	if street != null:
 		camera.set_world_bounds(street.world_rect())
 	else:

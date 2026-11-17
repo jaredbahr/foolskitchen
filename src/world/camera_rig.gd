@@ -76,6 +76,9 @@ var _view_viewport: Viewport
 var _preferences: SettingsPreferences
 var _street_pan_normal: Vector2i = Vector2i.ZERO
 var _street_pan_metres: float = 0.0
+## A second extension on the opposite side (#588): a beach behind the shop.
+var _shore_pan_normal: Vector2i = Vector2i.ZERO
+var _shore_pan_metres: float = 0.0
 ## The dressed world (#424): a square on the XZ plane the view must never leave.
 ## An empty rect means no world edge is set and only the pan clamp applies.
 var _world_bounds: Rect2 = Rect2()
@@ -208,6 +211,8 @@ func step_view(delta: float, pan_input: Vector2) -> void:
 func frame_area(center: Vector2, limits: Vector2, zoom: float, reset: bool) -> void:
 	_street_pan_normal = Vector2i.ZERO
 	_street_pan_metres = 0.0
+	_shore_pan_normal = Vector2i.ZERO
+	_shore_pan_metres = 0.0
 	initial_focus = center
 	pan_center = center
 	pan_limits = limits
@@ -232,6 +237,20 @@ func set_street_pan_extension(normal: Vector2i, metres: float) -> bool:
 		return false
 	_street_pan_normal = normal
 	_street_pan_metres = metres
+	return true
+
+
+## Extend one more cardinal clamp side (#588), so the view can pan out over a
+## beach behind the shop. Same rules as the street extension.
+func set_shore_pan_extension(normal: Vector2i, metres: float) -> bool:
+	if not is_finite(metres) or metres < 0.0:
+		return false
+	if normal != Vector2i.ZERO and absi(normal.x) + absi(normal.y) != 1:
+		return false
+	if normal == Vector2i.ZERO and metres != 0.0:
+		return false
+	_shore_pan_normal = normal
+	_shore_pan_metres = metres
 	return true
 
 
@@ -430,6 +449,14 @@ func _focus_bounds() -> Rect2:
 		low.y -= _street_pan_metres
 	elif _street_pan_normal.y > 0:
 		high.y += _street_pan_metres
+	if _shore_pan_normal.x < 0:
+		low.x -= _shore_pan_metres
+	elif _shore_pan_normal.x > 0:
+		high.x += _shore_pan_metres
+	elif _shore_pan_normal.y < 0:
+		low.y -= _shore_pan_metres
+	elif _shore_pan_normal.y > 0:
+		high.y += _shore_pan_metres
 	return Rect2(low, high - low)
 
 

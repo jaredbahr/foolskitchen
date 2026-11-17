@@ -1,0 +1,361 @@
+{
+  "issue": 589,
+  "furniture_scale": 1.1,
+  "food_scale": 0.33,
+  "assets": {
+    "walkup_hatch_wood": {
+      "triangles": 1296,
+      "budget": 1500,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.56,
+        1.4,
+        0.844
+      ],
+      "materials": [
+        "_defaultMat",
+        "carpetWhite",
+        "metal",
+        "metalDark",
+        "wood",
+        "woodDark"
+      ],
+      "nodes": [
+        "Awning",
+        "Frame",
+        "InnerLedgeTop",
+        "LedgeInner",
+        "LedgeOuter",
+        "LedgeSill",
+        "MenuBoard",
+        "OuterLedgeTop",
+        "ShutterClosed",
+        "ShutterHousing",
+        "ShutterOpen",
+        "WallBody"
+      ],
+      "nearest_kit": [
+        "wallWindow.glb",
+        "wallDoorway.glb",
+        "kitchenBar.glb"
+      ],
+      "anchors": {
+        "OuterLedgeTop": [
+          0,
+          0.5,
+          -0.31
+        ],
+        "InnerLedgeTop": [
+          0,
+          0.5,
+          0.305
+        ]
+      },
+      "opening": {
+        "half_width": 0.2,
+        "bottom": 0.5,
+        "top": 1.02
+      }
+    },
+    "walkup_hatch_painted": {
+      "triangles": 1284,
+      "budget": 1500,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.56,
+        1.4,
+        0.84
+      ],
+      "materials": [
+        "_defaultMat",
+        "carpet",
+        "carpetWhite",
+        "metalDark",
+        "metalMedium",
+        "woodDark"
+      ],
+      "nodes": [
+        "Awning",
+        "Frame",
+        "InnerLedgeTop",
+        "LedgeInner",
+        "LedgeOuter",
+        "LedgeSill",
+        "MenuBoard",
+        "OuterLedgeTop",
+        "ShutterClosed",
+        "ShutterHousing",
+        "ShutterOpen",
+        "WallBody"
+      ],
+      "nearest_kit": [
+        "wallWindow.glb",
+        "wallDoorway.glb",
+        "kitchenBar.glb"
+      ],
+      "anchors": {
+        "OuterLedgeTop": [
+          0,
+          0.5,
+          -0.31
+        ],
+        "InnerLedgeTop": [
+          0,
+          0.5,
+          0.305
+        ]
+      },
+      "opening": {
+        "half_width": 0.2,
+        "bottom": 0.5,
+        "top": 1.02
+      }
+    },
+    "walkup_hatch_seaside": {
+      "triangles": 1388,
+      "budget": 1500,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.56,
+        1.4,
+        0.84
+      ],
+      "materials": [
+        "_defaultMat",
+        "carpetBlue",
+        "carpetWhite",
+        "metal",
+        "metalDark",
+        "wood"
+      ],
+      "nodes": [
+        "Awning",
+        "Frame",
+        "InnerLedgeTop",
+        "LedgeInner",
+        "LedgeOuter",
+        "LedgeSill",
+        "MenuBoard",
+        "OuterLedgeTop",
+        "ShutterClosed",
+        "ShutterHousing",
+        "ShutterOpen",
+        "WallBody"
+      ],
+      "nearest_kit": [
+        "wallWindow.glb",
+        "wallDoorway.glb",
+        "kitchenBar.glb"
+      ],
+      "anchors": {
+        "OuterLedgeTop": [
+          0,
+          0.5,
+          -0.31
+        ],
+        "InnerLedgeTop": [
+          0,
+          0.5,
+          0.305
+        ]
+      },
+      "opening": {
+        "half_width": 0.2,
+        "bottom": 0.5,
+        "top": 1.02
+      }
+    },
+    "soft_serve_machine": {
+      "triangles": 836,
+      "budget": 1500,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.358,
+        0.338,
+        0.322
+      ],
+      "materials": [
+        "carpet",
+        "carpetWhite",
+        "lamp",
+        "metal",
+        "metalDark",
+        "metalLight",
+        "metalMedium",
+        "wood",
+        "woodDark"
+      ],
+      "nodes": [
+        "SoftServeMachine"
+      ],
+      "nearest_kit": [
+        "kitchenCoffeeMachine.glb",
+        "kitchenBlender.glb"
+      ]
+    },
+    "shaved_ice_cart": {
+      "triangles": 952,
+      "budget": 1500,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.905,
+        1.145,
+        0.53
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetWhite",
+        "glass",
+        "lamp",
+        "metal",
+        "metalDark",
+        "metalLight",
+        "plant",
+        "wood",
+        "woodDark"
+      ],
+      "nodes": [
+        "ShavedIceCart"
+      ],
+      "nearest_kit": [
+        "kitchenBar.glb",
+        "kitchenCabinet.glb"
+      ]
+    },
+    "tablecloth_rect": {
+      "triangles": 176,
+      "budget": 300,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.9656,
+        0.153,
+        0.5321
+      ],
+      "materials": [
+        "carpet",
+        "carpetWhite"
+      ],
+      "nodes": [
+        "Runner",
+        "Tablecloth"
+      ],
+      "nearest_kit": [
+        "tableCloth.glb",
+        "table.glb"
+      ],
+      "table": "table.glb",
+      "table_top": 0.3594,
+      "drop": 0.15
+    },
+    "tablecloth_round": {
+      "triangles": 44,
+      "budget": 300,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.8539,
+        0.15,
+        0.986
+      ],
+      "materials": [
+        "carpetWhite"
+      ],
+      "nodes": [
+        "Tablecloth"
+      ],
+      "nearest_kit": [
+        "tableRound.glb"
+      ],
+      "table": "tableRound.glb",
+      "table_top": 0.4034,
+      "drop": 0.15
+    },
+    "candle_holder": {
+      "triangles": 132,
+      "budget": 300,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.0832,
+        0.1755,
+        0.0832
+      ],
+      "materials": [
+        "carpetWhite",
+        "glass",
+        "lamp",
+        "metalDark"
+      ],
+      "nodes": [
+        "CandleHolder"
+      ],
+      "nearest_kit": [
+        "lampRoundTable.glb",
+        "lampSquareTable.glb"
+      ]
+    },
+    "small_vase": {
+      "triangles": 256,
+      "budget": 300,
+      "scale": "furniture",
+      "world_dimensions": [
+        0.0941,
+        0.2301,
+        0.0933
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetWhite",
+        "lamp",
+        "plant"
+      ],
+      "nodes": [
+        "SmallVase"
+      ],
+      "nearest_kit": [
+        "plantSmall1.glb"
+      ]
+    },
+    "shaved_ice_topping": {
+      "triangles": 98,
+      "budget": 300,
+      "scale": "food",
+      "world_dimensions": [
+        0.0633,
+        0.056,
+        0.0602
+      ],
+      "materials": [
+        "colormap"
+      ],
+      "nodes": [
+        "ShavedIce"
+      ],
+      "nearest_kit": [
+        "ice-cream-cup.glb"
+      ],
+      "sits_on": "ice-cream-cup.glb",
+      "rim_height": 0.0595
+    },
+    "fries_cone": {
+      "triangles": 200,
+      "budget": 300,
+      "scale": "food",
+      "world_dimensions": [
+        0.0776,
+        0.152,
+        0.0776
+      ],
+      "materials": [
+        "colormap"
+      ],
+      "nodes": [
+        "FriesCone"
+      ],
+      "nearest_kit": [
+        "fries.glb",
+        "ice-cream-cne.glb"
+      ]
+    }
+  }
+}

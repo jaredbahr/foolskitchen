@@ -158,5 +158,95 @@ tank's swim box). Deterministic: no random draws. No textures, light nodes or ba
   a pink tail). The GLBs reference that file by relative path; nothing is copied.
   Origin at the centre of the whole fish, facing -Z.
 
+## Walk-up hatch, seaside treats and evening dress kit (#589)
+
+Models only: nothing is buildable yet (D38; Codex wires them later). Rebuild
+everything with `blender --background --factory-startup --python tools/build_walkup.py`
+(Blender 4.2), which also writes `walkup/walkup.metrics.json` (triangles, world
+sizes, materials and node names). Deterministic, no textures, lights or
+emission. The furniture-scale pieces copy unchanged Furniture Kit material
+colours by name and are authored at world size ÷ `ArtScale.FURNITURE_SCALE`; the
+two dish pieces are coloured only through the Food Kit `colormap.png` (one
+swatch per face, referenced by relative path, never copied) and are authored at
+world size ÷ `ArtScale.FOOD_SCALE`. Origin at the base centre, facing -Z.
+Review capture: `tools/walkup_models_review.tscn` (each piece beside its kit
+reference, the hatch open and closed in a shell wall run, tables dressed for
+the evening by day and night).
+
+| Asset under `assets/made/` | Nearest kit pieces and approved style reference | Triangles | World size (w × h × d, m) |
+|---|---|---:|---|
+| `walkup/walkup_hatch_wood.glb` | `wallWindow` / `wallDoorway` frame proportions, `kitchenBar` top; plank awning in `wood`/`woodDark` | 1296 | 0.56 × 1.40 × 0.84 |
+| `walkup/walkup_hatch_painted.glb` | the same, cream (`carpetWhite`) frame, plain `carpet` cloth awning | 1284 | 0.56 × 1.40 × 0.84 |
+| `walkup/walkup_hatch_seaside.glb` | the same, `carpetBlue`/`carpetWhite` striped awning (as the #240 awnings) | 1388 | 0.56 × 1.40 × 0.84 |
+| `walkup/soft_serve_machine.glb` | `kitchenCoffeeMachine` (sits on a `kitchenCabinet` like it), `kitchenBlender` | 836 | 0.36 × 0.34 × 0.32 |
+| `walkup/shaved_ice_cart.glb` | `kitchenBar` counter height and `kitchenCabinet` panels; parasol in the awning stripes | 952 | 0.91 × 1.15 × 0.53 |
+| `walkup/tablecloth_rect.glb` | `tableCloth` cloth; fits `table` (also `tableGlass`, `tableCross`) | 176 | 0.97 × 0.15 × 0.53 |
+| `walkup/tablecloth_round.glb` | fits the six-sided `tableRound` | 44 | 0.85 × 0.15 × 0.99 |
+| `walkup/candle_holder.glb` | `lampRoundTable` / `lampSquareTable` | 132 | 0.08 × 0.18 × 0.08 |
+| `walkup/small_vase.glb` | `plantSmall1` (and the #240 flower box flowers) | 256 | 0.09 × 0.23 × 0.09 |
+| `walkup/shaved_ice_topping.glb` | Food Kit `ice-cream-cup` (it sits in that cup) | 98 | 0.06 × 0.06 × 0.06 |
+| `walkup/fries_cone.glb` | Food Kit `fries` and `ice-cream-cne` | 200 | 0.08 × 0.15 × 0.08 |
+
+- **Walk-up hatch.** One shell wall cell (0.5 × 1.4 × 0.5 m) with a 0.40 m
+  wide serving opening from the 0.50 m ledge to 1.02 m. Front (-Z) is the
+  street. Named nodes: `WallBody` (the wall round the opening in the kit
+  wall's `_defaultMat`, to take the shop's wall material or to hide where the
+  shell draws its own), `LedgeSill`, `LedgeOuter` (the customer's ledge, on two
+  brackets), `LedgeInner` (the staff ledge), `Frame`, `ShutterHousing`,
+  `ShutterOpen` (rolled up: only the bottom bar shows) and `ShutterClosed`
+  (slats down to the ledge), `Awning` (bottom 1.12 m, top 1.27 m, the #240
+  canopy band) and `MenuBoard` (blank-lined board under the outer ledge). Show
+  exactly one of `ShutterOpen` / `ShutterClosed`. The empties `InnerLedgeTop`
+  and `OuterLedgeTop` mark the two ledge tops at 0.50 m, 0.305 m inside and
+  0.31 m outside the cell centre.
+- **Soft-serve machine.** A counter appliance for the top of a
+  `kitchenCabinet`, like `coffee_machine.tscn` (0.495 m up). Its three pull
+  handles carry vanilla, chocolate and strawberry knobs (`carpetWhite`,
+  `woodDark`, `carpet`); the two warm lamps use the kit `lamp` colour only.
+- **Shaved-ice cart.** Two cells (1.0 × 0.5 m): counter 0.47 m high, two
+  wheels, a push handle, an ice shaver with a `glass` hopper, four syrups
+  (`carpet`, `carpetBlue`, `lamp`, `plant`) and paper cups, under a
+  blue-and-white parasol that stays inside the footprint.
+- **Tablecloths.** Overlays for existing tables, not new tables: their origin is
+  the table's own base centre (they keep the cloth at the table top, 0.36 m for
+  `table`, 0.40 m for `tableRound`), so they take the table's position and
+  turn. `tablecloth_rect` has a separate `Runner` node in the kit's cloth red.
+- **Candle holder and small vase.** Small props for a table top; the candle's
+  flame uses the kit `lamp` colour (a glowing part, ART_STYLE §3), behind a kit
+  `glass` chimney; the vase is `carpetBlue` with three kit-coloured flowers.
+- **Dishes** (Food Kit pieces wherever they exist, composed in
+  `assets/props/`): the strawberry cone is the kit's own `ice-cream`;
+  `ice_cream_cone_chocolate.tscn` and `ice_cream_cone_mint.tscn` seat the kit's
+  scoops on its `ice-cream-cne`; `shaved_ice.tscn` puts the made topping in the
+  kit `ice-cream-cup`; the paper cone of fries is `walkup/fries_cone.glb`. The
+  sundae is #558's `ice_cream_sundae.tscn` (kit cup and chocolate scoop).
+
 ## UI control icons (#498)
 `ui/*.png` (switch on/off, slider handle, dropdown arrow, menu radio dots) are drawn by `tools/make_ui_controls.py` in the theme palette: rounded, outlined in the ink colour, no gradients. Re-run the script to regenerate.
+
+## Seaside beach (#588)
+
+No kit has beach pieces, so these are made in the Kenney style, the same way as the
+street's other code-built scenery (trees, hedges, street furniture, birds): chunky,
+flat-shaded, vertex-coloured meshes built in `src/world/neighbourhood_shore.gd` from
+boxes, six- and eight-sided posts and low-poly lumps. They are not files under
+`assets/made/`: no textures, no imported models. Colours come from the street's
+`ShoreSkin` in `data/streets/seaside.tres`, drawn from the shared swatches (Oat, Cream,
+Birch, Sand, Milk, Coral, Tomato, Sunflower, Teal, Navy, Pewter) and the seaside
+street's own blues; the sea's blues are the seaside accent colours D32 allows. People
+on the beach are unchanged Mini Characters.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Beach umbrella with its towel (open: eight striped panels and a valance on a pole; furled from dusk) | the street's awning stripes, `lampRoundFloor` pole, a flat `rugRectangle`-like slab | 66 open, 16 furled |
+| Beach ball (six coloured wedges) | the street furniture's lumps, at toy size | 36 |
+| Sandcastle with towers, flag, bucket and spade | stacked kit-style boxes and six-sided posts | about 280 |
+| Lifeguard hut on stilts, ramp and flag | `wall` and `doorwayFront` proportions, street-front awning colours | 100 |
+| Plank path with rope posts | the boardwalk's plank pitch, `lampRoundFloor` posts | 236 |
+| Dunes and marram grass | the ground's lumps and the hedges' shapes, in sand | 12 a dune, 5 a tuft |
+| Lighthouse on its rocks (lamp glows at night, beam sweeps) | eight-sided banded tower, kit lamp glow | 356 |
+| Sailboat (hull, deck, mast, main and jib, mast lamp) | `compact_car`'s bevelled body proportions | about 40 |
+| Gull (body, beak, two flapping wings) | the street's birds (#423) | about 45 |
+
+The sea is one shader (`src/world/sea.gdshader`): flat bands of colour, a foam edge,
+rolling crests and glints, driven by the street's display clock.

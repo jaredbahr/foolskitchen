@@ -13,6 +13,8 @@ const STARTER: String = "res://data/streets/starter.tres"
 @export var id: StringName = &""
 @export var ground: GroundSkin
 @export var buildings: StreetSet
+## The beach and sea behind the back lane (#588); none keeps the meadow and tree line.
+@export var shore: ShoreSkin
 
 
 ## The starter street, the one every site had before presets (#422, #423).
@@ -81,6 +83,8 @@ func errors() -> PackedStringArray:
 	for style: ShopStyle in buildings.shops:
 		if style == null or String(style.id).is_empty():
 			problems.append("a neighbour shop has no id")
+	if shore != null:
+		problems.append_array(shore.errors())
 	for spec: StreetPropSpec in buildings.furniture:
 		if spec == null:
 			problems.append("an empty street furniture entry")

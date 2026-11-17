@@ -5,8 +5,22 @@ extends "res://src/world/main.gd"
 ## Use: bash tools/screenshot.sh --scene=res://tools/seaside_street_review.tscn
 ##   --speed=0 --frames=60 [--quarter=N]. Set SEASIDE_STREET_REVIEW_HOME=1 to stay
 ## on the home site's starter street instead, for a side-by-side comparison.
+## SEASIDE_STREET_STAGE=day|dusk|night shows the street at that time of day (default
+## day, the first morning): the clock is set for display only and never runs.
+## SEASIDE_STREET_BEACH=<zoom> frames the beach behind the shop (#588) at that zoom
+## (the default view is about 15; 22 shows the beach and sea well).
+## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
+## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
 const SEASIDE: StringName = &"seaside_cliff"
+## The dusk stage's minute of the day: the sunset key frame (data/look/day_light.tres).
+const DUSK_MINUTE: float = 1230.0
+const WARM_UP_FRAMES: int = 60
+
+var _timed_frames: int = 0
+var _frame_count: int = 0
+var _last_usec: int = 0
+var _frame_ms: Array[float] = []
 
 
 func _ready() -> void:
@@ -29,13 +43,41 @@ func _ready() -> void:
 		if node != null:
 			node.set("visible", false)
 	_close_up()
+	_frame_beach()
+	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
+	if _timed_frames > 0:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	if not _set_stage(OS.get_environment("SEASIDE_STREET_STAGE")):
+		return
 	if OS.get_environment("SEASIDE_STREET_PLAN") == "1":
 		var summary: Array = []
 		for entry: Dictionary in ($ShopView as ShopView).neighbourhood_dressing.furniture_plan():
 			summary.append("%d@%.1f" % [entry["kind"], entry["u"]])
 		print("PLAN ", " ".join(summary))
 	print("SEASIDE_STREET_REVIEW ", JSON.stringify({"site": String(site_book.active_id),
-		"street": String(($ShopView as ShopView).street_preset.id)}))
+		"street": String(($ShopView as ShopView).street_preset.id), "minute": day_light_minute()}))
+
+
+## Sets the clock's phase for display only (dusk mid-evening service, night after
+## close); nothing ticks, as the review runs at speed 0. Day leaves the morning.
+func _set_stage(stage: String) -> bool:
+	var clock: SimClock = world.clock
+	match stage:
+		"", "day":
+			return true
+		"dusk":
+			clock.phase = SimClock.Phase.OPEN
+			clock.phase_tick = roundi((DUSK_MINUTE - clock.display_open_minute)
+				/ float(clock.display_close_minute - clock.display_open_minute) * clock.open_ticks)
+		"night":
+			clock.phase = SimClock.Phase.CLOSED
+			clock.phase_tick = 0
+		_:
+			push_error("Unknown SEASIDE_STREET_STAGE: " + stage)
+			return false
+	Clock.set_speed(0)
+	refresh_presentation()
+	return true
 
 
 ## SEASIDE_STREET_ZOOM=<metres> frames the pavement in close-up (about 9 reads props
@@ -57,8 +99,38 @@ func _close_up() -> void:
 	rig.frame_area(Vector2(target.x, target.z), Vector2(14.0, 14.0), float(zoom_text), true)
 
 
+func _frame_beach() -> void:
+	var zoom_text: String = OS.get_environment("SEASIDE_STREET_BEACH")
+	var shore: NeighbourhoodShore = $ShopView.neighbourhood_dressing.shore()
+	if zoom_text.is_empty() or shore == null:
+		return
+	var frame: Transform3D = $ShopView.neighbourhood_dressing.local_frame()
+	var target: Vector3 = frame * Vector3(shore.path_u, 0.0, shore.lane_v - 2.0)
+	($CameraRig as CameraRig).frame_area(Vector2(target.x, target.z), Vector2(14.0, 14.0), float(zoom_text), true)
+
+
 static func _vector(value: Variant) -> Vector3:
 	if value is Vector3:
 		return value
 	var parts: Array = value
 	return Vector3(float(parts[0]), float(parts[1]), float(parts[2]))
+
+
+@warning_ignore("integer_division")
+func _process(delta: float) -> void:
+	super._process(delta)
+	if _timed_frames <= 0 or _frame_ms.size() >= _timed_frames:
+		return
+	_frame_count += 1
+	var now: int = Time.get_ticks_usec()
+	if _frame_count > WARM_UP_FRAMES:
+		_frame_ms.append(float(now - _last_usec) / 1000.0)
+		if _frame_ms.size() == _timed_frames:
+			var sorted: Array[float] = _frame_ms.duplicate()
+			sorted.sort()
+			var total: float = 0.0
+			for value: float in _frame_ms:
+				total += value
+			print("FRAME_TIME ", JSON.stringify({"frames": _timed_frames, "mean_ms": snappedf(total / float(_timed_frames), 0.01),
+				"median_ms": snappedf(sorted[_timed_frames / 2], 0.01)}))
+	_last_usec = now
