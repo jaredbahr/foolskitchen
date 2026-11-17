@@ -62,3 +62,4 @@ review_bonus = 0.0
 [resource]
 script = ExtResource("1_tuning")
 modes = Array[ExtResource("2_mode")]([SubResource("easy"), SubResource("normal"), SubResource("hard"), SubResource("custom")])
+hire_wage_reserve_days = 5
