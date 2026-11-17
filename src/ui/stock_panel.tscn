@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/ui/stock_panel.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://src/ui/stock_panel_layout.gd" id="3_layout"]
 
 [node name="StockPanel" type="Control"]
 visible = false
@@ -31,12 +32,12 @@ focus_mode = 0
 horizontal_scroll_mode = 0
 follow_focus = true
 
-[node name="Content" type="VBoxContainer" parent="Panel"]
+[node name="Content" type="Container" parent="Panel"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
-theme_override_constants/separation = 6
+script = ExtResource("3_layout")
 
 [node name="Title" type="Label" parent="Panel/Content"]
 custom_minimum_size = Vector2(0, 46)
@@ -117,7 +118,7 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Cart" type="HBoxContainer" parent="Panel/Content"]
+[node name="Cart" type="HFlowContainer" parent="Panel/Content"]
 layout_mode = 2
 mouse_filter = 2
 

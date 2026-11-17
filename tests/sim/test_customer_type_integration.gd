@@ -109,6 +109,9 @@ func test_budget_scales_only_above_standard_walkouts_and_review_penalties() -> v
 	assert_null(student.order)
 	assert_eq(student.leave_reason, &"too_expensive")
 	assert_eq(student_rng.state, oracle.state)
+	sim.world.remove_agent(student)
+	assert_eq(sim.visitor_breakdown(), [{"name": "Students", "count": 1, "average_mood": 0.0}],
+		"the student still inside does not count toward the walkout's average")
 
 
 func test_type_patience_stacks_once_with_cleanliness_vibe_and_server() -> void:

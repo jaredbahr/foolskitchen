@@ -56,15 +56,25 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 9
 
-[node name="MasterLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+[node name="Columns" type="GridContainer" parent="Panel/Column/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/h_separation = 26
+theme_override_constants/v_separation = 12
+columns = 2
+
+[node name="Audio" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="MasterLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 text = "Master volume"
 
-[node name="MasterRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
+[node name="MasterRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 
-[node name="MasterSlider" type="HSlider" parent="Panel/Column/Scroll/Content/MasterRow"]
-custom_minimum_size = Vector2(240, 0)
+[node name="MasterSlider" type="HSlider" parent="Panel/Column/Scroll/Content/Columns/Audio/MasterRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -72,19 +82,19 @@ max_value = 100.0
 step = 1.0
 value = 100.0
 
-[node name="MasterValue" type="Label" parent="Panel/Column/Scroll/Content/MasterRow"]
+[node name="MasterValue" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/MasterRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "100%"
 
-[node name="MusicLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+[node name="MusicLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 text = "Music volume"
 
-[node name="MusicRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
+[node name="MusicRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 
-[node name="MusicSlider" type="HSlider" parent="Panel/Column/Scroll/Content/MusicRow"]
+[node name="MusicSlider" type="HSlider" parent="Panel/Column/Scroll/Content/Columns/Audio/MusicRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -92,19 +102,19 @@ max_value = 100.0
 step = 1.0
 value = 100.0
 
-[node name="MusicValue" type="Label" parent="Panel/Column/Scroll/Content/MusicRow"]
+[node name="MusicValue" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/MusicRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "100%"
 
-[node name="EffectsLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+[node name="EffectsLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 text = "Effects volume"
 
-[node name="EffectsRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
+[node name="EffectsRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 
-[node name="EffectsSlider" type="HSlider" parent="Panel/Column/Scroll/Content/EffectsRow"]
+[node name="EffectsSlider" type="HSlider" parent="Panel/Column/Scroll/Content/Columns/Audio/EffectsRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -112,19 +122,19 @@ max_value = 100.0
 step = 1.0
 value = 100.0
 
-[node name="EffectsValue" type="Label" parent="Panel/Column/Scroll/Content/EffectsRow"]
+[node name="EffectsValue" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/EffectsRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "100%"
 
-[node name="AmbienceLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+[node name="AmbienceLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 text = "Ambience volume"
 
-[node name="AmbienceRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
+[node name="AmbienceRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 
-[node name="AmbienceSlider" type="HSlider" parent="Panel/Column/Scroll/Content/AmbienceRow"]
+[node name="AmbienceSlider" type="HSlider" parent="Panel/Column/Scroll/Content/Columns/Audio/AmbienceRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -132,91 +142,96 @@ max_value = 100.0
 step = 1.0
 value = 100.0
 
-[node name="AmbienceValue" type="Label" parent="Panel/Column/Scroll/Content/AmbienceRow"]
+[node name="AmbienceValue" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/AmbienceRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "100%"
 
-[node name="ScaleLabel" type="Label" parent="Panel/Column/Scroll/Content"]
-layout_mode = 2
-text = "UI size"
-
-[node name="ScaleChoice" type="OptionButton" parent="Panel/Column/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="SpeedLabel" type="Label" parent="Panel/Column/Scroll/Content"]
-layout_mode = 2
-text = "Starting service speed"
-
-[node name="SpeedChoice" type="OptionButton" parent="Panel/Column/Scroll/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="AutoPauseLabel" type="Label" parent="Panel/Column/Scroll/Content"]
+[node name="AutoPauseLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
 text = "Pause when…"
 
-[node name="PauseOnSoldOut" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="PauseOnSoldOut" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 text = "A dish sells out"
 
-[node name="PauseOnInspector" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="PauseOnInspector" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 text = "The health inspector arrives"
 
-[node name="PauseOnAngryGuest" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="PauseOnAngryGuest" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "A guest leaves angry"
 
-[node name="FullscreenRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content"]
+[node name="DisplayAndPlay" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="ScaleLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
+layout_mode = 2
+text = "UI size"
+
+[node name="ScaleChoice" type="OptionButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="FullscreenToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/FullscreenRow"]
+[node name="SpeedLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
+layout_mode = 2
+text = "Starting service speed"
+
+[node name="SpeedChoice" type="OptionButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="FullscreenRow" type="HBoxContainer" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="FullscreenToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay/FullscreenRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Fullscreen"
 
-[node name="EdgePanToggle" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="EdgePanToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 text = "Move camera at screen edge"
 
-[node name="PlayGridToggle" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="PlayGridToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 
-[node name="BuildGridToggle" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="BuildGridToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 
-[node name="ServiceEventsToggle" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="ServiceEventsToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 
-[node name="MorningPaperToggle" type="CheckButton" parent="Panel/Column/Scroll/Content"]
+[node name="MorningPaperToggle" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Show The Daily Ladle at the start of each day."
 button_pressed = true
 text = "Show the morning paper"
 
-[node name="ShowGuideButton" type="Button" parent="Panel/Column/Scroll/Content"]
+[node name="ShowGuideButton" type="Button" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 
-[node name="WhatsNewButton" type="Button" parent="Panel/Column/Scroll/Content"]
+[node name="WhatsNewButton" type="Button" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "What's new"
@@ -229,6 +244,7 @@ theme_override_colors/font_color = Color(0.4705882, 0.3882353, 0.3137255, 1)
 [node name="Status" type="Label" parent="Panel/Column/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
+autowrap_mode = 3
 text = "Changes are saved automatically."
 
 [node name="QuitToTitleButton" type="Button" parent="Panel/Column"]
@@ -237,32 +253,32 @@ visible = false
 layout_mode = 2
 text = "Quit to title"
 
-[node name="Difficulty" type="VBoxContainer" parent="Panel/Column/Scroll/Content"]
+[node name="Difficulty" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 7
+theme_override_constants/separation = 4
 
-[node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Difficulty"]
+[node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 layout_mode = 2
 text = "Career difficulty"
 
-[node name="DifficultyChoice" type="OptionButton" parent="Panel/Column/Scroll/Content/Difficulty"]
+[node name="DifficultyChoice" type="OptionButton" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="DifficultySchedule" type="Label" parent="Panel/Column/Scroll/Content/Difficulty"]
+[node name="DifficultySchedule" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 unique_name_in_owner = true
 layout_mode = 2
 autowrap_mode = 3
 
-[node name="AutoBuy" type="CheckButton" parent="Panel/Column/Scroll/Content/Difficulty"]
+[node name="AutoBuy" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="AutoBuyPremium" type="CheckButton" parent="Panel/Column/Scroll/Content/Difficulty"]
+[node name="AutoBuyPremium" type="CheckButton" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="Divider" type="HSeparator" parent="Panel/Column/Scroll/Content/Difficulty"]
+[node name="Divider" type="HSeparator" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 layout_mode = 2

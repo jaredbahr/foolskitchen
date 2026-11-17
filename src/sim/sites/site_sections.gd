@@ -18,6 +18,8 @@ const GLOBAL: PackedStringArray = [
 	"service_events",
 	# The opening-week goal chain (#494) is the owner's first week, not a site's.
 	"opening_week",
+	# One edition per owner and morning, including a same-day site switch.
+	"morning_paper",
 ]
 
 const PER_SITE: PackedStringArray = [

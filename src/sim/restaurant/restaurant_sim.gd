@@ -14,6 +14,9 @@ const TIP_JAR_TUNING: TipJarTuning = preload("res://data/balance/tip_jar.tres")
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
 signal customer_left(customer: CustomerAgent, reason: StringName)
+## Completed recipes and the review scorer's satisfaction outcome, including
+## guests who do not write a review.
+signal dish_visit_completed(recipe_ids: Array[StringName], happy: bool)
 signal dish_sold_out(display_name: String)
 signal health_inspector_arrived()
 ## A detached, player-facing row without the scorer's internal cause id.
@@ -1148,7 +1151,9 @@ func _listed_price(recipe: RecipeDef) -> int:
 
 
 func _price_with_special(recipe: RecipeDef, price: int) -> int:
-	return daily_special.price_for(recipe, price) if daily_special != null else price
+	if daily_special != null and not difficulty.auto(&"prices"):
+		return daily_special.price_for(recipe, price)
+	return price
 
 
 ## No chance below/equal to standard; callers must not draw RNG when this is 0.
@@ -1322,8 +1327,7 @@ func _publish_customer_arrival(customer: CustomerAgent) -> void:
 	_visiting_types[customer.id] = kind
 	if not _visitor_types_today.has(kind):
 		_visitor_types_today[kind] = {"name": customer.customer_type_report_name,
-			"count": 0, "departed": 0, "mood_total": 0.0}
-	_visitor_types_today[kind]["count"] += 1
+			"count": 0, "mood_total": 0.0}
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)
 
@@ -1468,15 +1472,14 @@ func customers() -> Array[CustomerAgent]:
 	return out
 
 
-## Per-type visitor counts and the average of moods recorded so far. The
-## evening report reads this after all guests, including those still waiting
-## outside at closing, have departed.
+## Per-type counts and average moods for guests whose visits have ended.
 func visitor_breakdown() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	for entry: Dictionary in _visitor_types_today.values():
-		var departed: int = entry["departed"]
-		var average: Variant = float(entry["mood_total"]) / departed if departed > 0 else null
-		rows.append({"name": entry["name"], "count": entry["count"], "average_mood": average})
+		var count: int = entry["count"]
+		if count > 0:
+			rows.append({"name": entry["name"], "count": count,
+				"average_mood": float(entry["mood_total"]) / count})
 	return rows
 
 
@@ -1503,8 +1506,13 @@ func record_departure(customer: CustomerAgent) -> void:
 	customer.departure_recorded = true
 	if _visiting_types.has(customer.id):
 		var entry: Dictionary = _visitor_types_today[_visiting_types[customer.id]]
-		entry["departed"] += 1
-		entry["mood_total"] += customer.departure_mood()
+		entry["count"] += 1
+		var departure_mood: float = 0.0
+		if customer.paid:
+			departure_mood = customer.departure_mood()
+		elif customer.leave_reason == &"closing":
+			departure_mood = 0.5
+		entry["mood_total"] += departure_mood
 		_visiting_types.erase(customer.id)
 	_record_regular_visit(customer)
 	# A takeaway leaves no crumbs at a table: they never sat (#293).
@@ -1559,6 +1567,9 @@ func record_departure(customer: CustomerAgent) -> void:
 					"before": result["before"], "after": result["after"]}
 				reviews_today.append(row)
 				review_recorded.emit(row.duplicate())
+		if not visit.consumed_recipe_ids.is_empty():
+			var happy: bool = ReputationBook.score_visit(visit, review_tuning, VIBE_TUNING, true) >= 4
+			dish_visit_completed.emit(visit.consumed_recipe_ids.duplicate(), happy)
 	customer_left.emit(customer, reason)
 
 

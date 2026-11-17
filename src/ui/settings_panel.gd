@@ -15,6 +15,8 @@ const SERVICE_EVENTS_TIP: String = "Small choice cards during service. The game 
 const WHATS_NEW_SCENE: PackedScene = preload("res://src/ui/whats_new_panel.tscn")
 const SAVE_DELAY: float = 0.5
 const VIEW_MARGIN: float = 12.0
+const COMFORTABLE_CONTENT_WIDTH: float = 650.0
+const TWO_COLUMN_MINIMUM: float = 560.0
 
 var _preferences: SettingsPreferences
 var _save_delay: Timer
@@ -27,6 +29,7 @@ var _difficulty: Difficulty
 @onready var _scroll: ScrollContainer = $Panel/Column/Scroll
 @onready var _content: VBoxContainer = $Panel/Column/Scroll/Content
 @onready var _title_bar: HBoxContainer = $Panel/Column/TitleBar
+@onready var _columns: GridContainer = $Panel/Column/Scroll/Content/Columns
 
 @onready var _difficulty_section: VBoxContainer = %Difficulty
 @onready var _difficulty_choice: OptionButton = %DifficultyChoice
@@ -64,7 +67,6 @@ var _difficulty: Difficulty
 
 
 func _ready() -> void:
-	_content.move_child(_difficulty_section, 0)
 	for mode_id: StringName in Difficulty.MODES:
 		_difficulty_choice.add_item(Difficulty.mode_name(mode_id))
 		var index: int = _difficulty_choice.item_count - 1
@@ -257,12 +259,16 @@ func _layout_card() -> void:
 	if _quit_to_title.visible:
 		footer_height += _quit_to_title.get_combined_minimum_size().y \
 			+ float(_column.get_theme_constant("separation"))
+	# A narrow logical canvas gets a stacked layout, with the same wheel
+	# behavior. Large screens show both columns without scrolling.
+	_columns.columns = 1 if available.x - padding.x < TWO_COLUMN_MINIMUM else 2
 	var natural: Vector2 = _content.get_combined_minimum_size()
 	var content_height: float = minf(natural.y,
 		maxf(0.0, available.y - padding.y - footer_height))
 	var bar_width: float = _scroll.get_v_scroll_bar().get_combined_minimum_size().x \
 		if content_height < natural.y else 0.0
-	var content_width: float = minf(maxf(natural.x + bar_width, _title_bar.get_combined_minimum_size().x),
+	var content_width: float = minf(maxf(COMFORTABLE_CONTENT_WIDTH,
+		maxf(natural.x + bar_width, _title_bar.get_combined_minimum_size().x)),
 		maxf(0.0, available.x - padding.x))
 	_scroll.custom_minimum_size = Vector2(content_width, content_height)
 	var card_size: Vector2 = Vector2(content_width + padding.x,
@@ -379,7 +385,7 @@ func _record(saved: bool) -> void:
 
 ## A session owns guide progress; title Settings has no run to change.
 func set_show_guide_available(value: bool) -> void:
-	(get_node("Panel/Column/Scroll/Content/ShowGuideButton") as Button).visible = value
+	(%ShowGuideButton as Button).visible = value
 	_layout_card()
 
 

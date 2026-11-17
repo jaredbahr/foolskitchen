@@ -13,6 +13,7 @@ const SNAPSHOT_VERSION: int = 1
 const DEFAULT_TUNING: MenuTuning = preload("res://data/balance/menu.tres")
 
 var _valid: bool = false
+var _automatic_prices: bool = false
 var _recipes: Array[RecipeDef] = []
 var _by_id: Dictionary[StringName, RecipeDef] = {}
 var _standards: Dictionary[StringName, int] = {}
@@ -281,9 +282,21 @@ func clear_stash() -> void:
 	_crowded_out.clear()
 
 
+func automatic_prices() -> bool:
+	return _automatic_prices
+
+
+## Automatic prices replace the saved choices, including session-only stashes.
+## Switching back to manual leaves those standard prices in place.
+func set_automatic_prices(enabled: bool) -> void:
+	if enabled and not _automatic_prices:
+		reset_all_prices_to_standard()
+	_automatic_prices = enabled
+
+
 ## Known dishes accept a whole-dollar request and clamp it to their bounds.
 func set_price(id: StringName, price: int) -> bool:
-	if not _by_id.has(id) or _by_id[id].unlock_level > _owner_level:
+	if _automatic_prices or not _by_id.has(id) or _by_id[id].unlock_level > _owner_level:
 		return false
 	_prices[id] = clampi(price, minimum_price(id), maximum_price(id))
 	return true
@@ -320,12 +333,13 @@ func apply_preset(enabled_ids: Array[StringName], prices: Dictionary[StringName,
 	if enabled_changed:
 		_enabled = next_enabled
 	var prices_changed: bool = false
-	for id: StringName in prices:
-		var before: int = _prices.get(id, 0)
-		if not set_price(id, prices[id]):
-			unavailable[id] = true
-		elif _prices[id] != before:
-			prices_changed = true
+	if not _automatic_prices:
+		for id: StringName in prices:
+			var before: int = _prices.get(id, 0)
+			if not set_price(id, prices[id]):
+				unavailable[id] = true
+			elif _prices[id] != before:
+				prices_changed = true
 	return {
 		"unavailable": unavailable.size(),
 		"over_limit": over_limit,
@@ -449,6 +463,8 @@ func from_dict(data: Variant) -> bool:
 	_enabled = next_enabled
 	_prices = next_prices
 	_restaurant_name = next_name
+	if _automatic_prices:
+		reset_all_prices_to_standard()
 	return true
 
 

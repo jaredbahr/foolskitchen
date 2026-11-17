@@ -40,12 +40,16 @@ func _process(_delta: float) -> void:
 		scroll.ensure_control_visible(_staff_panel.row_for(candidates[1].id))
 		return
 	for index: int in 2:
-		var row: Control = _staff_panel.row_for(candidates[index].id)
-		var label: Label = row.get_node_or_null("Trait") as Label if row != null else null
-		var definition: StaffTrait = staff_roster.catalogue.find_trait(candidates[index].trait_id)
+		var candidate: StaffMember = candidates[index]
+		var row: Control = _staff_panel.row_for(candidate.id)
+		var label: Label = row.get_node_or_null("Top/Person/Details/Trait") as Label if row != null else null
+		var definition: StaffTrait = staff_roster.catalogue.find_trait(candidate.trait_id)
 		if label == null or definition == null or not label.is_visible_in_tree() \
-				or not scroll.get_global_rect().grow(1.0).encloses(label.get_global_rect()) \
-				or label.text != "%s: %s" % [definition.display_name, definition.description_for(candidates[index].role)]:
+				or not scroll.get_global_rect().grow(1.0).encloses(label.get_global_rect()):
 			push_error("Staff traits review could not read a visible candidate description.")
 			return
-		print("STAFF_TRAITS_REVIEW " + label.text)
+		var description: String = "%s: %s" % [definition.display_name, definition.description_for(candidate.role)]
+		if label.text != definition.display_name or label.tooltip_text != description:
+			push_error("Staff traits review could not read a visible candidate description.")
+			return
+		print("STAFF_TRAITS_REVIEW " + label.tooltip_text)

@@ -54,6 +54,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 	report.stock_on_hand = int(on_hand["cost"])
 	report.stock_on_hand_recorded = bool(on_hand["recorded"])
 	report.dishes_sold = sources.dishes_sold.duplicate()
+	report.dish_metrics = sources.dish_metrics.duplicate(true)
 	report.daily_special_line = DailySpecialText.report(
 		DailySpecialText.name_for(sources.special.recipe_id(), sources.menu.enabled_recipes()),
 		int(report.dishes_sold.get(sources.special.recipe_id(), 0)))

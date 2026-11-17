@@ -55,6 +55,31 @@ func test_seeded_pool_is_repeatable_and_uses_the_role_skill_wage_curve() -> void
 	assert_true(TUNING.staff_wage(&"cleaner", 3) < TUNING.staff_wage(&"server", 3))
 
 
+func test_best_value_candidate_checks_cash_before_ranking_the_role() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var data: Dictionary = roster.to_dict()
+	var offers: Array[Dictionary] = []
+	for offer: Dictionary in [
+		{"id": "high_skill", "name": "Taylor", "skill": 5, "wage": 50, "role": "cook"},
+		{"id": "best_value", "name": "Jordan", "skill": 3, "wage": 24, "role": "cook"},
+		{"id": "lowest_wage", "name": "Riley", "skill": 2, "wage": 20, "role": "cook"},
+	]:
+		offer["trait"] = "steady"
+		offers.append(offer)
+	data["candidate_day"] = 2
+	data["candidates"] = offers
+	assert_true(roster.from_dict(data))
+	var best: StaffMember = roster.best_value_candidate(&"cook", 120, 5)
+	assert_not_null(best)
+	if best == null:
+		return
+	assert_eq(best.id, &"best_value")
+	assert_eq(roster.best_value_candidate(&"cook", 119, 5).id, &"lowest_wage")
+	assert_null(roster.best_value_candidate(&"cook", 99, 5))
+	assert_null(roster.best_value_candidate(&"server", 1000, 5))
+	assert_eq(roster.best_value_candidate(&"cook", 0, 0).id, &"best_value")
+
+
 func test_nicknames_validate_and_keep_the_hiring_name_after_reload() -> void:
 	var roster: StaffRoster = StaffRoster.new(TUNING)
 	var original: Dictionary = roster.to_dict()
@@ -84,6 +109,19 @@ func test_nicknames_validate_and_keep_the_hiring_name_after_reload() -> void:
 	saved["members"][0]["nickname"] = " Jules "
 	assert_false(restored.from_dict(saved))
 	assert_eq(restored.to_dict(), original)
+
+
+func test_nicknames_cannot_duplicate_names_on_the_team_or_hiring_list() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	assert_true(roster.draw_candidates(1, _random(372)))
+	var cook: StringName = &"starter_cook"
+	assert_eq(roster.rename_member(&"starter_server", "Counter chief"), "Counter chief")
+	var before: Dictionary = roster.to_dict()
+	assert_eq(roster.rename_member(cook, "  COUNTER CHIEF "), "")
+	assert_eq(roster.rename_member(cook, roster.candidates()[0].display_name.to_upper()), "")
+	assert_eq(roster.to_dict(), before)
+	assert_eq(roster.rename_member(cook, "ALEX"), "ALEX")
+	assert_eq(roster.rename_member(cook, ""), "Alex")
 
 
 func test_nickname_never_changes_the_seeded_hiring_pool() -> void:

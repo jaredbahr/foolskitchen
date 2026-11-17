@@ -42,7 +42,7 @@ func set_career_tier_line(text: String) -> void:
 func set_golden_ladles(prestige_score: int, earned: int) -> void:
 	var label: Label = %GoldenLadles as Label
 	label.text = "Golden Ladles: %d of %d" % [earned, PrestigeTuning.MAX_LADLES]
-	label.visible = prestige_score > 0
+	label.visible = earned > 0 or prestige_score > 0
 
 
 ## Detached display text only; Main owns the saved lifetime observations.
@@ -228,18 +228,12 @@ func _make_weekly_card() -> Control:
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.set_meta(&"weekly_challenge", true)
-	var panel_style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
-	if panel_style is StyleBoxFlat:
-		(panel_style as StyleBoxFlat).content_margin_top = 9.0
-		(panel_style as StyleBoxFlat).content_margin_bottom = 9.0
-	card.add_theme_stylebox_override(&"panel", panel_style)
-	var body: VBoxContainer = VBoxContainer.new()
-	body.name = "Body"
-	body.add_theme_constant_override(&"separation", 2)
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(body)
-	var title: Label = _add_label(body, "Title", challenge.text)
+	var body: VBoxContainer = _compact_body(card)
+	var summary: HBoxContainer = _goal_line(body, "Summary")
+	var title: Label = _add_label(summary, "Title", challenge.text)
 	title.add_theme_font_size_override(&"font_size", 18)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var current: int = challenge.projected_progress(_observation)
 	var unit: String = ""
 	match challenge.kind:
@@ -263,16 +257,18 @@ func _make_weekly_card() -> Control:
 		timing = "Complete"
 	elif challenge.status == WeeklyChallengeState.Status.EXPIRED:
 		timing = "Expired"
-	var details: HBoxContainer = HBoxContainer.new()
-	details.name = "Details"
-	details.add_theme_constant_override(&"separation", 8)
-	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.add_child(details)
-	var progress: Label = _add_label(details, "ProgressText", progress_text)
+	var progress: Label = _add_label(summary, "ProgressText", progress_text)
+	progress.size_flags_horizontal = Control.SIZE_SHRINK_END
+	progress.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var details: HBoxContainer = _goal_line(body, "Details")
+	var ratio: float = clampf(float(current) / float(maxi(1, challenge.target)), 0.0, 1.0)
+	_progress_bar(details, ratio)
 	var days_left: Label = _add_label(details, "DaysLeft", timing)
 	var reward: Label = _add_label(details, "Reward", "Cash reward: $%d" % challenge.reward_cash)
 	for label: Label in [progress, days_left, reward]:
-		label.add_theme_font_size_override(&"font_size", 16)
+		label.size_flags_horizontal = Control.SIZE_SHRINK_END
+		label.add_theme_font_size_override(&"font_size", 15)
+	reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	return card
 
 
@@ -288,20 +284,8 @@ func _make_opening_card() -> Control:
 	card.theme = SHARED_THEME
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var panel_style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
-	if panel_style is StyleBoxFlat:
-		(panel_style as StyleBoxFlat).content_margin_top = 9.0
-		(panel_style as StyleBoxFlat).content_margin_bottom = 9.0
-	card.add_theme_stylebox_override(&"panel", panel_style)
-	var body: VBoxContainer = VBoxContainer.new()
-	body.name = "Body"
-	body.add_theme_constant_override(&"separation", 2)
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(body)
-	var header: HBoxContainer = HBoxContainer.new()
-	header.name = "Header"
-	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.add_child(header)
+	var body: VBoxContainer = _compact_body(card)
+	var header: HBoxContainer = _goal_line(body, "Header")
 	var title: Label = _add_label(header, "Title", _opening_catalogue.title)
 	title.add_theme_font_size_override(&"font_size", 20)
 	var done: int = 0
@@ -320,23 +304,25 @@ func _make_opening_card() -> Control:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override(&"separation", 0)
 		body.add_child(row)
-		var line: HBoxContainer = HBoxContainer.new()
-		line.name = "Line"
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(line)
+		var line: HBoxContainer = _goal_line(row, "Line")
 		var name_label: Label = _add_label(line, "Title", "□ " + goal.title)
 		name_label.add_theme_font_size_override(&"font_size", 18)
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		name_label.tooltip_text = goal.description
+		var raw: float = _opening_values.get(goal.condition, 0.0)
+		var progress_text: String = OpeningWeekText.progress_line(goal, raw)
+		if not progress_text.is_empty():
+			var detail: HBoxContainer = _goal_line(row, "Detail")
+			var progress: Label = _add_label(detail, "ProgressText", progress_text)
+			progress.add_theme_font_size_override(&"font_size", 15)
+			var bar: ProgressBar = _progress_bar(detail, clampf(raw / goal.target, 0.0, 1.0) if is_finite(raw) else 0.0)
+			bar.custom_minimum_size.x = 100.0
+			bar.size_flags_horizontal = Control.SIZE_SHRINK_END
 		var reward: Label = _add_label(line, "Reward", "$%d" % goal.reward_cash)
 		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		reward.size_flags_horizontal = Control.SIZE_SHRINK_END
-		reward.add_theme_font_size_override(&"font_size", 18)
-		var detail: String = goal.description
-		var progress: String = OpeningWeekText.progress_line(goal, _opening_values.get(goal.condition, 0.0))
-		if not progress.is_empty():
-			detail += "  " + progress
-		var description: Label = _add_label(row, "Description", detail)
-		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		description.add_theme_font_size_override(&"font_size", 15)
+		reward.add_theme_font_size_override(&"font_size", 15)
 	return card
 
 
@@ -354,39 +340,73 @@ func _make_goal_card(goal: Milestone, completed: bool, index: int) -> Control:
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.set_meta(&"goal_id", goal.id)
 	card.set_meta(&"completed", completed)
-	var body: VBoxContainer = VBoxContainer.new()
-	body.name = "Body"
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Tighter than the shared 10 px so three active goals fit at 1600x900 / 100%.
-	body.add_theme_constant_override(&"separation", 4)
-	card.add_child(body)
-	var title: Label = _add_label(body, "Title", goal.title)
-	title.add_theme_font_size_override(&"font_size", 20)
+	var body: VBoxContainer = _compact_body(card)
+	var summary: HBoxContainer = _goal_line(body, "Summary")
+	var title: Label = _add_label(summary, "Title", goal.title)
+	title.add_theme_font_size_override(&"font_size", 18)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var description: Label = _add_label(body, "Description", goal.description)
+	var progress: Label = _add_label(summary, "ProgressText",
+		"Completed" if completed else _progress_text(goal))
+	progress.size_flags_horizontal = Control.SIZE_SHRINK_END
+	progress.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	progress.add_theme_font_size_override(&"font_size", 15)
+	var detail: HBoxContainer = _goal_line(body, "Detail")
+	var description: Label = _add_label(detail, "Description", goal.description)
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var progress_text: Label = _add_label(body, "ProgressText", "Completed" if completed else _progress_text(goal))
-	var bar: ProgressBar = ProgressBar.new()
-	bar.name = "ProgressBar"
-	bar.min_value = 0.0
-	bar.max_value = 1.0
-	bar.step = 0.0
-	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(0.0, 10.0)
-	bar.value = 1.0 if completed else _progress_ratio(goal)
-	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.focus_mode = Control.FOCUS_NONE
-	body.add_child(bar)
-	var reward: Label = _add_label(body, "Reward", "Reward: %d XP   Cash: $%d" % [goal.reward_xp, goal.reward_cash])
-	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_font_size_override(&"font_size", 15)
+	var bar: ProgressBar = _progress_bar(body, 1.0 if completed else _progress_ratio(goal))
+	bar.custom_minimum_size.x = 120.0
+	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var reward: Label = _add_label(detail, "Reward", "Reward: %d XP   Cash: $%d" % [goal.reward_xp, goal.reward_cash])
+	reward.size_flags_horizontal = Control.SIZE_SHRINK_END
+	reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	reward.add_theme_font_size_override(&"font_size", 15)
 	if completed:
 		var muted: Color = SHARED_THEME.get_color("font_color", "Label")
 		muted.a *= 0.55
-		for label: Label in [title, description, progress_text, reward]:
+		for label: Label in [title, description, progress, reward]:
 			label.add_theme_color_override(&"font_color", muted)
 		bar.modulate = muted
 	return card
+
+
+func _compact_body(card: PanelContainer) -> VBoxContainer:
+	var style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
+	style.content_margin_top = 2.0
+	style.content_margin_bottom = 2.0
+	card.add_theme_stylebox_override(&"panel", style)
+	var body: VBoxContainer = VBoxContainer.new()
+	body.name = "Body"
+	body.add_theme_constant_override(&"separation", 1)
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(body)
+	return body
+
+
+func _goal_line(body: VBoxContainer, line_name: String) -> HBoxContainer:
+	var line: HBoxContainer = HBoxContainer.new()
+	line.name = line_name
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override(&"separation", 12)
+	body.add_child(line)
+	return line
+
+
+func _progress_bar(parent: Control, ratio: float) -> ProgressBar:
+	var bar: ProgressBar = ProgressBar.new()
+	bar.name = "ProgressBar"
+	bar.max_value = 1.0
+	bar.step = 0.0
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0.0, 7.0)
+	bar.value = ratio
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.focus_mode = Control.FOCUS_NONE
+	parent.add_child(bar)
+	return bar
 
 
 func _add_label(parent: Control, node_name: String, text: String) -> Label:

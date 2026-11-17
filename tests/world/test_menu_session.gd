@@ -379,7 +379,7 @@ func test_disabling_selected_signature_removes_demand_line_then_reenabling_resto
 func test_menu_edits_wait_for_next_morning_then_reload_without_recipe_mutation() -> void:
 	var first: Node = _start()
 	var settings: MenuSettings = first.get("menu_settings")
-	assert_eq(settings.recipes().size(), 14)
+	assert_eq(settings.recipes().size(), 18)
 	assert_eq(settings.enabled_count(), 3, "new recipes are visible but locked")
 	var standard: int = (first.get("content") as ContentDB).recipe(&"burger").standard_price
 	var morning_file: String = FileAccess.get_file_as_string(_path())
@@ -820,7 +820,7 @@ func test_cookable_catalog_requires_the_actual_station_definitions() -> void:
 	var authored: ShopLayout = load("res://data/layouts/tier1_hole_in_the_wall.tres") as ShopLayout
 	layout.placements = authored.placements.duplicate()
 	recipes = main.call("_cookable_recipes", layout)
-	assert_eq(recipes.size(), 14)
+	assert_eq(recipes.size(), 18)
 	var content: ContentDB = main.get("content")
 	for index: int in range(layout.placements.size() - 1, -1, -1):
 		if content.item(layout.placements[index].item_id).station_type == &"stove":
@@ -829,8 +829,8 @@ func test_cookable_catalog_requires_the_actual_station_definitions() -> void:
 	var prep_only: Array[StringName] = []
 	for recipe: RecipeDef in recipes:
 		prep_only.append(recipe.id)
-	assert_eq(prep_only, [&"cereal", &"muffin", &"salmon_maki"] as Array[StringName])
-	assert_eq((main.get("menu_settings") as MenuSettings).recipes().size(), 14, "catalog checks do not mutate the live menu")
+	assert_eq(prep_only, [&"cereal", &"ice_cream_sundae", &"muffin", &"salmon_maki"] as Array[StringName])
+	assert_eq((main.get("menu_settings") as MenuSettings).recipes().size(), 18, "catalog checks do not mutate the live menu")
 
 
 ## Persistence fixtures skip service; the real kitchen/order test above covers it.

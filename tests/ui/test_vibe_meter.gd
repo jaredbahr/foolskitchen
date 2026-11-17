@@ -168,9 +168,25 @@ func _assert_unavailable() -> void:
 	assert_eq(_meter.score_bar.tooltip_text, "Vibe unavailable")
 
 
+func test_prestige_tooltip_shows_reduced_copies_and_exact_fractional_points() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var grid: SimGrid = SimGrid.new(Vector2i(16, 5))
+	for cell: Vector2i in grid.cells():
+		grid.set_terrain(cell, SimGrid.Terrain.FLOOR)
+	for x: int in range(15):
+		assert_not_null(grid.place_def(content.item(&"lamp_pendant"), Vector2i(x, 2)))
+	var decor: WallDecor = WallDecor.new()
+	for x: int in [1, 3, 5, 7, 9, 11, 13]:
+		assert_true(decor.add(&"wall_art_sunrise", Vector3i(x, 1, 0), 2))
+	_meter.set_vibe(_result(42.0), Prestige.evaluate(grid, content, decor))
+	assert_true(_meter.tooltip_text.ends_with("Prestige 36.5\nCeiling pendant ×15: 27\nSunrise print ×7: 9.5"))
+	assert_eq(_meter.score_bar.value, 42.0)
+
+
 func test_prestige_tooltip_explains_the_lowest_cap_without_changing_vibe() -> void:
 	var prestige: Prestige.Result = Prestige.Result.new()
-	prestige.uncapped_score = 23
+	prestige.point_units = 23 * PrestigeTuning.UNITS_PER_POINT
 	_meter.set_vibe(_result(42.0), prestige)
 	assert_true(_meter.tooltip_text.ends_with("Prestige 23"))
 	var neon: ItemDef = load("res://data/items/neon_open_sign.tres") as ItemDef

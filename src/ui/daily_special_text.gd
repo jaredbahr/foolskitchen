@@ -14,7 +14,9 @@ static func board(name: String) -> String:
 	return "Today's special: " + name if not name.is_empty() else ""
 
 
-static func selection_hint() -> String:
+static func selection_hint(automatic_prices: bool = false) -> String:
+	if automatic_prices:
+		return "Promote one enabled dish at its standard price today, or choose None."
 	return "Choose one enabled dish for %.0f%% off your set price today, or None." \
 		% (MenuSettings.DEFAULT_TUNING.special_discount * 100.0)
 
