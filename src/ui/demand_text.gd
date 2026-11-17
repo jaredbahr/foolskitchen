@@ -2,11 +2,20 @@ class_name DemandText
 extends RefCounted
 ## Shared plain words for read-only demand forecasts and morning notices.
 
+const WEEK_RHYTHM: WeekRhythm = preload("res://data/balance/week.tres")
+const WEEKDAY_NAMES: Array[String] = [
+	"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+]
+
 const FORECAST_HEADING: String = "Tomorrow's crowd"
 const FORECAST_EXPLANATION: String = "Based on your current menu and shop."
 const FACTOR_KEYS: Array[StringName] = [
 	&"reputation", &"word_of_mouth", &"menu", &"vibe", &"curb_appeal",
 ]
+
+
+static func weekday_name(day: int) -> String:
+	return WEEKDAY_NAMES[WEEK_RHYTHM.weekday_index(day)]
 
 
 static func factor_label(key: StringName) -> String:
@@ -55,6 +64,9 @@ static func factor_lines(forecast: Dictionary) -> PackedStringArray:
 			lines.append(CurbAppealText.forecast_line(float(clean[String(key)])))
 		else:
 			lines.append("%s: %s" % [factor_label(key), change_text(float(clean[String(key)]))])
+	if clean.has("weekday"):
+		lines.append("%s crowd %s" % [
+			weekday_name(int(clean["day"])), change_text(float(clean["weekday"]))])
 	if clean.has("viral"):
 		lines.append(ViralReviewText.demand_line(float(clean["viral"])))
 	var signature_line: String = _signature_line(clean)
@@ -83,6 +95,7 @@ static func forecast_note(forecast: Dictionary) -> String:
 	for key: StringName in FACTOR_KEYS:
 		combined *= float(clean[String(key)])
 	combined *= float(clean.get("viral", 1.0))
+	combined *= float(clean.get("weekday", 1.0))
 	var signature_factor: Variant = clean.get("signature")
 	var signature_name: Variant = clean.get("signature_name")
 	if (signature_factor is float or signature_factor is int) and is_finite(float(signature_factor)) \

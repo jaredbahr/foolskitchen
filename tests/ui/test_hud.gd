@@ -41,10 +41,10 @@ func after_each() -> void:
 
 
 func test_initial_labels_and_shared_theme_before_ready() -> void:
-	assert_eq((_control("Day") as Label).text, "Day 1")
+	assert_eq((_control("Day") as Label).text, "Day 1 · Thu")
 	assert_eq((_hud.get_node("Top/Row/Day/Season") as Label).text, "Spring")
-	assert_eq((_control("Time") as Label).text, "11:00")
-	assert_eq((_control("Phase") as Label).text, "Morning")
+	assert_eq((_control("TimeStatus/Time") as Label).text, "11:00")
+	assert_eq((_control("TimeStatus/Phase") as Label).text, "Morning")
 	assert_eq((_control("Cash") as Label).text, "$1,234")
 	assert_eq((_control("Reputation") as Label).text, "3.0")
 	assert_eq((_control("Reputation") as Label).tooltip_text,
@@ -66,12 +66,13 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 func test_day_label_tracks_season_boundaries() -> void:
 	var day_label: Label = _control("Day") as Label
 	var season_label: Label = day_label.get_node("Season") as Label
-	for row: Array in [[28, "Spring"], [29, "Summer"], [56, "Summer"], [57, "Autumn"],
-			[84, "Autumn"], [85, "Winter"], [112, "Winter"], [113, "Spring"]]:
+	for row: Array in [[28, "Wed", "Spring"], [29, "Thu", "Summer"], [56, "Wed", "Summer"],
+			[57, "Thu", "Autumn"], [84, "Wed", "Autumn"], [85, "Thu", "Winter"],
+			[112, "Wed", "Winter"], [113, "Thu", "Spring"]]:
 		Clock.sim.day = int(row[0])
 		_hud.call("refresh")
-		assert_eq(day_label.text, "Day %d" % int(row[0]))
-		assert_eq(season_label.text, String(row[1]))
+		assert_eq(day_label.text, "Day %d · %s" % [int(row[0]), String(row[1])])
+		assert_eq(season_label.text, String(row[2]))
 		assert_true(season_label.get_combined_minimum_size().x <= day_label.get_combined_minimum_size().x + 0.5,
 			"every full season name fits the Day control width")
 		assert_true(season_label.position.y + season_label.size.y <= day_label.get_combined_minimum_size().y + 0.5,
@@ -79,7 +80,7 @@ func test_day_label_tracks_season_boundaries() -> void:
 
 
 func test_daily_special_uses_phase_label_only_during_service() -> void:
-	var phase: Label = _control("Phase") as Label
+	var phase: Label = _control("TimeStatus/Phase") as Label
 	var original_font_size: int = phase.get_theme_font_size("font_size")
 	_hud.call("set_special", "Tomato soup")
 	_hud.call("refresh")
@@ -481,16 +482,16 @@ func test_context_cycles_day_and_tick_events_update_clock() -> void:
 	assert_eq(Clock.speed, 1)
 	assert_false(context.visible)
 	Clock._process(0.1)
-	assert_eq((_control("Time") as Label).text, "16:00")
+	assert_eq((_control("TimeStatus/Time") as Label).text, "16:00")
 	Clock._process(0.1)
-	assert_eq((_control("Phase") as Label).text, "Last orders")
+	assert_eq((_control("TimeStatus/Phase") as Label).text, "Last orders")
 	assert_false(context.visible)
 	Clock._process(0.1)
-	assert_eq((_control("Phase") as Label).text, "Closed")
+	assert_eq((_control("TimeStatus/Phase") as Label).text, "Closed")
 	assert_true(context.visible)
 	assert_eq(context.text, "Next day")
 	context.pressed.emit()
-	assert_eq((_control("Day") as Label).text, "Day 2")
+	assert_eq((_control("Day") as Label).text, "Day 2 · Fri")
 	assert_eq((_hud.get_node("Top/Row/Day/Season") as Label).text, "Spring")
 	assert_eq(context.text, "Open shop")
 
@@ -660,7 +661,7 @@ func test_every_header_button_has_readable_content_and_tooltip() -> void:
 	assert_eq((_control("Staff") as Button).icon.resource_path, IconCatalogue.path_for(&"chef"))
 	assert_eq((_control("Reputation").get_node("ThemeIcon") as TextureRect).texture.resource_path,
 		IconCatalogue.ROOT + "star.png")
-	for name: String in ["Day", "Time", "Phase", "Cash", "Reputation", "Plates"]:
+	for name: String in ["Day", "TimeStatus/Time", "TimeStatus/Phase", "Cash", "Reputation", "Plates"]:
 		assert_false((_control(name) as Label).text.is_empty())
 		assert_false(_control(name).tooltip_text.is_empty(), name + " explains the displayed value")
 
@@ -869,7 +870,7 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 	assert_eq(gear.get_combined_minimum_size(), Vector2(46.0, 46.0),
 		"the native gear minimum uses the 28px icon instead of its 100px source texture")
 	var occupied: Array[Rect2] = []
-	for name: String in ["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4",
+	for name: String in ["Day", "TimeStatus", "Speed0", "Speed1", "Speed2", "Speed4",
 			"Walls", "Build", "Paint", "Cash", "Reputation", "OwnerProgress", "Plates", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if name == "Context" and not context_visible:
@@ -884,8 +885,12 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 			assert_false(rect.intersects(previous), name + " does not cover another HUD control")
 		occupied.append(rect)
 	for path: String in ["OwnerProgress/OwnerLevel", "OwnerProgress/OwnerXPBar",
-			"Reputation/ThemeIcon", "Day/Season"]:
+			"Reputation/ThemeIcon", "Day/Season", "TimeStatus/Time", "TimeStatus/Phase"]:
 		_assert_readable_control(row.get_node(path) as Control, window)
+	var time: Rect2 = _control("TimeStatus/Time").get_global_rect()
+	var phase: Rect2 = _control("TimeStatus/Phase").get_global_rect()
+	assert_almost_eq(time.position.x, phase.position.x)
+	assert_true(time.end.y <= phase.position.y, "the time and phase fit on separate lines")
 	var day_label: Label = _control("Day") as Label
 	var season_label: Label = day_label.get_node("Season") as Label
 	var weather: Label = _control("Weather") as Label
@@ -922,7 +927,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	# packing result. Icons may legitimately require another row even at 100%.
 	var required_width: float = 24.0 * 2.0
 	var visible_count: int = 0
-	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "TimeStatus", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var control: Control = _control(name)
 		if control.visible:
@@ -938,7 +943,7 @@ func _assert_one_row_when_native_content_fits() -> void:
 	var previous_end: float = first.position.x
 	# Labels shrink to their text height and center within the native flow line.
 	# Check a shared row band and order rather than requiring equal top edges.
-	for name: String in ["Day", "Weather", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
+	for name: String in ["Day", "Weather", "TimeStatus", "Speed0", "Speed1", "Speed2", "Speed4", "Cash",
 			"Reputation", "OwnerProgress", "Plates", "Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"]:
 		var rect: Rect2 = _control(name).get_global_rect()
 		assert_true(rect.position.x >= previous_end - 0.01, "a fitting row keeps " + name + " in left-to-right group order")
@@ -984,7 +989,7 @@ func _assert_booking_status_layout(window: Window) -> void:
 
 func _assert_three_groups() -> void:
 	var groups: Array[Array] = [
-		["Day", "Time", "Phase", "Speed0", "Speed1", "Speed2", "Speed4"],
+		["Day", "TimeStatus", "Speed0", "Speed1", "Speed2", "Speed4"],
 		["Cash", "Loan", "Reputation", "OwnerProgress", "Plates", "SoldOut"],
 		["Walls", "Build", "Paint", "Context", "Menu", "Stock", "Staff", "Settings"],
 	]
