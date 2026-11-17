@@ -9,6 +9,7 @@ const MAIN: PackedScene = preload("res://src/world/main.tscn")
 ## a single bench and a sandy ground with no meadow trees.
 const ALT: String = "res://tests/fixtures/streets/test_alt.tres"
 const SEASIDE: String = "res://data/streets/seaside.tres"
+const PROMENADE: String = "res://data/streets/promenade.tres"
 const STREETS: String = "res://data/streets/"
 const LOTS: String = "res://data/lots/"
 const RESERVE: Rect2i = Rect2i(-2, -2, 12, 9)
@@ -226,10 +227,17 @@ func test_the_view_builds_the_active_sites_street() -> void:
 	assert_true(view.neighbourhood_dressing.street_set == StreetPreset.starter().buildings)
 
 
-func test_the_seaside_lot_stands_on_the_seaside_street() -> void:
+func test_the_seaside_lot_stands_on_the_promenade() -> void:
 	var lot: LotDef = load(LOTS + "seaside_cliff.tres") as LotDef
-	assert_eq(lot.street_preset, SEASIDE, "the seaside lot names its street")
-	var seaside: StreetPreset = StreetPreset.for_lot(lot)
+	assert_eq(lot.street_preset, PROMENADE, "the seaside lot names the promenade (#596) until it has its cliff path")
+	var promenade: StreetPreset = StreetPreset.for_lot(lot)
+	assert_eq(promenade.id, &"promenade")
+	assert_false(promenade.has_traffic(), "a car-free front")
+	assert_not_null(promenade.shore, "the beach stays behind the shop")
+
+
+func test_the_seaside_road_street() -> void:
+	var seaside: StreetPreset = load(SEASIDE) as StreetPreset
 	assert_true(seaside != StreetPreset.starter(), "it is not the starter street")
 	assert_eq(seaside.id, &"seaside")
 	assert_eq(seaside.errors(), PackedStringArray())
