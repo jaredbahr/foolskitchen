@@ -935,6 +935,7 @@ func _connect_session() -> void:
 		sound.name = "SoundDirector"
 		sound.display_only = display_only
 		add_child(sound)
+		vibe_changed.connect(sound.set_vibe)
 	sound.bind(sim, $ShopView as ShopView, content)
 
 
