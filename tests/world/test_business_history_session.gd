@@ -64,11 +64,46 @@ func test_actual_close_records_final_report_and_report_queries_remain_pure() -> 
 	_main.call("build_report", Clock.sim.day)
 	_main.call("build_report", Clock.sim.day)
 	assert_eq(_observable_state(), before, "morning report previews cannot create history or save")
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var payments: Dictionary[StringName, Array] = {}
+	sim.customer_paid.connect(func(_customer: CustomerAgent, order: Order, _cents: int) -> void:
+		if not payments.has(order.recipe_id):
+			payments[order.recipe_id] = []
+		payments[order.recipe_id].append(order.quality))
+	var diners: Dictionary[StringName, Array] = {}
+	var recipes: Array[RecipeDef] = sim.menu.duplicate()
+	var tuning: ReviewTuning = sim.review_tuning
+	sim.customer_left.connect(func(customer: CustomerAgent, _reason: StringName) -> void:
+		var standard_price: int = 0
+		for recipe: RecipeDef in recipes:
+			if customer.order != null and recipe.id == customer.order.recipe_id:
+				standard_price = recipe.standard_price
+		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
+		var stars: int = ReputationBook.score_visit(visit, tuning, RestaurantSim.VIBE_TUNING, true)
+		for id: StringName in visit.consumed_recipe_ids:
+			if not diners.has(id):
+				diners[id] = []
+			diners[id].append(stars >= 4))
 	var report: DayReport = _finish_service()
 	if report == null:
 		return
 	assert_eq(_history().summaries().size(), 1, "the real close records exactly one finalized day")
 	_assert_matches(_history().summaries()[0], report)
+	var week: Dictionary[StringName, Dictionary] = _history().dish_week(Clock.sim.day)
+	assert_false(payments.is_empty(), "the default service fixture makes real paid sales")
+	assert_false(diners.is_empty(), "the default service fixture includes completed visits")
+	assert_eq(week.size(), payments.size())
+	for id: StringName in payments:
+		var qualities: Array = payments[id]
+		var satisfaction: Array = diners.get(id, [])
+		var entry: Dictionary = week.get(id, {})
+		assert_eq(entry.get("sold"), qualities.size())
+		var sum: float = 0.0
+		for quality: float in qualities:
+			sum += quality
+		assert_almost_eq(float(entry.get("quality_sum", -1.0)), sum)
+		assert_eq(entry.get("eaten"), satisfaction.size())
+		assert_eq(entry.get("happy"), satisfaction.count(true))
 	assert_eq(_saved_text(), morning, "closing records memory only, preserving the morning checkpoint")
 	var old_cash_change: int = report.profit()
 	# A bookkeeping fixture makes a query-only regression observable: a report
@@ -101,6 +136,66 @@ func test_real_close_and_reopen_feed_the_week_tab_from_the_ledger() -> void:
 	assert_eq(tabs.current_tab, 1)
 	var expected: int = Economy.ledger.day_profit(report.day)
 	assert_eq((grid.get_child(grid.get_child_count() - 1) as Label).text, Fmt.money(expected))
+func test_paid_party_members_credit_their_own_dishes_and_satisfaction() -> void:
+	_start_main()
+	assert_true(Clock.sim.start_service())
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var party: Party = Party.new()
+	party.member_ids = [1001, 1002]
+	var happy: CustomerAgent = _paid_dish_guest(sim, 1001)
+	happy.party = party
+	happy.extra_order = _delivered_dish(&"coffee", 0.5)
+	sim.pay(happy, happy.order)
+	sim.record_departure(happy)
+	sim.record_departure(happy)
+	var unhappy: CustomerAgent = _paid_dish_guest(sim, 1002)
+	unhappy.party = party
+	# Two orders of the same recipe count as two sales and one diner.
+	unhappy.extra_order = _delivered_dish(&"burger", 1.0)
+	unhappy._queue_wait = unhappy.queue_patience - 1
+	unhappy._food_wait = unhappy.food_patience - 1
+	sim.pay(unhappy, unhappy.order)
+	sim.record_departure(unhappy)
+	assert_eq(unhappy.leave_reason, &"happy", "a paid departure reason does not measure satisfaction")
+	var takeaway: CustomerAgent = _paid_dish_guest(sim, 1003)
+	takeaway.takeaway = true
+	sim.pay(takeaway, takeaway.order)
+	sim.record_departure(takeaway)
+	assert_eq(_history().dish_week(1), {}, "the dashboard snapshots only closed service")
+	var cutoff: CustomerAgent = _paid_dish_guest(sim, 1004)
+	sim.pay(cutoff, cutoff.order)
+	var written_reviews: int = sim.reviews_today.size()
+	# Exercise cutoff departure separately from the real closing test.
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	sim.record_departure(cutoff)
+	assert_eq(sim.reviews_today.size(), written_reviews, "closing still suppresses written reviews")
+	var report: DayReport = _main.call("build_report", 1) as DayReport
+	assert_eq(report.dish_metrics[&"burger"],
+		{"sold": 5, "quality_sum": 4.0, "eaten": 3, "happy": 2})
+	assert_eq(report.dish_metrics[&"coffee"],
+		{"sold": 1, "quality_sum": 0.5, "eaten": 1, "happy": 1})
+
+
+func test_two_service_days_keep_dish_metrics_separate() -> void:
+	_start_main()
+	var first: DayReport = _finish_service()
+	if first == null:
+		return
+	assert_true(not first.dish_metrics.is_empty(), "the first service must sell a dish")
+	assert_true(Clock.sim.next_day())
+	var second: DayReport = _finish_service()
+	if second == null:
+		return
+	assert_eq(second.day, first.day + 1)
+	assert_true(not second.dish_metrics.is_empty(), "the second service must sell a dish")
+	for recipe_id: StringName in second.dish_metrics:
+		assert_eq(second.dish_metrics[recipe_id]["sold"], second.dishes_sold.get(recipe_id, 0),
+			"the second day cannot count yesterday's sales")
+	var rows: Array[Dictionary] = _history().summaries()
+	assert_eq(rows.size(), 2)
+	if rows.size() == 2:
+		assert_eq(rows[1]["day"], second.day)
+		assert_true(rows[1].has("dish_metrics"), "the second close keeps its measured quality")
 
 
 func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() -> void:
@@ -152,12 +247,22 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 	assert_eq(_history().summaries().size(), 1, "morning is not an extra closed day")
 	_assert_matches(_history().summaries()[0], closing)
 	var expected: Dictionary = _json(_history().capture())
+	var closed_day_week: Dictionary[StringName, Dictionary] = _history().dish_week(1)
+	assert_false(closed_day_week.is_empty())
 	assert_ne(_saved_text(), morning, "the ordinary next morning publishes the updated history")
 	assert_eq(_document()["data"]["business_history"], _json(expected))
 	_close_main()
 	_start_main()
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(_json(_history().capture()), expected, "whole-load success installs the saved history")
+	assert_eq(_json(_history().dish_week(Clock.sim.day - 1)), _json(closed_day_week))
+	assert_true(_main.call("set_menu_visible", true))
+	var panel: MenuPanel = _main.get_node("Overlay/MenuPanel") as MenuPanel
+	var history: Label = panel.get_node("%Detail/DishHistory") as Label
+	for id: StringName in closed_day_week:
+		assert_true(panel.select_recipe(id))
+		assert_true(history.text.begins_with("7 days: %d sold" % closed_day_week[id]["sold"]))
+	_main.call("set_menu_visible", false)
 	assert_null((_main.get("_staged") as StagedSections).business_history)
 	_main.call("_begin_morning")
 	assert_eq(_json(_history().capture()), expected, "re-entering the same morning does not duplicate history")
@@ -262,6 +367,23 @@ func test_hidden_report_reopens_and_hud_next_day_records_the_final_books() -> vo
 		"the top bar's Next day records the books as they closed, including the hidden-report change")
 
 
+func _paid_dish_guest(sim: RestaurantSim, id: int) -> CustomerAgent:
+	var guest: CustomerAgent = CustomerAgent.new(sim, RandomNumberGenerator.new())
+	guest.id = id
+	guest._eating = guest.eat_ticks
+	guest.order = _delivered_dish(&"burger", 0.75)
+	return guest
+
+
+func _delivered_dish(id: StringName, quality: float) -> Order:
+	var order: Order = Order.new()
+	order.recipe_id = id
+	order.price = 10
+	order.state = Order.State.DELIVERED
+	order.quality = quality
+	return order
+
+
 func _start_main(staged_before_start: Dictionary = {}) -> void:
 	_main = MAIN.instantiate()
 	_main.set("use_saves", true)
@@ -318,6 +440,10 @@ func _assert_matches(row: Dictionary, report: DayReport) -> void:
 	if report.operating_profit_recorded():
 		assert_eq(row["dish_profit"], report.operating_profit())
 	assert_almost_eq(float(row["reputation"]), report.reputation_after)
+	var metrics: Dictionary = row.get("dish_metrics", {})
+	assert_eq(metrics.size(), report.dish_metrics.size())
+	for id: StringName in report.dish_metrics:
+		assert_eq(metrics.get(String(id)), report.dish_metrics[id])
 
 
 func _fixture_capture(day: int) -> Dictionary:

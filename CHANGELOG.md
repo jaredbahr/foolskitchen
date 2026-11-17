@@ -17,6 +17,7 @@ Each line ends with its PR number.
 - Furnish a varied shop to earn prestige more easily. The fourth through sixth copies of an item earn half points, and later copies earn a quarter. The Vibe tooltip shows each item’s contribution. (#585)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
+- See each dish's sales, average quality and happy guests over the last seven days in the Menu, and sort by sales or by name within each group. (#539)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
 - The Daily Ladle slides in each morning with a headline about yesterday and a few notes for today. Press Close or Esc to put it away, or turn off “Show the morning paper” in Settings. (#551)
 - From owner level 2, add fried eggs, bacon and eggs, pancakes, waffles, cereal, or a muffin from Breakfast in the Menu. They stay off until you choose them. (#557)

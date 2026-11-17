@@ -23,6 +23,8 @@ var costs: Dictionary = {}
 ## Transient first-advance introduction, supplied by the closing session.
 var loan_first_advance: bool = false
 var dishes_sold: Dictionary = {}
+## Paid orders and feedback from completed dine-in visits, by recipe.
+var dish_metrics: Dictionary[StringName, Dictionary] = {}
 ## Optional service-opening menu facts. Historical reports without this
 ## snapshot remain loadable and simply have no slowest-seller hint.
 var slowest_seller_snapshot: Dictionary = {}:

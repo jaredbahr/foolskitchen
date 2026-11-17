@@ -39,8 +39,11 @@ var _details: Dictionary[StringName, Dictionary] = {}
 var _selected_recipe: StringName = &""
 var _recipe_tree: Tree
 var _tree_items: Dictionary[StringName, TreeItem] = {}
+var _dish_week: Dictionary[StringName, Dictionary] = {}
+var _sort_by_sold: bool = false
 var _detail_heading: Label
 var _quality_label: Label
+var _dish_history_label: Label
 var _requirements_box: VBoxContainer
 var _name_edit: LineEdit
 var _name_apply: Button
@@ -120,6 +123,7 @@ func bind_menu(model: MenuSettings) -> void:
 		_menu = model
 		_catalogue.clear()
 		_details.clear()
+		_dish_week.clear()
 		_selected_recipe = &""
 		_name_dirty = false
 		if _name_feedback != null:
@@ -722,14 +726,10 @@ func _rebuild_rows() -> void:
 			"signature_button": signature_button, "signature_status": signature_status,
 			"signature_sales": signature_sales}
 		index += 1
-	_rebuild_recipe_tree()
 	if not _rows.has(_selected_recipe):
 		var definitions: Array[RecipeDef] = _display_recipes()
 		_selected_recipe = definitions[0].id if not definitions.is_empty() else &""
-	if _tree_items.has(_selected_recipe):
-		_recipe_tree.set_block_signals(true)
-		_tree_items[_selected_recipe].select(0)
-		_recipe_tree.set_block_signals(false)
+	_rebuild_recipe_tree()
 
 
 func _add_line(parent: Node, title: String) -> HBoxContainer:
@@ -909,6 +909,16 @@ func set_recipe_details(definitions: Array[RecipeDef], details: Dictionary[Strin
 	refresh()
 
 
+func set_dish_week(week: Dictionary[StringName, Dictionary]) -> void:
+	if _dish_week == week:
+		return
+	_dish_week = week.duplicate(true)
+	if _sort_by_sold:
+		_rebuild_recipe_tree()
+		_refresh_tree_state()
+	_refresh_selection()
+
+
 func _display_recipes() -> Array[RecipeDef]:
 	return _catalogue.duplicate() if not _catalogue.is_empty() else (_menu.recipes() if _menu != null else [] as Array[RecipeDef])
 
@@ -960,13 +970,26 @@ func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
 
 
 func _build_recipe_tree() -> void:
+	var heading: HBoxContainer = %ListHeading
+	_menu_count.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	var sort: OptionButton = OptionButton.new()
+	sort.name = "DishSort"
+	sort.theme = SHARED_THEME
+	sort.add_theme_font_size_override("font_size", 16)
+	sort.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sort.add_item("By name")
+	sort.add_item("Most sold")
+	sort.tooltip_text = "Sort dishes by name within sections and unlocks, or rank all dishes by sales."
+	sort.item_selected.connect(_on_dish_sort_selected)
+	heading.add_child(sort)
 	_recipe_tree = Tree.new()
 	_recipe_tree.name = "RecipeTree"
 	_recipe_tree.theme = SHARED_THEME
 	_recipe_tree.columns = 2
 	_recipe_tree.column_titles_visible = false
-	_recipe_tree.set_column_expand_ratio(0, 4)
-	_recipe_tree.set_column_expand_ratio(1, 5)
+	_recipe_tree.set_column_expand_ratio(0, 5)
+	_recipe_tree.set_column_expand_ratio(1, 4)
+	_recipe_tree.set_column_clip_content(0, true)
 	_recipe_tree.set_column_clip_content(1, true)
 	_recipe_tree.hide_root = true
 	_recipe_tree.select_mode = Tree.SELECT_ROW
@@ -983,6 +1006,10 @@ func _build_recipe_tree() -> void:
 	_detail.move_child(_detail_heading, 0)
 	_quality_label = _add_label(_detail, "DishQuality", "")
 	_detail.move_child(_quality_label, 1)
+	_dish_history_label = _add_label(_detail, "DishHistory", "")
+	_dish_history_label.add_theme_font_size_override("font_size", 16)
+	_dish_history_label.add_theme_color_override("font_color", LOCKED_COLOR)
+	_detail.move_child(_dish_history_label, 2)
 	_requirements_box = VBoxContainer.new()
 	_requirements_box.name = "Requirements"
 	_requirements_box.theme = SHARED_THEME
@@ -994,13 +1021,28 @@ func _rebuild_recipe_tree() -> void:
 	_recipe_tree.clear()
 	_tree_items.clear()
 	var root: TreeItem = _recipe_tree.create_item()
-	var sections: Dictionary[int, TreeItem] = {}
 	var remaining: Array[RecipeDef] = _display_recipes()
-	remaining.sort_custom(_section_before)
+	remaining.sort_custom(_dish_before)
+	if _sort_by_sold:
+		for recipe: RecipeDef in remaining:
+			_add_recipe_node(recipe, root)
+	else:
+		_add_grouped_dishes(remaining, root)
+	if _tree_items.has(_selected_recipe):
+		_recipe_tree.set_block_signals(true)
+		_tree_items[_selected_recipe].select(0)
+		_recipe_tree.set_block_signals(false)
+
+
+func _add_grouped_dishes(remaining: Array[RecipeDef], root: TreeItem) -> void:
+	var sections: Dictionary[int, TreeItem] = {}
 	while not remaining.is_empty():
 		var advanced: bool = false
+		# Admit a whole depth at a time so siblings stay alphabetized even
+		# when their names fall on either side of the parent's name.
+		var parents: Dictionary[StringName, TreeItem] = _tree_items.duplicate()
 		for recipe: RecipeDef in remaining.duplicate():
-			var parent: TreeItem = _tree_items.get(recipe.unlock_from) as TreeItem
+			var parent: TreeItem = parents.get(recipe.unlock_from) as TreeItem
 			if not recipe.unlock_from.is_empty() and parent == null:
 				continue
 			if parent == null:
@@ -1008,6 +1050,7 @@ func _rebuild_recipe_tree() -> void:
 				if not sections.has(section):
 					var heading: TreeItem = _recipe_tree.create_item(root)
 					heading.set_text(0, RecipeDef.section_name(section))
+					heading.set_expand_right(0, true)
 					heading.set_selectable(0, false)
 					heading.set_selectable(1, false)
 					sections[section] = heading
@@ -1021,6 +1064,36 @@ func _rebuild_recipe_tree() -> void:
 			for recipe: RecipeDef in remaining:
 				_add_recipe_node(recipe, root)
 			break
+
+
+func _on_dish_sort_selected(index: int) -> void:
+	_sort_by_sold = index == 1
+	_rebuild_recipe_tree()
+	_refresh_tree_state()
+
+
+func _dish_before(first: RecipeDef, second: RecipeDef) -> bool:
+	if _sort_by_sold:
+		var first_sold: int = _dish_week.get(first.id, {}).get("sold", 0)
+		var second_sold: int = _dish_week.get(second.id, {}).get("sold", 0)
+		if first_sold != second_sold:
+			return first_sold > second_sold
+	elif first.menu_section() != second.menu_section():
+		return first.menu_section() < second.menu_section()
+	var names: int = first.display_name.naturalnocasecmp_to(second.display_name)
+	return names < 0 if names != 0 else String(first.id) < String(second.id)
+
+
+static func _dish_history_text(metrics: Dictionary) -> String:
+	var sold: int = metrics.get("sold", 0)
+	if sold == 0:
+		return "7 days: no sales yet"
+	var quality: float = DishQuality.stars_on_five(float(metrics["quality_sum"]) / float(sold))
+	var eaten: int = metrics["eaten"]
+	var feedback: String = "No guest feedback"
+	if eaten > 0:
+		feedback = "%d%% happy" % roundi(100.0 * float(metrics["happy"]) / float(eaten))
+	return "7 days: %d sold · %.1f / 5 stars · %s" % [sold, quality, feedback]
 
 
 func _add_recipe_node(recipe: RecipeDef, parent: TreeItem) -> void:
@@ -1090,6 +1163,7 @@ func _refresh_selection() -> void:
 			(child as Label).visible = false # Section headings now live in the tree.
 	_detail_heading.visible = chosen != null
 	_quality_label.visible = chosen != null
+	_dish_history_label.visible = chosen != null
 	_requirements_box.visible = chosen != null
 	for child: Node in _requirements_box.get_children():
 		_requirements_box.remove_child(child)
@@ -1097,6 +1171,7 @@ func _refresh_selection() -> void:
 	if chosen == null:
 		return
 	_detail_heading.text = "%s - %s" % [chosen.display_name, RecipeDef.section_name(chosen.menu_section())]
+	_dish_history_label.text = _dish_history_text(_dish_week.get(chosen.id, {}))
 	var details: Dictionary = _details.get(chosen.id, {})
 	var signature: Dictionary = _signature_details(chosen.id)
 	var signature_button: Button = _rows[chosen.id]["signature_button"] as Button

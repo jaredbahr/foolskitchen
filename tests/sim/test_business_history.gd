@@ -286,6 +286,56 @@ func test_invalid_or_null_live_reports_are_ignored() -> void:
 	assert_eq(_history.summaries(), expected)
 
 
+func test_dish_week_replaces_one_close_and_bounds_metrics_to_seven_calendar_days() -> void:
+	for day: int in range(1, 9):
+		var report: DayReport = _report(day)
+		report.dish_metrics[&"burger"] = {"sold": day, "quality_sum": day * 0.75,
+			"eaten": day, "happy": day - 1}
+		_history.record(report)
+	var final: DayReport = _report(8)
+	final.dish_metrics[&"burger"] = {"sold": 2, "quality_sum": 1.0, "eaten": 1, "happy": 1}
+	_history.record(final)
+	final.dish_metrics[&"burger"]["sold"] = 99
+	assert_eq(_history.summaries().size(), 8, "the longer business trend still keeps all closes")
+	assert_false(_history.summaries()[0].has("dish_metrics"), "day one drops out of the dish window")
+	assert_eq(_history.dish_week(8)[&"burger"],
+		{"sold": 29, "quality_sum": 21.25, "eaten": 28, "happy": 22})
+	assert_eq(_history.dish_week(14)[&"burger"],
+		{"sold": 2, "quality_sum": 1.0, "eaten": 1, "happy": 1})
+	assert_eq(_history.dish_week(15), {}, "seven closed or skipped calendar days empty the window")
+	var saved: Dictionary = _history.capture(15)
+	assert_false(saved["days"][7].has("dish_metrics"), "morning saves drop expired metrics after skipped days")
+	assert_true(_history.summaries()[7].has("dish_metrics"), "saving never mutates live history")
+
+
+func test_dish_week_restores_json_and_does_not_infer_metrics_from_legacy_sales() -> void:
+	var legacy: DayReport = _report(1)
+	legacy.dishes_sold = {&"burger": 20, &"soup": 11}
+	_history.record(legacy)
+	var today: DayReport = _report(2)
+	today.dish_metrics[&"burger"] = {"sold": 4, "quality_sum": 3.2, "eaten": 3, "happy": 2}
+	_history.record(today)
+	var restored: BusinessHistory = BusinessHistory.new()
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(_history.capture()))
+	assert_true(restored.restore(saved))
+	assert_eq(restored.dish_week(2), _history.dish_week(2))
+	assert_false(restored.summaries()[0].has("dish_metrics"))
+	assert_false(restored.dish_week(2).has(&"soup"))
+	assert_eq(restored.dish_week(2)[&"burger"]["sold"], 4)
+	var invalid: Dictionary = saved.duplicate(true)
+	invalid["days"][1]["dish_metrics"]["burger"]["happy"] = 4
+	invalid["days"][1]["dish_metrics"]["soup"] = {"sold": 2, "quality_sum": 1.0, "eaten": 2, "happy": 2}
+	assert_true(restored.restore(invalid))
+	assert_eq(restored.summaries().size(), 2, "a bad sample preserves the trend day")
+	assert_eq(restored.summaries()[1]["cash_change"], _history.summaries()[1]["cash_change"])
+	assert_false(restored.dish_week(2).has(&"burger"))
+	assert_eq(restored.dish_week(2)[&"soup"]["sold"], 2, "valid sibling samples survive")
+	invalid["days"][1]["dish_metrics"] = "corrupt"
+	assert_true(restored.restore(invalid), "corrupt optional metrics preserve the report")
+	assert_eq(restored.summaries().size(), 2)
+	assert_eq(restored.dish_week(2), {})
+
+
 func _report(day: int) -> DayReport:
 	var report: DayReport = DayReport.new()
 	report.day = day

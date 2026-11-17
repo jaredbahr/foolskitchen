@@ -898,6 +898,119 @@ func test_a_stashed_drink_shows_the_price_it_will_come_back_at() -> void:
 	assert_eq(menu.price_of(menu.recipe(&"coffee")), 7)
 
 
+func test_tree_shows_measured_quality_and_happy_share_and_sorts_dishes() -> void:
+	var burger: TreeItem = _panel.tree_item_for(&"burger")
+	var cheese: TreeItem = _panel.tree_item_for(&"grilled_cheese")
+	var soup: TreeItem = _panel.tree_item_for(&"tomato_soup")
+	var sort: OptionButton = _panel.get_node("%List/ListHeading/DishSort") as OptionButton
+	assert_eq(sort.selected, 0)
+	assert_eq(burger.get_next(), cheese)
+	assert_eq(cheese.get_next(), soup)
+	var history: Label = _panel.get_node("%Detail/DishHistory") as Label
+	assert_true(_panel.select_recipe(&"burger"))
+	assert_eq(history.text, "7 days: no sales yet")
+	_panel.set_dish_week({
+		&"burger": {"sold": 42, "quality_sum": 31.92, "eaten": 10, "happy": 9},
+		&"grilled_cheese": {"sold": 50, "quality_sum": 25.0, "eaten": 0, "happy": 0},
+	})
+	assert_eq(history.text, "7 days: 42 sold · 3.8 / 5 stars · 90% happy",
+		"takeaway sales count towards quality and sold, while happiness uses dine-in guests")
+	assert_true(_panel.select_recipe(&"grilled_cheese"))
+	assert_eq(history.text, "7 days: 50 sold · 2.5 / 5 stars · No guest feedback")
+	assert_true(_panel.select_recipe(&"tomato_soup"))
+	assert_eq(history.text, "7 days: no sales yet")
+	assert_true(_panel.select_recipe(&"burger"))
+	sort.select(1)
+	sort.item_selected.emit(1)
+	burger = _panel.tree_item_for(&"burger")
+	cheese = _panel.tree_item_for(&"grilled_cheese")
+	soup = _panel.tree_item_for(&"tomato_soup")
+	assert_eq(cheese.get_next(), burger)
+	assert_eq(burger.get_next(), soup)
+	assert_true(burger.is_selected(0), "sorting keeps the selected dish")
+	_panel.set_dish_week({
+		&"burger": {"sold": 50, "quality_sum": 38.0, "eaten": 3, "happy": 2},
+		&"grilled_cheese": {"sold": 50, "quality_sum": 25.0, "eaten": 0, "happy": 0},
+	})
+	burger = _panel.tree_item_for(&"burger")
+	cheese = _panel.tree_item_for(&"grilled_cheese")
+	assert_eq(burger.get_next(), cheese, "equal after refresh sorts by name")
+	assert_eq(history.text, "7 days: 50 sold · 3.8 / 5 stars · 67% happy")
+	sort.select(0)
+	sort.item_selected.emit(0)
+	burger = _panel.tree_item_for(&"burger")
+	cheese = _panel.tree_item_for(&"grilled_cheese")
+	soup = _panel.tree_item_for(&"tomato_soup")
+	assert_eq(burger.get_next(), cheese)
+	assert_eq(cheese.get_next(), soup)
+
+
+func test_most_sold_compares_sections_and_unlock_descendants() -> void:
+	var child: RecipeDef = _recipe(&"burger_deluxe", "Burger deluxe", 15)
+	child.unlock_from = _burger.id
+	var drink: RecipeDef = _recipe(&"coffee", "Coffee", 4)
+	drink.section = RecipeDef.Section.DRINKS
+	_panel.bind_menu(MenuSettings.new([_burger, child, drink]))
+	var burger: TreeItem = _panel.tree_item_for(_burger.id)
+	var deluxe: TreeItem = _panel.tree_item_for(child.id)
+	var coffee: TreeItem = _panel.tree_item_for(drink.id)
+	assert_eq(deluxe.get_parent(), burger)
+	assert_ne(coffee.get_parent(), burger.get_parent())
+	assert_true(_panel.select_recipe(child.id))
+	_panel.set_dish_week({
+		child.id: {"sold": 8, "quality_sum": 4.0, "eaten": 8, "happy": 6},
+		drink.id: {"sold": 18, "quality_sum": 9.0, "eaten": 9, "happy": 6},
+	})
+	var sort: OptionButton = _panel.get_node("%List/ListHeading/DishSort") as OptionButton
+	sort.item_selected.emit(1)
+	burger = _panel.tree_item_for(_burger.id)
+	deluxe = _panel.tree_item_for(child.id)
+	coffee = _panel.tree_item_for(drink.id)
+	assert_eq(coffee.get_parent().get_first_child(), coffee)
+	assert_eq(coffee.get_next(), deluxe)
+	assert_eq(deluxe.get_next(), burger)
+	assert_true(deluxe.is_selected(0))
+	sort.item_selected.emit(0)
+	assert_eq(_panel.tree_item_for(child.id).get_parent(), _panel.tree_item_for(_burger.id))
+	assert_true(_panel.tree_item_for(child.id).is_selected(0))
+
+
+func test_shipped_dish_names_fit_one_line_within_their_rows_at_desktop_size() -> void:
+	var db: ContentDB = ContentDB.new()
+	assert_eq(db.load_all().size(), 0)
+	var recipes: Array[RecipeDef] = db.recipes()
+	_panel.bind_menu(MenuSettings.new(recipes))
+	_panel.set_recipe_details(recipes, {} as Dictionary[StringName, Dictionary])
+	var scene: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	scene.root.add_child(viewport)
+	viewport.add_child(_panel)
+	_panel.show()
+	for frame: int in 4:
+		await scene.process_frame
+	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
+	var font: Font = tree.get_theme_font("font")
+	var font_size: int = tree.get_theme_font_size("font_size")
+	assert_eq(tree.columns, 2)
+	assert_false(tree.scroll_horizontal_enabled)
+	assert_false(scroll.get_h_scroll_bar().visible)
+	for recipe: RecipeDef in recipes:
+		var item: TreeItem = _panel.tree_item_for(recipe.id)
+		assert_not_null(item)
+		if item == null:
+			continue
+		var area: Rect2 = tree.get_item_area_rect(item, 0)
+		var width: float = font.get_string_size(item.get_text(0), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		assert_eq(item.get_autowrap_mode(0), TextServer.AUTOWRAP_OFF, recipe.display_name)
+		assert_true(area.size.x >= width, recipe.display_name + " fits its cell")
+		assert_true(area.size.y >= font.get_height(font_size), recipe.display_name + " fits its row")
+		assert_true(area.size.y <= 2 * font.get_height(font_size), recipe.display_name + " uses at most two lines")
+	viewport.remove_child(_panel)
+	viewport.free()
+
+
 func test_tree_sizes_to_its_rows_without_trapping_the_wheel() -> void:
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
 	assert_false(tree.scroll_vertical_enabled, "no nested scroll inside the column")
@@ -931,6 +1044,10 @@ func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 		await scene.process_frame
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	var sort: OptionButton = _panel.get_node("%List/ListHeading/DishSort") as OptionButton
+	assert_true(sort.is_visible_in_tree())
+	assert_true((_panel.get_node("Panel") as Control).get_global_rect().encloses(sort.get_global_rect()),
+		"sorting is reachable in the compact menu header")
 	assert_true(scroll.get_v_scroll_bar().max_value > scroll.size.y, "the column has more rows than fit")
 	var visible: Rect2 = tree.get_global_rect().intersection(scroll.get_global_rect())
 	var wheel: InputEventMouseButton = InputEventMouseButton.new()

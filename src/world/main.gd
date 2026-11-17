@@ -114,6 +114,7 @@ var shown_report: DayReport = null
 var _last_team_activity: Dictionary = {}
 ## Dishes sold today (recipe id -> count), for the evening report.
 var dishes_sold_today: Dictionary[StringName, int] = {}
+var _dish_metrics_today: Dictionary[StringName, Dictionary] = {}
 var _food_cost_today: Dictionary = PurchaseBasis.zero()
 ## Closed-phase edits are persisted by the next normal morning autosave.
 var shop_editor: ShopEditor
@@ -908,6 +909,7 @@ func _connect_session() -> void:
 	if not _report.is_connected(&"close_requested", _on_report_close_requested):
 		_report.connect(&"close_requested", _on_report_close_requested)
 	sim.customer_paid.connect(_on_customer_paid)
+	sim.dish_visit_completed.connect(_on_dish_visit_completed)
 	if not sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.connect(_on_vibe_customer_left)
 	sim.dish_sold_out.connect(_on_dish_sold_out)
@@ -967,6 +969,8 @@ func _exit_tree() -> void:
 		_inspect_panel.owner_mode_requested.disconnect(_on_owner_mode_requested)
 	if sim != null and sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim != null and sim.dish_visit_completed.is_connected(_on_dish_visit_completed):
+		sim.dish_visit_completed.disconnect(_on_dish_visit_completed)
 	if sim != null and sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
 	_disconnect_service_alerts()
@@ -2922,6 +2926,7 @@ func _report_sources(day: int) -> DayReportSources:
 	sources.notes = day_notes
 	sources.reputation_average = reputation.average()
 	sources.dishes_sold = dishes_sold_today
+	sources.dish_metrics = _dish_metrics_today
 	sources.food_cost = _food_cost_today
 	sources.haggle_receipt = _haggle_receipt
 	sources.stock_forecast = StockAlerts.forecast(Economy.stock,
@@ -3484,6 +3489,8 @@ func _disconnect_session() -> void:
 		sim.aquarium.changed.disconnect(_on_aquarium_changed)
 	if sim.customer_paid.is_connected(_on_customer_paid):
 		sim.customer_paid.disconnect(_on_customer_paid)
+	if sim.dish_visit_completed.is_connected(_on_dish_visit_completed):
+		sim.dish_visit_completed.disconnect(_on_dish_visit_completed)
 	if sim.customer_left.is_connected(_on_vibe_customer_left):
 		sim.customer_left.disconnect(_on_vibe_customer_left)
 	_disconnect_service_alerts()
@@ -3508,7 +3515,7 @@ func _disconnect_session() -> void:
 
 
 func _capture_business_history() -> Dictionary:
-	return business_history.capture()
+	return business_history.capture(Clock.sim.day - 1)
 
 
 func _capture_shop_records() -> Dictionary:
@@ -6472,6 +6479,7 @@ func _begin_morning() -> void:
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
+	_dish_metrics_today.clear()
 	_food_cost_today = PurchaseBasis.zero()
 	var yesterday: DayReport = shown_report
 	shown_report = null
@@ -7524,11 +7532,28 @@ func _on_customer_paid(customer: CustomerAgent, order: Order, amount: int) -> vo
 		if tip > 0:
 			Economy.add_cash(tip, Ledger.TIP)
 	dishes_sold_today[order.recipe_id] = dishes_sold_today.get(order.recipe_id, 0) + 1
+	var metrics: Dictionary = _dish_metrics_for(order.recipe_id)
+	metrics["sold"] = dishes_sold_today[order.recipe_id]
+	metrics["quality_sum"] += order.quality
 	if signature_state != null:
 		signature_state.record_sale(order.recipe_id)
 	_observe_opening_state()
 	_observe_opening_party(customer)
 	_refresh_goals()
+
+
+func _on_dish_visit_completed(recipe_ids: Array[StringName], happy: bool) -> void:
+	for id: StringName in recipe_ids:
+		var metrics: Dictionary = _dish_metrics_for(id)
+		metrics["eaten"] += 1
+		if happy:
+			metrics["happy"] += 1
+
+
+func _dish_metrics_for(id: StringName) -> Dictionary:
+	if not _dish_metrics_today.has(id):
+		_dish_metrics_today[id] = {"sold": 0, "quality_sum": 0.0, "eaten": 0, "happy": 0}
+	return _dish_metrics_today[id]
 
 
 func _settle_booking_after_departure(customer: CustomerAgent, reason: StringName) -> void:
@@ -8225,6 +8250,7 @@ func _expected_dish_quality(recipe: RecipeDef) -> DishQuality:
 func _refresh_menu_details() -> void:
 	if _menu_panel != null and content != null:
 		_menu_panel.set_recipe_details(content.recipes(), menu_recipe_details())
+		_menu_panel.set_dish_week(business_history.dish_week(Clock.sim.day - 1))
 		var favourites: Array[StringName] = []
 		for profile: RegularProfile in regulars.profiles:
 			if profile.active and not favourites.has(profile.favourite_dish):
