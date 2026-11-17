@@ -86,7 +86,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"shop_name_sign", &"side_table", &"sink",
 		&"speaker", &"square_bar_stool", &"storage_shelf", &"stove", &"street_awning_2", &"street_awning_3", &"street_awning_4",
-		&"string_lights_2", &"string_lights_3", &"string_lights_4", &"table_2", &"table_4", &"television_vintage", &"toilet",
+		&"string_lights_2", &"string_lights_3", &"string_lights_4", &"table_2", &"table_4", &"television_vintage", &"tip_jar", &"toilet",
 		&"waiting_bench", &"wall_art_peaks", &"wall_art_sunrise", &"wall_hand_dryer", &"wooden_chair",
 	])
 	var copy: Array[ItemDef] = db.items()
@@ -112,7 +112,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 134)
+	assert_eq(content_paths, 135)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

@@ -9,6 +9,7 @@ const CAT_TUNING: CatTuning = preload("res://data/balance/cat.tres")
 const INSPECTION_TUNING: InspectionTuning = preload("res://data/balance/inspection.tres")
 const AQUARIUM_TUNING: AquariumTuning = preload("res://data/balance/aquarium.tres")
 const BOOKING_TUNING: BookingTuning = preload("res://data/balance/bookings.tres")
+const TIP_JAR_TUNING: TipJarTuning = preload("res://data/balance/tip_jar.tres")
 
 signal customer_arrived(customer: CustomerAgent)
 signal customer_paid(customer: CustomerAgent, order: Order, amount: int)
@@ -1259,11 +1260,15 @@ func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> 
 	return visit
 
 
+func tip_jar_multiplier() -> float:
+	return TIP_JAR_TUNING.multiplier(world.grid if world != null else null)
+
+
 func regular_tip(customer: CustomerAgent, order: Order) -> int:
 	if regulars == null or customer == null or customer.regular_profile == null or order == null:
 		return 0
 	var amount: float = order.price * regulars.tip_rate(customer.regular_profile,
-		customer.regular_favourite_available)
+		customer.regular_favourite_available) * tip_jar_multiplier()
 	# Cash is whole units. Rounding the favourite bonus up keeps a modest
 	# drink's extra tip visible instead of rounding it away on every visit.
 	return maxi(0, ceili(amount) if customer.regular_favourite_available else roundi(amount))

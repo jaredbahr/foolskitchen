@@ -18,6 +18,7 @@ var day: int = 1
 ## Snapshot of the name used for this service day and its review heading.
 var restaurant_name: String = MenuSettings.DEFAULT_NAME
 var income: Dictionary = {}
+var tip_jar_percent: int = 0
 var costs: Dictionary = {}
 ## Transient first-advance introduction, supplied by the closing session.
 var loan_first_advance: bool = false
@@ -271,6 +272,8 @@ func to_dict() -> Dictionary:
 		"stock_on_hand_recorded": stock_on_hand_recorded,
 		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
+	if tip_jar_percent > 0:
+		result["tip_jar_percent"] = tip_jar_percent
 	var public_slowest_snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
 	if not public_slowest_snapshot.is_empty():
 		result["slowest_seller_snapshot"] = public_slowest_snapshot
@@ -335,6 +338,9 @@ static func _public_visitor_breakdown(value: Variant) -> Array[Dictionary]:
 static func from_dict(data: Dictionary) -> DayReport:
 	var report: DayReport = DayReport.new()
 	report.day = int(data.get("day", 1))
+	var saved_tip_bonus: Variant = data.get("tip_jar_percent", 0)
+	if saved_tip_bonus is int or saved_tip_bonus is float:
+		report.tip_jar_percent = clampi(int(saved_tip_bonus), 0, 100)
 	var saved_name: Variant = data.get("restaurant_name", MenuSettings.DEFAULT_NAME)
 	if saved_name is String:
 		var normalized: String = MenuSettings.normalized_restaurant_name(saved_name)

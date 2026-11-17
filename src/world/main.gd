@@ -1338,7 +1338,9 @@ func route_build_input(event: InputEvent) -> bool:
 				# Alt explicitly picks the floor layer. A miss cannot accidentally
 				# grab the furniture above it; normal clicks keep their old order.
 				var item: PlacedItem = world.grid.item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR) \
-					if mouse.alt_pressed else world.grid.item_at(cell)
+					if mouse.alt_pressed else world.grid.item(build_mode.hover_item_id)
+				if item != null and item.def is ItemDef and (item.def as ItemDef).sits_on_surface():
+					cell = item.origin
 				if item != null:
 					match build_mode.tool:
 						BuildMode.Tool.EYEDROPPER:
@@ -2138,13 +2140,22 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 			build_mode.hover_item(-1)
 			return true
 	var cell: Variant = build_cell_at_screen_position(screen_position)
+	if build_mode.has_ghost() and build_mode.selected_definition != null and build_mode.selected_definition.sits_on_surface():
+		var camera: Camera3D = $CameraRig/Camera3D
+		var surface: Variant = ($ShopView as ShopView).surface_cell_at_ray(camera.project_ray_origin(screen_position),
+			camera.project_ray_normal(screen_position))
+		if surface is Vector2i:
+			cell = surface
 	if not cell is Vector2i:
 		build_mode.hover_item(-1)
 		return false
 	if build_mode.has_ghost():
 		build_mode.update_origin(cell)
 	elif build_mode.state == BuildMode.State.IDLE:
-		var hovered: PlacedItem = world.grid.item_at(cell)
+		var camera: Camera3D = $CameraRig/Camera3D
+		var prop_id: int = ($ShopView as ShopView).surface_decor_at_ray(camera.project_ray_origin(screen_position),
+			camera.project_ray_normal(screen_position))
+		var hovered: PlacedItem = world.grid.item(prop_id) if prop_id >= 0 else world.grid.item_at(cell)
 		build_mode.hover_item(hovered.id if hovered != null else -1)
 	return true
 
@@ -7640,6 +7651,7 @@ func _settle_booking(booking_id: int, review: Dictionary) -> void:
 	if bool(review.get("good_service", false)):
 		var tip: int = BookingSettlement.good_service_tip(_booking_paid_total,
 			int(review.get("stars", 0)), BOOKING_TUNING)
+		tip = roundi(float(tip) * sim.tip_jar_multiplier())
 		if tip > 0 and group_booking.claim_effect(booking_id, GroupBooking.EFFECT_TIP):
 			Economy.add_cash(tip, Ledger.TIP, "Booking service tip")
 	if group_booking.settle(booking_id):
@@ -8086,7 +8098,8 @@ func _unlocked_at_levels(previous_level: int, current_level: int,
 		if _newly_open(recipe.unlock_level, recipe.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
-		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
+		if item.catalogue_visible and item.announce_unlock \
+				and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
 	for style: FloorStyleDef in content.floor_styles():
 		if _newly_open(style.unlock_level, style.unlock_tier, previous_level, current_level, previous_tier, current_tier):

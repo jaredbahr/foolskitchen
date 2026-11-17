@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="TipJarTuning" format=3]
+
+[ext_resource type="Script" path="res://src/sim/economy/tip_jar_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+tip_jar_multiplier = 1.10
+range_cells = 3

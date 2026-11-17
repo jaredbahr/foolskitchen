@@ -209,3 +209,17 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")
 	viewport.remove_child(_report)
 	viewport.free()
+
+
+func test_tip_row_retains_its_amount_and_shows_the_active_bonus_after_restore() -> void:
+	var day: DayReport = DayReport.new()
+	day.income[Ledger.TIP] = 6
+	assert_false(day.to_dict().has("tip_jar_percent"), "no jar preserves the old report shape")
+	var rows: GridContainer = _report.get_node("%IncomeRows") as GridContainer
+	_report.call("show_report", day)
+	assert_eq((rows.get_child(0) as Label).text, "Tip")
+	day.tip_jar_percent = 10
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	_report.call("show_report", restored)
+	assert_eq((rows.get_child(0) as Label).text, "Tip (tip jar +10%)")
+	assert_eq((rows.get_child(1) as Label).text, "$6")
