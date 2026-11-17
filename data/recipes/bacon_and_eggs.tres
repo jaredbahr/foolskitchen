@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
+[ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
+[ext_resource type="Resource" path="res://data/ingredients/egg.tres" id="ingredient_egg"]
+[ext_resource type="Resource" path="res://data/ingredients/bacon.tres" id="ingredient_bacon"]
+[ext_resource type="PackedScene" path="res://assets/props/bacon_and_eggs.tscn" id="view_model"]
+
+[sub_resource type="Resource" id="Step_prep"]
+script = ExtResource("3_step")
+station_type = &"prep_counter"
+duration_ticks = 18
+
+[sub_resource type="Resource" id="Step_cook"]
+script = ExtResource("3_step")
+station_type = &"stove"
+duration_ticks = 48
+
+[resource]
+script = ExtResource("1_recipe")
+view_model = ExtResource("view_model")
+id = &"bacon_and_eggs"
+display_name = "Bacon and eggs"
+section = 6
+ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_egg"), ExtResource("ingredient_egg"), ExtResource("ingredient_bacon")])
+steps = Array[ExtResource("3_step")]([SubResource("Step_prep"), SubResource("Step_cook")])
+base_quality = 0.60
+standard_price = 10
+unlock_tier = 1
+unlock_level = 2
+default_enabled = false
+theme_tags = Array[StringName]([&"cafe", &"cosy"])

@@ -859,6 +859,13 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 	_assert_restaurant_title(window)
 	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
 	assert_true(pixels.grow(0.5).encloses(_drawn_rect(top, window)), "the whole header stays inside the physical Window")
+	var guide: Button = _hud.get_node("Guide") as Button
+	assert_eq(guide.text, "Guide")
+	assert_false(guide.tooltip_text.is_empty())
+	assert_true(guide.is_visible_in_tree())
+	_assert_readable_control(guide, window)
+	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(guide, window)),
+		"the Guide launcher leaves the top bar and its panel clearance intact")
 	var gear: Button = _control("Settings") as Button
 	assert_eq(gear.get_combined_minimum_size(), Vector2(46.0, 46.0),
 		"the native gear minimum uses the 28px icon instead of its 100px source texture")
@@ -892,6 +899,13 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 	assert_true(day_label.get_combined_minimum_size().y <= weather.get_combined_minimum_size().y + 0.5,
 		"the season line fits inside the existing weather badge height")
 	_assert_three_groups()
+	var today: Button = _hud.get_node("Today") as Button
+	assert_true(today.is_visible_in_tree())
+	assert_eq(today.text, "Today")
+	assert_true(today.size.y >= 46.0, "Today preserves a native 46px touch target")
+	_assert_readable_control(today, window)
+	assert_true(today.get_global_rect().position.y >= top.get_global_rect().end.y + 11.5,
+		"Today stays below the wrapped header without changing its packing")
 
 
 func _assert_readable_control(control: Control, window: Window) -> void:
@@ -947,6 +961,9 @@ func _assert_build_hint_layout(window: Window) -> void:
 	assert_true(hints.global_position.y >= top.get_global_rect().end.y + 6.0,
 		"build instructions move below the wrapped header")
 	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(hints, window)))
+	var today: Button = _hud.get_node("Today") as Button
+	assert_true(today.get_global_rect().position.y >= hints.get_global_rect().end.y + 7.5,
+		"Today clears the build instructions")
 	assert_true(float(_hud.call("panel_top")) >= top.get_global_rect().end.y + 12.0,
 		"morning panels receive clearance below the final header height")
 

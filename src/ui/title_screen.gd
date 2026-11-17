@@ -16,7 +16,18 @@ var _clock_input: bool = true
 var _started: bool = false
 ## The new game's Career or Creative card (FK-141), built in code.
 var mode_choice: PanelContainer
+var difficulty_choice: PanelContainer
+var _career_button: Button
+var _difficulty_buttons: Dictionary[StringName, Button] = {}
+var _difficulty_scroll: ScrollContainer
+var _difficulty_content: VBoxContainer
+var _custom_toggles: VBoxContainer
+var _auto_buy: CheckButton
+var _auto_buy_premium: CheckButton
+var _selected_difficulty: StringName = &"normal"
 var _new_creative: bool = false
+var _new_difficulty: StringName = &"normal"
+var _new_custom_flags: Dictionary = {}
 ## Test seam: the build's version and notes, normally read from BuildInfo.
 var build_version: String = ""
 var build_notes: String = ""
@@ -74,9 +85,11 @@ func start() -> void:
 	whats_new.close_requested.connect(_on_whats_new_closed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	confirmation.confirmed.connect(_start_new_game)
+	confirmation.canceled.connect(new_button.grab_focus)
 	settings.close_requested.connect(_on_settings_closed)
 	settings.bind_preferences(Preferences)
 	_build_mode_choice()
+	_build_difficulty_choice()
 	refresh_save_availability()
 	_prepare_backdrop()
 	_layout_menu()
@@ -138,18 +151,51 @@ func _autosave_is_creative() -> bool:
 ## New game first asks Career or Creative.
 func show_mode_choice() -> void:
 	menu.hide()
+	difficulty_choice.hide()
 	mode_choice.show()
 	_layout_menu()
+	_career_button.grab_focus()
 
 
-func _hide_mode_choice() -> void:
+func _return_to_menu() -> void:
+	difficulty_choice.hide()
 	mode_choice.hide()
 	menu.show()
+	new_button.grab_focus()
 
 
-func request_new_game(creative: bool = false) -> void:
+func _show_difficulty_choice() -> void:
+	_auto_buy.set_pressed_no_signal(Difficulty.DEFAULT_CUSTOM_FLAGS[&"buy"])
+	_auto_buy_premium.set_pressed_no_signal(Difficulty.DEFAULT_CUSTOM_FLAGS[&"buy_premium"])
+	_difficulty_buttons[&"normal"].button_pressed = true
+	_on_difficulty_toggled(true, &"normal")
+	mode_choice.hide()
+	difficulty_choice.show()
+	_layout_menu()
+	_difficulty_buttons[&"normal"].grab_focus()
+
+
+func _on_difficulty_toggled(pressed: bool, mode_id: StringName) -> void:
+	if pressed:
+		_selected_difficulty = mode_id
+		_custom_toggles.visible = mode_id == &"custom"
+
+
+func _start_career() -> void:
+	var flags: Dictionary = {}
+	if _selected_difficulty == &"custom":
+		flags = Difficulty.DEFAULT_CUSTOM_FLAGS.duplicate()
+		flags[&"buy"] = _auto_buy.button_pressed
+		flags[&"buy_premium"] = _auto_buy_premium.button_pressed
+	request_new_game(false, _selected_difficulty, flags)
+
+
+func request_new_game(creative: bool = false, difficulty_id: StringName = &"normal",
+		custom_flags: Dictionary = {}) -> void:
 	_new_creative = creative
-	_hide_mode_choice()
+	_new_difficulty = &"normal" if creative else difficulty_id
+	_new_custom_flags = {} if creative else custom_flags.duplicate()
+	_return_to_menu()
 	refresh_save_availability()
 	if continue_button.visible:
 		confirmation.popup_centered(Vector2i(480, 160))
@@ -158,7 +204,8 @@ func request_new_game(creative: bool = false) -> void:
 
 
 func _start_new_game() -> void:
-	if MAIN.start_fresh_run(get_tree(), MAIN.AUTOSAVE_SLOT, true, _new_creative) != OK:
+	if MAIN.start_fresh_run(get_tree(), MAIN.AUTOSAVE_SLOT, true,
+			_new_creative, _new_difficulty, _new_custom_flags) != OK:
 		_show_start_error()
 
 
@@ -179,7 +226,11 @@ func _build_mode_choice() -> void:
 		var button: Button = Button.new()
 		button.name = "Creative" if creative else "Career"
 		button.text = TitleText.CREATIVE if creative else TitleText.CAREER
-		button.pressed.connect(request_new_game.bind(creative))
+		if creative:
+			button.pressed.connect(request_new_game.bind(true))
+		else:
+			_career_button = button
+			button.pressed.connect(_show_difficulty_choice)
 		column.add_child(button)
 		var line: Label = Label.new()
 		line.text = TitleText.CREATIVE_LINE if creative else TitleText.CAREER_LINE
@@ -188,8 +239,87 @@ func _build_mode_choice() -> void:
 	var back: Button = Button.new()
 	back.name = "Back"
 	back.text = TitleText.BACK
-	back.pressed.connect(_hide_mode_choice)
+	back.pressed.connect(_return_to_menu)
 	column.add_child(back)
+
+
+func _build_difficulty_choice() -> void:
+	difficulty_choice = PanelContainer.new()
+	difficulty_choice.name = "DifficultyChoice"
+	difficulty_choice.hide()
+	add_child(difficulty_choice)
+	_difficulty_scroll = ScrollContainer.new()
+	_difficulty_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_difficulty_scroll.follow_focus = true
+	difficulty_choice.add_child(_difficulty_scroll)
+	_difficulty_content = VBoxContainer.new()
+	_difficulty_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_difficulty_content.add_theme_constant_override("separation", 12)
+	_difficulty_scroll.add_child(_difficulty_content)
+	var heading: Label = Label.new()
+	heading.text = DifficultyText.CHOOSE_CAREER
+	heading.add_theme_font_size_override("font_size", 28)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_difficulty_content.add_child(heading)
+
+	var options: GridContainer = GridContainer.new()
+	options.columns = 2
+	options.add_theme_constant_override("h_separation", 14)
+	options.add_theme_constant_override("v_separation", 8)
+	_difficulty_content.add_child(options)
+	var group: ButtonGroup = ButtonGroup.new()
+	var ink: Color = get_theme_color("font_color", "Button")
+	for mode_id: StringName in Difficulty.MODES:
+		var button: Button = Button.new()
+		button.name = Difficulty.mode_name(mode_id)
+		button.text = Difficulty.mode_name(mode_id)
+		button.custom_minimum_size.x = 106.0
+		button.toggle_mode = true
+		button.button_group = group
+		button.add_theme_color_override("font_pressed_color", ink)
+		button.add_theme_color_override("font_hover_pressed_color", ink)
+		button.add_theme_color_override("font_focus_color", ink)
+		button.toggled.connect(_on_difficulty_toggled.bind(mode_id))
+		_difficulty_buttons[mode_id] = button
+		options.add_child(button)
+		var line: Label = Label.new()
+		line.text = DifficultyText.description(mode_id)
+		line.add_theme_font_size_override("font_size", 16)
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		options.add_child(line)
+
+	_custom_toggles = VBoxContainer.new()
+	_custom_toggles.name = "CustomToggles"
+	_custom_toggles.add_theme_constant_override("separation", 6)
+	_custom_toggles.hide()
+	_difficulty_content.add_child(_custom_toggles)
+	_auto_buy = _add_difficulty_switch("AutoBuy", DifficultyText.AUTO_BUY)
+	_auto_buy_premium = _add_difficulty_switch("AutoBuyPremium", DifficultyText.AUTO_BUY_PREMIUM)
+	var actions: HBoxContainer = HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	_difficulty_content.add_child(actions)
+	var back: Button = Button.new()
+	back.name = "Back"
+	back.text = TitleText.BACK
+	back.pressed.connect(show_mode_choice)
+	actions.add_child(back)
+	var begin: Button = Button.new()
+	begin.name = "StartCareer"
+	begin.text = DifficultyText.START_CAREER
+	begin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	begin.pressed.connect(_start_career)
+	actions.add_child(begin)
+	_difficulty_content.minimum_size_changed.connect(_layout_difficulty_choice)
+
+
+func _add_difficulty_switch(node_name: String, caption: String) -> CheckButton:
+	var button: CheckButton = CheckButton.new()
+	button.name = node_name
+	button.text = caption
+	_custom_toggles.add_child(button)
+	return button
 
 
 func continue_game() -> void:
@@ -233,6 +363,16 @@ func _layout_menu() -> void:
 	mode_choice.custom_minimum_size.x = menu.custom_minimum_size.x
 	mode_choice.size = mode_choice.get_combined_minimum_size()
 	mode_choice.position = Vector2(CARD_MARGIN, maxf(CARD_MARGIN, (size.y - mode_choice.size.y) * 0.5))
+	_layout_difficulty_choice()
+
+
+func _layout_difficulty_choice() -> void:
+	var padding: Vector2 = difficulty_choice.get_theme_stylebox("panel").get_minimum_size()
+	_difficulty_scroll.custom_minimum_size.y = minf(_difficulty_content.get_combined_minimum_size().y,
+		maxf(0.0, size.y - CARD_MARGIN * 2.0 - padding.y))
+	difficulty_choice.custom_minimum_size.x = menu.custom_minimum_size.x
+	difficulty_choice.size = difficulty_choice.get_combined_minimum_size()
+	difficulty_choice.position = Vector2(CARD_MARGIN, maxf(CARD_MARGIN, (size.y - difficulty_choice.size.y) * 0.5))
 
 
 func _on_settings_pressed() -> void:
@@ -260,7 +400,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			whats_new.close()
 		elif code == KEY_ESCAPE and settings.visible:
 			_on_settings_closed()
+		elif code == KEY_ESCAPE and difficulty_choice.visible:
+			show_mode_choice()
 		elif code == KEY_ESCAPE and mode_choice.visible:
-			_hide_mode_choice()
+			_return_to_menu()
 	get_viewport().set_input_as_handled()
 

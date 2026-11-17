@@ -40,6 +40,7 @@ func after_each() -> void:
 
 
 func test_every_catalogue_item_has_a_known_room_and_group() -> void:
+	_catalogue.set_lot_tags(LotDef.KNOWN_TAGS)
 	var rooms: Dictionary[StringName, int] = {}
 	for definition: ItemDef in _content.items():
 		if not _catalogue.item_buttons.has(definition.id):

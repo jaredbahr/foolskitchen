@@ -37,6 +37,7 @@ class Buyer extends RefCounted:
 	var limits: SiteLimitTuning
 	var cash: int = 0
 	var loan: int = 0
+	var rent_multiplier: float = 1.0
 
 
 ## Detached display inputs; the session owns the lots and the buyer's state.
@@ -114,7 +115,8 @@ func _make_card(lot: LotDef, buyer: Buyer, catalogue: CustomerTypeCatalogue, ind
 	var blurb: Label = _add_label(body, "Blurb", lot.blurb, LINE_FONT_SIZE)
 	blurb.add_theme_color_override(&"font_color", MUTED_COLOR)
 	_add_label(body, "Price", "%s · %s" % [PropertyText.price_line(lot), PropertyText.size_line(lot)], LINE_FONT_SIZE)
-	_add_label(body, "Rent", "%s · %s" % [PropertyText.rent_line(lot), PropertyText.expansion_line(lot)], LINE_FONT_SIZE)
+	_add_label(body, "Rent", "%s · %s" % [PropertyText.rent_line(lot, buyer.rent_multiplier),
+		PropertyText.expansion_line(lot, buyer.rent_multiplier)], LINE_FONT_SIZE)
 	var guests: String = PropertyText.guest_line(lot, catalogue)
 	var perks: String = PropertyText.perks_line(lot)
 	var feel: PackedStringArray = []

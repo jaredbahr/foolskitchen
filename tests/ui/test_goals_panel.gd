@@ -202,6 +202,29 @@ func test_empty_or_invalid_catalogue_shows_friendly_state_without_leaking_ids() 
 	assert_eq((_panel.get_node("Panel/Content/Scroll/List/CompletedRows") as VBoxContainer).get_child_count(), 0)
 
 
+func test_empty_state_agrees_after_goals_or_collections_refresh() -> void:
+	var no_goals: Array[StringName] = []
+	var no_progress: Dictionary[StringName, float] = {}
+	var empty: Label = _panel.get_node("%EmptyState") as Label
+	_panel.set_goals(null, no_goals, no_progress, 1)
+	var result: CollectionModel.Result = CollectionModel.Result.new()
+	var entry: CollectionModel.Entry = CollectionModel.Entry.new()
+	entry.definition = CollectionDef.new()
+	entry.definition.display_name = "Diner Classics"
+	result.entries = [entry]
+	_panel.set_collections(result)
+	assert_true(empty.visible, "An invalid collection is not rendered")
+	_panel.set_goals(null, no_goals, no_progress, 1)
+	assert_true(empty.visible, "A goal refresh must agree with the collection refresh")
+	result.valid = true
+	_panel.set_collections(result)
+	assert_false(empty.visible, "A collection card supplies content on its own")
+	_panel.set_goals(null, no_goals, no_progress, 1)
+	assert_false(empty.visible)
+	_panel.set_collections(null)
+	assert_true(empty.visible)
+
+
 func test_close_emits_request_and_responsive_layout_uses_native_scroll_controls() -> void:
 	var panel: Control = _panel.get_node("Panel") as Control
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer

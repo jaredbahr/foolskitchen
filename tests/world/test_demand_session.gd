@@ -497,6 +497,10 @@ const DAY_ONE_STREAMS: Dictionary = {
 			"seed": "524528529",
 			"state": "-4869216818992773893"
 		},
+		"paper": {
+			"seed": "1326597608",
+			"state": "811753036341942129"
+		},
 		"reviews": {
 			"seed": "7543029",
 			"state": "-7929524535254594193"

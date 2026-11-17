@@ -92,6 +92,39 @@ func test_room_tone_follows_the_crowd_and_stops_when_paused_or_closed() -> void:
 	assert_almost_eq(Sfx.loop_level(&"room_tone"), 0.0, 0.0001, "paused is silent")
 
 
+func test_room_music_follows_main_and_continues_under_the_real_report() -> void:
+	var main: Node = _start()
+	Clock.set_speed(0)
+	main.call("refresh_presentation")
+	assert_eq(Sfx.music_context(), MusicTracks.MORNING)
+	assert_null(Sfx.music_track())
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	# Deliver a computed-style result through Main's existing signal. The
+	# service and its close below run through the live sim.
+	var vibe: VibeModel.Result = VibeModel.Result.new()
+	vibe.valid = true
+	vibe.active_theme = &"cafe"
+	main.emit_signal(&"vibe_changed", vibe)
+	assert_true(Clock.sim.start_service())
+	main.call("refresh_presentation")
+	var cafe: AudioStream = MusicTracks.track_for(&"cafe", Clock.sim.day)
+	assert_eq(Sfx.music_track(), cafe)
+	Sfx._step_music(Sfx.MUSIC_FADE_SECONDS)
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_true((main.get_node("Overlay/EveningReport") as Control).visible)
+	assert_eq(Sfx.music_track(), cafe)
+	assert_eq(Sfx.music_level(cafe), 1.0)
+	main.call("_on_report_close_requested")
+	main.call("refresh_presentation")
+	assert_null(Sfx.music_track())
+
+
 
 ## #366: clinks follow real events while the shop is open and running.
 func test_a_delivered_meal_sets_a_plate_down_with_a_clink() -> void:

@@ -83,6 +83,14 @@ func test_forecast_lines_list_only_what_needs_the_player() -> void:
 	assert_true(StockAlerts.forecast_lines({"rows": [], "order_cost": 0}, _content).is_empty())
 
 
+func test_expiring_stock_with_manual_buying_never_promises_an_order() -> void:
+	var data: Dictionary = {"order_cost": 0, "rows": [
+		{"id": &"cheese", "usable": 8, "target": 8, "expiring": 2, "enabled": false, "buys": 0},
+	]}
+	assert_eq(StockAlerts.forecast_lines(data, _content),
+		["Cheese: 2 expire tomorrow. Auto-reorder is off."] as Array[String])
+
+
 func test_sell_out_lines_name_the_ingredient_time_and_dishes() -> void:
 	var events: Array[Dictionary] = [
 		{"ingredient": &"tomato", "minute": 19 * 60 + 40,

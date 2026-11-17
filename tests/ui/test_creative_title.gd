@@ -79,6 +79,9 @@ func test_creative_starts_a_creative_game_and_continue_names_it() -> void:
 	# Replacing it with a career game keeps the plain label.
 	again.show_mode_choice()
 	(again.mode_choice.find_child("Career", true, false) as Button).pressed.emit()
+	assert_true(again.difficulty_choice.visible)
+	assert_false(again.confirmation.visible)
+	(again.difficulty_choice.find_child("StartCareer", true, false) as Button).pressed.emit()
 	assert_true(again.confirmation.visible, "an existing save still asks first")
 	again.confirmation.confirmed.emit()
 	await _settle_transition()

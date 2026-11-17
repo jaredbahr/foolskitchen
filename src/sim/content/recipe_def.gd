@@ -2,7 +2,7 @@ class_name RecipeDef
 extends Resource
 ## Data for one menu dish; no preparation or economy behavior lives here.
 
-enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS, BAKERY }
+enum Section { STARTERS, MAINS, SIDES, DRINKS, DESSERTS, BAKERY, BREAKFAST }
 const FOOD: StringName = &"food"
 const COFFEE: StringName = &"coffee"
 const DRINKS: StringName = &"drinks"
@@ -23,6 +23,8 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 @export var standard_price: int = 0
 @export var unlock_tier: int = 1
 @export var unlock_level: int = 1
+## Whether a fresh menu includes this dish automatically when it can serve it.
+@export var default_enabled: bool = true
 ## Owner-level route: this earlier dish leads to this node in the menu tree.
 ## Empty means a root. Levels are authoritative; no recipe-point save state.
 @export var unlock_from: StringName = &""
@@ -59,6 +61,8 @@ static func section_name(value: int) -> String:
 			return "Desserts"
 		Section.BAKERY:
 			return "Bakery"
+		Section.BREAKFAST:
+			return "Breakfast"
 	return ""
 
 

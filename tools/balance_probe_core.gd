@@ -65,6 +65,12 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("Godot: %s" % str(Engine.get_version_info().get("string", "unknown")))
 	lines.append("Git SHA: %s" % _git_sha())
+	var mode_id: StringName = options["difficulty"]
+	if mode_id != &"normal":
+		lines.append("Difficulty: %s" % Difficulty.mode_name(mode_id))
+		if mode_id == &"hard":
+			lines.append("Hard supply policy: place a manual Stock order each morning at list price, "
+				+ "using the forecast targets within cash and storage limits.")
 	lines.append("| Set-up | Seed | Arrivals | Served | Lost (top 2 reasons) | Sales | Wages | Rent | Ingredients | Profit | Ending cash | Owner XP | Final level | Level days | Out of stock |")
 	lines.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|")
 	var staff_lines: PackedStringArray = PackedStringArray()
@@ -92,7 +98,7 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 		for seed_value: int in seeds:
 			var row: Dictionary = run_case(tree, seed_value, setup_name, options["days"],
 				options["extra_cook_skill"], options["gap"], options["price"], options["staff_growth"],
-				options["auto_accept_raises"], options["daily"])
+				options["auto_accept_raises"], options["daily"], false, mode_id)
 			if row.has("error"):
 				printerr("%s, seed %d: %s" % [setup_name, seed_value, row["error"]])
 				if not options["daily"]:
@@ -130,9 +136,11 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 		extra_cook_skill: int = 3, gap: Vector2i = Vector2i(-1, -1),
 		price: float = 1.0, trace_staff_growth: bool = false,
 		auto_accept_raises: bool = false, observe_daily: bool = false,
-		capture_control: bool = false) -> Dictionary:
+		capture_control: bool = false, mode_id: StringName = &"normal") -> Dictionary:
 	if tree == null or days < 1 or not ProbeSetups.names().has(setup_name):
 		return {"error": "Invalid probe case"}
+	if mode_id not in [&"normal", &"easy", &"hard"] or (mode_id != &"normal" and setup_name != "default"):
+		return {"error": "Difficulty comparison uses Easy, Normal or Hard with the default set-up"}
 	var scene: PackedScene = load("res://src/world/main.tscn") as PackedScene
 	if scene == null:
 		return {"error": "The game scene did not load"}
@@ -142,12 +150,19 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 	# Service event cards (#495) stay off, so every set-up but "service_events"
 	# matches the probe from before they existed.
 	main.set("service_events_for_tools", false)
+	if mode_id != &"normal":
+		GameMode.request_new_game(false, mode_id)
 	tree.root.add_child(main)
 	main.call("start")
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	if sim == null:
 		_free_main(main)
 		return {"error": "The game session did not start"}
+	if mode_id != &"normal":
+		var difficulty: Difficulty = main.get("difficulty") as Difficulty
+		if difficulty == null or difficulty.mode() != mode_id:
+			_free_main(main)
+			return {"error": "The game did not start at the requested difficulty"}
 	# Main prepared the real morning, including stock, with the probe seed.
 	# Reset before the first gap so each independent case starts identically.
 	GameState.new_run(seed_value)
@@ -183,6 +198,9 @@ static func run_case(tree: SceneTree, seed_value: int, setup_name: String, days:
 				_free_main(main)
 				return choices
 			accepted_requests += int(choices["accepted"])
+		if mode_id == &"hard" and not _place_hard_stock_order(main):
+			_free_main(main)
+			return {"error": "The manual stock order failed on day %d" % (day_index + 1)}
 		var starting_levels: Dictionary = _staff_levels(main.get("staff_roster") as StaffRoster) \
 			if observe_staff else {}
 		if not Clock.sim.start_service():
@@ -406,6 +424,21 @@ static func run_observer_controls(tree: SceneTree) -> int:
 	return 0 if valid else 1
 
 
+## The probe supplies Hard as a player would: price and place a manual order.
+## Use the live forecast to choose quantities, with no stock or cash grants.
+static func _place_hard_stock_order(main: Node) -> bool:
+	var targets: ReorderSettings = (main.call("_reorder") as ReorderSettings).copy()
+	for id: StringName in targets.ids():
+		targets.set_enabled(id, true)
+	var plan: Dictionary = targets.plan(Economy.stock, main.call("_unit_costs"),
+		Economy.spendable(), 0.0, false, main.call("storage_space"))
+	var lines: Array = plan["lines"]
+	for line: Dictionary in lines:
+		if not main.call("stock_cart_set", line["id"], line["qty"]):
+			return false
+	return lines.is_empty() or main.call("stock_place_order")
+
+
 ## Manual probe policy only. Every request, including a no-pay acknowledgement,
 ## goes through Main so roster replacement and live wages match a player choice.
 static func _accept_morning_raises(main: Node) -> Dictionary:
@@ -552,7 +585,7 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 		"gap": Vector2i(-1, -1), "price": 1.0, "extra_cook_skill": 3,
 		"staff_growth": false,
 		"auto_accept_raises": false,
-		"daily": false,
+		"daily": false, "difficulty": &"normal",
 	}
 	var explicit_setup: bool = false
 	var legacy_extra: bool = false
@@ -568,6 +601,10 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 				return {"error": "%s needs a value" % key}
 			value = args[index]
 		match key:
+			"--difficulty":
+				if value not in ["easy", "normal", "hard"]:
+					return {"error": "--difficulty needs easy, normal or hard"}
+				options["difficulty"] = StringName(value)
 			"--daily":
 				if value != "true" and value != "false":
 					return {"error": "--daily must be true or false"}
@@ -627,6 +664,9 @@ static func _parse_args(args: PackedStringArray) -> Dictionary:
 		index += 1
 	if explicit_setup and legacy_extra:
 		return {"error": "Use --setup extra_cook or --extra-cook, not both"}
+	var setups: Array = options["setups"]
+	if options["difficulty"] != &"normal" and (setups.size() != 1 or setups[0] != "default"):
+		return {"error": "--difficulty easy or hard requires --setup=default"}
 	return options
 
 

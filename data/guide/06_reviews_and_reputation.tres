@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Reviews and reputation"
+body = "Some guests leave a review after visiting. Their experience reflects things such as waiting, food, prices and cleanliness, so a low score is a clue about what to improve rather than a verdict on your decorating taste. The evening report gathers review comments and reasons people left, alongside sales and service results. Look for repeated issues, then change one part of the plan and see whether the next days improve.\n\nReputation is a rolling average, shown in stars, rather than a permanent score from one guest. It influences how many guests arrive and which kinds of customers are drawn to the restaurant. Owner experience comes from successful service, profit and goals, and unlocks more content. The Goals panel shows the next career requirements. {career_unlock_example} Steady improvements matter more than chasing one perfect day."

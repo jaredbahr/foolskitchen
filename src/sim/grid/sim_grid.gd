@@ -103,6 +103,11 @@ var _items: Dictionary[int, PlacedItem] = {}
 var _cover: Dictionary[Vector2i, int] = {}
 ## One passive floor furnishing per cell, independent of ordinary coverage.
 var _floor_cover: Dictionary[Vector2i, int] = {}
+## A tabletop item shares space with both its support and anything beneath it.
+var _surface_cover: Dictionary[Vector2i, int] = {}
+const GRID_PLACEMENT_LAYERS: Array[ItemDef.PlacementLayer] = [
+	ItemDef.PlacementLayer.NORMAL, ItemDef.PlacementLayer.FLOOR_DECOR, ItemDef.PlacementLayer.SURFACE_DECOR,
+]
 var _next_id: int = 1
 var _entries: Array[Vector2i] = []
 ## Derived dining links. These are rebuilt from definitions, never saved.
@@ -231,7 +236,7 @@ func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
 		var t: int = changes[cell]
 		if not in_bounds(cell) or t < Terrain.OUTSIDE or t > Terrain.ENTRY:
 			return false
-		if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
+		if (_cover.has(cell) or _floor_cover.has(cell) or _surface_cover.has(cell)) and t != Terrain.FLOOR:
 			return false
 	var touched: Array[Vector2i] = []
 	for cell: Vector2i in changes:
@@ -267,7 +272,7 @@ func set_terrains(changes: Dictionary[Vector2i, int]) -> bool:
 func set_terrain(cell: Vector2i, t: Terrain) -> bool:
 	if not in_bounds(cell):
 		return false
-	if (_cover.has(cell) or _floor_cover.has(cell)) and t != Terrain.FLOOR:
+	if (_cover.has(cell) or _floor_cover.has(cell) or _surface_cover.has(cell)) and t != Terrain.FLOOR:
 		return false
 	_terrain[_index(cell)] = t
 	if t != Terrain.FLOOR:
@@ -478,7 +483,7 @@ func _actor_step(from: Vector2i, to: Vector2i, blocked: Dictionary[Vector2i, boo
 ## Items need FLOOR under every footprint cell and no item in the same layer.
 func can_place(footprint: Vector2i, origin: Vector2i, quarter_turns: int,
 		layer: ItemDef.PlacementLayer = ItemDef.PlacementLayer.NORMAL) -> PlaceResult:
-	if layer != ItemDef.PlacementLayer.NORMAL and layer != ItemDef.PlacementLayer.FLOOR_DECOR:
+	if not GRID_PLACEMENT_LAYERS.has(layer):
 		return PlaceResult.INVALID_LAYER
 	var cover: Dictionary[Vector2i, int] = _coverage(layer)
 	var cells: Array[Vector2i] = _footprint_cells(footprint, origin, quarter_turns)
@@ -521,7 +526,7 @@ func place(footprint: Vector2i, origin: Vector2i, quarter_turns: int, solid: boo
 	if definition != null and (not definition.placement_layer_valid() or not definition.blocking_cells_valid() \
 			or not definition.blocking_cells_fit(footprint, work_cells, seat_cells)):
 		return null
-	if layer == ItemDef.PlacementLayer.FLOOR_DECOR and (solid or not work_cells.is_empty() or not seat_cells.is_empty()):
+	if layer != ItemDef.PlacementLayer.NORMAL and (solid or not work_cells.is_empty() or not seat_cells.is_empty()):
 		return null
 	if definition != null and _placement_scope(definition, footprint, origin, quarter_turns,
 			work_cells, seat_cells) != PlaceResult.OK:
@@ -721,15 +726,22 @@ func item_at(cell: Vector2i) -> PlacedItem:
 
 
 func item_on_layer(cell: Vector2i, layer: ItemDef.PlacementLayer) -> PlacedItem:
-	if layer != ItemDef.PlacementLayer.NORMAL and layer != ItemDef.PlacementLayer.FLOOR_DECOR:
+	if not GRID_PLACEMENT_LAYERS.has(layer):
 		return null
 	return _items.get(_coverage(layer).get(cell, 0), null)
 
 
-## A detached deterministic list for view/picking callers: normal, then floor.
+## The furniture that supports a small decoration in this cell, if any.
+func surface_support_at(cell: Vector2i) -> PlacedItem:
+	var support: PlacedItem = item_on_layer(cell, ItemDef.PlacementLayer.NORMAL)
+	var definition: ItemDef = support.def as ItemDef if support != null else null
+	return support if definition != null and definition.supports_surface_decor() else null
+
+
+## Every grid layer in stable order. Ordinary picking still prefers the support.
 func items_at(cell: Vector2i) -> Array[PlacedItem]:
 	var result: Array[PlacedItem] = []
-	for layer: ItemDef.PlacementLayer in [ItemDef.PlacementLayer.NORMAL, ItemDef.PlacementLayer.FLOOR_DECOR]:
+	for layer: ItemDef.PlacementLayer in GRID_PLACEMENT_LAYERS:
 		var placed: PlacedItem = item_on_layer(cell, layer)
 		if placed != null:
 			result.append(placed)
@@ -737,7 +749,12 @@ func items_at(cell: Vector2i) -> Array[PlacedItem]:
 
 
 func _coverage(layer: ItemDef.PlacementLayer) -> Dictionary[Vector2i, int]:
-	return _floor_cover if layer == ItemDef.PlacementLayer.FLOOR_DECOR else _cover
+	match layer:
+		ItemDef.PlacementLayer.FLOOR_DECOR:
+			return _floor_cover
+		ItemDef.PlacementLayer.SURFACE_DECOR:
+			return _surface_cover
+	return _cover
 
 
 ## Physical table/counter owning a valid dining seat, or 0 if none.
