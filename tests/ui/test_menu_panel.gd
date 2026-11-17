@@ -902,7 +902,7 @@ func test_tree_shows_measured_quality_and_happy_share_and_sorts_dishes() -> void
 	var burger: TreeItem = _panel.tree_item_for(&"burger")
 	var cheese: TreeItem = _panel.tree_item_for(&"grilled_cheese")
 	var soup: TreeItem = _panel.tree_item_for(&"tomato_soup")
-	var sort: OptionButton = _panel.get_node("Panel/Content/Header/DishSort") as OptionButton
+	var sort: OptionButton = _panel.get_node("%List/ListHeading/DishSort") as OptionButton
 	assert_eq(sort.selected, 0)
 	assert_eq(burger.get_next(), cheese)
 	assert_eq(cheese.get_next(), soup)
@@ -961,7 +961,7 @@ func test_most_sold_compares_sections_and_unlock_descendants() -> void:
 		child.id: {"sold": 8, "quality_sum": 4.0, "eaten": 8, "happy": 6},
 		drink.id: {"sold": 18, "quality_sum": 9.0, "eaten": 9, "happy": 6},
 	})
-	var sort: OptionButton = _panel.get_node("Panel/Content/Header/DishSort") as OptionButton
+	var sort: OptionButton = _panel.get_node("%List/ListHeading/DishSort") as OptionButton
 	sort.item_selected.emit(1)
 	burger = _panel.tree_item_for(_burger.id)
 	deluxe = _panel.tree_item_for(child.id)
@@ -1044,7 +1044,7 @@ func test_the_mouse_wheel_over_the_tree_scrolls_list_and_detail() -> void:
 		await scene.process_frame
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
-	var sort: OptionButton = _panel.get_node("Panel/Content/Header/DishSort") as OptionButton
+	var sort: OptionButton = _panel.get_node("%List/ListHeading/DishSort") as OptionButton
 	assert_true(sort.is_visible_in_tree())
 	assert_true((_panel.get_node("Panel") as Control).get_global_rect().encloses(sort.get_global_rect()),
 		"sorting is reachable in the compact menu header")

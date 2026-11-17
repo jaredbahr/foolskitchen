@@ -970,8 +970,14 @@ func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
 
 
 func _build_recipe_tree() -> void:
-	# Keep sorting in the header so both scrolling columns retain room for dishes.
-	var header: HBoxContainer = $Panel/Content/Header
+	var heading: HBoxContainer = HBoxContainer.new()
+	heading.name = "ListHeading"
+	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_list.add_child(heading)
+	_list.move_child(heading, 0)
+	_menu_count.reparent(heading, false)
+	_menu_count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_menu_count.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var sort: OptionButton = OptionButton.new()
 	sort.name = "DishSort"
 	sort.theme = SHARED_THEME
@@ -981,8 +987,7 @@ func _build_recipe_tree() -> void:
 	sort.add_item("Most sold")
 	sort.tooltip_text = "Sort dishes by name within sections and unlocks, or rank all dishes by sales."
 	sort.item_selected.connect(_on_dish_sort_selected)
-	header.add_child(sort)
-	header.move_child(sort, 1)
+	heading.add_child(sort)
 	_recipe_tree = Tree.new()
 	_recipe_tree.name = "RecipeTree"
 	_recipe_tree.theme = SHARED_THEME
