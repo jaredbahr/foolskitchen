@@ -13,8 +13,8 @@ extends Resource
 @export var peak_multiplier: float = 2.5
 ## Short, light occasions shown in the morning notice and evening report.
 @export var occasions: PackedStringArray = PackedStringArray([
-	"Book club", "Chess meet", "Garden circle", "Craft morning",
-	"Walking group", "Choir practice", "Sketch club", "Local meetup",
+	"Market day", "Big match on the telly", "Parade down the high street", "Fun run finish line",
+	"Concert in the park", "Farmers' fair", "Street festival", "School sports day",
 ])
 
 

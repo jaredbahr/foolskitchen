@@ -75,6 +75,7 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
   - **Grilled cheese and Tomato melt:** `sandwich`
   - **Croissant:** `croissant`. Drinks, when shown: **Coffee** `cup-coffee`, **Tea** `cup-tea`, **Soft drink** `soda-glass`, **Beer** `glass`, **Wine** `glass-wine` (FK-083)
   - **Fries:** `fries`; **Savoury pie:** `pie` (FK-081).
+  - **Breakfast (FK-166):** fried eggs `egg-cooked`, bacon and eggs `egg-cooked` and `bacon` on the same plate, pancakes `pancakes`, waffles `waffle`, cereal `bowl-cereal`, muffin `muffin`.
 - Every served dish sits on `plate` (or `plate-dinner`).
 - A dirty plate is `plate` plus a small smear piece from the same kit, or `plate` alone tinted darker. No new models.
 

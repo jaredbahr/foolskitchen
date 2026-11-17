@@ -465,6 +465,18 @@ func test_signature_action_is_eligible_request_only_and_preserves_selected_label
 	assert_eq(_signature_requests.size(), 1)
 
 
+func test_dish_list_tracks_the_signature_when_another_dish_is_selected() -> void:
+	var recipes: Array[RecipeDef] = _menu.recipes()
+	_panel.set_recipe_details(recipes, {&"burger": {"signature": {"selected": true}}})
+	assert_true(_panel.select_recipe(&"tomato_soup"))
+	assert_eq(_panel.tree_item_for(&"burger").get_text(0), "Burger (signature)")
+	assert_eq(_panel.tree_item_for(&"tomato_soup").get_text(0), "Tomato soup")
+	_panel.set_recipe_details(recipes, {&"grilled_cheese": {"signature": {"selected": true}}})
+	assert_eq(_panel.tree_item_for(&"burger").get_text(0), "Burger")
+	assert_eq(_panel.tree_item_for(&"grilled_cheese").get_text(0), "Grilled cheese (signature)")
+	assert_eq(_panel.tree_item_for(&"tomato_soup").get_tree().get_selected().get_metadata(0), &"tomato_soup")
+
+
 func test_signature_action_explains_cooldown_and_nonmorning_refusals() -> void:
 	var signature: Dictionary = {"sales": 150, "unlock_sales": 150, "selected": false,
 		"eligible": true, "can_select": false, "next_change_day": 8, "cooldown_days": 7,
@@ -687,6 +699,19 @@ func test_identity_and_section_controls_fit_short_and_wide_viewports() -> void:
 		var list: Control = _panel.get_node("%List") as Control
 		assert_true(detail.global_position.x >= list.get_global_rect().end.x, "the dish detail sits beside the tree")
 		assert_true(detail.get_global_rect().end.x <= scroll.get_global_rect().end.x, "the detail fits the scroll width")
+		var toggle: Button = _panel.get_node("%PresetsToggle")
+		var presets: MenuPresetControls = _panel.preset_controls()
+		presets.set_names(["A long afternoon menu", "Dinner"] as Array[String])
+		toggle.button_pressed = true
+		for frame: int in 3:
+			await tree.process_frame
+		bounds = (_panel.get_node("Panel") as Control).get_global_rect()
+		assert_true(Rect2(Vector2.ZERO, Vector2(dimensions)).encloses(bounds), "the presets keep the panel on screen")
+		assert_true(bounds.encloses(toggle.get_global_rect()))
+		assert_true(presets.is_visible_in_tree())
+		assert_true(bounds.encloses(presets.get_global_rect()))
+		assert_true(scroll.size.y > 40.0, "open presets leave room for the dish list")
+		toggle.button_pressed = false
 	viewport.remove_child(_panel)
 	viewport.free()
 
@@ -705,9 +730,9 @@ func test_authored_croissant_tree_and_detail_show_bakery_without_menu_edits() ->
 	assert_true(_enable_requests.is_empty() and _price_requests.is_empty())
 
 
-func test_all_six_sections_use_readable_headings_in_menu_order() -> void:
+func test_all_seven_sections_use_readable_headings_in_menu_order() -> void:
 	var recipes: Array[RecipeDef] = []
-	for section: int in [RecipeDef.Section.BAKERY, RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
+	for section: int in [RecipeDef.Section.BREAKFAST, RecipeDef.Section.BAKERY, RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
 		RecipeDef.Section.SIDES, RecipeDef.Section.MAINS, RecipeDef.Section.STARTERS]:
 		var dish: RecipeDef = _recipe(StringName("section%d" % section), "Example dish", 6)
 		dish.section = section as RecipeDef.Section
@@ -717,9 +742,32 @@ func test_all_six_sections_use_readable_headings_in_menu_order() -> void:
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
 	for section: TreeItem in tree.get_root().get_children():
 		headings.append(section.get_text(0))
-	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts", "Bakery"] as Array[String])
+	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts", "Bakery", "Breakfast"] as Array[String])
 	for dish: RecipeDef in recipes:
 		assert_not_null(_panel.row_for(dish.id), "grouping retains each interactive dish row")
+
+
+func test_authored_breakfast_appears_at_level_two_without_enabling_the_dishes() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var ids: Array[StringName] = [&"bacon_and_eggs", &"cereal", &"fried_eggs", &"muffin", &"pancakes", &"waffles"]
+	var menu: MenuSettings = MenuSettings.new(content.recipes())
+	var fresh_level_two: MenuSettings = MenuSettings.new(content.recipes(), 2)
+	_panel.bind_menu(menu)
+	for id: StringName in ids:
+		var choice: TreeItem = _panel.tree_item_for(id)
+		assert_not_null(choice)
+		assert_eq(choice.get_parent().get_text(0), "Breakfast")
+		assert_eq(choice.get_text(1), "Lv 2")
+		assert_false(menu.set_enabled(id, true), "Breakfast remains locked at level 1")
+		assert_false(fresh_level_two.is_enabled(id), "Breakfast is opt-in on a fresh eligible menu")
+	assert_true(menu.set_owner_level(2))
+	for id: StringName in ids:
+		assert_false(menu.is_enabled(id), "A level-up does not change the chosen menu")
+	assert_true(menu.set_enabled(&"burger", false))
+	assert_true(menu.set_enabled(&"pancakes", true))
+	assert_true(_panel.select_recipe(&"pancakes"))
+	assert_eq((_panel.get("_detail_heading") as Label).text, "Pancakes - Breakfast")
 
 
 func test_tree_links_and_selection_show_only_one_detail_without_menu_mutation() -> void:
@@ -858,20 +906,20 @@ func test_tree_shows_measured_quality_and_happy_share_and_sorts_dishes() -> void
 	assert_eq(sort.selected, 0)
 	assert_eq(burger.get_next(), cheese)
 	assert_eq(cheese.get_next(), soup)
-	assert_eq(burger.get_text(2), "New")
-	for column: int in 3:
-		assert_eq(burger.get_autowrap_mode(column), TextServer.AUTOWRAP_WORD_SMART,
-			"the name, status and history can all wrap when columns are narrow")
+	var history: Label = _panel.get_node("%Detail/DishHistory") as Label
 	assert_true(_panel.select_recipe(&"burger"))
+	assert_eq(history.text, "7 days: no sales yet")
 	_panel.set_dish_week({
 		&"burger": {"sold": 42, "quality_sum": 31.92, "eaten": 10, "happy": 9},
 		&"grilled_cheese": {"sold": 50, "quality_sum": 25.0, "eaten": 0, "happy": 0},
 	})
-	assert_eq(burger.get_text(2), "7 days: 42 sold · quality 3.8 · 90% happy",
+	assert_eq(history.text, "7 days: 42 sold · 3.8 / 5 stars · 90% happy",
 		"takeaway sales count towards quality and sold, while happiness uses dine-in guests")
-	assert_eq(burger.get_tooltip_text(2), burger.get_text(2))
-	assert_eq(cheese.get_text(2), "7 days: 50 sold · quality 2.5 · No guest feedback")
-	assert_eq(soup.get_text(2), "New")
+	assert_true(_panel.select_recipe(&"grilled_cheese"))
+	assert_eq(history.text, "7 days: 50 sold · 2.5 / 5 stars · No guest feedback")
+	assert_true(_panel.select_recipe(&"tomato_soup"))
+	assert_eq(history.text, "7 days: no sales yet")
+	assert_true(_panel.select_recipe(&"burger"))
 	sort.select(1)
 	sort.item_selected.emit(1)
 	burger = _panel.tree_item_for(&"burger")
@@ -887,7 +935,7 @@ func test_tree_shows_measured_quality_and_happy_share_and_sorts_dishes() -> void
 	burger = _panel.tree_item_for(&"burger")
 	cheese = _panel.tree_item_for(&"grilled_cheese")
 	assert_eq(burger.get_next(), cheese, "equal after refresh sorts by name")
-	assert_eq(burger.get_text(2), "7 days: 50 sold · quality 3.8 · 67% happy")
+	assert_eq(history.text, "7 days: 50 sold · 3.8 / 5 stars · 67% happy")
 	sort.select(0)
 	sort.item_selected.emit(0)
 	burger = _panel.tree_item_for(&"burger")
@@ -925,6 +973,42 @@ func test_most_sold_compares_sections_and_unlock_descendants() -> void:
 	sort.item_selected.emit(0)
 	assert_eq(_panel.tree_item_for(child.id).get_parent(), _panel.tree_item_for(_burger.id))
 	assert_true(_panel.tree_item_for(child.id).is_selected(0))
+
+
+func test_shipped_dish_names_fit_one_line_within_their_rows_at_desktop_size() -> void:
+	var db: ContentDB = ContentDB.new()
+	assert_eq(db.load_all(), [])
+	var recipes: Array[RecipeDef] = db.recipes()
+	_panel.bind_menu(MenuSettings.new(recipes))
+	_panel.set_recipe_details(recipes, {} as Dictionary[StringName, Dictionary])
+	var scene: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	scene.root.add_child(viewport)
+	viewport.add_child(_panel)
+	_panel.show()
+	for frame: int in 4:
+		await scene.process_frame
+	var tree: Tree = _panel.get("_recipe_tree") as Tree
+	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Body/Scroll") as ScrollContainer
+	var font: Font = tree.get_theme_font("font")
+	var font_size: int = tree.get_theme_font_size("font_size")
+	assert_eq(tree.columns, 2)
+	assert_false(tree.scroll_horizontal_enabled)
+	assert_false(scroll.get_h_scroll_bar().visible)
+	for recipe: RecipeDef in recipes:
+		var item: TreeItem = _panel.tree_item_for(recipe.id)
+		assert_not_null(item)
+		if item == null:
+			continue
+		var area: Rect2 = tree.get_item_area_rect(item, 0)
+		var width: float = font.get_string_size(item.get_text(0), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		assert_eq(item.get_autowrap_mode(0), TextServer.AUTOWRAP_OFF, recipe.display_name)
+		assert_true(area.size.x >= width, recipe.display_name + " fits its cell")
+		assert_true(area.size.y >= font.get_height(font_size), recipe.display_name + " fits its row")
+		assert_true(area.size.y <= 2 * font.get_height(font_size), recipe.display_name + " uses at most two lines")
+	viewport.remove_child(_panel)
+	viewport.free()
 
 
 func test_tree_sizes_to_its_rows_without_trapping_the_wheel() -> void:

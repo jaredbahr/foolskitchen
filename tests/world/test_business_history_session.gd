@@ -159,6 +159,28 @@ func test_paid_party_members_credit_their_own_dishes_and_satisfaction() -> void:
 		{"sold": 1, "quality_sum": 0.5, "eaten": 1, "happy": 1})
 
 
+func test_two_service_days_keep_dish_metrics_separate() -> void:
+	_start_main()
+	var first: DayReport = _finish_service()
+	if first == null:
+		return
+	assert_true(not first.dish_metrics.is_empty(), "the first service must sell a dish")
+	assert_true(Clock.sim.next_day())
+	var second: DayReport = _finish_service()
+	if second == null:
+		return
+	assert_eq(second.day, first.day + 1)
+	assert_true(not second.dish_metrics.is_empty(), "the second service must sell a dish")
+	for recipe_id: StringName in second.dish_metrics:
+		assert_eq(second.dish_metrics[recipe_id]["sold"], second.dishes_sold.get(recipe_id, 0),
+			"the second day cannot count yesterday's sales")
+	var rows: Array[Dictionary] = _history().summaries()
+	assert_eq(rows.size(), 2)
+	if rows.size() == 2:
+		assert_eq(rows[1]["day"], second.day)
+		assert_true(rows[1].has("dish_metrics"), "the second close keeps its measured quality")
+
+
 func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() -> void:
 	_start_main()
 	var morning: String = _saved_text()

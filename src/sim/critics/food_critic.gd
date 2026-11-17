@@ -29,6 +29,8 @@ var tells: Array[StringName] = []
 var arrival_permille: int = 0
 var arrived: bool = false
 var tuning: CriticTuning
+## The best recognition this site has earned from a critic.
+var golden_ladles: int = 0
 
 
 func _init(config: CriticTuning = null) -> void:
@@ -100,6 +102,14 @@ func mark_arrived(day: int) -> void:
 	last_visit_day = day
 
 
+## Returns the new total when a favorable review raises the site's award.
+func award_golden_ladles(review: Dictionary, eligible: int) -> int:
+	if review.get("cause") != &"critic_good" or eligible <= golden_ladles or eligible > PrestigeTuning.MAX_LADLES:
+		return 0
+	golden_ladles = eligible
+	return golden_ladles
+
+
 # --- Wording (player-facing; the word "critic" never appears while they sit) ---
 
 ## One plain line per visible tell. The "priciest" tell shows once they order.
@@ -143,6 +153,13 @@ static func report_lines(result: Dictionary) -> Array[String]:
 	var quote: String = String(result.get("quote", ""))
 	if not quote.is_empty():
 		lines.append("\"%s\"" % quote)
+	match int(result.get("golden_ladles_awarded", 0)):
+		1:
+			lines.append("The critic awarded your kitchen one Golden Ladle!")
+		2:
+			lines.append("The critic awarded your kitchen two Golden Ladles!")
+		3:
+			lines.append("The critic awarded your kitchen three Golden Ladles!")
 	return lines
 
 
@@ -152,8 +169,11 @@ func to_dict() -> Dictionary:
 	var tell_names: Array[String] = []
 	for tell: StringName in tells:
 		tell_names.append(String(tell))
-	return {"version": SAVE_VERSION, "last_visit_day": last_visit_day, "rolled_day": rolled_day,
+	var row: Dictionary = {"version": SAVE_VERSION, "last_visit_day": last_visit_day, "rolled_day": rolled_day,
 		"pending": pending, "tells": tell_names, "arrival_permille": arrival_permille}
+	if golden_ladles > 0:
+		row["golden_ladles"] = golden_ladles
+	return row
 
 
 ## Validates fully before changing anything; false leaves the critic as it was.
@@ -161,7 +181,9 @@ func from_dict(value: Variant) -> bool:
 	if not value is Dictionary:
 		return false
 	var row: Dictionary = value
-	if row.size() != 6 or not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) \
+	if row.size() != 6 + int(row.has("golden_ladles")) \
+			or not _whole(row.get("golden_ladles", 0), 0, PrestigeTuning.MAX_LADLES) \
+			or not _whole(row.get("version"), SAVE_VERSION, SAVE_VERSION) \
 			or not _whole(row.get("last_visit_day"), 0, 1000000000) \
 			or not _whole(row.get("rolled_day"), 0, 1000000000) \
 			or not _whole(row.get("arrival_permille"), 0, 1000) \
@@ -175,6 +197,7 @@ func from_dict(value: Variant) -> bool:
 	last_visit_day = int(row["last_visit_day"])
 	rolled_day = int(row["rolled_day"])
 	arrival_permille = int(row["arrival_permille"])
+	golden_ladles = int(row.get("golden_ladles", 0))
 	pending = bool(row["pending"]) and not restored.is_empty()
 	tells = restored
 	arrived = false

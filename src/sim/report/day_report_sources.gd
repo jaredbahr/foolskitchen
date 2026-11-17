@@ -19,6 +19,7 @@ var special: DailySpecial
 var regulars: RegularCast
 var viral: ViralReview
 var owner: OwnerProgress
+var staff_nicknames: Array[String] = []
 ## Null in a game without service events.
 var service_events: ServiceEvents
 var notes: DayNotes

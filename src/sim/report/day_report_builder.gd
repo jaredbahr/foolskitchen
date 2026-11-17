@@ -19,6 +19,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 		report.haggle_percent = int(sources.haggle_receipt["percent"])
 		report.haggle_saved = int(sources.haggle_receipt["saved"])
 	report.staff_activity = sources.sim.staff_activity.snapshot()
+	report.staff_nicknames = sources.staff_nicknames.duplicate()
 	report.restaurant_name = sources.menu.restaurant_name() if sources.menu != null else MenuSettings.DEFAULT_NAME
 	report.regulars_lines = RegularText.report_lines(sources.regulars)
 	report.critic_lines = FoodCritic.report_lines(sources.sim.critic_result)
@@ -35,6 +36,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 			report.income[category] = amount
 		elif amount < 0:
 			report.costs[category] = -amount
+	report.tip_jar_percent = roundi((sources.sim.tip_jar_multiplier() - 1.0) * 100.0)
 	report.stock_values_recorded = true
 	report.food_cost = int(sources.food_cost["cost"])
 	report.food_cost_recorded = bool(sources.food_cost["recorded"])
@@ -59,6 +61,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 	report.slowest_seller_snapshot = sources.sim.service_menu_report_snapshot()
 	report.customers_served = sources.sim.served_today
 	report.customers_lost = sources.sim.lost_today
+	report.visitor_breakdown = sources.sim.visitor_breakdown()
 	report.takeaways = sources.sim.takeaways_today
 	if sources.sim.mishaps != null:
 		report.mishaps_text = MishapText.daily(sources.sim.mishaps.spills_today,

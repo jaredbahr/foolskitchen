@@ -1,0 +1,46 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/morning_paper_card.gd" id="1_paper"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="MorningPaper" type="PanelContainer"]
+visible = false
+offset_right = 440.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_paper")
+
+[node name="Column" type="VBoxContainer" parent="."]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Heading" type="HBoxContainer" parent="Column"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Masthead" type="Label" parent="Column/Heading"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+
+[node name="CloseButton" type="Button" parent="Column/Heading"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Close"
+
+[node name="Rule" type="HSeparator" parent="Column"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Headline" type="Label" parent="Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+autowrap_mode = 3
+
+[node name="Notes" type="Label" parent="Column"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3

@@ -324,12 +324,16 @@ func test_dish_week_restores_json_and_does_not_infer_metrics_from_legacy_sales()
 	assert_eq(restored.dish_week(2)[&"burger"]["sold"], 4)
 	var invalid: Dictionary = saved.duplicate(true)
 	invalid["days"][1]["dish_metrics"]["burger"]["happy"] = 4
-	assert_false(restored.restore(invalid))
-	assert_eq(restored.dish_week(2), _history.dish_week(2), "invalid guest counts cannot replace valid history")
-	invalid = saved.duplicate(true)
-	invalid["days"][1]["dish_metrics"]["burger"]["eaten"] = 5
-	assert_false(restored.restore(invalid), "one measured diner per sale is the upper bound")
-	assert_eq(restored.dish_week(2), _history.dish_week(2), "a rejected diner count leaves history intact")
+	invalid["days"][1]["dish_metrics"]["soup"] = {"sold": 2, "quality_sum": 1.0, "eaten": 2, "happy": 2}
+	assert_true(restored.restore(invalid))
+	assert_eq(restored.summaries().size(), 2, "a bad sample preserves the trend day")
+	assert_eq(restored.summaries()[1]["cash_change"], _history.summaries()[1]["cash_change"])
+	assert_false(restored.dish_week(2).has(&"burger"))
+	assert_eq(restored.dish_week(2)[&"soup"]["sold"], 2, "valid sibling samples survive")
+	invalid["days"][1]["dish_metrics"] = "corrupt"
+	assert_true(restored.restore(invalid), "corrupt optional metrics preserve the report")
+	assert_eq(restored.summaries().size(), 2)
+	assert_eq(restored.dish_week(2), {})
 
 
 func _report(day: int) -> DayReport:

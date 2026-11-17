@@ -55,6 +55,49 @@ func test_seeded_pool_is_repeatable_and_uses_the_role_skill_wage_curve() -> void
 	assert_true(TUNING.staff_wage(&"cleaner", 3) < TUNING.staff_wage(&"server", 3))
 
 
+func test_nicknames_validate_and_keep_the_hiring_name_after_reload() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var original: Dictionary = roster.to_dict()
+	assert_eq(roster.rename_member(&"starter_cook", "  Jules  "), "Jules")
+	assert_eq(roster.members()[0].display_name, "Jules")
+	assert_eq(roster.members()[0].original_name, "Alex")
+	assert_eq(roster.copy().members()[0].display_name, "Jules")
+	var saved: Dictionary = roster.to_dict()
+	assert_eq(saved["members"][0]["name"], "Alex")
+	assert_eq(saved["members"][0]["nickname"], "Jules")
+	for invalid: String in ["x".repeat(21), "Line\nbreak", "Line\rbreak", "Line\u2028break"]:
+		assert_eq(roster.rename_member(&"starter_cook", invalid), "")
+		assert_eq(roster.to_dict(), saved)
+	assert_eq(roster.rename_member(&"starter_cook", "  " + "x".repeat(20) + "  "), "x".repeat(20))
+	assert_eq(roster.rename_member(&"missing_member", "Jules"), "")
+	var restored: StaffRoster = StaffRoster.new(TUNING)
+	assert_true(restored.from_dict(JSON.parse_string(JSON.stringify(saved))))
+	assert_eq(restored.members()[0].display_name, "Jules")
+	assert_eq(restored.rename_member(&"starter_cook", "   "), "Alex")
+	assert_eq(restored.to_dict(), original)
+	var legacy: Dictionary = original["members"][0].duplicate()
+	for field: String in ["growth", "priorities", "work"]:
+		legacy.erase(field)
+	var legacy_member: StaffMember = StaffMember.from_dict(legacy, CATALOGUE)
+	assert_eq(legacy_member.display_name, "Alex")
+	assert_eq(legacy_member.original_name, "Alex")
+	saved["members"][0]["nickname"] = " Jules "
+	assert_false(restored.from_dict(saved))
+	assert_eq(restored.to_dict(), original)
+
+
+func test_nickname_never_changes_the_seeded_hiring_pool() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	var renamed: StaffRoster = roster.copy()
+	assert_eq(renamed.rename_member(&"starter_cook", CATALOGUE.candidate_names[0]), CATALOGUE.candidate_names[0])
+	var baseline_rng: RandomNumberGenerator = _random(372)
+	var renamed_rng: RandomNumberGenerator = _random(372)
+	assert_true(roster.draw_candidates(1, baseline_rng))
+	assert_true(renamed.draw_candidates(1, renamed_rng))
+	assert_eq(roster.to_dict()["candidates"], renamed.to_dict()["candidates"])
+	assert_eq(baseline_rng.state, renamed_rng.state)
+
+
 func test_seeded_candidate_pool_eventually_offers_a_cleaner_at_the_tier_wage() -> void:
 	var roster: StaffRoster = StaffRoster.new(TUNING)
 	var random: RandomNumberGenerator = _random(720082)

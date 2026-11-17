@@ -170,17 +170,15 @@ static func _clean_row(value: Dictionary) -> Dictionary:
 		row["good_reviews"] = int(value["good_reviews"])
 		row["no_table"] = int(value["no_table"])
 		row["dishes_sold"] = dishes
-	if value.has("dish_metrics"):
-		var raw_metrics: Variant = value["dish_metrics"]
-		if not raw_metrics is Dictionary:
-			return {}
+	var raw_metrics: Variant = value.get("dish_metrics")
+	if raw_metrics is Dictionary:
 		var metrics: Dictionary[String, Dictionary] = {}
 		for key: Variant in raw_metrics:
 			if not (key is String or key is StringName) or str(key).is_empty():
-				return {}
+				continue
 			var sample: Variant = raw_metrics[key]
 			if not sample is Dictionary:
-				return {}
+				continue
 			var sold: Variant = sample.get("sold")
 			var quality_sum: Variant = sample.get("quality_sum")
 			var eaten: Variant = sample.get("eaten")
@@ -188,7 +186,7 @@ static func _clean_row(value: Dictionary) -> Dictionary:
 			if not _whole(sold, 0) or not _whole(eaten, 0, int(sold)) or not _whole(happy, 0, int(eaten)) \
 					or not (quality_sum is int or quality_sum is float) \
 					or not is_finite(float(quality_sum)) or quality_sum < 0 or quality_sum > sold:
-				return {}
+				continue
 			metrics[str(key)] = {"sold": int(sold), "quality_sum": float(quality_sum),
 				"eaten": int(eaten), "happy": int(happy)}
 		if not metrics.is_empty():

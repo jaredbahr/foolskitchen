@@ -33,6 +33,7 @@ station_type = &""
 capacity = 2
 quality_bonus = 0.0
 price = 80
+prestige = 3
 unlock_level = 3
 charm = 2
 theme_tags = Array[StringName]([&"cosy"])

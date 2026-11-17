@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="GuidePage" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_page.gd" id="1_page"]
+
+[resource]
+script = ExtResource("1_page")
+title = "Staff and priorities"
+body = "Hire and manage people from Staff while the restaurant is closed. Employees bring a role, skill, wage and traits. They gain experience doing their work and may ask for a raise as they improve. Wages are paid for the day's scheduled opening hours. Your owner can also be assigned to work, which is useful when a station needs a hand.\n\nEach employee has job priorities such as cooking, serving, bussing, washing and cleaning. Cycle a job through High, Normal, Low and Off to guide what that person takes first. Priorities steer task choice. They do not make someone faster or create extra capacity. Keep the person's main job enabled, and avoid assigning every useful task Low if service is busy. Check the staff activity and evening report to see where work backed up before changing the roster."

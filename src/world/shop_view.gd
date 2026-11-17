@@ -151,6 +151,7 @@ var _neighbourhood_reserve: Rect2i = Rect2i()
 var weather_view: WeatherView
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
+var _surface_decor: Dictionary[int, ItemVisual] = {}
 var agent_nodes: Dictionary[int, Node3D] = {}
 var dirt_nodes: Dictionary[Vector2i, MeshInstance3D] = {}
 var mood_nodes: Dictionary[int, GuestMoodIndicator] = {}
@@ -250,6 +251,7 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 			remove_child(child)
 			child.free()
 	item_nodes.clear()
+	_surface_decor.clear()
 	agent_nodes.clear()
 	dirt_nodes.clear()
 	crate_nodes.clear()
@@ -323,6 +325,8 @@ func show_world(value: SimWorld, maximum_reserve: Rect2i = Rect2i()) -> void:
 	weather_view.bind(self)
 	for item: PlacedItem in world.grid.items():
 		_build_item(item)
+	for id: int in _surface_decor:
+		_position_surface_decor(id)
 	_apply_paint()
 	_connect_grid()
 	_process(0.0)
@@ -1237,6 +1241,53 @@ func item_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> int:
 	return result
 
 
+## A hovered jar wins over its support only when the ray actually hits it.
+func surface_decor_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> int:
+	for id: int in _surface_decor:
+		var node: ItemVisual = _surface_decor[id]
+		var distance: float = _ray_box_distance(ray_origin, ray_direction, node.global_transform * node.get_aabb())
+		if distance >= 0.0:
+			var nearest: int = item_at_ray(ray_origin, ray_direction)
+			return nearest if _surface_decor.has(nearest) else -1
+	return -1
+
+
+## Build uses the native top plane, since the ray continues past this cell
+## before it reaches the floor. Clicking the jar itself uses its saved cell.
+func surface_cell_at_ray(ray_origin: Vector3, ray_direction: Vector3) -> Variant:
+	var id: int = item_at_ray(ray_origin, ray_direction)
+	var placed: PlacedItem = world.grid.item(id) if world != null else null
+	if placed == null:
+		return null
+	if _surface_decor.has(id):
+		return placed.origin
+	var definition: ItemDef = placed.def as ItemDef
+	if definition == null or not definition.supports_surface_decor():
+		return null
+	var support: ItemVisual = item_nodes[id]
+	var height: float = FoodPresentation.measure_surface(support).point.y
+	var contact: Vector3 = ray_origin + ray_direction * ((height - ray_origin.y) / ray_direction.y)
+	var cell: Vector2i = GridMath.world_to_cell(contact)
+	return cell if placed.cells.has(cell) else placed.origin
+
+
+func surface_decor_position(cell: Vector2i) -> Vector3:
+	var spot: Vector3 = GridMath.cell_to_world(cell)
+	var placed: PlacedItem = world.grid.surface_support_at(cell) if world != null else null
+	var support: ItemVisual = item_nodes.get(placed.id) if placed != null else null
+	if support == null:
+		spot.y = ground_height(cell)
+		return spot
+	var surface: FoodPresentation.Surface = FoodPresentation.measure_surface(support)
+	spot.y = surface.point.y
+	return spot
+
+
+func _position_surface_decor(id: int) -> void:
+	var placed: PlacedItem = world.grid.item(id)
+	_surface_decor[id].position = surface_decor_position(placed.origin)
+
+
 ## Distance along the ray to the nearest visible furniture, or INF.
 func nearest_item_distance(ray_origin: Vector3, ray_direction: Vector3) -> float:
 	var nearest: float = INF
@@ -1658,6 +1709,8 @@ func _build_item(item: PlacedItem) -> void:
 		node.set_meta("item_id", item.id)
 		node.set_meta("shop_geometry", true)
 		item_nodes[item.id] = node
+		if definition.sits_on_surface():
+			_surface_decor[item.id] = node
 		add_child(node)
 		if definition.catalogue_room == &"lighting":
 			node.set_meta(DayNightView.LAMP_META, true)
@@ -1726,6 +1779,7 @@ func _remove_item(id: int) -> void:
 		remove_child(node)
 		node.free()
 		item_nodes.erase(id)
+		_surface_decor.erase(id)
 		_sync_item_selection()
 
 
@@ -1739,6 +1793,9 @@ func _on_cells_changed(cells: Array[Vector2i]) -> void:
 			affected[item.id] = true
 	for id: int in affected:
 		_build_item(world.grid.item(id))
+	for id: int in affected:
+		if _surface_decor.has(id):
+			_position_surface_decor(id)
 	_apply_paint()
 	_sync_dirt_spots()
 	if is_instance_valid(food):

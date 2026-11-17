@@ -187,30 +187,32 @@ func size_first_week(pool: WeeklyChallengePool, observation: MilestoneDay, seats
 		text = sized_text
 
 
-func apply_day(observation: MilestoneDay) -> Dictionary:
+## A day without service still advances the challenge calendar and can expire it.
+func apply_day(observation: MilestoneDay, business_day: bool = true) -> Dictionary:
 	if not is_active() or observation == null or not observation.is_valid() \
 			or observation.day != last_evaluated_day + 1 or observation.day > end_day:
 		return {}
 	var next_progress: int = progress
-	match kind:
-		WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
-			next_progress = maxi(progress, observation.served_today)
-		WeeklyChallenge.Kind.OPERATING_PROFIT:
-			next_progress = progress + observation.operating_profit
-		WeeklyChallenge.Kind.NO_LOSS_DAYS:
-			if observation.lost_today == 0:
-				next_progress += 1
-		WeeklyChallenge.Kind.GOOD_REVIEWS:
-			next_progress += observation.good_reviews_today
-		WeeklyChallenge.Kind.SELL_DISH:
-			next_progress += int(observation.dishes_sold.get(dish_id, 0))
-		_:
-			return {}
+	if business_day:
+		match kind:
+			WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
+				next_progress = maxi(progress, observation.served_today)
+			WeeklyChallenge.Kind.OPERATING_PROFIT:
+				next_progress = progress + observation.operating_profit
+			WeeklyChallenge.Kind.NO_LOSS_DAYS:
+				if observation.lost_today == 0:
+					next_progress += 1
+			WeeklyChallenge.Kind.GOOD_REVIEWS:
+				next_progress += observation.good_reviews_today
+			WeeklyChallenge.Kind.SELL_DISH:
+				next_progress += int(observation.dishes_sold.get(dish_id, 0))
+			_:
+				return {}
 	if next_progress < -MAX_PROGRESS or next_progress > MAX_PROGRESS:
 		return {}
 	progress = next_progress
 	last_evaluated_day = observation.day
-	if progress >= target:
+	if business_day and progress >= target:
 		status = Status.COMPLETED
 		return {"completed": true, "expired": false, "reward_cash": reward_cash, "title": text}
 	if observation.day == end_day:

@@ -1,7 +1,8 @@
 extends "res://src/world/main.gd"
-## Two actual, paid default weeks in ordinary Main (30 days with --trend-days=30).
-## Only report presentation
-## follows the final close; no grants, setup edits, day reset or RNG reset.
+## Actual paid default service in ordinary Main. The default is 14 closes for
+## the short chart and 30 for the long chart. BUSINESS_TREND_REVIEW_DAY can
+## stop a long capture on an earlier day without changing the visible range.
+## Only presentation follows the final close; no grants, edits or RNG reset.
 
 const REVIEW_SCENE: String = "res://tools/business_trend_review.tscn"
 const REVIEW_FRAME: int = 60
@@ -31,6 +32,12 @@ func _ready() -> void:
 		elif argument.begins_with("--trend-days=") and argument != "--trend-days=7":
 			_review_fail("--trend-days must be 7 or 30")
 			return
+	var last_day: String = OS.get_environment("BUSINESS_TREND_REVIEW_DAY")
+	if not last_day.is_empty():
+		if _review_range != 30 or not last_day.is_valid_int() or int(last_day) < 2 or int(last_day) > _review_days:
+			_review_fail("BUSINESS_TREND_REVIEW_DAY needs a day from 2 to 30 in the long-range review")
+			return
+		_review_days = int(last_day)
 	if _review_out.is_empty() or FileAccess.file_exists(_review_out.path_join("shot_0060.png")) \
 			or FileAccess.file_exists(_review_out.path_join("shot_0060.json")):
 		_review_fail("a new capture output directory is required")
@@ -152,7 +159,7 @@ func _review_validate() -> void:
 		days.append(int(row["day"]))
 		labels.append(BusinessTrendText.day_label(int(row["day"])))
 	if not _review_unchanged() or shown_report.day != _review_days \
-			or heading.text != "Business trend" or summary.text != BusinessTrendText.summary(_review_history, _review_days) \
+			or heading.text != "Business trend" or summary.text != BusinessTrendText.summary(_review_history, _review_days, _review_range) \
 			or summary.text.is_empty() or not _report.is_visible_in_tree() \
 			or drawing.get("days") != days or drawing.get("range_days") != _review_range \
 			or drawing.get("day_labels") != labels or drawing.get("today_index") != rows.size() - 1:
@@ -244,13 +251,38 @@ func _review_chart_geometry(chart: BusinessTrendChart, drawing: Dictionary, days
 			if rect.size() != 4 or bar.get("day") != days[index] or bar.get("index") != index \
 					or not bounds.encloses(Rect2(float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))):
 				return false
-	for label: Dictionary in drawing.get("labels", []):
-		var rect: Array = label["rect"]
-		if not bounds.encloses(Rect2(float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))) \
+	var last_day: String = BusinessTrendText.day_label(days[-1])
+	var latest: Dictionary = {
+		"profit": BusinessTrendText.profit_label(int(drawing["profit_values"][-1])),
+		"served": BusinessTrendText.served_label(int(drawing["served_values"][-1])),
+	}
+	var drawn_day: Dictionary = {}
+	var drawn_value: Dictionary = {}
+	var labels: Array = drawing.get("labels", [])
+	for label: Dictionary in labels:
+		var rect: Rect2 = _review_label_rect(label)
+		if not bounds.encloses(rect) \
 				or font.get_string_size(String(label["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x \
 				> float(label["width"]):
 			return false
-	return true
+		var key: String = label["track"]
+		if label["kind"] == "day" and label["text"] == last_day:
+			drawn_day[key] = true
+		if label["kind"] == "value" and label["text"] == latest[key]:
+			var bar: Array = tracks[key]["bars"][-1]["rect"]
+			var center: float = float(bar[0]) + float(bar[2]) * 0.5
+			if rect.position.x <= center and rect.end.x >= center:
+				drawn_value[key] = true
+		for other: Dictionary in labels:
+			if label != other and key == other["track"] and label["kind"] == other["kind"] \
+					and rect.intersects(_review_label_rect(other)):
+				return false
+	return drawn_day.size() == 2 and drawn_value.size() == 2
+
+
+func _review_label_rect(label: Dictionary) -> Rect2:
+	var values: Array = label["rect"]
+	return Rect2(float(values[0]), float(values[1]), float(values[2]), float(values[3]))
 
 
 func _review_unchanged() -> bool:

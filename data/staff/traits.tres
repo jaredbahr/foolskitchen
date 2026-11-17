@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="StaffCatalogue" load_steps=11 format=3]
+[gd_resource type="Resource" script_class="StaffCatalogue" load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/sim/staff/staff_catalogue.gd" id="1_catalogue"]
 [ext_resource type="Script" path="res://src/sim/staff/staff_trait.gd" id="2_trait"]
@@ -43,6 +43,25 @@ role_descriptions = Dictionary[StringName, String]({
 &"server": "More likely to spill a meal while carrying it."
 })
 
+[sub_resource type="Resource" id="Trait_night_owl"]
+script = ExtResource("2_trait")
+id = &"night_owl"
+display_name = "Night owl"
+description = "Walks and works 10% faster from 6 pm and 5% slower before noon."
+early_speed_multiplier = 0.95
+late_speed_multiplier = 1.1
+
+[sub_resource type="Resource" id="Trait_neat_freak"]
+script = ExtResource("2_trait")
+id = &"neat_freak"
+display_name = "Neat freak"
+description = "Tidies seats while bussing tables, so only a server gets the benefit."
+role_descriptions = Dictionary[StringName, String]({
+&"server": "Clears dirt from the seats when bussing a table, but takes 10% longer."
+})
+bussing_duration_multiplier = 1.1
+cleans_seat_dirt = true
+
 [sub_resource type="Resource" id="Starter_cook"]
 script = ExtResource("3_member")
 id = &"starter_cook"
@@ -57,6 +76,6 @@ role = &"server"
 
 [resource]
 script = ExtResource("1_catalogue")
-traits = Array[ExtResource("2_trait")]([SubResource("Trait_steady"), SubResource("Trait_quick"), SubResource("Trait_careful"), SubResource("Trait_cheerful"), SubResource("Trait_clumsy")])
+traits = Array[ExtResource("2_trait")]([SubResource("Trait_steady"), SubResource("Trait_quick"), SubResource("Trait_careful"), SubResource("Trait_cheerful"), SubResource("Trait_clumsy"), SubResource("Trait_night_owl"), SubResource("Trait_neat_freak")])
 starters = Array[ExtResource("3_member")]([SubResource("Starter_cook"), SubResource("Starter_server")])
 candidate_names = PackedStringArray("Robin", "Jamie", "Charlie", "Morgan", "Casey", "Taylor", "Jess", "Drew", "Lee", "Frankie", "Pat", "Blair")

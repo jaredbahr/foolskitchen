@@ -43,10 +43,13 @@ var _dish_week: Dictionary[StringName, Dictionary] = {}
 var _sort_by_sold: bool = false
 var _detail_heading: Label
 var _quality_label: Label
+var _dish_history_label: Label
 var _requirements_box: VBoxContainer
 var _name_edit: LineEdit
 var _name_apply: Button
 var _name_feedback: Label
+var _preset_toggle: Button
+var _preset_controls: MenuPresetControls
 var _menu_count: Label
 var _special_option: OptionButton
 var _special_id: StringName = &""
@@ -130,6 +133,15 @@ func bind_menu(model: MenuSettings) -> void:
 		if _menu != null:
 			_menu.owner_level_changed.connect(_on_owner_level_changed)
 	refresh()
+
+
+func preset_controls() -> MenuPresetControls:
+	_bind_nodes()
+	return _preset_controls
+
+
+func _on_presets_toggled(open: bool) -> void:
+	_preset_controls.set_open(open and not _preset_toggle.disabled)
 
 
 ## Read-only cast preference; this never enables or reprices a recipe.
@@ -273,6 +285,11 @@ func refresh() -> void:
 	_empty.visible = _rows.is_empty()
 	_name_edit.editable = editable and _menu != null and _menu.is_valid()
 	_name_apply.disabled = not _name_edit.editable
+	_preset_toggle.disabled = not _name_edit.editable
+	_preset_controls.set_editable(not _preset_toggle.disabled)
+	if _preset_toggle.disabled and _preset_toggle.button_pressed:
+		_preset_toggle.set_pressed_no_signal(false)
+		_preset_controls.set_open(false)
 	_name_edit.tooltip_text = "Name your restaurant (up to 24 characters)." if editable else MORNING_HINT
 	_name_apply.tooltip_text = "Use this restaurant name." if editable else MORNING_HINT
 	_refresh_bulk_controls(editable)
@@ -468,6 +485,9 @@ func _bind_nodes() -> void:
 	_name_edit = %RestaurantName
 	_name_apply = %ApplyName
 	_name_feedback = %NameFeedback
+	_preset_toggle = %PresetsToggle
+	_preset_controls = %MenuPresetControls
+	_preset_toggle.toggled.connect(_on_presets_toggled)
 	_menu_count = %MenuCount
 	_name_edit.max_length = MenuSettings.MAX_NAME_LENGTH
 	_name_edit.text_changed.connect(_on_name_changed)
@@ -895,7 +915,8 @@ func set_dish_week(week: Dictionary[StringName, Dictionary]) -> void:
 	_dish_week = week.duplicate(true)
 	if _sort_by_sold:
 		_rebuild_recipe_tree()
-	_refresh_tree_state()
+		_refresh_tree_state()
+	_refresh_selection()
 
 
 func _display_recipes() -> Array[RecipeDef]:
@@ -965,13 +986,11 @@ func _build_recipe_tree() -> void:
 	_recipe_tree = Tree.new()
 	_recipe_tree.name = "RecipeTree"
 	_recipe_tree.theme = SHARED_THEME
-	_recipe_tree.columns = 3
+	_recipe_tree.columns = 2
 	_recipe_tree.column_titles_visible = false
-	_recipe_tree.set_column_expand_ratio(0, 5)
-	_recipe_tree.set_column_expand_ratio(1, 4)
-	_recipe_tree.set_column_expand_ratio(2, 6)
+	_recipe_tree.set_column_expand_ratio(0, 4)
+	_recipe_tree.set_column_expand_ratio(1, 5)
 	_recipe_tree.set_column_clip_content(1, true)
-	_recipe_tree.set_column_clip_content(2, true)
 	_recipe_tree.hide_root = true
 	_recipe_tree.select_mode = Tree.SELECT_ROW
 	_recipe_tree.tooltip_text = "Dishes unlock as the owner levels up. Select one to see its detail."
@@ -987,6 +1006,10 @@ func _build_recipe_tree() -> void:
 	_detail.move_child(_detail_heading, 0)
 	_quality_label = _add_label(_detail, "DishQuality", "")
 	_detail.move_child(_quality_label, 1)
+	_dish_history_label = _add_label(_detail, "DishHistory", "")
+	_dish_history_label.add_theme_font_size_override("font_size", 16)
+	_dish_history_label.add_theme_color_override("font_color", LOCKED_COLOR)
+	_detail.move_child(_dish_history_label, 2)
 	_requirements_box = VBoxContainer.new()
 	_requirements_box.name = "Requirements"
 	_requirements_box.theme = SHARED_THEME
@@ -1065,23 +1088,19 @@ func _dish_before(first: RecipeDef, second: RecipeDef) -> bool:
 static func _dish_history_text(metrics: Dictionary) -> String:
 	var sold: int = metrics.get("sold", 0)
 	if sold == 0:
-		return "New"
-	var quality: float = 5.0 * float(metrics["quality_sum"]) / float(sold)
+		return "7 days: no sales yet"
+	var quality: float = DishQuality.stars_on_five(float(metrics["quality_sum"]) / float(sold))
 	var eaten: int = metrics["eaten"]
 	var feedback: String = "No guest feedback"
 	if eaten > 0:
 		feedback = "%d%% happy" % roundi(100.0 * float(metrics["happy"]) / float(eaten))
-	return "7 days: %d sold · quality %.1f · %s" % [sold, quality, feedback]
+	return "7 days: %d sold · %.1f / 5 stars · %s" % [sold, quality, feedback]
 
 
 func _add_recipe_node(recipe: RecipeDef, parent: TreeItem) -> void:
 	var node: TreeItem = _recipe_tree.create_item(parent)
 	node.set_text(0, recipe.display_name)
 	node.set_metadata(0, recipe.id)
-	# Small windows can wrap each cell without widening the shared scroll.
-	for column: int in _recipe_tree.columns:
-		node.set_autowrap_mode(column, TextServer.AUTOWRAP_WORD_SMART)
-	node.set_custom_font_size(2, 15)
 	node.custom_minimum_height = 30
 	_tree_items[recipe.id] = node
 
@@ -1108,11 +1127,10 @@ func _refresh_tree_state() -> void:
 		node.set_icon(0, IconCatalogue.texture_for(&"reputation") if _regular_favourites.has(recipe.id) else null)
 		node.set_icon_max_width(0, IconCatalogue.PANEL_SIZE)
 		node.set_tooltip_text(0, RegularText.FAVOURITE if _regular_favourites.has(recipe.id) else recipe.display_name)
+		var signature: bool = bool(_signature_details(recipe.id).get("selected", false))
+		node.set_text(0, "%s (signature)" % recipe.display_name if signature else recipe.display_name)
 		node.set_text(1, status)
 		node.set_tooltip_text(1, tooltip)
-		var history_text: String = _dish_history_text(_dish_week.get(recipe.id, {}))
-		node.set_text(2, history_text)
-		node.set_tooltip_text(2, history_text)
 		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
 		node.set_custom_color(1, HIGHER_COLOR if missing else (LOCKED_COLOR if locked or not _menu.is_enabled(recipe.id) else LOWER_COLOR))
 
@@ -1146,6 +1164,7 @@ func _refresh_selection() -> void:
 			(child as Label).visible = false # Section headings now live in the tree.
 	_detail_heading.visible = chosen != null
 	_quality_label.visible = chosen != null
+	_dish_history_label.visible = chosen != null
 	_requirements_box.visible = chosen != null
 	for child: Node in _requirements_box.get_children():
 		_requirements_box.remove_child(child)
@@ -1153,6 +1172,7 @@ func _refresh_selection() -> void:
 	if chosen == null:
 		return
 	_detail_heading.text = "%s - %s" % [chosen.display_name, RecipeDef.section_name(chosen.menu_section())]
+	_dish_history_label.text = _dish_history_text(_dish_week.get(chosen.id, {}))
 	var details: Dictionary = _details.get(chosen.id, {})
 	var signature: Dictionary = _signature_details(chosen.id)
 	var signature_button: Button = _rows[chosen.id]["signature_button"] as Button

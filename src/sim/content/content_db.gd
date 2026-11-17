@@ -563,6 +563,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("ingredient[%d] is null" % index)
 			continue
 		_check_id(definition.id, "ingredient", ingredient_ids, errors)
+		if not LotAccess.valid_tags(definition.lot_tags):
+			errors.append("ingredient '%s': lot tags must be non-empty ids" % definition.id)
 		if definition.unit_cost < 0:
 			errors.append("ingredient '%s': unit_cost must be >= 0" % definition.id)
 	for index: int in range(item_defs.size()):
@@ -571,10 +573,14 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item[%d] is null" % index)
 			continue
 		_check_id(definition.id, "item", item_ids, errors)
+		if not LotAccess.valid_tags(definition.lot_tags):
+			errors.append("item '%s': lot tags must be non-empty ids" % definition.id)
 		if definition.footprint.x < 1 or definition.footprint.y < 1:
 			errors.append("item '%s': footprint components must be >= 1" % definition.id)
 		if definition.price < 0:
 			errors.append("item '%s': price must be >= 0" % definition.id)
+		if definition.prestige < 0 or definition.prestige_cap < -1:
+			errors.append("item '%s': prestige must be >= 0 and its cap must be -1 or higher" % definition.id)
 		if not is_finite(definition.seated_forward_offset) or definition.seated_forward_offset < 0.0 \
 				or definition.seated_forward_offset > ItemDef.MAX_SEATED_FORWARD_OFFSET:
 			errors.append("item '%s': seated_forward_offset must be finite and between 0 and 0.05 m" % definition.id)

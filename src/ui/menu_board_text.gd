@@ -28,20 +28,26 @@ static func selected_section(menu: Array[RecipeDef], requested: int = -1) -> int
 
 
 static func text(restaurant_name: String, menu: Array[RecipeDef], requested: int = -1,
-		special_name: String = "", signature_recipe_id: StringName = &"") -> String:
+		special_recipe_id: StringName = &"", signature_recipe_id: StringName = &"") -> String:
 	var section: int = selected_section(menu, requested)
 	var name: String = _one_line(restaurant_name)
 	if name.is_empty():
 		name = MenuSettings.DEFAULT_NAME
 	var lines: Array[String] = [_fit(name)]
 	lines.append(_fit(RecipeDef.section_name(section) if section >= 0 else "Today's menu"))
-	var special: String = DailySpecialText.board(_one_line(special_name))
-	if not special.is_empty():
-		lines.append(_fit(special))
+	var automatic: bool = not RecipeDef.Section.values().has(requested)
+	var special: String = ""
 	var dishes: Array[RecipeDef] = []
 	for recipe: RecipeDef in menu:
-		if recipe != null and recipe.menu_section() == section:
+		if recipe == null:
+			continue
+		var matches_section: bool = recipe.menu_section() == section
+		if matches_section:
 			dishes.append(recipe)
+		if recipe.id == special_recipe_id and (automatic or matches_section):
+			special = DailySpecialText.board(_one_line(recipe.display_name))
+	if not special.is_empty():
+		lines.append(_fit(special))
 	dishes.sort_custom(_recipe_before)
 	if dishes.is_empty():
 		lines.append("No dishes today")

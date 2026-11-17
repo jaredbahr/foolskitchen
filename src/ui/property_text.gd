@@ -41,14 +41,14 @@ static func size_line(lot: LotDef) -> String:
 	return "%d floor tiles" % lot.size_cells()
 
 
-static func rent_line(lot: LotDef) -> String:
-	return "Rent %s a day" % Fmt.money(lot.daily_rent)
+static func rent_line(lot: LotDef, multiplier: float = 1.0) -> String:
+	return "Rent %s a day" % Fmt.money(AwaySites.adjusted_rent(lot.daily_rent, multiplier))
 
 
 ## Every lot can expand (Jared, 2026-11-13).
-static func expansion_line(lot: LotDef) -> String:
+static func expansion_line(lot: LotDef, multiplier: float = 1.0) -> String:
 	return "Expand later for %s, then rent %s a day" % [
-		Fmt.money(lot.expansion_price), Fmt.money(lot.expanded_daily_rent)]
+		Fmt.money(lot.expansion_price), Fmt.money(AwaySites.adjusted_rent(lot.expanded_daily_rent, multiplier))]
 
 
 ## "Guests: mostly foodies" or "Guests: families and foodies", from the

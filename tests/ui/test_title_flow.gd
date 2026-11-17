@@ -62,6 +62,61 @@ func test_new_game_requires_confirmation_and_cancel_preserves_the_exact_save() -
 	assert_true(_tree().current_scene == title)
 
 
+func test_career_picker_defaults_to_normal_and_back_and_cancel_preserve_the_save() -> void:
+	_write_placeholder_save()
+	var saved: String = _saved_text()
+	var title: TitleScreen = _title()
+	_open_career_picker(title)
+	assert_true(title.difficulty_choice.visible)
+	assert_false(title.mode_choice.visible)
+	assert_false(title.confirmation.visible, "the picker does not replace the save")
+	assert_true(_difficulty_button(title, "Normal").button_pressed)
+	assert_false((title.difficulty_choice.find_child("CustomToggles", true, false) as Control).visible)
+	var choices: Array[String] = []
+	for mode_id: StringName in Difficulty.MODES:
+		var button: Button = _difficulty_button(title, Difficulty.mode_name(mode_id))
+		assert_true(button.is_visible_in_tree())
+		choices.append(button.text)
+	assert_eq(choices, ["Easy", "Normal", "Hard", "Custom"])
+
+	_difficulty_button(title, "Hard").button_pressed = true
+	_difficulty_button(title, "Back").pressed.emit()
+	assert_true(title.mode_choice.visible)
+	assert_false(title.difficulty_choice.visible)
+	(title.mode_choice.find_child("Career", true, false) as Button).pressed.emit()
+	assert_true(_difficulty_button(title, "Normal").button_pressed)
+	assert_false(_difficulty_button(title, "Hard").button_pressed)
+	_difficulty_button(title, "StartCareer").pressed.emit()
+	assert_true(title.confirmation.visible)
+	title.confirmation.hide()
+	assert_true(title.menu.visible)
+	assert_eq(_saved_text(), saved)
+	assert_true(_tree().current_scene == title)
+
+
+func test_custom_career_keeps_unavailable_automation_defaults_in_the_first_morning_save() -> void:
+	var title: TitleScreen = _title()
+	_open_career_picker(title)
+	_difficulty_button(title, "Custom").button_pressed = true
+	var switches: Control = title.difficulty_choice.find_child("CustomToggles", true, false) as Control
+	assert_true(switches.is_visible_in_tree())
+	assert_eq(switches.get_child_count(), 2)
+	var buy: CheckButton = _difficulty_button(title, "AutoBuy") as CheckButton
+	var premium: CheckButton = _difficulty_button(title, "AutoBuyPremium") as CheckButton
+	assert_true(buy.button_pressed)
+	assert_true(premium.button_pressed)
+	premium.button_pressed = false
+	assert_false(SaveSystem.list_slots().has("autosave"))
+	_difficulty_button(title, "StartCareer").pressed.emit()
+	await _settle_transition()
+	assert_eq(_tree().current_scene.scene_file_path, TitleScreen.MAIN_SCENE)
+	assert_eq(Clock.sim.day, 1)
+	var difficulty: Dictionary = _saved_difficulty()
+	assert_eq(difficulty.get("mode"), "custom")
+	assert_eq(difficulty.get("custom_flags"), {"buy": true, "buy_premium": false,
+		"hire": false, "wages": false, "prices": false, "jobs": false})
+
+
 func test_display_only_backdrop_does_not_load_save_start_service_or_consume_run_rng() -> void:
 	_write_placeholder_save()
 	var saved: String = _saved_text()
@@ -145,6 +200,7 @@ func test_new_game_without_a_save_boots_the_real_shop_and_uses_its_morning_autos
 	assert_eq(Clock.sim.phase, SimClock.Phase.MORNING)
 	assert_eq(Clock.sim.day, 1)
 	assert_true(SaveSystem.list_slots().has("autosave"))
+	assert_eq(_saved_difficulty().get("mode"), "normal")
 
 
 func test_confirmed_new_game_replaces_the_old_run_through_the_f10_reset_route() -> void:
@@ -292,6 +348,20 @@ func _write_placeholder_save() -> void:
 	var file: FileAccess = FileAccess.open(_save_dir.path_join("autosave.json"), FileAccess.WRITE)
 	file.store_string('{"version":1,"data":{}}')
 	file.close()
+
+
+func _open_career_picker(title: TitleScreen) -> void:
+	title.new_button.pressed.emit()
+	(title.mode_choice.find_child("Career", true, false) as Button).pressed.emit()
+
+
+func _difficulty_button(title: TitleScreen, node_name: String) -> Button:
+	return title.difficulty_choice.find_child(node_name, true, false) as Button
+
+
+func _saved_difficulty() -> Dictionary:
+	var document: Dictionary = JSON.parse_string(_saved_text()) as Dictionary
+	return (document.get("data", {}) as Dictionary).get("difficulty", {})
 
 
 func _saved_text() -> String:

@@ -524,6 +524,101 @@ func test_native_staff_controls_survive_refresh_and_fit_web_and_capture_widths()
 	assert_eq(Economy.ledger.to_dict(), books, "native report return cannot settle closing twice")
 
 
+func test_focused_staff_name_edit_cancels_commits_and_saves_at_next_morning() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var main: Node = _start()
+	var window: Window = tree.root
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var cook_id: StringName = &"starter_cook"
+	var cook: StaffAgent = _live_staff(main, cook_id)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	assert_true(main.call("set_staff_visible", true))
+	await _frames(4)
+	var title: Label = panel.row_for(cook_id).find_child("Name", true, false) as Label
+	var original_file: String = FileAccess.get_file_as_string(_path())
+	_name_click(window, title.get_global_rect().get_center())
+	var editor: LineEdit = title.get_node_or_null("NameEdit") as LineEdit
+	assert_not_null(editor)
+	if editor == null:
+		return
+	assert_true(editor.has_focus() and Clock.text_entry_has_focus())
+	_name_key(window, KEY_1, 49)
+	assert_eq(editor.text, "1", "the speed key is typed into the native editor")
+	assert_eq(Clock.speed, 0)
+	_name_key(window, KEY_F3)
+	assert_false(main.call("is_debug_visible"))
+	_name_key(window, KEY_ESCAPE)
+	assert_eq(_member(main, cook_id).display_name, "Alex")
+	assert_false(panel.name_edit_has_focus())
+	assert_true(panel.visible, "Escape cancels the edit before Staff handles it")
+	await _frames(2)
+	_name_click(window, title.get_global_rect().get_center())
+	editor = title.get_node("NameEdit") as LineEdit
+	editor.text = "  Robin  "
+	_name_key(window, KEY_ENTER)
+	assert_eq(_member(main, cook_id).display_name, "Robin")
+	assert_true(_live_staff(main, cook_id) == cook, "editing never reinstalls a worker")
+	assert_true(panel.row_for(cook_id).find_child("Name", true, false) == title)
+	assert_eq(FileAccess.get_file_as_string(_path()), original_file)
+	await _frames(2)
+	_name_click(window, title.get_global_rect().get_center())
+	editor = title.get_node("NameEdit") as LineEdit
+	editor.text = " Jules "
+	await _frames(2)
+	var close: Button = panel.get_node("Panel/Content/Title/Owner/Close") as Button
+	_name_click(window, close.get_global_rect().get_center())
+	assert_false(panel.visible)
+	assert_eq(_member(main, cook_id).display_name, "Jules", "click-away commits before closing Staff")
+	assert_true(main.call("select_agent", cook.id))
+	var inspector_title: Label = main.get_node("Overlay/InspectPanel/Panel/Rows/Title") as Label
+	assert_true(inspector_title.text.begins_with("Jules ("))
+	assert_eq(FileAccess.get_file_as_string(_path()), original_file)
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var report: Control = main.get_node("Overlay/EveningReport") as Control
+	var report_label: Label = report.find_child("StaffNicknames", true, false) as Label
+	assert_not_null(report_label)
+	assert_true(report.visible and report_label.visible)
+	assert_eq(report_label.text, "Staff nicknames: Jules")
+	assert_eq(FileAccess.get_file_as_string(_path()), original_file)
+	main.get_node("HUD").emit_signal(&"next_day_requested")
+	assert_eq(Clock.sim.day, 2)
+	assert_eq(_document()["data"]["staff"]["members"][0]["nickname"], "Jules")
+	assert_eq(_document()["data"]["staff"]["members"][0]["name"], "Alex")
+	_close(main)
+	var restored: Node = _start()
+	assert_eq(_member(restored, cook_id).display_name, "Jules")
+	assert_eq(_live_staff(restored, cook_id).display_name, "Jules")
+	assert_true(restored.call("staff_rename", cook_id, ""))
+	assert_eq(_live_staff(restored, cook_id).display_name, "Alex")
+
+
+func _name_click(viewport: Viewport, point: Vector2) -> void:
+	for pressed: bool in [true, false]:
+		var event: InputEventMouseButton = InputEventMouseButton.new()
+		event.position = point
+		event.global_position = point
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		viewport.push_input(event, true)
+
+
+func _name_key(viewport: Viewport, code: Key, character: int = 0) -> void:
+	for pressed: bool in [true, false]:
+		var event: InputEventKey = InputEventKey.new()
+		event.keycode = code
+		event.physical_keycode = code
+		event.unicode = character
+		event.pressed = pressed
+		viewport.push_input(event, true)
+
+
 func _start(saves: bool = true, host: Node = null) -> Node:
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", saves)

@@ -8,9 +8,32 @@ Follow `AGENTS.md` (shared rules for all AI workers). Plans: `docs/DESIGN.md`, `
   - Codex: the default worker for every `worker-ready` issue, taken in the order of `docs/ROADMAP.md` "Up next". Jared points Codex at the repo; Codex follows `AGENTS.md`.
   - Sonnet subagents: director-scoped issues (no `worker-ready` label) and independent read-only reviews of every PR, Codex's included.
   - Haiku subagents: very small, mechanical fixes (typos, renames, a missing doc comment, a one-line config change, a trivial check fix). Claude still reviews the result before it merges.
-  - DeepSeek (Claude-run): one self-contained task (boilerplate, test scaffolds, log or diff summaries) via `python3 tools/deepseek.py "<brief>" -f <files> [--code --out F]` (`--help` for the rest). It never touches the repo; Claude verifies its output before it is committed. Not for art, movement feel or taste calls. In cloud sessions the proxy adds the key; elsewhere set `DEEPSEEK_API_KEY`.
   - Opus: hard problems (movement, architecture, deep bugs), foundation work, escalation when Codex fails an issue twice, and final review calls.
   - Label every open issue with one owner: `codex` (clear brief, testable sim or UI work), `both` (Codex may try; harder, review closely, take over after two failed tries) or `claude` (movement, art, taste or design calls, unscoped backlog; Codex never starts it). Codex issues also need `worker-ready`. An issue without `worker-ready` stays with the director. Write new Codex issues from `.github/ISSUE_TEMPLATE/task.md`: Phase, Depends on, Context (files to read), Do, Don't, Done when.
 - **Release notes:** `CHANGELOG.md` `## Unreleased` holds every merged change since the last published build (CI requires an entry per PR). When reviewing, check that the entry is accurate and player-readable. When publishing, use the *whole* Unreleased section as the "What's new". Never pick highlights. Then rename it to the version and date.
 - Light process: branch, then a PR into `main`, with one review before merge.
 - Commits: `git -c user.name=Jared -c user.email=jarebahr@gmail.com commit`.
+
+## Work routing: Claude, then Codex, then DeepSeek (Jared, 2026-11-15)
+
+Claude usage is the scarce resource across all four of Jared's games. Work goes to the cheapest tier that can do it
+well, so Claude's time goes to complex writing, hard problems and art. Any agent working here follows this.
+
+- **1. Claude** keeps complex writing, hard problems and art: architecture, deep bugs, story and dialogue, art
+  direction and judgment, design questions for Jared, reviews and merges. Claude also writes the issues for Codex and
+  calls DeepSeek directly for grunt work.
+- **2. Codex** takes the middle ground: well-specified, testable work that needs a real PR but no taste call. Codex
+  monitors this repo's issues and works only the ones assigned to it (labelled `codex` plus `worker-ready`); it never
+  picks up anything else. Keep its queue stocked with such issues, written with the files to read, Do, Don't and Done
+  when, and review its PRs like any other.
+- **3. DeepSeek** takes the grunt work, and is the default for anything trivial. Claude calls it directly, with no
+  issue or harness: boilerplate, test scaffolds, repetitive wiring, data and config edits, renames, log, diff and CI
+  summaries, first drafts of docs or comments. Run `python3 tools/deepseek.py "<brief>" -f <files> [--code --out F]`
+  (`--help` for the rest), briefed like an issue: the files, the rules, what done looks like. It never touches the
+  repo, so you read its output, apply it, run the checks and own the result. Never use it for art, story or
+  player-facing words, feel or design, or judgment calls, and never send it secrets. In cloud sessions the proxy adds
+  the key; elsewhere set `DEEPSEEK_API_KEY`. Prefer it over a Sonnet or Haiku subagent for anything it can do from
+  the files you send it.
+
+Rule of thumb: needs taste, the story or deep reasoning, Claude. Fully specified and needs a real PR, a Codex issue.
+Fits in a paragraph and can be checked by running something, DeepSeek.

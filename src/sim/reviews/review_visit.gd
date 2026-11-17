@@ -23,6 +23,8 @@ var dirt_fraction: float = 0.0
 var sticky_floor: bool = false
 ## Raw additive ambience term sampled on arrival; stars still round to integers.
 var vibe_review_bonus: float = 0.0
+## Difficulty's raw additive star nudge, captured for this guest's visit.
+var difficulty_review_bonus: float = 0.0
 ## Restrooms (FK-101): a small raw bonus in a shop with one, and the raw
 ## penalty when this guest needed one and couldn't use one (0 otherwise).
 var restroom_bonus: float = 0.0
