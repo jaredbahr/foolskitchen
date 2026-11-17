@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://src/world/shop_style.gd" id="3_shop"]
 [ext_resource type="Script" path="res://src/world/ground_skin.gd" id="4_skin"]
 [ext_resource type="Script" path="res://src/world/street_preset.gd" id="5_preset"]
+[ext_resource type="Script" path="res://src/world/shore_skin.gd" id="6_shore"]
 
 [sub_resource type="Resource" id="Spec_0"]
 script = ExtResource("1_spec")
@@ -150,8 +151,35 @@ flower_density = 1.0
 pavement = Color(0.7882353, 0.7764706, 0.7411765, 1)
 plank_seam = Color(0.7490196, 0.6823529, 0.572549, 1)
 
+[sub_resource type="Resource" id="Shore_sea"]
+script = ExtResource("6_shore")
+sand = Color(0.8470588, 0.772549, 0.6431373, 1)
+sand_light = Color(0.9137255, 0.8627451, 0.7647059, 1)
+sand_dark = Color(0.8627451, 0.7411765, 0.5568627, 1)
+sand_wet = Color(0.7686275, 0.6627451, 0.5215686, 1)
+grass_colors = Array[Color]([Color(0.6627451, 0.7137255, 0.4509804, 1), Color(0.5960784, 0.6588235, 0.4156863, 1), Color(0.7137255, 0.7372549, 0.4941176, 1), Color(0.5529412, 0.6470588, 0.5490196, 1)])
+sea_shallow = Color(0.5607843, 0.8, 0.8156863, 1)
+sea_mid = Color(0.4392157, 0.6941176, 0.8, 1)
+sea_deep = Color(0.3529412, 0.5882353, 0.7411765, 1)
+foam = Color(0.9490196, 0.9215686, 0.8666667, 1)
+timber = Color(0.6431373, 0.5529412, 0.4392157, 1)
+rock = Color(0.6117647, 0.6117647, 0.5882353, 1)
+umbrella_colors = Array[Color]([Color(0.8784314, 0.4980392, 0.4078431, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.9098039, 0.7372549, 0.2705882, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.9490196, 0.9215686, 0.8666667, 1)])
+towel_colors = Array[Color]([Color(0.8509804, 0.4117647, 0.3098039, 1), Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.9372549, 0.8901961, 0.6588235, 1), Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.8901961, 0.654902, 0.6823529, 1)])
+ball_colors = Array[Color]([Color(0.8235294, 0.3490196, 0.2901961, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.9098039, 0.7372549, 0.2705882, 1)])
+hut_body = Color(0.8784314, 0.4980392, 0.4078431, 1)
+hut_trim = Color(0.9490196, 0.9215686, 0.8666667, 1)
+lighthouse_colors = Array[Color]([Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.8784314, 0.4980392, 0.4078431, 1)])
+lamp_glow = Color(1, 0.8156863, 0.4588235, 1)
+sail_colors = Array[Color]([Color(0.8784314, 0.4980392, 0.4078431, 1), Color(0.2901961, 0.4980392, 0.6588235, 1), Color(0.9098039, 0.7372549, 0.2705882, 1)])
+hull_colors = Array[Color]([Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.227451, 0.2941176, 0.4235294, 1), Color(0.2470588, 0.5882353, 0.5647059, 1)])
+gull_body = Color(0.9490196, 0.9254902, 0.8784314, 1)
+gull_wing = Color(0.7882353, 0.8, 0.7843137, 1)
+gull_tip = Color(0.3843137, 0.3529412, 0.3215686, 1)
+
 [resource]
 script = ExtResource("5_preset")
 id = &"seaside"
 ground = SubResource("Skin_sea")
 buildings = SubResource("Set_sea")
+shore = SubResource("Shore_sea")
