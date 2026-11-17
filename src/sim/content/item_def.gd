@@ -27,6 +27,8 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 
 @export var id: StringName = &""
 @export var display_name: String = ""
+## Empty allows the definition at every lot.
+@export var lot_tags: Array[StringName] = []
 @export var category: Category = Category.DECOR
 ## Floor decor shares cells with normal furniture without owning its access.
 @export var placement_layer: PlacementLayer = PlacementLayer.NORMAL

@@ -563,6 +563,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("ingredient[%d] is null" % index)
 			continue
 		_check_id(definition.id, "ingredient", ingredient_ids, errors)
+		if not LotAccess.valid_tags(definition.lot_tags):
+			errors.append("ingredient '%s': lot tags must be non-empty ids" % definition.id)
 		if definition.unit_cost < 0:
 			errors.append("ingredient '%s': unit_cost must be >= 0" % definition.id)
 	for index: int in range(item_defs.size()):
@@ -571,6 +573,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item[%d] is null" % index)
 			continue
 		_check_id(definition.id, "item", item_ids, errors)
+		if not LotAccess.valid_tags(definition.lot_tags):
+			errors.append("item '%s': lot tags must be non-empty ids" % definition.id)
 		if definition.footprint.x < 1 or definition.footprint.y < 1:
 			errors.append("item '%s': footprint components must be >= 1" % definition.id)
 		if definition.price < 0:

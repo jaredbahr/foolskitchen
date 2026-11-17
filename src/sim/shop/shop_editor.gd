@@ -71,6 +71,7 @@ var _content: ContentDB
 var _books: ShopEditBooks
 var _applying: bool = false
 var _owner_level: int = 1
+var _lot_tags: Array[StringName] = []
 var _career_tier: int = 1
 ## The lot and the bought floor (FK-080). Null without a layout.
 var _footprint: ShopFootprint
@@ -127,6 +128,10 @@ func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout:
 ## This does not change saved placements, including starter furniture.
 func set_career_tier(tier: int) -> void:
 	_career_tier = clampi(tier, 1, CareerTierTuning.TOP_TIER)
+
+
+func set_lot_tags(tags: Array[StringName]) -> void:
+	_lot_tags = tags.duplicate()
 
 
 func set_owner_level(level: int) -> void:
@@ -325,7 +330,9 @@ func check_buy(def_id: StringName, origin: Vector2i, quarter_turns: int = 0, exa
 	var definition: ItemDef = _content.item(def_id)
 	if not _valid_definition(definition):
 		return EditCheck.new(false, "Unknown or invalid item definition")
-	# Undo/redo put back an item the shop already had; only new buys need the level.
+	# Undo and redo restore the shop's existing items. New buys check access.
+	if exact == null and not LotAccess.allowed(definition, _lot_tags):
+		return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 	if exact == null and definition.unlock_level > _owner_level:
 		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	if _books == null or not _books.is_ready():
@@ -373,6 +380,8 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 			return EditCheck.new(false, CatalogueText.BLUEPRINT_INVALID)
 		if not entry.swatch_id.is_empty() and (not definition.paintable or _content.swatch(entry.swatch_id) == null):
 			return EditCheck.new(false, "Unknown colour")
+		if exact == null and not LotAccess.allowed(definition, _lot_tags):
+			return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 		if exact == null and definition.unlock_level > _owner_level:
 			return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 		total += definition.variant_price(entry.variant_id)
@@ -1610,6 +1619,8 @@ func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null, swatc
 	var definition: ItemDef = _content.item(def_id)
 	if definition == null or not definition.hangs_on_wall() or not _valid_definition(definition):
 		return EditCheck.new(false, WallDecor.NOT_WALL_DECOR)
+	if exact == null and not LotAccess.allowed(definition, _lot_tags):
+		return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 	if exact == null and definition.unlock_level > _owner_level:
 		return EditCheck.new(false, "Unlocks at level %d" % definition.unlock_level)
 	var why: String = decor.problem(_sim.world.grid, definition, anchor)
