@@ -151,6 +151,55 @@ func test_reset_includes_locked_disabled_and_station_removed_prices() -> void:
 	assert_false(menu.set_price(&"later", 18))
 
 
+func test_preset_replaces_enabled_dishes_and_clamps_available_prices() -> void:
+	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
+	seasonal.unlock_level = 2
+	var menu: MenuSettings = MenuSettings.new([_burger, _cheese, seasonal])
+	var enabled: Array[StringName] = [&"grilled_cheese", &"seasonal", &"removed"]
+	var prices: Dictionary[StringName, int] = {&"burger": 4, &"grilled_cheese": 21,
+		&"seasonal": 18, &"removed": 10}
+	var result: Dictionary = menu.apply_preset(enabled, prices)
+	assert_eq(result["unavailable"], 2, "each unavailable dish is counted once")
+	assert_eq(result["over_limit"], 0)
+	assert_false(result["kept_current_menu"])
+	assert_true(result["enabled_changed"])
+	assert_true(result["prices_changed"])
+	assert_eq(_ids(menu.enabled_recipes()), [&"grilled_cheese"] as Array[StringName])
+	assert_eq(menu.price_of(_burger), 6, "a known disabled dish still has its preset price")
+	assert_eq(menu.price_of(_cheese), 16)
+	assert_eq(menu.price_of(seasonal), 14, "locked dish prices are unchanged")
+
+
+func test_preset_with_no_available_enabled_dish_keeps_the_live_menu() -> void:
+	var before: Dictionary = _menu.to_dict()
+	var enabled: Array[StringName] = [&"removed"]
+	var prices: Dictionary[StringName, int] = {&"removed": 12}
+	var result: Dictionary = _menu.apply_preset(enabled, prices)
+	assert_eq(result["unavailable"], 1)
+	assert_true(result["kept_current_menu"])
+	assert_false(result["enabled_changed"])
+	assert_false(result["prices_changed"])
+	assert_eq(_menu.to_dict(), before)
+
+
+func test_preset_cannot_add_past_the_menu_limit_and_preserves_existing_legacy_dishes() -> void:
+	var catalogue: Array[RecipeDef] = _large_catalog()
+	var menu: MenuSettings = MenuSettings.new(catalogue)
+	var enabled: Array[StringName] = []
+	for definition: RecipeDef in catalogue:
+		enabled.append(definition.id)
+	var prices: Dictionary[StringName, int] = {}
+	var first: Dictionary = menu.apply_preset(enabled, prices)
+	assert_eq(menu.enabled_count(), menu.menu_limit())
+	assert_eq(first["over_limit"], catalogue.size() - menu.menu_limit())
+	var old_menu: MenuSettings = MenuSettings.new(catalogue, 10)
+	assert_true(menu.from_dict(old_menu.to_dict()))
+	var second: Dictionary = menu.apply_preset(enabled, prices)
+	assert_eq(second["over_limit"], 0)
+	assert_false(second["enabled_changed"])
+	assert_eq(menu.enabled_count(), catalogue.size())
+
+
 func test_old_menu_save_adds_only_disabled_new_locked_recipe_transactionally() -> void:
 	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
 	seasonal.unlock_level = 2

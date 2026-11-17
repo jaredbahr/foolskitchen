@@ -123,6 +123,8 @@ var build_mode: BuildMode = BuildMode.new()
 var blueprint_library: BlueprintLibrary = BlueprintLibrary.new()
 var _loaded_blueprints: BlueprintLibrary
 var _blueprint_load_notes: Array[String] = []
+var menu_presets: MenuPresetLibrary = MenuPresetLibrary.new()
+var _loaded_menu_presets: MenuPresetLibrary
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var daily_special: DailySpecial = DailySpecial.new()
@@ -522,6 +524,12 @@ func _bind_world_presentation() -> void:
 	$HUD.set_paint_state(false)
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
+	var preset_controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not preset_controls.save_requested.is_connected(_on_menu_preset_save_requested):
+		preset_controls.save_requested.connect(_on_menu_preset_save_requested)
+		preset_controls.load_requested.connect(_on_menu_preset_load_requested)
+		preset_controls.rename_requested.connect(_on_menu_preset_rename_requested)
+		preset_controls.delete_requested.connect(_on_menu_preset_delete_requested)
 	_menu_panel.set_special(daily_special.recipe_id())
 	if not _menu_panel.special_requested.is_connected(_on_special_requested):
 		_menu_panel.special_requested.connect(_on_special_requested)
@@ -781,6 +789,7 @@ func start() -> void:
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
+	SaveSystem.register("menu_presets", _capture_menu_presets, _restore_menu_presets)
 	SaveSystem.register("daily_special", _capture_daily_special, _restore_daily_special)
 	SaveSystem.register("signature", _capture_signature, _restore_signature)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
@@ -2970,6 +2979,8 @@ func _new_game() -> void:
 	$HUD.set_menu_notice("")
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
+	menu_presets = MenuPresetLibrary.new()
+	_loaded_menu_presets = null
 	# A fresh clock and seed too, so a half-loaded save can't leave its day
 	# or random state behind.
 	Clock.sim = SimClock.new()
@@ -3047,6 +3058,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
+	_loaded_menu_presets = null
 	_loaded_layout = null
 	_loaded_menu = null
 	_loaded_daily_special = null
@@ -3361,6 +3373,8 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 	_last_delivery.clear()
 	if with_globals:
 		blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
+		menu_presets = _loaded_menu_presets if _loaded_menu_presets != null else MenuPresetLibrary.new()
+		_loaded_menu_presets = null
 		for note: String in _blueprint_load_notes:
 			world.log_event(note)
 	if _loaded_layout != null:
@@ -4664,6 +4678,18 @@ func _on_tray_requested(level: int) -> void:
 	tray_buy(level)
 
 
+func _capture_menu_presets() -> Dictionary:
+	return menu_presets.to_save()
+
+
+func _restore_menu_presets(data: Dictionary) -> bool:
+	var restored: MenuPresetLibrary = MenuPresetLibrary.new()
+	if not restored.restore(data):
+		return false
+	_loaded_menu_presets = restored
+	return true
+
+
 func _capture_menu() -> Dictionary:
 	return menu_settings.to_dict() if menu_settings != null else {}
 
@@ -5298,13 +5324,17 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	var was_enabled: bool = menu_settings.is_enabled(recipe_id)
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
+	_apply_menu_edit(was_enabled != menu_settings.is_enabled(recipe_id))
+	return true
+
+
+func _apply_menu_edit(enabled_changed: bool) -> void:
 	_apply_menu(sim, menu_settings)
 	_sync_effective_signature()
-	if was_enabled != menu_settings.is_enabled(recipe_id):
+	if enabled_changed:
 		_recompute_vibe()
 		_refresh_stock_panel()
 	_refresh_menu_details()
-	return true
 
 
 func menu_set_signature(recipe_id: StringName) -> bool:
@@ -5345,6 +5375,21 @@ func menu_set_price(recipe_id: StringName, price: int) -> bool:
 	return true
 
 
+func menu_load_preset(index: int) -> Dictionary:
+	if not can_edit_menu():
+		return {}
+	var preset: Dictionary = menu_presets.get_preset(index)
+	if preset.is_empty():
+		return {}
+	var enabled: Array[StringName] = preset["enabled"]
+	var prices: Dictionary[StringName, int] = preset["prices"]
+	var result: Dictionary = menu_settings.apply_preset(enabled, prices)
+	_apply_menu_edit(bool(result["enabled_changed"]))
+	if result["prices_changed"]:
+		_observe_opening(OpeningGoal.Condition.PRICE_CHANGED, 1.0)
+	return result
+
+
 func menu_reset_prices() -> bool:
 	if not can_edit_menu() or not menu_settings.reset_all_prices_to_standard():
 		return false
@@ -5382,6 +5427,7 @@ func set_menu_visible(value: bool) -> bool:
 		set_stock_visible(false)
 		_refresh_menu_details()
 		_menu_panel.set_drink_hints(drink_station_hints())
+		_menu_panel.preset_controls().set_names(menu_presets.names())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 		_menu_panel.set_property_available(PropertyMarket.shown(owner_progress.career_tier))
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -6021,6 +6067,58 @@ func _on_menu_signature_requested(recipe_id: StringName) -> void:
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
 	menu_set_price(recipe_id, price)
+
+
+func _on_menu_preset_save_requested(preset_name: String) -> void:
+	if not can_edit_menu():
+		return
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not menu_presets.save_menu(preset_name, menu_settings):
+		controls.set_feedback("This menu could not be saved as a preset.")
+		return
+	var names: Array[String] = menu_presets.names()
+	controls.set_names(names, names.size() - 1)
+	controls.set_feedback("Menu preset saved.")
+
+
+func _on_menu_preset_load_requested(index: int) -> void:
+	var result: Dictionary = menu_load_preset(index)
+	if result.is_empty():
+		return
+	_menu_panel.set_drink_hints(drink_station_hints())
+	var notes: PackedStringArray = [
+		"Kept the current dishes." if result["kept_current_menu"] else "Menu preset loaded.",
+	]
+	var unavailable: int = result["unavailable"]
+	if unavailable == 1:
+		notes.append("1 dish in this preset is unavailable.")
+	elif unavailable > 1:
+		notes.append("%d dishes in this preset are unavailable." % unavailable)
+	var over_limit: int = result["over_limit"]
+	if over_limit == 1:
+		notes.append("1 dish did not fit the menu limit.")
+	elif over_limit > 1:
+		notes.append("%d dishes did not fit the menu limit." % over_limit)
+	_menu_panel.preset_controls().set_feedback(" ".join(notes))
+
+
+func _on_menu_preset_rename_requested(index: int, preset_name: String) -> void:
+	if not can_edit_menu():
+		return
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not menu_presets.rename(index, preset_name):
+		controls.set_feedback("This preset could not be renamed.")
+		return
+	controls.set_names(menu_presets.names(), index)
+	controls.set_feedback("Menu preset renamed.")
+
+
+func _on_menu_preset_delete_requested(index: int) -> void:
+	if not can_edit_menu() or not menu_presets.remove(index):
+		return
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	controls.set_names(menu_presets.names(), index)
+	controls.set_feedback("Menu preset deleted.")
 
 
 func _on_menu_reset_prices_requested() -> void:
