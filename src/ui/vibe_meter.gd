@@ -56,10 +56,18 @@ func set_vibe(result: VibeModel.Result, prestige: Prestige.Result = null) -> voi
 	_caption = "Vibe %d / 100" % roundi(_value)
 	_tooltip = _make_tooltip(result)
 	if prestige != null:
-		_tooltip += "\nPrestige %d" % prestige.uncapped_score
-		if prestige.uncapped_score > prestige.value():
-			_tooltip += " (capped at %d by %s)" % [prestige.value(), prestige.cap_item.display_name]
+		_tooltip += "\nPrestige %s" % _prestige_points(prestige.point_units)
+		var cap: ItemDef = prestige.cap_item
+		if cap != null and prestige.point_units > cap.prestige_cap * PrestigeTuning.UNITS_PER_POINT:
+			_tooltip += " (capped at %d by %s)" % [prestige.value(), cap.display_name]
+		for row: Prestige.Contribution in prestige.contributions:
+			_tooltip += "\n%s ×%d: %s" % [row.item.display_name, row.copies, _prestige_points(row.point_units)]
 	_apply_presentation()
+
+
+static func _prestige_points(units: int) -> String:
+	var points: float = float(units) / PrestigeTuning.UNITS_PER_POINT
+	return ("%.2f" % points).rstrip("0").rstrip(".")
 
 
 ## Stable data for native-control integration and capture assertions.

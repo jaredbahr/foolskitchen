@@ -533,21 +533,25 @@ func test_prestige_flows_to_goals_an_actual_service_close_and_next_morning_save(
 	var line: Label = goals.get_node("%GoldenLadles") as Label
 	assert_true(main.call("set_goals_visible", true))
 	assert_false(line.visible)
-	var content: ContentDB = main.get("content") as ContentDB
-	var grid: SimGrid = (main.get("world") as SimWorld).grid
-	var pendant: ItemDef = content.item(&"lamp_pendant")
-	# Stage the layout through the real grid notifications without hiring or spending.
-	var lamps: int = 0
-	for cell: Vector2i in grid.cells():
-		if grid.place_def(pendant, cell) != null:
-			lamps += 1
-		if lamps == 10:
-			break
-	assert_eq(lamps, 10)
+	var owner: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	owner.total_xp = owner.threshold_for(5)
+	owner.level = 5
+	(main.get("shop_editor") as ShopEditor).set_owner_level(owner.effective_level())
+	Economy.add_cash(1000, Ledger.MILESTONE_BONUS, "Layout test funds")
+	# Buy a mixed room through the same commands players use.
+	for pose: Vector3i in [Vector3i(3, 1, 1), Vector3i(9, 1, 1), Vector3i(11, 1, 0)]:
+		assert_true(main.call("shop_buy", &"cloth_table", Vector2i(pose.x, pose.y), pose.z))
+	for x: int in range(1, 7):
+		assert_true(main.call("shop_buy", &"lamp_pendant", Vector2i(x, 1)))
+	for x: int in [1, 3, 5, 7]:
+		assert_true(main.call("shop_hang", &"wall_art_sunrise", Vector3i(x, 1, 0)))
+	for x: int in [9, 11, 13]:
+		assert_true(main.call("shop_hang", &"wall_art_peaks", Vector3i(x, 1, 0)))
 	assert_true(line.visible)
 	assert_eq(line.text, "Golden Ladles: 0 of 3")
 	var build: BuildCatalogue = main.get("_build_catalogue") as BuildCatalogue
-	assert_true(build.vibe_meter.tooltip_text.ends_with("Prestige 40"))
+	assert_true(build.vibe_meter.tooltip_text.contains("\nPrestige 40\n"))
+	assert_true(build.vibe_meter.tooltip_text.contains("Ceiling pendant ×6: 18"))
 	assert_true(main.call("set_goals_visible", false))
 
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
