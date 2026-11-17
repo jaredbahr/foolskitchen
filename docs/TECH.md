@@ -3234,10 +3234,13 @@ uses decimal strings for signed currency and joins only the existing morning
 autosave. Load stages it until the whole morning validates; older saves start
 empty. Version 1 saves retain the same row format. The evening report defaults to
 seven days, with a 7 / 30 day toggle remembered by the report for the session only;
-it never enters a save. Thirty-day charts label every fifth day and shorter
-histories show only the rows that exist. Both ranges use the current theme, with separate
-dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
-between equal recorded-day windows. "Last week" requires two complete weeks.
+it never enters a save. The chart appears after two recorded days. Thirty-day
+charts label every fifth day and the newest recorded bar, with the newest
+label taking priority if they overlap. Both ranges use separate dish-profit
+and guest scales, today's label and unknown-profit gaps. The short comparison
+uses equal recorded-day windows, and "last week" requires two complete weeks.
+From 20 records, the long comparison uses average daily dish profit over the
+most recent 15 recorded days and up to 15 earlier recorded days.
 
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.

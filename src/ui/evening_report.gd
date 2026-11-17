@@ -259,10 +259,10 @@ func show_history(rows: Array[Dictionary], today: int) -> void:
 
 func _refresh_history() -> void:
 	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
-	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today)
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today, _trend_days)
 	var chart: BusinessTrendChart = %BusinessTrendChart
 	chart.set_history(_trend_rows, _trend_today if not _trend_rows.is_empty() else 0, _trend_days)
-	chart.visible = not _trend_rows.is_empty()
+	chart.visible = _trend_rows.size() >= 2
 	for button: Button in _trend_buttons:
 		button.set_pressed_no_signal(int(button.get_meta("days")) == _trend_days)
 	(%BusinessTrendSection as VBoxContainer).visible = not GameMode.is_creative()
