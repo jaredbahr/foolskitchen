@@ -210,7 +210,7 @@ func test_a_refused_restore_leaves_the_session_whole() -> void:
 	var stock: Stock = Economy.stock
 	assert_false(_main.call("switch_site", &"second"))
 	_assert_session_kept(before, sim, world, stock)
-	assert_eq(_main.get("_loaded_menu"), null, "no staging is left behind")
+	assert_eq((_main.get("_staged") as StagedSections).menu, null, "no staging is left behind")
 
 
 func test_a_site_that_fails_the_morning_check_leaves_the_session_whole() -> void:
@@ -229,7 +229,7 @@ func test_a_site_that_fails_the_morning_check_leaves_the_session_whole() -> void
 	assert_true(stock.count(&"bun") > 0, "the home pantry has stock to lose")
 	assert_false(_main.call("switch_site", &"second"))
 	_assert_session_kept(before, sim, world, stock)
-	assert_eq(_main.get("_loaded_daily_special"), null, "no staging is left behind")
+	assert_eq((_main.get("_staged") as StagedSections).daily_special, null, "no staging is left behind")
 	assert_true(_main.get("_loaded_layout") == layout, "the live layout is kept")
 	# Still a whole session: the day plays.
 	assert_true(Clock.sim.start_service())
