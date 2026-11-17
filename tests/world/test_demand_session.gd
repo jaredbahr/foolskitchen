@@ -271,7 +271,7 @@ func test_malformed_or_wrong_day_present_demand_fails_load_and_preserves_checkpo
 		_start_demand(true, false)
 		assert_eq(Clock.sim.day, 1)
 		assert_almost_eq((_main.get("demand_state") as DemandState).renown, 0.0)
-		assert_null(_main.get("_loaded_demand"))
+		assert_null((_main.get("_staged") as StagedSections).demand)
 		assert_eq(FileAccess.get_file_as_string(_demand_path()), bad_file)
 	reset_weekly_for_synthetic_day_jump(_main)
 	Clock.sim.phase = SimClock.Phase.CLOSED
@@ -292,7 +292,7 @@ func test_later_whole_load_failure_discards_staged_renown_before_new_session() -
 	_start_demand(true, false)
 	assert_true(_late_reject_reached)
 	assert_true(_late_reject_staged, "a real later provider rejected after valid demand was staged")
-	assert_null(_main.get("_loaded_demand"))
+	assert_null((_main.get("_staged") as StagedSections).demand)
 	assert_almost_eq((_main.get("demand_state") as DemandState).renown, 0.0)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), failed_file)
 	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 1.0)
@@ -468,7 +468,7 @@ func _demand_empty_capture() -> Dictionary:
 
 func _reject_after_demand(_value: Dictionary) -> bool:
 	_late_reject_reached = true
-	var staged: DemandState = _main.get("_loaded_demand") as DemandState
+	var staged: DemandState = (_main.get("_staged") as StagedSections).demand as DemandState
 	_late_reject_staged = staged != null and staged.day == 1 and staged.renown == 900.0
 	return false
 

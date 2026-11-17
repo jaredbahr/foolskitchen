@@ -88,7 +88,7 @@ func test_actual_close_counts_once_and_persists_only_at_the_next_morning() -> vo
 	_start()
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(_json(_records().capture()), _json(expected))
-	assert_null(_main.get("_loaded_shop_records"))
+	assert_null((_main.get("_staged") as StagedSections).shop_records)
 	assert_eq((_main.call("build_report", 2) as DayReport).record_lines, [] as Array[String])
 	_main.call("_new_game")
 	assert_eq(_records().snapshot(), ShopRecords.new().snapshot())
@@ -108,7 +108,7 @@ func test_legacy_missing_data_and_failed_whole_load_never_reuse_staged_records()
 	_start(saved_records)
 	assert_eq(Clock.sim.day, 2, "the otherwise valid old morning loads")
 	assert_eq(_records().snapshot(), ShopRecords.new().snapshot())
-	assert_null(_main.get("_loaded_shop_records"))
+	assert_null((_main.get("_staged") as StagedSections).shop_records)
 	var malformed: Dictionary = valid.duplicate(true)
 	malformed["data"]["shop_records"]["revenue"] = "not money"
 	_write(malformed)
@@ -117,7 +117,7 @@ func test_legacy_missing_data_and_failed_whole_load_never_reuse_staged_records()
 	_start(saved_records)
 	assert_eq(Clock.sim.day, 1)
 	assert_eq(_records().snapshot(), ShopRecords.new().snapshot())
-	assert_null(_main.get("_loaded_shop_records"))
+	assert_null((_main.get("_staged") as StagedSections).shop_records)
 	assert_eq(_saved(), rejected_file, "a failed load preserves the rejected checkpoint")
 	var late: Dictionary = valid.duplicate(true)
 	late["data"][REJECT] = {}
@@ -130,7 +130,7 @@ func test_legacy_missing_data_and_failed_whole_load_never_reuse_staged_records()
 	assert_true(_rejected_live_empty, "the candidate was not installed early")
 	assert_eq(Clock.sim.day, 1)
 	assert_eq(_records().snapshot(), ShopRecords.new().snapshot())
-	assert_null(_main.get("_loaded_shop_records"))
+	assert_null((_main.get("_staged") as StagedSections).shop_records)
 	assert_eq(_saved(), rejected_file)
 
 
@@ -187,6 +187,6 @@ func _empty() -> Dictionary:
 
 
 func _reject_after_records(_data: Dictionary) -> bool:
-	_rejected_staged = _main.get("_loaded_shop_records") is ShopRecords
+	_rejected_staged = (_main.get("_staged") as StagedSections).shop_records is ShopRecords
 	_rejected_live_empty = _records().snapshot()["last_day"] == 0
 	return false
