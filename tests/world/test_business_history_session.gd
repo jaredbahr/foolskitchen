@@ -241,8 +241,10 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 	assert_eq(_json(_history().dish_week(Clock.sim.day - 1)), _json(closed_day_week))
 	assert_true(_main.call("set_menu_visible", true))
 	var panel: MenuPanel = _main.get_node("Overlay/MenuPanel") as MenuPanel
+	var history: Label = panel.get_node("%Detail/DishHistory") as Label
 	for id: StringName in closed_day_week:
-		assert_true(panel.tree_item_for(id).get_text(2).begins_with("7 days:"))
+		assert_true(panel.select_recipe(id))
+		assert_true(history.text.begins_with("7 days: %d sold" % closed_day_week[id]["sold"]))
 	_main.call("set_menu_visible", false)
 	assert_null(_main.get("_loaded_business_history"))
 	_main.call("_begin_morning")
