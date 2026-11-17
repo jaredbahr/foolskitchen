@@ -12,7 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - Easy fills missing cook and server jobs, replaces staff who quit, and hires for busy kitchens or dining rooms when cash covers five days of the new wage. Look for the hire in the morning news. (#579)
-- Easy handles fair raise requests each morning. In Custom you can turn on automatic wages, and the Staff panel shows who is handling raises. (#580)
+- Easy handles fair raise requests each morning, and declines requests above the usual wage for the role. In Custom you can turn on automatic wages, and the Staff panel shows who is handling raises. (#580)
 - The evening report counts guests who have left. Walkouts count as unhappy, and unserved guests who are sent home at closing count as neutral. (#583)
 - Furnish a varied shop to earn prestige more easily. The fourth through sixth copies of an item earn half points, and later copies earn a quarter. The Vibe tooltip shows each item’s contribution. (#585)
 - Easy sets standard menu prices and resets staff jobs each morning. Custom lets you turn either on separately. (#581)
