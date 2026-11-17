@@ -39,6 +39,25 @@ func test_haggle_note_uses_actual_saving_and_is_not_serialized_or_reused() -> vo
 	assert_false((rows.get_child(1) as Label).text.contains("haggle"))
 
 
+func test_visitor_breakdown_shows_plain_names_counts_moods_and_clears_on_empty() -> void:
+	var day: DayReport = DayReport.new()
+	day.visitor_breakdown = [
+		{"name": "Students", "count": 2, "average_mood": 0.35},
+		{"name": "Families", "count": 2, "average_mood": 0.34},
+		{"name": "Regulars", "count": 3, "average_mood": 0.6},
+	]
+	_report.call("show_report", day)
+	var label: Label = _report.get_node("%VisitorBreakdown") as Label
+	assert_eq(label.text, "Regulars 3 (happy) · Families 2 (unhappy) · Students 2 (neutral)")
+	assert_true(label.visible)
+	assert_eq(day.visitor_breakdown[0]["name"], "Students", "display sorting does not mutate report data")
+	_report.call("show_report", DayReport.from_dict({"customers_served": 4}))
+	assert_eq(label.text, "")
+	assert_false(label.visible, "older reports have no visitor data")
+	_report.call("show_report", DayReport.new())
+	assert_false(label.visible, "there is no breakdown without guests")
+
+
 func test_booking_cash_rows_name_deposit_refund_and_applied_advance() -> void:
 	var day: DayReport = DayReport.new()
 	day.income[Ledger.BOOKING_DEPOSIT] = 30

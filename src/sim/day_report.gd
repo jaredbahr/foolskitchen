@@ -37,6 +37,8 @@ var customers_lost: int = 0
 ## already counted among customers_served. Saved only on days there were any.
 var takeaways: int = 0
 var leave_reasons: Dictionary = {}
+## Detached observations of who came and how they felt when they left.
+var visitor_breakdown: Array[Dictionary] = []
 var reviews: Array[String] = []
 ## Worst observed floor condition, already mapped to a player-facing word.
 var cleanliness_label: String = ""
@@ -302,7 +304,31 @@ func to_dict() -> Dictionary:
 		result["record_lines"] = record_lines.duplicate()
 	if not away_site_lines.is_empty():
 		result["away_site_lines"] = away_site_lines.duplicate()
+	var visitors: Array[Dictionary] = _public_visitor_breakdown(visitor_breakdown)
+	if not visitors.is_empty():
+		result["visitor_breakdown"] = visitors
 	return result
+
+
+static func _public_visitor_breakdown(value: Variant) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if not value is Array:
+		return rows
+	for saved: Variant in value:
+		if not saved is Dictionary:
+			continue
+		var label: Variant = saved.get("name")
+		var count: Variant = saved.get("count")
+		var mood: Variant = saved.get("average_mood")
+		if not label is String or label.strip_edges().is_empty() or label.contains("\n") \
+				or label.contains("\r") or not _whole_in_range(count, 1, MAX_FORECAST_INTEGER):
+			continue
+		if mood != null and (not (mood is float or mood is int) \
+				or not is_finite(float(mood)) or float(mood) < 0.0 or float(mood) > 1.0):
+			continue
+		rows.append({"name": label.strip_edges(), "count": int(count),
+			"average_mood": float(mood) if mood != null else null})
+	return rows
 
 
 ## Restores a snapshot, including JSON's string keys and numeric values.
@@ -327,6 +353,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.customers_lost = int(data.get("customers_lost", 0))
 	report.takeaways = clampi(int(data.get("takeaways", 0)), 0, maxi(0, report.customers_served))
 	report.leave_reasons = _name_counts(data.get("leave_reasons", {}))
+	report.visitor_breakdown = _public_visitor_breakdown(data.get("visitor_breakdown", []))
 	var saved_reviews: Variant = data.get("reviews", [])
 	if saved_reviews is Array:
 		for quote: Variant in saved_reviews:
