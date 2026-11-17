@@ -15,6 +15,7 @@ Each line ends with its PR number.
 - Easy handles fair raise requests each morning. In Custom you can turn on automatic wages, and the Staff panel shows who is handling raises. (#580)
 - The evening report counts guests who have left. Walkouts count as unhappy, and unserved guests who are sent home at closing count as neutral. (#583)
 - Furnish a varied shop to earn prestige more easily. The fourth through sixth copies of an item earn half points, and later copies earn a quarter. The Vibe tooltip shows each item’s contribution. (#585)
+- Easy sets standard menu prices and resets staff jobs each morning. Custom lets you turn either on separately. (#581)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
 - See each dish's sales, average quality and happy guests over the last seven days in the Menu, and sort by sales or by name within each group. (#539)
