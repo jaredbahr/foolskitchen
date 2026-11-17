@@ -203,7 +203,7 @@ func test_late_whole_load_failure_cannot_install_staged_weather_or_leak_it_into_
 	assert_true(_reject_saw_staged_weather, "valid day7 rain was staged before the later provider refused")
 	assert_eq(_weather().to_dict(), fresh_weather)
 	assert_eq(_streams().get("weather"), fresh_stream)
-	assert_null(_main.get("_loaded_weather"), "new game clears pending weather after the whole-load failure")
+	assert_null((_main.get("_staged") as StagedSections).weather, "new game clears pending weather after the whole-load failure")
 	assert_eq(FileAccess.get_file_as_string(_path()), failing_text)
 	_advance_morning()
 	assert_eq(_weather().day, 2)
@@ -292,7 +292,7 @@ func _empty_capture() -> Dictionary:
 
 func _reject_after_weather(_data: Dictionary) -> bool:
 	_reject_reached = true
-	var staged: Variant = _main.get("_loaded_weather")
+	var staged: Variant = (_main.get("_staged") as StagedSections).weather
 	_reject_saw_staged_weather = staged is WeatherState and staged.day == 7 and staged.kind == WeatherState.Kind.RAIN
 	return false
 

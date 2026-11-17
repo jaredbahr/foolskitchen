@@ -12,6 +12,7 @@ Each line ends with its PR number.
 
 ### Players
 - The tip jar adds 10% to the day’s combined tips at closing, including tips from group bookings. (#582)
+- New art for the coming walk-up window and seaside treats: a serving hatch for the shop wall in wood, painted and blue-and-white seaside styles with a roll-down shutter, a soft-serve machine, a shaved-ice cart, ice-cream cones, shaved ice, a paper cone of fries, and an evening dress kit (tablecloths, a candle and a small vase). They are not buildable yet; the walk-up window and its menu come in a later update. (#589)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
 - The Daily Ladle slides in each morning with a headline about yesterday and a few notes for today. Press Close or Esc to put it away, or turn off “Show the morning paper” in Settings. (#551)
@@ -260,6 +261,7 @@ Each line ends with its PR number.
 ### Under the hood
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
+- Loading a save no longer keeps 34 separate holding variables in the 8,000-line game session script: they moved into one small class with its own tests, which check that every held section is emptied when a load or a new game should empty it. Saving and loading are unchanged. (#586)
 - The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#549)
 - Claude can hand small, self-contained coding tasks (boilerplate, test scaffolds, log summaries) to DeepSeek with `tools/deepseek.py`, and checks the result before it goes in. (#543)
 - The first piece taken out of the 8,000-line game session script: the facts a closing day leaves for the evening report (XP earned, goals reached, records, tier rises) now live in one small tested class, and `tools/main_map.py` prints which pieces can come out next. The evening report is unchanged. (#534)

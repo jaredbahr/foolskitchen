@@ -139,7 +139,7 @@ func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() 
 	_start_main()
 	assert_eq(Clock.sim.day, 2)
 	assert_eq(_json(_history().capture()), expected, "whole-load success installs the saved history")
-	assert_null(_main.get("_loaded_business_history"))
+	assert_null((_main.get("_staged") as StagedSections).business_history)
 	_main.call("_begin_morning")
 	assert_eq(_json(_history().capture()), expected, "re-entering the same morning does not duplicate history")
 	assert_eq(_document()["data"]["business_history"], _json(expected))
@@ -156,7 +156,7 @@ func test_missing_legacy_section_clears_stale_staging_and_loads_empty() -> void:
 	assert_eq(Clock.sim.day, 2, "the otherwise valid legacy morning actually loaded")
 	assert_eq(_history().summaries(), [] as Array[Dictionary])
 	assert_eq(_history().recent(7), [] as Array[Dictionary])
-	assert_null(_main.get("_loaded_business_history"), "missing optional data cannot reuse an old staged model")
+	assert_null((_main.get("_staged") as StagedSections).business_history, "missing optional data cannot reuse an old staged model")
 	assert_true(_history().valid_before(Clock.sim.day))
 	assert_eq(_document()["data"]["business_history"], _json(_history().capture()))
 
@@ -176,7 +176,7 @@ func test_malformed_and_future_history_fail_load_without_replacing_checkpoint() 
 		_start_main(_fixture_capture(1))
 		assert_eq(Clock.sim.day, 1, "invalid present history is a failed whole load, not a legacy default")
 		assert_eq(_history().summaries(), [] as Array[Dictionary])
-		assert_null(_main.get("_loaded_business_history"))
+		assert_null((_main.get("_staged") as StagedSections).business_history)
 		assert_eq(_saved_text(), failing, "the first fresh morning preserves the rejected checkpoint")
 	_empty_next_morning()
 	assert_eq(Clock.sim.day, 2)
@@ -200,7 +200,7 @@ func test_late_whole_load_rejection_and_missing_slot_clear_live_and_staged_rows(
 	assert_true(_reject_live_empty, "history cannot be installed before the whole load succeeds")
 	assert_eq(Clock.sim.day, 1)
 	assert_eq(_history().summaries(), [] as Array[Dictionary])
-	assert_null(_main.get("_loaded_business_history"))
+	assert_null((_main.get("_staged") as StagedSections).business_history)
 	assert_eq(_saved_text(), failing)
 	# Early failure is a distinct branch: a new attempt must clear preexisting
 	# live and staged rows even when no provider will run because the slot vanished.
@@ -211,11 +211,11 @@ func test_late_whole_load_rejection_and_missing_slot_clear_live_and_staged_rows(
 	SaveSystem.delete_slot(SLOT)
 	assert_false(_main.call("_load_autosave"))
 	assert_eq(_history().summaries(), [] as Array[Dictionary])
-	assert_null(_main.get("_loaded_business_history"))
+	assert_null((_main.get("_staged") as StagedSections).business_history)
 	_close_main()
 	_start_main(_expected_staged)
 	assert_eq(_history().summaries(), [] as Array[Dictionary], "an actual fresh session also clears pending history")
-	assert_null(_main.get("_loaded_business_history"))
+	assert_null((_main.get("_staged") as StagedSections).business_history)
 
 
 func test_hidden_report_reopens_and_hud_next_day_records_the_final_books() -> void:
@@ -363,7 +363,7 @@ func _empty_capture() -> Dictionary:
 
 func _reject_after_history(_data: Dictionary) -> bool:
 	_reject_reached = true
-	var staged: BusinessHistory = _main.get("_loaded_business_history") as BusinessHistory
+	var staged: BusinessHistory = (_main.get("_staged") as StagedSections).business_history as BusinessHistory
 	_reject_staged = staged != null and staged.capture() == _expected_staged
 	_reject_live_empty = _history().summaries().is_empty()
 	return false

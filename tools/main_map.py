@@ -32,7 +32,7 @@ AUTOLOADS = ("SaveSystem", "Economy", "Clock", "GameState", "EventBus", "Setting
 SEAMS = {
     "save-sections": r"_(capture|restore)_.*",
     "save-load-staging": r"_load_autosave.*|_validate_staged_sections|_stage_site_hours|_refuse_staged|"
-                         r"_install_staged_sections|_clear_site_staging",
+                         r"_install_staged_sections",
     "new-game": r"_new_game",
     "report": r"build_report",
     "panels": r"(is|set)_\w+_visible|toggle_\w+|_dismiss_\w+|_on_\w+_close_requested",

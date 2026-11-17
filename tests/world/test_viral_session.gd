@@ -225,7 +225,7 @@ func test_later_provider_rejection_never_installs_staged_spell() -> void:
 	_start()
 	assert_true(_late_reject)
 	assert_true(_staged_before_reject, "Real provider order reached staged viral before rejecting")
-	assert_null(_main.get("_loaded_viral"))
+	assert_null((_main.get("_staged") as StagedSections).viral)
 	assert_eq((_main.get("viral_review") as ViralReview).last_trigger_day, 0)
 	assert_eq(FileAccess.get_file_as_string(_path()), rejected_bytes)
 
@@ -236,6 +236,6 @@ func _empty() -> Dictionary:
 
 func _reject(_data: Dictionary) -> bool:
 	_late_reject = true
-	var staged: ViralReview = _main.get("_loaded_viral") as ViralReview
+	var staged: ViralReview = (_main.get("_staged") as StagedSections).viral as ViralReview
 	_staged_before_reject = staged != null and staged.last_trigger_day == 1
 	return false
