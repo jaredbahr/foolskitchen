@@ -357,7 +357,7 @@ def verify_service_views(root):
     verify_hud_identity('hud-1600', (1600, 900), 90, 150)
     verify_profit_review(root)
 
-    # One actual five-day service capture; the scene validates native forecast text and bounds.
+    # One actual two-day service capture (Thursday and Friday, forecasting Saturday); the scene validates native forecast text and bounds.
     png = root / 'demand-report' / 'shot_0060.png'
     raw = png.read_bytes()
     assert raw[:8] == b'\x89PNG\r\n\x1a\n' and len(raw) > 1000, 'demand-report: missing/invalid PNG'
@@ -374,8 +374,8 @@ def verify_service_views(root):
     log = (root / 'demand-report' / 'capture.log').read_text()
     assert log.count('DEMAND_REPORT_REVIEW ') == 1, 'demand-report: missing unique native validation receipt'
     review = json.loads(log.split('DEMAND_REPORT_REVIEW ', 1)[1].splitlines()[0])
-    assert review['unchanged'] is True and review['day'] == 5 and review['forecast']['day'] == 6, 'demand-report: incoherent actual forecast'
-    print(f'demand-report: actual day5 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
+    assert review['unchanged'] is True and review['day'] == 2 and review['forecast']['day'] == 3, 'demand-report: incoherent actual forecast'
+    print(f'demand-report: actual day2 forecast, unchanged session, sha256={hashlib.sha256(raw).hexdigest()}')
 
     # One real seeded service of two to ten days; GDScript validates team/reason text and geometry.
     png = root / 'staff-activity-report' / 'shot_0060.png'

@@ -31,6 +31,7 @@ const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanl
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const SEASON_TUNING: SeasonTuning = preload("res://data/balance/seasons.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const WEEK_RHYTHM: WeekRhythm = preload("res://data/balance/week.tres")
 const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
@@ -1794,7 +1795,7 @@ func _refresh_demand() -> void:
 		vibe_result.score, _demand_day, _street_factor(_demand_day),
 		viral_review.factor(_demand_day),
 		_effective_signature_factor(),
-		signature_recipe.display_name if signature_recipe != null else "")
+		signature_recipe.display_name if signature_recipe != null else "", WEEK_RHYTHM)
 	if next == null or not sim.set_demand_factor(next.total):
 		return
 	_demand_breakdown = next
@@ -1862,7 +1863,7 @@ func forecast_next_demand() -> Dictionary:
 		vibe_result.score, projected.day, _street_factor(projected.day),
 		viral_review.factor_for_tomorrow(Clock.sim.day, open_service_pending),
 		_effective_signature_factor(),
-		signature_recipe.display_name if signature_recipe != null else "")
+		signature_recipe.display_name if signature_recipe != null else "", WEEK_RHYTHM)
 	if next == null:
 		return {}
 	var result: Dictionary = next.to_dict()
