@@ -104,6 +104,8 @@ CAPTURE_FRAMES = {
         "blueprint-looks": (12, 60),
         "menu-access-open": (12,),
         "menu-presets": (30,),
+        "difficulty-title": (60,),
+        "difficulty-settings": (60,),
         "settings": (12,),
         "shortcuts": (12,),
         "settings-world": (90,),

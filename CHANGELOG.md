@@ -243,6 +243,7 @@ Each line ends with its PR number.
 
 - Continue now explains when a saved game cannot be loaded and a fresh shop opens, while keeping the existing save for now. (#277)
 - Open Guide from the shop HUD or the F1 keyboard shortcuts to read how nine shop systems work, including prices, stock, staff, building and loans. (#563)
+- Choose Easy, Normal, Hard or Custom when starting a Career. Easy buys ingredients at list price, Hard leaves stock orders to you, and Custom lets you pick those options. Difficulty changes in Settings take effect the next morning. (#565)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)

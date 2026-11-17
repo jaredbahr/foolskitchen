@@ -6,6 +6,7 @@ extends Control
 signal close_requested
 signal quit_to_title_requested
 signal show_guide_requested
+signal difficulty_requested(mode_id: StringName, flags: Dictionary)
 
 const PLAY_GRID_LABEL: String = "Show floor grid while playing"
 const BUILD_GRID_LABEL: String = "Show floor grid in Build"
@@ -19,12 +20,19 @@ var _preferences: SettingsPreferences
 var _save_delay: Timer
 var _panel_top: float = VIEW_MARGIN
 var _whats_new: WhatsNewPanel
+var _difficulty: Difficulty
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _column: VBoxContainer = $Panel/Column
 @onready var _scroll: ScrollContainer = $Panel/Column/Scroll
 @onready var _content: VBoxContainer = $Panel/Column/Scroll/Content
 @onready var _title_bar: HBoxContainer = $Panel/Column/TitleBar
+
+@onready var _difficulty_section: VBoxContainer = %Difficulty
+@onready var _difficulty_choice: OptionButton = %DifficultyChoice
+@onready var _difficulty_schedule: Label = %DifficultySchedule
+@onready var _auto_buy: CheckButton = %AutoBuy
+@onready var _auto_buy_premium: CheckButton = %AutoBuyPremium
 
 @onready var _master: HSlider = %MasterSlider
 @onready var _music: HSlider = %MusicSlider
@@ -56,6 +64,17 @@ var _whats_new: WhatsNewPanel
 
 
 func _ready() -> void:
+	_content.move_child(_difficulty_section, 0)
+	for mode_id: StringName in Difficulty.MODES:
+		_difficulty_choice.add_item(Difficulty.mode_name(mode_id))
+		var index: int = _difficulty_choice.item_count - 1
+		_difficulty_choice.get_popup().set_item_tooltip(index, DifficultyText.description(mode_id))
+	_difficulty_choice.item_selected.connect(_on_difficulty_selected)
+	_auto_buy.text = DifficultyText.AUTO_BUY
+	_auto_buy_premium.text = DifficultyText.AUTO_BUY_PREMIUM
+	_auto_buy.toggled.connect(_on_custom_flag_toggled)
+	_auto_buy_premium.toggled.connect(_on_custom_flag_toggled)
+	_refresh_difficulty()
 	_scale.add_item("100%", 100)
 	_scale.add_item("125%", 125)
 	_scale.add_item("150%", 150)
@@ -164,6 +183,48 @@ func refresh() -> void:
 		_auto_pause_toggles[key].set_pressed_no_signal(_preferences.auto_pause_enabled(key))
 	_status.text = "Changes are saved automatically."
 	_layout_card()
+
+
+## Difficulty belongs to the Career save. Title and Creative do not bind it.
+func set_difficulty(value: Difficulty) -> void:
+	_difficulty = value
+	_refresh_difficulty()
+
+
+func _refresh_difficulty() -> void:
+	if not is_node_ready():
+		return
+	_difficulty_section.visible = _difficulty != null
+	if _difficulty == null:
+		return
+	var pending: StringName = _difficulty.pending_mode()
+	var selected: StringName = _difficulty.mode() if pending.is_empty() else pending
+	_difficulty_choice.select(Difficulty.MODES.find(selected))
+	_difficulty_choice.tooltip_text = DifficultyText.description(selected)
+	_difficulty_schedule.text = "Changes apply next morning."
+	if not pending.is_empty():
+		_difficulty_schedule.text = "From tomorrow: %s (today: %s)" % [
+			Difficulty.mode_name(pending), Difficulty.mode_name(_difficulty.mode())]
+	var custom: bool = selected == &"custom"
+	_auto_buy.visible = custom
+	_auto_buy_premium.visible = custom
+	var flags: Dictionary = _difficulty.selected_custom_flags()
+	_auto_buy.set_pressed_no_signal(flags[&"buy"])
+	_auto_buy_premium.set_pressed_no_signal(flags[&"buy_premium"])
+
+
+func _on_difficulty_selected(index: int) -> void:
+	if _difficulty != null and index >= 0 and index < Difficulty.MODES.size():
+		difficulty_requested.emit(Difficulty.MODES[index], _difficulty.selected_custom_flags())
+
+
+func _on_custom_flag_toggled(_enabled: bool) -> void:
+	if _difficulty == null or not _auto_buy.visible:
+		return
+	var flags: Dictionary = _difficulty.selected_custom_flags()
+	flags[&"buy"] = _auto_buy.button_pressed
+	flags[&"buy_premium"] = _auto_buy_premium.button_pressed
+	difficulty_requested.emit(&"custom", flags)
 
 
 ## Main supplies the settled HUD bottom, including any wrapped action rows.

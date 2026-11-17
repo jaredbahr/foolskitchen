@@ -59,6 +59,12 @@ text = "11:00"
 layout_mode = 2
 text = "Morning"
 
+[node name="Difficulty" type="Label" parent="Top/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+
 [node name="LeftSpace" type="Control" parent="Top/Row"]
 visible = false
 layout_mode = 2

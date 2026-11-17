@@ -13,7 +13,7 @@ const GLOBAL: PackedStringArray = [
 	"economy", "blueprints", "menu_presets", "milestones", "weekly_challenge", "hints", "weather",
 	"collection_toasts", "sites",
 	# Career or Creative (FK-141) belongs to the whole game, not one site.
-	"game_mode",
+	"game_mode", "difficulty",
 	# Service event cooldowns (#495) follow the owner, wherever he works.
 	"service_events",
 	# The opening-week goal chain (#494) is the owner's first week, not a site's.

@@ -139,6 +139,8 @@ var reputation: ReputationBook = ReputationBook.new()
 var group_booking: GroupBooking = GroupBooking.new(BOOKING_TUNING)
 ## Small persistent named cast, written only with the normal morning save.
 var regulars: RegularCast = RegularCast.new()
+var difficulty: Difficulty = Difficulty.new()
+var _loaded_difficulty: Difficulty = null
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 var owner_appearance: OwnerAppearance = OwnerAppearance.new()
 ## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
@@ -606,6 +608,8 @@ func _bind_world_presentation() -> void:
 		Preferences.changed.connect(_on_morning_paper_preference_changed)
 	_settings_panel.set_quit_to_title_available(true)
 	_settings_panel.set_show_guide_available(true)
+	if not _settings_panel.difficulty_requested.is_connected(_on_difficulty_requested):
+		_settings_panel.difficulty_requested.connect(_on_difficulty_requested)
 	if not _settings_panel.show_guide_requested.is_connected(_on_show_guide_requested):
 		_settings_panel.show_guide_requested.connect(_on_show_guide_requested)
 	if not _settings_panel.close_requested.is_connected(_on_settings_close_requested):
@@ -787,6 +791,7 @@ func start() -> void:
 		autoload.call(&"register_save_provider")
 	# Before "owner" and "menu": their restores read the mode's unlock level.
 	SaveSystem.register("game_mode", GameMode.capture, GameMode.restore)
+	SaveSystem.register("difficulty", _capture_difficulty, _restore_difficulty)
 	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
@@ -863,6 +868,7 @@ func _wire_session() -> bool:
 		push_error("Cannot book money to the active site")
 		return false
 	world.clock = Clock.sim
+	sim.difficulty = difficulty
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
 	# The named stream exists only once there is a cat, so shops without one
@@ -2515,12 +2521,12 @@ func build_restock_estimate() -> int:
 	var pending: Dictionary[StringName, int] = _on_the_way()
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return int(StockAlerts.forecast(Economy.stock, _reorder(true), _shelf_lives(),
-			world.clock.day + 1, _unit_costs(world.clock.day + 1), 2147483647, auto_reorder_premium,
+			world.clock.day + 1, _unit_costs(world.clock.day + 1), 2147483647, _reorder_premium(true),
 			_storage_capacity(), kinds, pending)["order_cost"])
 	var empty: Stock = Stock.new()
 	var space: StorageSpace = StorageSpace.new(_storage_capacity(), empty, pending, kinds)
 	return int(_reorder(true).plan(empty, _unit_costs(world.clock.day + 1), 2147483647,
-		auto_reorder_premium, false, space)["cost"])
+		_reorder_premium(true), false, space)["cost"])
 
 
 func build_restock_warning() -> String:
@@ -2848,19 +2854,25 @@ func _on_inspection_tick(_tick: int) -> void:
 
 ## Deletes the autosave and restarts the scene from day 1, in the same mode.
 func start_over() -> void:
-	start_fresh_run(get_tree(), save_slot, use_saves, GameMode.is_creative())
+	start_fresh_run(get_tree(), save_slot, use_saves, GameMode.is_creative(),
+		difficulty.mode(), difficulty.active_custom_flags())
 
 
 ## The title's New game and the existing F10 route share replacement semantics.
 ## `creative` picks the new game's mode (FK-141); _new_game() applies it.
 static func start_fresh_run(tree: SceneTree, slot: String = AUTOSAVE_SLOT, with_saves: bool = true,
-		creative: bool = false) -> Error:
-	GameMode.request_new_game(creative)
+		creative: bool = false, difficulty_id: StringName = &"normal", custom_flags: Dictionary = {}) -> Error:
+	if not creative and not Difficulty.new().start(difficulty_id, custom_flags):
+		return ERR_INVALID_PARAMETER
 	if with_saves:
 		var error: Error = SaveSystem.delete_slot(slot)
 		if error != OK and error != ERR_FILE_NOT_FOUND:
 			return error
-	return tree.change_scene_to_file("res://src/world/main.tscn")
+	GameMode.request_new_game(creative, difficulty_id, custom_flags)
+	var error: Error = tree.change_scene_to_file("res://src/world/main.tscn")
+	if error != OK:
+		GameMode.request_new_game(false)
+	return error
 
 
 ## Returning discards only unsaved changes; the existing morning save is intact.
@@ -2929,7 +2941,7 @@ func _report_sources(day: int) -> DayReportSources:
 	sources.food_cost = _food_cost_today
 	sources.haggle_receipt = _haggle_receipt
 	sources.stock_forecast = StockAlerts.forecast(Economy.stock,
-		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), auto_reorder_premium,
+		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), _reorder_premium(true),
 		_storage_capacity(), StorageSpace.kinds_of(content), deliveries.pending_by_id())
 	sources.demand_forecast = forecast_next_demand()
 	return sources
@@ -2955,7 +2967,8 @@ func _new_game() -> void:
 	# Career or Creative, as the title asked (FK-141). Creative later also
 	# needs: choosing any lot and neighbourhood (TODO #405), and saving a
 	# design as a blueprint to place in career (TODO #432).
-	GameMode.begin_new_game()
+	difficulty = GameMode.begin_new_game()
+	_loaded_difficulty = null
 	_morning_paper_day = 0
 	if _morning_paper != null:
 		_morning_paper.dismiss()
@@ -3052,6 +3065,7 @@ func _load_autosave() -> bool:
 
 
 func _load_autosave_sections() -> bool:
+	_loaded_difficulty = null
 	_booking_paid_total = 0
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
@@ -3324,6 +3338,8 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
 	_loaded_aquarium = {}
 	if with_globals:
+		difficulty = _loaded_difficulty if _loaded_difficulty != null else Difficulty.new()
+		_loaded_difficulty = null
 		site_book = _loaded_sites if _loaded_sites != null else SiteBook.new()
 		_loaded_sites = null
 	_loaded_layout = layout
@@ -3823,6 +3839,18 @@ func _restore_opening_week(data: Dictionary) -> bool:
 	return true
 
 
+func _capture_difficulty() -> Dictionary:
+	return difficulty.to_dict()
+
+
+func _restore_difficulty(data: Dictionary) -> bool:
+	var candidate: Difficulty = Difficulty.new()
+	if not candidate.from_dict(data):
+		return false
+	_loaded_difficulty = candidate
+	return true
+
+
 func _capture_reorder() -> Dictionary:
 	return reorder_settings.to_dict()
 
@@ -3885,7 +3913,7 @@ func _refresh_lease_offer() -> void:
 	_menu_panel.set_lease_offer(true,
 		"More land to expand, free." if GameMode.is_creative()
 		else "Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
-			Fmt.money(lease.deposit), Fmt.money(lease.daily_rent)],
+			Fmt.money(lease.deposit), Fmt.money(AwaySites.adjusted_rent(lease.daily_rent, difficulty.mult(&"rent")))],
 		RestockBudgetWarning.text(Economy.spendable(), lease.deposit, build_restock_estimate()), lease_refusal())
 
 
@@ -5164,10 +5192,25 @@ func _reorder(tomorrow: bool = false) -> ReorderSettings:
 				if ingredient != null and not used.has(ingredient.id):
 					used.append(ingredient.id)
 	reorder_settings.set_in_use(used)
-	if sim == null or _demand_day != Clock.sim.day or menu_settings == null:
-		return reorder_settings
-	return reorder_settings.with_forecast(restock_forecast_targets(
-		tomorrow or Clock.sim.phase == SimClock.Phase.CLOSED))
+	var planned: ReorderSettings = reorder_settings
+	if sim != null and _demand_day == Clock.sim.day and menu_settings != null:
+		planned = reorder_settings.with_forecast(restock_forecast_targets(
+			tomorrow or Clock.sim.phase == SimClock.Phase.CLOSED))
+	var policy: Difficulty = _reorder_difficulty(tomorrow)
+	if not policy.auto(&"buy") or policy.mode() == &"easy":
+		if planned == reorder_settings:
+			planned = reorder_settings.copy()
+		for id: StringName in planned.ids():
+			planned.set_enabled(id, policy.auto(&"buy"))
+	return planned
+
+
+func _reorder_difficulty(tomorrow: bool = false) -> Difficulty:
+	return difficulty.for_day(Clock.sim.day + 1) if tomorrow else difficulty
+
+
+func _reorder_premium(tomorrow: bool = false) -> float:
+	return auto_reorder_premium if _reorder_difficulty(tomorrow).auto(&"buy_premium") else 0.0
 
 
 ## Approximate menu shares use the authored visit hours and current eligible
@@ -5573,6 +5616,7 @@ func _property_buyer() -> PropertyPanel.Buyer:
 	buyer.limits = SITE_LIMITS
 	buyer.cash = Economy.spendable()
 	buyer.loan = Economy.loan.principal
+	buyer.rent_multiplier = difficulty.mult(&"rent")
 	return buyer
 
 
@@ -5963,6 +6007,20 @@ func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[Stri
 		if entry.floor_required:
 			snapshot.append("floor:%s:%s" % [entry.definition.floor_id, entry.has_floor])
 	return snapshot
+
+
+func _refresh_difficulty() -> void:
+	var creative: bool = GameMode.is_creative()
+	_settings_panel.set_difficulty(null if creative else difficulty)
+	var label: Label = $HUD/Top/Row/Difficulty
+	label.text = Difficulty.mode_name(difficulty.mode())
+	label.visible = not creative and difficulty.mode() != &"normal"
+
+
+func _on_difficulty_requested(mode_id: StringName, flags: Dictionary) -> void:
+	if _started and not display_only and not GameMode.is_creative():
+		difficulty.request_change(mode_id, flags, Clock.sim.day + 1)
+		_refresh_difficulty()
 
 
 func set_settings_visible(value: bool) -> bool:
@@ -6413,6 +6471,8 @@ func shop_sell(item_id: int) -> int:
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
 	$Overlay/TodayPanel.hide()
+	difficulty.apply_morning(Clock.sim.day)
+	_refresh_difficulty()
 	# Opening-week toasts held under last night's report show now, whichever
 	# button started the day.
 	for line: String in _held_opening_toasts:
@@ -6706,7 +6766,7 @@ func _restock() -> void:
 	_last_delivery.clear()
 	_deliver_due(true)
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.spendable(),
-		auto_reorder_premium, false, storage_space())
+		_reorder_premium(), false, storage_space())
 	_morning_order = {"short": order["short"], "unfit": order["unfit"]}
 	_buy_standing(order, "The morning auto-order could not be paid")
 	var short: Dictionary = order["short"]
@@ -7026,14 +7086,15 @@ func _cart_order() -> Array[StringName]:
 
 
 func stock_set_auto(id: StringName, enabled: bool) -> bool:
-	if not can_edit_stock() or not reorder_settings.set_enabled(id, enabled):
+	if not can_edit_stock() or not difficulty.auto(&"buy") or difficulty.mode() == &"easy" \
+			or not reorder_settings.set_enabled(id, enabled):
 		return false
 	_refresh_stock_panel()
 	return true
 
 
 func stock_set_target(id: StringName, target: int) -> bool:
-	if not can_edit_stock() or not reorder_settings.set_target(id, target):
+	if not can_edit_stock() or not difficulty.auto(&"buy") or not reorder_settings.set_target(id, target):
 		return false
 	_refresh_stock_panel()
 	return true
@@ -7126,7 +7187,7 @@ func stock_rows() -> Array[Dictionary]:
 				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
 					"expiring": int(expiring.get(id, 0)), "unit_cost": int(costs[id]),
 					"season_tag": SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning, ingredient.unit_cost),
-					"enabled": reorder_settings.is_enabled(id), "target": planned.target(id),
+					"enabled": planned.is_enabled(id), "target": planned.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
 					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
 					"no_dish": not in_dishes.has(id)})
@@ -7266,7 +7327,8 @@ func _refresh_stock_panel() -> void:
 	if _stock_panel == null or Clock.sim == null or content == null or world == null:
 		return
 	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.spendable(),
-		"editable": can_edit_stock(), "notes": stock_notes(), "premium": auto_reorder_premium,
+		"editable": can_edit_stock(), "notes": stock_notes(), "premium": _reorder_premium(),
+		"auto_buy": difficulty.auto(&"buy"), "auto_buy_forced": difficulty.mode() == &"easy",
 		"cart_total": stock_cart_total(), "cart_refusal": stock_cart_refusal(),
 		"haggle_available": can_start_haggle(), "haggle_percent": stock_haggle_percent(),
 		"haggle_morning": Clock.sim.phase == SimClock.Phase.MORNING,
@@ -7348,7 +7410,7 @@ func _on_stock_close_requested() -> void:
 ## nothing here. Like #183's top-up it arrives at once.
 func _restock_station_supplies() -> void:
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.spendable(),
-		auto_reorder_premium, true, storage_space())
+		_reorder_premium(), true, storage_space())
 	_buy_standing(order, "The opening top-up could not be paid")
 	var short: Dictionary = order["short"]
 	for id: StringName in short:
@@ -7379,7 +7441,7 @@ func _charge_closing_costs() -> void:
 	# (#465), on every close: a service, a renovation day or "Close for today".
 	var lot: StringName = site_book.lot_id(site_book.active_id)
 	var rent: int = AwaySites.lot_rent(lot, _home_rent(), content.lot(lot) if content != null else null,
-		lease_expanded)
+		lease_expanded, difficulty.mult(&"rent"))
 	if rent == AwaySites.UNKNOWN_RENT:
 		push_warning("This site's lot is missing from the game's data; no rent charged")
 		rent = 0
@@ -7417,7 +7479,7 @@ func _close_away_sites(day: int) -> void:
 	if content != null:
 		lots = content.lots()
 	var plans: Array[Dictionary] = AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
-		BOOKING_TUNING, lots)
+		BOOKING_TUNING, lots, difficulty.mult(&"rent"))
 	# A day of renovation done at every fixer-upper (docs/TECH.md "Limits and
 	# renovation"), before tonight's lines say how much is left.
 	var ready: Array[StringName] = site_book.count_down_renovations()

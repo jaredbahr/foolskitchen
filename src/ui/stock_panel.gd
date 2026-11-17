@@ -145,10 +145,12 @@ func refresh() -> void:
 	var editable: bool = bool(_view.get("editable", false))
 	var premium: float = float(_view.get("premium", 0.0))
 	var premium_text: String = "a %d%% premium" % roundi(premium * 100.0) if premium > 0.0 else "list price"
-	_status.text = ("Order any time, free: morning orders arrive at once, later ones with the next delivery. "
-		+ "Auto-reorder tops each ingredient up to its target every morning.") if GameMode.is_creative() \
-		else ("Order any time and pay now: morning orders arrive at once, later ones with the next delivery. "
-		+ "Auto-reorder tops each ingredient up to its target every morning, at %s." % premium_text)
+	var creative: bool = GameMode.is_creative()
+	_status.text = "Order any time, free: " if creative else "Order any time and pay now: "
+	_status.text += "morning orders arrive at once, later ones with the next delivery."
+	if bool(_view.get("auto_buy", true)):
+		_status.text += " Auto-reorder tops each ingredient up to its target every morning"
+		_status.text += "." if creative else ", at %s." % premium_text
 	var delivery: Dictionary = _view.get("delivery", {})
 	_delivery_label.text = str(delivery.get("text", "Next delivery: tomorrow morning"))
 	_delivery_bar.value = clampf(float(delivery.get("fraction", 0.0)), 0.0, 1.0) * 100.0
@@ -270,6 +272,9 @@ func _refresh_row(row: Dictionary, data: Dictionary, editable: bool, free: int) 
 		"Click again to throw away all %d %s. There is no refund." % [count, display] if armed
 		else "Throw away all %d %s, with no refund (asks first)" % [count, display])
 	var toggle: Button = row["auto"]
+	var auto_buy: bool = bool(_view.get("auto_buy", true))
+	toggle.visible = auto_buy and not bool(_view.get("auto_buy_forced", false))
+	(row["reorder"] as HBoxContainer).visible = auto_buy
 	toggle.set_pressed_no_signal(enabled)
 	toggle.text = "Auto-reorder on" if enabled else "Auto-reorder off"
 	toggle.disabled = not editable
@@ -441,7 +446,7 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	# A thin divider separates rows without taking space from their controls.
 	separator.add_theme_constant_override("separation", 1)
 	row.add_child(separator)
-	parts.merge({"throw": throw, "auto": auto, "target_label": target_label,
+	parts.merge({"throw": throw, "auto": auto, "reorder": reorder, "target_label": target_label,
 		"minus": minus, "target": target, "plus": plus})
 	return parts
 
