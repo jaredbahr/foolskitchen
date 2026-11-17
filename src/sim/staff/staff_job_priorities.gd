@@ -27,6 +27,10 @@ var _values: Dictionary[StringName, int] = {}
 
 func _init(staff_role: StringName = &"cook") -> void:
 	role = staff_role
+	reset_to_defaults()
+
+
+func reset_to_defaults() -> void:
 	for job: StringName in JOBS:
 		_values[job] = _default_value(role, job)
 

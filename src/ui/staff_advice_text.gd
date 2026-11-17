@@ -45,3 +45,17 @@ static func last_service_heading(summary: Dictionary) -> String:
 
 static func recommendation(id: StringName) -> String:
 	return String(ADVICE.get(id, ""))
+
+
+static func hire_notice(person: StaffMember, reason: StringName) -> String:
+	var roles: Dictionary[StringName, String] = {
+		&"cook": "cook", &"server": "server", &"cleaner": "cleaner", &"manager": "manager",
+	}
+	var role: String = roles[person.role]
+	var explanation: String
+	match reason:
+		&"missing": explanation = "the shop needed a %s" % role
+		&"replacement": explanation = "a teammate left"
+		_: explanation = "guests were waiting for the kitchen" if person.role == &"cook" \
+			else "guests were waiting for service"
+	return "Hired %s (%s) because %s." % [person.display_name, role, explanation]

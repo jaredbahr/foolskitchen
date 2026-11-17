@@ -15,6 +15,10 @@ var quality: float = 0.0
 var is_drink: bool = false
 
 
+static func stars_on_five(value: float) -> float:
+	return value * 5.0
+
+
 static func breakdown(recipe: RecipeDef, worker: StaffAgent, stations: Array[ItemDef],
 		tuning: MenuTuning = TUNING) -> DishQuality:
 	var result: DishQuality = DishQuality.new()
@@ -44,7 +48,7 @@ func explanation() -> String:
 	for index: int in station_names.size():
 		text += ", %s %+.2f" % [station_names[index], station_bonuses[index]]
 	# End on the same star scale the menu and report use.
-	text += " = %.2f (%.1f / 5 stars)" % [quality, quality * 5.0]
+	text += " = %.2f (%.1f / 5 stars)" % [quality, stars_on_five(quality)]
 	if unclamped != quality:
 		text += " (limited to 0–1)"
 	return text

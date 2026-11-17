@@ -1,6 +1,6 @@
 class_name StaffAdviceTuning
 extends Resource
-## Display-only staffing heuristics; these rules never change a simulation.
+## Shared staffing recommendation for evening advice and morning auto-hire.
 
 @export var high_busy_percent: float = 90.0
 @export var low_busy_percent: float = 70.0

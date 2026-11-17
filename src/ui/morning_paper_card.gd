@@ -8,6 +8,8 @@ const SLIDE_SECONDS: float = 0.22
 
 var _top: float = 0.0
 var _slide: Tween
+var _keep_clear_source: Callable
+var _left_obstacle: Control
 
 @onready var _masthead: Label = %Masthead
 @onready var _headline: Label = %Headline
@@ -17,7 +19,7 @@ var _slide: Tween
 
 func _ready() -> void:
 	_close.pressed.connect(dismiss)
-	get_viewport().size_changed.connect(_place)
+	get_viewport().size_changed.connect(refresh_layout)
 	minimum_size_changed.connect(_fit_height)
 
 
@@ -27,13 +29,12 @@ func show_paper(edition: Dictionary) -> void:
 	_headline.text = edition["headline"]
 	_notes.text = "\n".join(notes)
 	_notes.visible = not notes.is_empty()
-	_place()
+	refresh_layout()
 	show()
-	if _slide != null:
-		_slide.kill()
-	position.y = _top - SLIDE_DISTANCE
+	var top: float = position.y
+	position.y = top - SLIDE_DISTANCE
 	_slide = create_tween()
-	_slide.tween_property(self, "position:y", _top, SLIDE_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_slide.tween_property(self, "position:y", top, SLIDE_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 func dismiss() -> void:
@@ -45,20 +46,43 @@ func dismiss() -> void:
 
 func set_panel_top(top: float) -> void:
 	_top = top
-	_place()
+	refresh_layout()
 
 
-func _place() -> void:
+func set_keep_clear_source(source: Callable, left_obstacle: Control) -> void:
+	_keep_clear_source = source
+	_left_obstacle = left_obstacle
+
+
+func refresh_layout() -> void:
 	if not is_inside_tree():
 		return
 	if _slide != null:
 		_slide.kill()
 		_slide = null
 	var room: float = get_viewport_rect().size.x
-	var width: float = clampf(room - GUTTER * 2.0, 0.0, WIDTH)
-	size.x = width
+	var left: float = GUTTER
+	var right: float = room - GUTTER
+	var top: float = _top
+	var left_box: Rect2
+	if is_instance_valid(_left_obstacle) and _left_obstacle.is_visible_in_tree():
+		left_box = _left_obstacle.get_global_rect()
+		left = maxf(left, left_box.end.x + GUTTER)
+	var right_boxes: Array[Rect2] = []
+	if _keep_clear_source.is_valid():
+		right_boxes = _keep_clear_source.call()
+	for box: Rect2 in right_boxes:
+		right = minf(right, box.position.x - GUTTER)
+	if right - left < get_combined_minimum_size().x:
+		left = GUTTER
+		right = room - GUTTER
+		top = maxf(top, left_box.end.y + GUTTER)
+		for box: Rect2 in right_boxes:
+			top = maxf(top, box.end.y + GUTTER)
+	size.x = clampf(right - left, 0.0, WIDTH)
 	_fit_height()
-	position = Vector2(floorf((room - width) / 2.0), _top)
+	var center: float = floorf((room - size.x) / 2.0)
+	position = Vector2(clampf(center, left, maxf(left, right - size.x)), top)
 
 
 ## The wrapped labels report their real height after the container lays them out.

@@ -33,6 +33,22 @@ const AWAY_SITE_WAGES: StringName = &"away_site_wages"
 const LOT_PURCHASE: StringName = &"lot_purchase"
 const RENOVATION: StringName = &"renovation"
 const HISTORY_DAYS: int = 30
+const _CASH_FLOW_GROUPS: Dictionary[StringName, StringName] = {
+	SALE: SALE,
+	TIP: TIP,
+	INGREDIENTS: INGREDIENTS,
+	WAGES: WAGES,
+	AWAY_SITE_WAGES: WAGES,
+	RENT: RENT,
+	AWAY_SITE_RENT: RENT,
+	BANK_LOAN: BANK_LOAN,
+	LOAN_INTEREST: BANK_LOAN,
+	LOAN_REPAYMENT: BANK_LOAN,
+	EARLY_LOAN_REPAYMENT: BANK_LOAN,
+	UPGRADES: UPGRADES,
+	LOT_PURCHASE: UPGRADES,
+	RENOVATION: UPGRADES,
+}
 ## The site an entry belongs to when none is named: the starter shop. Equal to
 ## SiteBook.HOME_ID (a test keeps them together); kept here so the economy
 ## model does not depend on the sites model. Saves omit it.
@@ -116,6 +132,26 @@ func day_costs(day: int, site: StringName = ALL_SITES) -> int:
 ## Returns income minus costs for the day.
 func day_profit(day: int, site: StringName = ALL_SITES) -> int:
 	return day_income(day, site) - day_costs(day, site)
+
+
+## The owner's last seven calendar days, oldest first. An empty day has zero
+## in every group. Each day's total is the net of all its cash movements.
+func week_cash_flow(ending_day: int) -> Array[Dictionary]:
+	var days: Array[Dictionary] = []
+	for day: int in range(maxi(1, ending_day - 6), ending_day + 1):
+		var groups: Dictionary[StringName, int] = {
+			SALE: 0, TIP: 0, INGREDIENTS: 0, WAGES: 0, RENT: 0,
+			BANK_LOAN: 0, UPGRADES: 0, OTHER: 0,
+		}
+		var daily_totals: Dictionary = day_totals(day)
+		var net: int = 0
+		for category: StringName in daily_totals:
+			var group: StringName = _CASH_FLOW_GROUPS.get(category, OTHER)
+			var amount: int = daily_totals[category]
+			groups[group] += amount
+			net += amount
+		days.append({"day": day, "groups": groups, "total": net})
+	return days
 
 
 ## Returns independent copies of the unpruned entries in recording order.

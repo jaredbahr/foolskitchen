@@ -26,6 +26,7 @@ var notes: DayNotes
 var reputation_average: float = 0.0
 ## Today's tallies, kept by the session.
 var dishes_sold: Dictionary[StringName, int] = {}
+var dish_metrics: Dictionary[StringName, Dictionary] = {}
 ## A `PurchaseBasis`: {cost, recorded}.
 var food_cost: Dictionary = PurchaseBasis.zero()
 ## {day, site, percent, saved} of the last haggled order; empty when none.

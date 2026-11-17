@@ -5,7 +5,7 @@ extends TestCase
 func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 28)
+	assert_eq(db.ingredients().size(), 31)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 83)
 	assert_eq(db.collections().size(), 6)
@@ -37,9 +37,26 @@ func test_definition_validation_rejects_empty_and_malformed_lot_tags() -> void:
 	var errors: PackedStringArray = ContentDB.validate_definitions([ingredient], [], [item])
 	assert_true(errors.has("item 'cart': lot tags must be non-empty ids"))
 	assert_true(errors.has("ingredient 'catch': lot tags must be non-empty ids"))
-	item.lot_tags = [&"rooftop"]
-	ingredient.lot_tags = [&"seaside"]
+	item.lot_tags = []
+	ingredient.lot_tags = []
 	assert_eq(ContentDB.validate_definitions([ingredient], [], [item]), PackedStringArray())
+
+
+func test_content_lot_tags_must_be_declared_by_a_lot() -> void:
+	var lot: LotDef = LotDef.new()
+	lot.tags = [&"seaside"]
+	var item: ItemDef = ItemDef.new()
+	item.id = &"cart"
+	item.lot_tags = [&"rooftop"]
+	var ingredient: IngredientDef = IngredientDef.new()
+	ingredient.id = &"catch"
+	ingredient.lot_tags = [&"seaside", &"seasdie"]
+	var errors: PackedStringArray = ContentDB.validate_definitions([ingredient], [], [item], [lot])
+	assert_true(errors.has("item 'cart': lot tag 'rooftop' is not declared by any lot"))
+	assert_true(errors.has("ingredient 'catch': lot tag 'seasdie' is not declared by any lot"))
+	lot.tags.append(&"rooftop")
+	ingredient.lot_tags = [&"seaside"]
+	assert_eq(ContentDB.validate_definitions([ingredient], [], [item], [lot]), PackedStringArray())
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:
@@ -63,15 +80,17 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: IngredientDef in db.ingredients():
 		ingredient_ids.append(definition.id)
 	assert_eq(ingredient_ids, [&"bacon", &"beef_patty", &"beer", &"bread", &"bun", &"cereal", &"cheese", &"coffee_beans",
-		&"dough", &"egg", &"fish_fillet", &"flour", &"fresh_catch", &"frozen_fries", &"lemon", &"lettuce", &"milk", &"mussels", &"oil",
-		&"pastry", &"potato", &"rice", &"shrimp", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
+		&"dough", &"egg", &"fish_fillet", &"flour", &"fresh_catch", &"frozen_fries", &"ice_cream", &"lemon", &"lettuce",
+		&"milk",
+		&"mussels", &"oil", &"pastry", &"potato", &"rice", &"sausage", &"shrimp", &"soda", &"soup_stock", &"tea",
+		&"tomato", &"tortilla", &"wine"])
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
-	assert_eq(recipe_ids, [&"bacon_and_eggs", &"bar_fries", &"beer", &"burger", &"cereal", &"coffee", &"croissant",
-		&"fish_and_chips", &"fried_eggs", &"fries", &"grilled_cheese", &"muffin", &"mussels_broth", &"pancakes",
-		&"salmon_maki", &"savoury_pie", &"seafood_stew", &"shrimp_skewer", &"soft_drink", &"tea", &"tomato_melt",
-		&"tomato_soup", &"waffles", &"wine"])
+	assert_eq(recipe_ids, [&"bacon_and_eggs", &"bar_fries", &"beer", &"burger", &"cereal", &"club_sandwich", &"coffee",
+		&"croissant", &"fish_and_chips", &"fried_eggs", &"fries", &"grilled_cheese", &"hot_dog", &"ice_cream_sundae",
+		&"muffin", &"mussels_broth", &"pancakes", &"pizza_slice", &"salmon_maki", &"savoury_pie", &"seafood_stew",
+		&"shrimp_skewer", &"soft_drink", &"taco", &"tea", &"tomato_melt", &"tomato_soup", &"waffles", &"wine"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
@@ -97,7 +116,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 28)
+	assert_eq(db.ingredients().size(), 31)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 83)
 
@@ -112,7 +131,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 135)
+	assert_eq(content_paths, 143)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -524,6 +543,35 @@ func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_step
 		assert_eq(recipe.ingredient_cost(), row[6])
 		assert_eq(recipe.theme_tags, [&"diner"] as Array[StringName])
 		assert_false(recipe.is_drink())
+
+
+func test_diner_classics_use_existing_stations_and_unlock_across_levels_two_to_four() -> void:
+	var db: ContentDB = _starter_db()
+	var specs: Dictionary[StringName, Array] = {
+		&"club_sandwich": [2, RecipeDef.Section.MAINS, &"stove"],
+		&"hot_dog": [2, RecipeDef.Section.MAINS, &"stove"],
+		&"pizza_slice": [3, RecipeDef.Section.MAINS, &"oven"],
+		&"taco": [3, RecipeDef.Section.MAINS, &"stove"],
+		&"ice_cream_sundae": [4, RecipeDef.Section.DESSERTS, &""],
+	}
+	for id: StringName in specs:
+		var recipe: RecipeDef = db.recipe(id)
+		assert_not_null(recipe)
+		var spec: Array = specs[id]
+		assert_eq(recipe.unlock_level, spec[0])
+		assert_eq(recipe.unlock_tier, 1)
+		assert_eq(recipe.menu_section(), spec[1])
+		assert_eq(recipe.theme_tags, ([&"diner", &"cafe"] if id == &"ice_cream_sundae" else [&"diner"]) as Array[StringName])
+		assert_eq(recipe.steps[0].station_type, db.item(&"prep_counter").station_type)
+		assert_eq(recipe.steps.size(), 1 if spec[2] == &"" else 2)
+		if spec[2] != &"":
+			assert_eq(recipe.steps[1].station_type, db.item(spec[2]).station_type)
+		assert_false(recipe.ingredients.is_empty())
+		for ingredient: IngredientDef in recipe.ingredients:
+			assert_eq(ingredient, db.ingredient(ingredient.id))
+	assert_eq(db.ingredient(&"sausage").storage, IngredientDef.Storage.FRIDGE)
+	assert_eq(db.ingredient(&"tortilla").storage, IngredientDef.Storage.SHELF)
+	assert_eq(db.ingredient(&"ice_cream").storage, IngredientDef.Storage.FREEZER)
 
 
 func _recipe_resource_count(folder: String) -> int:

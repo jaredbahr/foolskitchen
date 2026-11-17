@@ -88,6 +88,7 @@ func test_walkout_happens_only_when_every_dish_is_sold_out() -> void:
 			break
 	assert_null(guest.order, "no ticket is placed for food the kitchen cannot cook")
 	assert_eq(_left.get(guest.id, &""), &"out_of_stock")
+	assert_eq(_sim.visitor_breakdown(), [{"name": "Regulars", "count": 1, "average_mood": 0.0}])
 	assert_true(_sim.is_sold_out(&"burger"))
 	assert_true(_sim.is_sold_out(&"grilled_cheese"))
 	assert_eq(_sim.lost_today, 1)

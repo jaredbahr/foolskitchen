@@ -278,12 +278,8 @@ func test_visitor_counts_and_final_mood_are_detached_and_reset_the_next_morning(
 	party_randoms[1].seed = 44
 	var party: Party = sim.add_party(Vector2i(3, 1), party_randoms, types.find_type(&"family"))
 	assert_not_null(party)
-	var early: DayReport = DayReportBuilder.build(1, sources)
-	assert_eq(early.visitor_breakdown, [
-		{"name": "Regulars", "count": 1, "average_mood": null},
-		{"name": "Students", "count": 1, "average_mood": null},
-		{"name": "Families", "count": 2, "average_mood": null},
-	])
+	assert_true(DayReportBuilder.build(1, sources).visitor_breakdown.is_empty(),
+		"guests still in the shop have no departure mood")
 	regular.state = CustomerAgent.State.QUEUED
 	regular.queue_patience = 100
 	regular._queue_wait = 100
@@ -296,6 +292,11 @@ func test_visitor_counts_and_final_mood_are_detached_and_reset_the_next_morning(
 	student.food_patience = 100
 	student._food_wait = 50
 	sim.world.remove_agent(student)
+	var early: DayReport = DayReportBuilder.build(1, sources)
+	assert_eq(early.visitor_breakdown, [
+		{"name": "Regulars", "count": 1, "average_mood": 0.0},
+		{"name": "Students", "count": 1, "average_mood": 0.0},
+	])
 	var remaining: Array[CustomerAgent] = sim.customers()
 	assert_eq(remaining.size(), 2, "up to two individual family arrivals may share the entry")
 	for index: int in range(remaining.size()):
@@ -313,11 +314,11 @@ func test_visitor_counts_and_final_mood_are_detached_and_reset_the_next_morning(
 	var report: DayReport = DayReportBuilder.build(1, sources)
 	assert_eq(report.visitor_breakdown, [
 		{"name": "Regulars", "count": 1, "average_mood": 0.0},
-		{"name": "Students", "count": 1, "average_mood": 0.5},
-		{"name": "Families", "count": 2, "average_mood": 0.1},
+		{"name": "Students", "count": 1, "average_mood": 0.0},
+		{"name": "Families", "count": 2, "average_mood": 0.5},
 	])
 	assert_eq(report.customers_lost, 4)
-	assert_null(early.visitor_breakdown[2]["average_mood"], "earlier snapshots are detached")
+	assert_eq(early.visitor_breakdown.size(), 2, "earlier snapshots are detached")
 	assert_true(sim.world.clock.next_day())
 	sim.start_day()
 	assert_true(DayReportBuilder.build(2, sources).visitor_breakdown.is_empty())

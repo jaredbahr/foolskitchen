@@ -3,6 +3,7 @@ extends Resource
 ## The ordered, authored presets used by per-run Difficulty instances.
 
 @export var modes: Array[DifficultyModeTuning] = []
+@export var hire_wage_reserve_days: int = 5
 
 
 func mode_data(mode_id: StringName) -> DifficultyModeTuning:
@@ -13,7 +14,7 @@ func mode_data(mode_id: StringName) -> DifficultyModeTuning:
 
 
 func is_valid() -> bool:
-	if modes.size() != Difficulty.MODES.size():
+	if modes.size() != Difficulty.MODES.size() or hire_wage_reserve_days < 1:
 		return false
 	for index: int in modes.size():
 		var preset: DifficultyModeTuning = modes[index]
