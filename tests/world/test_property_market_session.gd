@@ -84,6 +84,24 @@ func test_tier_three_browses_lots_cheapest_first_without_buying() -> void:
 	assert_true(_main.call("is_menu_visible"), "closing returns to the Menu")
 
 
+func test_property_quotes_tomorrows_rent_after_a_queued_difficulty_change() -> void:
+	await _start()
+	(_main.get("owner_progress") as OwnerProgress).career_tier = 3
+	var difficulty: Difficulty = _main.get("difficulty") as Difficulty
+	var id: StringName = &"town_fixer_upper"
+	var content: ContentDB = _main.get("content") as ContentDB
+	var lot: LotDef = content.lot(id)
+	_main.call("_on_difficulty_requested", &"hard", {})
+	var tomorrow: Difficulty = difficulty.for_day(Clock.sim.day + 1)
+	assert_ne(tomorrow.mult(&"rent"), difficulty.mult(&"rent"))
+	assert_true(_main.call("set_property_visible", true))
+	var rent: Label = _panel().card_for(id).get_node("Body/Rent") as Label
+	assert_eq(rent.text, "%s · %s" % [PropertyText.rent_line(lot, tomorrow.mult(&"rent")),
+		PropertyText.expansion_line(lot, tomorrow.mult(&"rent"))])
+	assert_eq(difficulty.mode(), &"normal")
+	assert_eq(difficulty.pending_mode(), &"hard")
+
+
 func test_service_hides_the_screen_and_the_button_needs_the_morning() -> void:
 	await _start()
 	(_main.get("owner_progress") as OwnerProgress).career_tier = 3

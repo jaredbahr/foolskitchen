@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Golden Ladles stay visible after removing decor. Property cards show tomorrow’s rent, duplicate staff nicknames get an explanation, and Today stays out of Build and Paint. The Daily Ladle keeps the same edition after reloading and fits beside goals and bookings at 150% UI size. (#584)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
 - The Daily Ladle slides in each morning with a headline about yesterday and a few notes for today. Press Close or Esc to put it away, or turn off “Show the morning paper” in Settings. (#551)
@@ -257,6 +258,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
 - The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#549)

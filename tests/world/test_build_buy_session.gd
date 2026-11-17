@@ -202,6 +202,29 @@ func test_build_buy_and_paint_tabs_drive_the_session() -> void:
 	assert_true(_catalogue().category_buttons[&"dining"].visible)
 
 
+func test_today_stays_closed_while_either_build_or_paint_is_open() -> void:
+	await _start()
+	_viewport.size = Vector2i(1280, 720)
+	var launcher: Button = _main.get_node("HUD/Today") as Button
+	var today: TodayPanel = _main.get_node("Overlay/TodayPanel") as TodayPanel
+	launcher.pressed.emit()
+	assert_true(today.visible)
+	assert_true(_main.call("set_build_active", true))
+	assert_false(today.visible)
+	launcher.pressed.emit()
+	assert_false(today.visible)
+	assert_true(_main.call("set_build_active", false))
+	launcher.pressed.emit()
+	assert_true(today.visible)
+	assert_true(_main.call("set_paint_active", true))
+	assert_false(today.visible)
+	launcher.pressed.emit()
+	assert_false(today.visible)
+	assert_true(_main.call("set_paint_active", false))
+	launcher.pressed.emit()
+	assert_true(today.visible)
+
+
 func _plant_still_at(plant: PlacedItem) -> bool:
 	return _world().grid.item(plant.id) == plant
 

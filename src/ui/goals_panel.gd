@@ -42,7 +42,7 @@ func set_career_tier_line(text: String) -> void:
 func set_golden_ladles(prestige_score: int, earned: int) -> void:
 	var label: Label = %GoldenLadles as Label
 	label.text = "Golden Ladles: %d of %d" % [earned, PrestigeTuning.MAX_LADLES]
-	label.visible = prestige_score > 0
+	label.visible = earned > 0 or prestige_score > 0
 
 
 ## Detached display text only; Main owns the saved lifetime observations.

@@ -599,6 +599,36 @@ func test_focused_staff_name_edit_cancels_commits_and_saves_at_next_morning() ->
 	assert_eq(_live_staff(restored, cook_id).display_name, "Alex")
 
 
+func test_duplicate_nickname_explains_the_refusal_inside_the_editor() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var main: Node = _start(false)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var cook: StringName = &"starter_cook"
+	assert_true(main.call("set_staff_visible", true))
+	await _frames(4)
+	var title: Label = panel.row_for(cook).find_child("Name", true, false) as Label
+	_name_click(tree.root, title.get_global_rect().get_center())
+	var editor: LineEdit = title.get_node_or_null("NameEdit") as LineEdit
+	assert_not_null(editor)
+	if editor == null:
+		return
+	var original: String = _member(main, cook).display_name
+	editor.text = _member(main, &"starter_server").display_name.to_upper()
+	_name_key(tree.root, KEY_ENTER)
+	assert_eq(_member(main, cook).display_name, original)
+	assert_true(editor.visible and panel.name_edit_has_focus())
+	var feedback: Label = title.get_node_or_null("NameFeedback") as Label
+	assert_not_null(feedback)
+	if feedback == null:
+		return
+	assert_true(feedback.is_visible_in_tree())
+	assert_eq(feedback.text, "That name is already in use.")
+	editor.text = "Kitchen captain"
+	_name_key(tree.root, KEY_ENTER)
+	assert_eq(_member(main, cook).display_name, "Kitchen captain")
+	assert_false(feedback.visible)
+
+
 func _name_click(viewport: Viewport, point: Vector2) -> void:
 	for pressed: bool in [true, false]:
 		var event: InputEventMouseButton = InputEventMouseButton.new()

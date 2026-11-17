@@ -86,6 +86,19 @@ func test_nicknames_validate_and_keep_the_hiring_name_after_reload() -> void:
 	assert_eq(restored.to_dict(), original)
 
 
+func test_nicknames_cannot_duplicate_names_on_the_team_or_hiring_list() -> void:
+	var roster: StaffRoster = StaffRoster.new(TUNING)
+	assert_true(roster.draw_candidates(1, _random(372)))
+	var cook: StringName = &"starter_cook"
+	assert_eq(roster.rename_member(&"starter_server", "Counter chief"), "Counter chief")
+	var before: Dictionary = roster.to_dict()
+	assert_eq(roster.rename_member(cook, "  COUNTER CHIEF "), "")
+	assert_eq(roster.rename_member(cook, roster.candidates()[0].display_name.to_upper()), "")
+	assert_eq(roster.to_dict(), before)
+	assert_eq(roster.rename_member(cook, "ALEX"), "ALEX")
+	assert_eq(roster.rename_member(cook, ""), "Alex")
+
+
 func test_nickname_never_changes_the_seeded_hiring_pool() -> void:
 	var roster: StaffRoster = StaffRoster.new(TUNING)
 	var renamed: StaffRoster = roster.copy()
