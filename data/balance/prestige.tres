@@ -5,3 +5,5 @@
 [resource]
 script = ExtResource("1_tuning")
 thresholds = Vector3i(20, 40, 60)
+repeat_breakpoints = Vector2i(3, 6)
+repeat_weights = Vector3i(4, 2, 1)
