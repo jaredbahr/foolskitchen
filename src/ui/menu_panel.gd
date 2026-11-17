@@ -1053,7 +1053,6 @@ func _add_grouped_dishes(remaining: Array[RecipeDef], root: TreeItem) -> void:
 					heading.set_expand_right(0, true)
 					heading.set_selectable(0, false)
 					heading.set_selectable(1, false)
-					heading.set_selectable(2, false)
 					sections[section] = heading
 				parent = sections[section]
 			_add_recipe_node(recipe, parent)

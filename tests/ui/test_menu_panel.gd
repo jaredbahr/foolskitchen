@@ -977,7 +977,7 @@ func test_most_sold_compares_sections_and_unlock_descendants() -> void:
 
 func test_shipped_dish_names_fit_one_line_within_their_rows_at_desktop_size() -> void:
 	var db: ContentDB = ContentDB.new()
-	assert_eq(db.load_all(), [])
+	assert_eq(db.load_all().size(), 0)
 	var recipes: Array[RecipeDef] = db.recipes()
 	_panel.bind_menu(MenuSettings.new(recipes))
 	_panel.set_recipe_details(recipes, {} as Dictionary[StringName, Dictionary])
