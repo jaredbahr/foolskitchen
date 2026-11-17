@@ -380,3 +380,62 @@ func test_mixed_booth_looks_keep_vibe_valid_before_and_after_buy_dot_selection()
 	assert_eq(after.theme_share, mixed.theme_share)
 	assert_eq(after.active_theme, mixed.active_theme)
 	assert_true(meter.view_state().caption.begins_with("Vibe ") and meter.view_state().caption != "Vibe —")
+
+
+func test_tip_jar_can_move_from_the_pass_to_a_table_over_a_rug() -> void:
+	await _start()
+	assert_true(_main.call("set_build_active", true))
+	_editor().set_owner_level(1)
+	var pass_item: PlacedItem = _world().grid.item(_id(&"pass_counter"))
+	var cell: Vector2i = pass_item.origin
+	assert_eq(_editor().check_buy(&"tip_jar", cell).why, "Unlocks at level 2")
+	_editor().set_owner_level(2)
+	assert_false(_editor().check_buy(&"tip_jar", Vector2i(4, 10)).ok, "the empty floor is refused")
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	var camera: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
+	var top: Vector3 = view.surface_decor_position(cell)
+	var table: PlacedItem = ShopBuilder.items_with_def(_world(), &"table_2")[1]
+	var rug_bought: bool = _main.call("shop_buy", &"rug_square", table.origin)
+	assert_true(rug_bought, _editor().last_check.why)
+	var rug: PlacedItem = _world().grid.item_on_layer(table.origin, ItemDef.PlacementLayer.FLOOR_DECOR)
+	assert_not_null(rug, "the shipped rug can be placed under the table")
+	if rug == null:
+		return
+	var cash: int = Economy.cash
+	assert_true(_mode().begin_buy(&"tip_jar", Vector2i(4, 10)))
+	assert_false(_mode().current_check.ok, "the ghost starts over bare floor")
+	_click(camera.unproject_position(top))
+	var jar: PlacedItem = _world().grid.item_on_layer(cell, ItemDef.PlacementLayer.SURFACE_DECOR)
+	assert_not_null(jar, "clicking the pass top buys a jar on that cell")
+	if jar == null:
+		return
+	assert_eq(Economy.cash, cash - 25)
+	assert_eq(view.item_nodes[jar.id].position, top)
+	assert_true(top.y > 0.25, "the cup is raised to the real model's top")
+	assert_eq(_world().grid.item_at(cell), pass_item, "the food pass remains the normal furniture")
+	assert_false(_editor().check_move(pass_item.id, cell + Vector2i.RIGHT * 3, pass_item.quarter_turns).ok,
+		"the pass may not leave its jar floating")
+	var jar_bounds: AABB = view.item_bounds(jar.id)
+	_click(camera.unproject_position(jar_bounds.get_center()))
+	assert_eq(_mode().selected_item_id, jar.id, "clicking the cup picks it up from its support")
+	var table_top: Vector3 = view.surface_decor_position(table.origin)
+	_click(camera.unproject_position(table_top))
+	assert_eq(_world().grid.item_on_layer(table.origin, ItemDef.PlacementLayer.SURFACE_DECOR), jar)
+	assert_eq(_world().grid.item_at(table.origin), table)
+	assert_eq(_world().grid.item_on_layer(table.origin, ItemDef.PlacementLayer.FLOOR_DECOR), rug)
+	assert_eq(view.item_nodes[jar.id].position, table_top)
+	assert_eq(_editor().check_sell(table.id).why, "Move the item on top first")
+	assert_true(_editor().check_sell(rug.id).ok, "the rug can still be moved or sold separately")
+
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(_editor().to_dict()))
+	assert_true(_main.call("_restore_shop", saved), "Main accepts its own saved layout and three independent layers")
+	var layout: ShopLayout = _main.get("_loaded_layout") as ShopLayout
+	assert_not_null(layout, "the same starter lot restores the shop")
+	if layout == null:
+		return
+	var errors: Array[String] = []
+	var restored: SimWorld = ShopBuilder.build(layout, _content(), errors, true)
+	assert_true(errors.is_empty(), " | ".join(errors))
+	assert_eq(restored.grid.items_at(table.origin).size(), 3, "table, rug and jar all survive save restore")
+	assert_eq((restored.grid.item_on_layer(table.origin, ItemDef.PlacementLayer.SURFACE_DECOR).def as ItemDef).id,
+		&"tip_jar")

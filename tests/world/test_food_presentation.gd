@@ -36,9 +36,12 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		&"soft_drink": "soda-glass", &"beer": "glass", &"wine": "glass-wine",
 		&"fish_and_chips": "fish", &"mussels_broth": "mussel-open", &"salmon_maki": "sushi-salmon",
 		&"seafood_stew": "bowl-broth", &"shrimp_skewer": "skewer",
+		&"fried_eggs": "egg-cooked", &"pancakes": "pancakes", &"waffles": "waffle",
+		&"cereal": "bowl-cereal", &"muffin": "muffin",
 		&"club_sandwich": "sandwich", &"hot_dog": "hot-dog", &"taco": "taco",
 	}
 	var assembled: Dictionary[StringName, String] = {
+		&"bacon_and_eggs": "res://assets/props/bacon_and_eggs.tscn",
 		&"pizza_slice": "res://assets/props/pizza_slice.tscn",
 		&"ice_cream_sundae": "res://assets/props/ice_cream_sundae.tscn",
 	}
@@ -65,6 +68,25 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		assert_not_null(recipe.view_model)
 		if recipe.view_model != null:
 			assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
+
+
+func test_each_breakfast_recipe_shows_food_within_its_plate() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	for recipe: RecipeDef in _content.recipes():
+		if recipe.menu_section() != RecipeDef.Section.BREAKFAST:
+			continue
+		dish.show_dish(recipe, false)
+		assert_true(dish.plate.visible)
+		var food: Node3D = dish.models[recipe.id]
+		assert_ne(food, dish.plate, "Breakfast must have a food model")
+		assert_true(food.visible)
+		assert_true(DishVisual._footprint_radius(food, Transform3D.IDENTITY) <= dish.footprint_radius,
+			recipe.display_name + " fits on the standard plate")
+		if recipe.id == &"bacon_and_eggs":
+			var serving: Node3D = food.get_child(0) as Node3D
+			assert_eq(serving.get_child_count(), 2)
+			assert_eq(serving.get_node("Egg").scene_file_path, "res://assets/kenney/food/egg-cooked.glb")
+			assert_eq(serving.get_node("Bacon").scene_file_path, "res://assets/kenney/food/bacon.glb")
 
 
 func test_diner_classics_fit_the_plate_and_use_one_pizza_wedge_and_a_filled_cup() -> void:

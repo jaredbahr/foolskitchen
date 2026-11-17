@@ -4,15 +4,15 @@ extends TestCase
 
 const TUNING: EconomyTuning = preload("res://data/balance/tier1_economy.tres")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_hole_in_the_wall.tres")
-## Twenty mornings of pools for seeds 1, 7 and 42, drawn by the code before
-## managers existed. A pool below the manager tier must stay exactly this.
+## Twenty mornings for seeds 1, 7 and 42 from the original five-trait pool,
+## drawn before the manager role existed.
 const PRE_MANAGER_POOLS: String = "5a11e59fd5cea7e5cd6cce7b4d9c6f0f4b3c3af22b01563588564510c781ec17"
 
 
-func _pools(managers: bool) -> Array[String]:
+func _pools(managers: bool, catalogue: StaffCatalogue = StaffRoster.CATALOGUE) -> Array[String]:
 	var out: Array[String] = []
 	for seed: int in [1, 7, 42]:
-		var roster: StaffRoster = StaffRoster.new(TUNING)
+		var roster: StaffRoster = StaffRoster.new(TUNING, catalogue)
 		var random: RandomNumberGenerator = RandomNumberGenerator.new()
 		random.seed = seed
 		for day: int in range(1, 21):
@@ -35,10 +35,15 @@ func _manager(id: StringName = &"boss", skill: int = 4) -> StaffMember:
 
 
 func test_pools_below_the_manager_tier_are_unchanged() -> void:
+	var original: StaffCatalogue = StaffRoster.CATALOGUE.duplicate() as StaffCatalogue
+	var original_ids: Array[StringName] = [&"steady", &"quick", &"careful", &"cheerful", &"clumsy"]
+	original.traits = original.traits.filter(func(definition: StaffTrait) -> bool: return original_ids.has(definition.id))
+	assert_eq(JSON.stringify(_pools(false, original)).sha256_text(), PRE_MANAGER_POOLS)
 	var pools: Array[String] = _pools(false)
-	assert_eq(JSON.stringify(pools).sha256_text(), PRE_MANAGER_POOLS)
 	for line: String in pools:
 		assert_false(line.contains("|manager|"), "no manager below the tier")
+	assert_true(pools.any(func(line: String) -> bool: return line.contains("|night_owl|")))
+	assert_true(pools.any(func(line: String) -> bool: return line.contains("|neat_freak|")))
 
 
 func test_pools_at_the_manager_tier_offer_managers() -> void:

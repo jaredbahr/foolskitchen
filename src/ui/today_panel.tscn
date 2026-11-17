@@ -1,0 +1,47 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/today_panel.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="TodayPanel" type="PanelContainer"]
+visible = false
+offset_left = 12.0
+offset_top = 112.0
+offset_right = 410.0
+offset_bottom = 442.0
+mouse_force_pass_scroll_events = false
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Column" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="Column"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Column/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "Today"
+
+[node name="Close" type="Button" parent="Column/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Close"
+tooltip_text = "Close today's log (Esc)"
+
+[node name="Scroll" type="ScrollContainer" parent="Column"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Lines" type="Label" parent="Column/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/line_spacing = 5
+text = "Nothing to report yet."
+autowrap_mode = 3

@@ -22,8 +22,9 @@ const MAX_FRAME_SECONDS: float = 0.25
 const ONE_STATION_LEVEL: float = 0.7
 const EXTRA_STATION_LEVEL: float = 0.15
 
-## The jukebox's music is a quiet bed under the room; its loop is the style's id.
+## The jukebox's style supplies the same quiet gain for either source track.
 const MUSIC_LEVEL: float = 1.0
+const THEME_HOLD_USEC: int = 60_000_000
 
 ## Set by a display-only Main (the title's backdrop): it must never drive the
 ## music, which belongs to the title screen there.
@@ -35,6 +36,10 @@ var _view: ShopView
 var _music_grid_version: int = -1
 var _music_item_id: int = -1
 var _music_loop: StringName = &""
+var _vibe_theme: StringName = &""
+var _service_context: StringName = &""
+var _service_day: int = 0
+var _music_changed_usec: int = -1
 var _content: ContentDB
 ## Chatter layers' current (faded) levels.
 var _chatter: Dictionary[StringName, float] = {}
@@ -54,6 +59,7 @@ func bind(sim: RestaurantSim, view: ShopView, content: ContentDB = null) -> void
 	_cutlery_wait = INF
 	if _sim == null:
 		return
+	set_vibe(_sim.vibe_result)
 	_sim.customer_arrived.connect(_on_customer_arrived)
 	_sim.customer_paid.connect(_on_customer_paid)
 	_sim.review_recorded.connect(_on_review_recorded)
@@ -91,6 +97,8 @@ func unbind() -> void:
 	_music_grid_version = -1
 	_music_item_id = -1
 	_music_loop = &""
+	_vibe_theme = &""
+	_clear_service_music()
 	Sounds.stop_loops()
 	if not display_only:
 		Sounds.set_music_ducked(false)
@@ -101,11 +109,14 @@ func _exit_tree() -> void:
 	unbind()
 
 
+func set_vibe(result: VibeModel.Result) -> void:
+	_vibe_theme = result.active_theme if result != null and result.valid else &""
+
+
 ## Sets the ambience loops from the current view; main calls it every frame
 ## with the shop's light (`DayLight.Look.interior_energy`). Everything is silent
-## outside service hours and while the game is paused. The music instead picks
-## its daytime or evening track during service, the evening report's track while
-## the report is open, and keeps playing while paused.
+## outside service hours and while the game is paused. The service music follows
+## the room and stays playing while paused or under the evening report.
 ## Chatter fades rather than cuts, so closing lets the room die away.
 func refresh(light: float = 0.0, report_open: bool = false) -> void:
 	var now_usec: int = Time.get_ticks_usec()
@@ -115,7 +126,7 @@ func refresh(light: float = 0.0, report_open: bool = false) -> void:
 	_last_refresh_usec = now_usec
 	var serving: bool = _sim != null and OPEN_PHASES.has(Clock.sim.phase)
 	if not display_only:
-		Sounds.set_music_context(MusicTracks.service_context(serving, light, report_open))
+		_refresh_service_music(serving, light, report_open, now_usec)
 	var running: bool = _sim != null and Clock.speed > 0 and OPEN_PHASES.has(Clock.sim.phase)
 	var guests: int = 0
 	var staying: int = 0
@@ -132,7 +143,7 @@ func refresh(light: float = 0.0, report_open: bool = false) -> void:
 				eaters.append(customer.cell)
 	var ambient: bool = running and not display_only
 	Sounds.set_loop_level(ROOM_TONE, float(guests) / float(AMBIENCE.room_tone_full_guests) if ambient else 0.0)
-	var jukebox_playing: bool = _refresh_music(running, serving)
+	var jukebox_playing: bool = _refresh_music(ambient, serving and not display_only)
 	_refresh_chatter(staying if ambient else 0, jukebox_playing, delta)
 	if not ambient:
 		eaters.clear()
@@ -144,11 +155,46 @@ func refresh(light: float = 0.0, report_open: bool = false) -> void:
 		Sounds.set_loop_level(loop, station_level(busy))
 
 
+func _refresh_service_music(serving: bool, light: float, report_open: bool, now_usec: int) -> void:
+	if not serving:
+		# Keep the actual service track and playlist position, even if the
+		# closing frame's light or layout differs from the last service frame.
+		if report_open and not _service_context.is_empty():
+			return
+		_clear_service_music()
+		var context: StringName = &""
+		if report_open:
+			context = MusicTracks.REPORT
+		elif Clock.sim.phase == SimClock.Phase.MORNING:
+			context = MusicTracks.MORNING
+		Sounds.set_music_context(context)
+		return
+	var wanted: StringName = MusicTracks.service_context(true, light, _vibe_theme)
+	var themed: bool = MusicTracks.BY_THEME.has(wanted)
+	var day: int = Clock.sim.day if themed else 0
+	var changed: bool = wanted != _service_context or day != _service_day
+	# The existing day-to-dusk switch is independent of changes to the room.
+	var fallback_change: bool = not themed and not MusicTracks.BY_THEME.has(_service_context)
+	if changed and (_service_context.is_empty() or fallback_change \
+			or now_usec - _music_changed_usec >= THEME_HOLD_USEC):
+		_service_context = wanted
+		_service_day = day
+		_music_changed_usec = now_usec
+	Sounds.set_music_context(_service_context, _service_day)
+
+
+func _clear_service_music() -> void:
+	_service_context = &""
+	_service_day = 0
+	_music_changed_usec = -1
+
+
 ## The one counted jukebox plays its style while the shop is open; changing the
 ## style swaps the loop, and a closed, paused or jukebox-less shop is silent.
 ## Returns whether the jukebox is playing now.
 func _refresh_music(running: bool, serving: bool) -> bool:
 	var wanted: StringName = &""
+	var track: AudioStream
 	var jukebox_present: bool = false
 	if serving and _sim != null and _sim.world != null:
 		var grid: SimGrid = _sim.world.grid
@@ -160,13 +206,17 @@ func _refresh_music(running: bool, serving: bool) -> bool:
 		if placed != null and not placed.removed:
 			jukebox_present = true
 			if running:
-				wanted = Jukebox.loop_id(placed.def as ItemDef, placed.variant_id)
+				var definition: ItemDef = placed.def as ItemDef
+				wanted = Jukebox.loop_id(definition, placed.variant_id)
+				var theme: StringName = Jukebox.style_theme(definition, placed.variant_id, VibeInputs.VIBE_THEMES)
+				if MusicTracks.BY_THEME.has(theme):
+					track = MusicTracks.track_for(theme, Clock.sim.day)
 	if wanted != _music_loop:
 		if not _music_loop.is_empty():
 			Sounds.set_loop_level(_music_loop, 0.0)
 		_music_loop = wanted
 	if not _music_loop.is_empty():
-		Sounds.set_loop_level(_music_loop, MUSIC_LEVEL)
+		Sounds.set_loop_level(_music_loop, MUSIC_LEVEL, track)
 	# The theme stays out of the way for the whole open shop, paused or not.
 	if not display_only:
 		Sounds.set_music_ducked(jukebox_present)

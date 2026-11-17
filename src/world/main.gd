@@ -31,6 +31,7 @@ const CLEANLINESS_TUNING: CleanlinessTuning = preload("res://data/balance/cleanl
 const WEATHER_TUNING: WeatherTuning = preload("res://data/balance/weather.tres")
 const SEASON_TUNING: SeasonTuning = preload("res://data/balance/seasons.tres")
 const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
+const WEEK_RHYTHM: WeekRhythm = preload("res://data/balance/week.tres")
 const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
@@ -42,6 +43,7 @@ const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
+const PRESTIGE_TUNING: PrestigeTuning = preload("res://data/balance/prestige.tres")
 const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_managers.tres")
 ## How many sites each career tier allows (FK-087, D28).
 const SITE_LIMITS: SiteLimitTuning = preload("res://data/balance/sites.tres")
@@ -59,6 +61,7 @@ const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 ## A Creative game's Goals panel (FK-141): collections and records only.
 const CREATIVE_GOALS_TITLE: String = "Collections"
+const SYSTEM_GUIDE_SCENE: PackedScene = preload("res://src/ui/guide_panel.tscn")
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -84,6 +87,8 @@ var service_events: ServiceEvents = ServiceEvents.new(SERVICE_EVENT_TUNING)
 var _service_event_definitions: Array[ServiceEventDef] = []
 var _loaded_service_events: ServiceEvents = null
 var _service_event_card: ServiceEventCard
+var _morning_paper: MorningPaperCard
+var _morning_paper_day: int = 0
 ## The speed to return to once a card is answered.
 var _service_event_resume_speed: int = 1
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -120,6 +125,8 @@ var build_mode: BuildMode = BuildMode.new()
 var blueprint_library: BlueprintLibrary = BlueprintLibrary.new()
 var _loaded_blueprints: BlueprintLibrary
 var _blueprint_load_notes: Array[String] = []
+var menu_presets: MenuPresetLibrary = MenuPresetLibrary.new()
+var _loaded_menu_presets: MenuPresetLibrary
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var daily_special: DailySpecial = DailySpecial.new()
@@ -134,6 +141,8 @@ var reputation: ReputationBook = ReputationBook.new()
 var group_booking: GroupBooking = GroupBooking.new(BOOKING_TUNING)
 ## Small persistent named cast, written only with the normal morning save.
 var regulars: RegularCast = RegularCast.new()
+var difficulty: Difficulty = Difficulty.new()
+var _loaded_difficulty: Difficulty = null
 var owner_progress: OwnerProgress = OwnerProgress.new(PROGRESSION_TUNING)
 var owner_appearance: OwnerAppearance = OwnerAppearance.new()
 ## Authored arrivals; tests may inject an explicit neutral Regular-only catalogue.
@@ -327,11 +336,14 @@ var _menu_quality: Dictionary[StringName, Dictionary] = {}
 var _menu_access_losses: Dictionary[StringName, RecipeDef] = {}
 var _menu_access_day: int = 0
 var _menu_access_error: String = ""
+var _today_panel: TodayPanel
 var _menu_panel: MenuPanel
 var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
 var _shortcuts_panel: ShortcutsPanel
 var _shortcuts_previous_focus: Control
+var _guide_panel: GuidePanel
+var _guide_previous_focus: Control
 var _settings_return_to_menu: bool = false
 var _settings_previous_speed: int = 0
 var _quit_title_previous_speed: int = 0
@@ -349,6 +361,7 @@ var _site_prompt_target: StringName = &""
 ## trending post or demand).
 var _closed_day: int = 0
 var _goals_snapshot: Dictionary = {}
+var _prestige: Prestige.Result = Prestige.Result.new()
 var _stock_panel: StockPanel
 var _owner_picker: OwnerPicker
 var _owner_first_morning_pending: bool = false
@@ -437,11 +450,17 @@ func _bind_world_presentation() -> void:
 	view.set_camera_quarter(camera.camera_quarter())
 	$HUD.bind_shop_view(view)
 	$HUD.bind_preferences(Preferences)
+	_today_panel = $Overlay/TodayPanel
+	if not $HUD.today_pressed.is_connected(_on_today_pressed):
+		$HUD.today_pressed.connect(_on_today_pressed)
+		$HUD/Today.item_rect_changed.connect(_align_today_panel)
 	_refresh_loan_hud()
 	if not $HUD.is_connected(&"loan_repayment_requested", _on_loan_repayment_requested):
 		$HUD.connect(&"loan_repayment_requested", _on_loan_repayment_requested)
 	if not $HUD.is_connected(&"header_layout_changed", _on_header_layout_changed):
 		$HUD.connect(&"header_layout_changed", _on_header_layout_changed)
+	if not $HUD.is_connected(&"guide_pressed", _on_open_system_guide):
+		$HUD.connect(&"guide_pressed", _on_open_system_guide)
 	if not $HUD.is_connected(&"settings_pressed", _on_hud_settings_requested):
 		$HUD.connect(&"settings_pressed", _on_hud_settings_requested)
 	_report = $Overlay/EveningReport
@@ -510,6 +529,12 @@ func _bind_world_presentation() -> void:
 	$HUD.set_paint_state(false)
 	_menu_panel = $Overlay/MenuPanel
 	_menu_panel.bind_menu(menu_settings)
+	var preset_controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not preset_controls.save_requested.is_connected(_on_menu_preset_save_requested):
+		preset_controls.save_requested.connect(_on_menu_preset_save_requested)
+		preset_controls.load_requested.connect(_on_menu_preset_load_requested)
+		preset_controls.rename_requested.connect(_on_menu_preset_rename_requested)
+		preset_controls.delete_requested.connect(_on_menu_preset_delete_requested)
 	_menu_panel.set_special(daily_special.recipe_id())
 	if not _menu_panel.special_requested.is_connected(_on_special_requested):
 		_menu_panel.special_requested.connect(_on_special_requested)
@@ -576,11 +601,18 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"close_day_requested", close_for_today)
 	_settings_panel = $Overlay/SettingsPanel
 	_shortcuts_panel = $Overlay/ShortcutsPanel
+	if not _shortcuts_panel.guide_requested.is_connected(_on_open_system_guide):
+		_shortcuts_panel.guide_requested.connect(_on_open_system_guide)
 	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
 		_shortcuts_panel.close_requested.connect(_on_shortcuts_close_requested)
 	_settings_panel.bind_preferences(Preferences)
+	_morning_paper = $Overlay/MorningPaper
+	if not Preferences.changed.is_connected(_on_morning_paper_preference_changed):
+		Preferences.changed.connect(_on_morning_paper_preference_changed)
 	_settings_panel.set_quit_to_title_available(true)
 	_settings_panel.set_show_guide_available(true)
+	if not _settings_panel.difficulty_requested.is_connected(_on_difficulty_requested):
+		_settings_panel.difficulty_requested.connect(_on_difficulty_requested)
 	if not _settings_panel.show_guide_requested.is_connected(_on_show_guide_requested):
 		_settings_panel.show_guide_requested.connect(_on_show_guide_requested)
 	if not _settings_panel.close_requested.is_connected(_on_settings_close_requested):
@@ -619,6 +651,8 @@ func _bind_world_presentation() -> void:
 		_staff_panel.raise_decline_requested.connect(_on_staff_raise_decline_requested)
 	if not _staff_panel.job_priority_requested.is_connected(_on_staff_job_priority_requested):
 		_staff_panel.job_priority_requested.connect(_on_staff_job_priority_requested)
+	if not _staff_panel.rename_requested.is_connected(staff_rename):
+		_staff_panel.rename_requested.connect(staff_rename)
 	if not _staff_panel.transfer_requested.is_connected(_on_staff_transfer_requested):
 		_staff_panel.transfer_requested.connect(_on_staff_transfer_requested)
 	if not $HUD.is_connected(&"staff_pressed", toggle_staff):
@@ -696,6 +730,8 @@ func _on_header_layout_changed() -> void:
 		panel.offset_top = top
 	if _settings_panel != null:
 		_settings_panel.set_panel_top(top)
+	if _morning_paper != null:
+		_morning_paper.set_panel_top(top)
 
 
 func _ready() -> void:
@@ -758,10 +794,12 @@ func start() -> void:
 		autoload.call(&"register_save_provider")
 	# Before "owner" and "menu": their restores read the mode's unlock level.
 	SaveSystem.register("game_mode", GameMode.capture, GameMode.restore)
+	SaveSystem.register("difficulty", _capture_difficulty, _restore_difficulty)
 	SaveSystem.register("owner", _capture_owner, _restore_owner)
 	SaveSystem.register("shop", _capture_shop, _restore_shop)
 	SaveSystem.register("blueprints", _capture_blueprints, _restore_blueprints)
 	SaveSystem.register("menu", _capture_menu, _restore_menu)
+	SaveSystem.register("menu_presets", _capture_menu_presets, _restore_menu_presets)
 	SaveSystem.register("daily_special", _capture_daily_special, _restore_daily_special)
 	SaveSystem.register("signature", _capture_signature, _restore_signature)
 	SaveSystem.register("staff", _capture_staff, _restore_staff)
@@ -833,6 +871,7 @@ func _wire_session() -> bool:
 		push_error("Cannot book money to the active site")
 		return false
 	world.clock = Clock.sim
+	sim.difficulty = difficulty
 	sim.stock = Economy.stock
 	sim.use_rng(GameState.rng(&"customers"))
 	# The named stream exists only once there is a cat, so shops without one
@@ -897,6 +936,7 @@ func _wire_session() -> bool:
 
 
 func _connect_session() -> void:
+	$Overlay/TodayPanel.bind_log(sim.day_log)
 	if not _report.is_connected(&"next_day_pressed", _on_next_day_pressed):
 		_report.connect(&"next_day_pressed", _on_next_day_pressed)
 	if not _report.is_connected(&"close_requested", _on_report_close_requested):
@@ -935,11 +975,14 @@ func _connect_session() -> void:
 		sound.name = "SoundDirector"
 		sound.display_only = display_only
 		add_child(sound)
+		vibe_changed.connect(sound.set_vibe)
 	sound.bind(sim, $ShopView as ShopView, content)
 
 
 func _exit_tree() -> void:
 	_end_haggle_modal()
+	if _today_panel != null:
+		_today_panel.bind_log(null)
 	# The shared clock outlives this session: a site's refusal goes with it.
 	Clock.sim.opening_refusal = ""
 	if sound != null:
@@ -1027,12 +1070,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and _build_catalogue != null and _build_catalogue.blueprint_name_has_focus():
 		return
+	if key != null and _staff_panel != null and _staff_panel.name_edit_has_focus():
+		return
 	if is_settings_visible():
 		var settings_key: InputEventKey = event as InputEventKey
 		if settings_key != null and settings_key.pressed and not settings_key.echo:
 			var settings_code: Key = settings_key.physical_keycode if settings_key.physical_keycode != KEY_NONE else settings_key.keycode
 			if settings_code == KEY_ESCAPE:
 				set_settings_visible(false)
+		_mark_input_handled()
+		return
+	if is_system_guide_visible():
+		if key != null and not key.echo:
+			_on_shift_changed(key)
+			if key.pressed and (key.physical_keycode == KEY_ESCAPE or key.keycode == KEY_ESCAPE):
+				_on_close_system_guide()
 		_mark_input_handled()
 		return
 	if is_shortcuts_visible():
@@ -1078,12 +1130,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key != null:
 			_mark_input_handled()
 		return
+	var pressed_code: Key = KEY_NONE
+	if key != null and key.pressed and not key.echo:
+		pressed_code = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+	if pressed_code == KEY_ESCAPE and _today_panel.visible:
+		_today_panel.hide()
+		_mark_input_handled()
+		return
 	if route_paint_input(event) or route_build_input(event):
 		_mark_input_handled()
 		return
-	if key != null and key.pressed and not key.echo:
-		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		if code == KEY_ESCAPE:
+	if pressed_code != KEY_NONE:
+		if pressed_code == KEY_ESCAPE:
+			var paper_was_visible: bool = _morning_paper != null and _morning_paper.visible
+			if paper_was_visible:
+				_morning_paper.dismiss()
 			if $HUD.dismiss_loan_repayment(true):
 				_mark_input_handled()
 				return
@@ -1102,17 +1163,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0 \
 					or _inspect_panel.selected_menu_board_anchor != WallFaces.NO_FACE:
 				clear_selection()
-			else:
+			elif not paper_was_visible:
 				set_settings_visible(true)
 			_mark_input_handled()
 		else:
-			var mode: StringName = _owner_mode_for_key(code)
+			var mode: StringName = _owner_mode_for_key(pressed_code)
 			if not mode.is_empty() and assign_owner_mode(mode):
 				_mark_input_handled()
 	var mouse: InputEventMouseButton = event as InputEventMouseButton
 	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
 		pick_screen_position(mouse.position)
 		_mark_input_handled()
+
+
+func _on_today_pressed() -> void:
+	if is_site_card_visible() or is_service_event_visible() or is_settings_visible() \
+			or is_shortcuts_visible() or is_owner_picker_visible():
+		return
+	_align_today_panel()
+	_today_panel.toggle()
+
+
+func _align_today_panel() -> void:
+	_today_panel.set_panel_top(($HUD/Today as Button).get_global_rect().end.y + 8.0)
 
 
 func _take_photo_key(photo: PhotoMode, key: InputEventKey) -> void:
@@ -1266,7 +1339,9 @@ func route_build_input(event: InputEvent) -> bool:
 				# Alt explicitly picks the floor layer. A miss cannot accidentally
 				# grab the furniture above it; normal clicks keep their old order.
 				var item: PlacedItem = world.grid.item_on_layer(cell, ItemDef.PlacementLayer.FLOOR_DECOR) \
-					if mouse.alt_pressed else world.grid.item_at(cell)
+					if mouse.alt_pressed else world.grid.item(build_mode.hover_item_id)
+				if item != null and item.def is ItemDef and (item.def as ItemDef).sits_on_surface():
+					cell = item.origin
 				if item != null:
 					match build_mode.tool:
 						BuildMode.Tool.EYEDROPPER:
@@ -1663,7 +1738,8 @@ func _recompute_vibe() -> void:
 	var result: VibeModel.Result = vibe_result
 	if inputs != null:
 		_update_collection_toasts(collection_result)
-	_build_catalogue.set_vibe(result)
+	_prestige = Prestige.evaluate(world.grid, content, shop_editor.decor)
+	_build_catalogue.set_vibe(result, _prestige)
 	$HUD.set_vibe(result)
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
@@ -1719,13 +1795,14 @@ func _refresh_demand() -> void:
 		vibe_result.score, _demand_day, _street_factor(_demand_day),
 		viral_review.factor(_demand_day),
 		_effective_signature_factor(),
-		signature_recipe.display_name if signature_recipe != null else "")
+		signature_recipe.display_name if signature_recipe != null else "", WEEK_RHYTHM)
 	if next == null or not sim.set_demand_factor(next.total):
 		return
 	_demand_breakdown = next
 	var previous: float = demand_state.last_service_factor \
 		if demand_state.last_service_day == _demand_day - 1 else 0.0
 	$HUD.set_demand_status(next.total, previous)
+	_menu_panel.set_viral_notice(ViralReviewText.morning(next.viral, next.total >= demand_tuning.total_cap))
 
 
 ## What the street sees on `day`: the frontage's curb appeal and the health
@@ -1778,12 +1855,15 @@ func forecast_next_demand() -> Dictionary:
 		return {}
 	var signature_id: StringName = _effective_signature_id()
 	var signature_recipe: RecipeDef = content.recipe(signature_id) if not signature_id.is_empty() else null
+	var phase: SimClock.Phase = Clock.sim.phase
+	var open_service_pending: bool = phase != SimClock.Phase.CLOSED \
+		and (phase != SimClock.Phase.MORNING or Clock.sim.opening_refusal.is_empty())
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		reputation.average(), projected.renown, _demand_enabled_dishes(),
 		vibe_result.score, projected.day, _street_factor(projected.day),
-		viral_review.factor(projected.day),
+		viral_review.factor_for_tomorrow(Clock.sim.day, open_service_pending),
 		_effective_signature_factor(),
-		signature_recipe.display_name if signature_recipe != null else "")
+		signature_recipe.display_name if signature_recipe != null else "", WEEK_RHYTHM)
 	if next == null:
 		return {}
 	var result: Dictionary = next.to_dict()
@@ -2061,13 +2141,22 @@ func update_build_pointer(screen_position: Vector2, shift: bool = false) -> bool
 			build_mode.hover_item(-1)
 			return true
 	var cell: Variant = build_cell_at_screen_position(screen_position)
+	if build_mode.has_ghost() and build_mode.selected_definition != null and build_mode.selected_definition.sits_on_surface():
+		var camera: Camera3D = $CameraRig/Camera3D
+		var surface: Variant = ($ShopView as ShopView).surface_cell_at_ray(camera.project_ray_origin(screen_position),
+			camera.project_ray_normal(screen_position))
+		if surface is Vector2i:
+			cell = surface
 	if not cell is Vector2i:
 		build_mode.hover_item(-1)
 		return false
 	if build_mode.has_ghost():
 		build_mode.update_origin(cell)
 	elif build_mode.state == BuildMode.State.IDLE:
-		var hovered: PlacedItem = world.grid.item_at(cell)
+		var camera: Camera3D = $CameraRig/Camera3D
+		var prop_id: int = ($ShopView as ShopView).surface_decor_at_ray(camera.project_ray_origin(screen_position),
+			camera.project_ray_normal(screen_position))
+		var hovered: PlacedItem = world.grid.item(prop_id) if prop_id >= 0 else world.grid.item_at(cell)
 		build_mode.hover_item(hovered.id if hovered != null else -1)
 	return true
 
@@ -2261,6 +2350,8 @@ func _on_blueprint_code_paste_requested(text: String) -> void:
 
 
 func _bind_build_session() -> void:
+	var lot_tags: Array[StringName] = _site_lot_tags()
+	shop_editor.set_lot_tags(lot_tags)
 	if not build_mode.changed.is_connected(_on_build_changed):
 		build_mode.changed.connect(_on_build_changed)
 	edit_history = ShopEditHistory.new(shop_editor, world.grid)
@@ -2275,6 +2366,7 @@ func _bind_build_session() -> void:
 	build_mode.bind_walls(shop_wall_finishes, shop_hang, shop_rehang, shop_take_down)
 	build_mode.bind_blueprints(blueprint_library, shop_stamp)
 	if _build_catalogue != null:
+		_build_catalogue.set_lot_tags(lot_tags)
 		_build_catalogue.bind_blueprints(blueprint_library)
 	($ShopView as ShopView).bind_wall_finishes(shop_editor.walls, shop_editor.decor)
 	_inspect_panel.bind_menu_boards(shop_editor.decor, menu_settings)
@@ -2447,12 +2539,12 @@ func build_restock_estimate() -> int:
 	var pending: Dictionary[StringName, int] = _on_the_way()
 	if world.clock.phase == SimClock.Phase.CLOSED:
 		return int(StockAlerts.forecast(Economy.stock, _reorder(true), _shelf_lives(),
-			world.clock.day + 1, _unit_costs(world.clock.day + 1), 2147483647, auto_reorder_premium,
+			world.clock.day + 1, _unit_costs(world.clock.day + 1), 2147483647, _reorder_premium(true),
 			_storage_capacity(), kinds, pending)["order_cost"])
 	var empty: Stock = Stock.new()
 	var space: StorageSpace = StorageSpace.new(_storage_capacity(), empty, pending, kinds)
 	return int(_reorder(true).plan(empty, _unit_costs(world.clock.day + 1), 2147483647,
-		auto_reorder_premium, false, space)["cost"])
+		_reorder_premium(true), false, space)["cost"])
 
 
 func build_restock_warning() -> String:
@@ -2780,19 +2872,25 @@ func _on_inspection_tick(_tick: int) -> void:
 
 ## Deletes the autosave and restarts the scene from day 1, in the same mode.
 func start_over() -> void:
-	start_fresh_run(get_tree(), save_slot, use_saves, GameMode.is_creative())
+	start_fresh_run(get_tree(), save_slot, use_saves, GameMode.is_creative(),
+		difficulty.mode(), difficulty.active_custom_flags())
 
 
 ## The title's New game and the existing F10 route share replacement semantics.
 ## `creative` picks the new game's mode (FK-141); _new_game() applies it.
 static func start_fresh_run(tree: SceneTree, slot: String = AUTOSAVE_SLOT, with_saves: bool = true,
-		creative: bool = false) -> Error:
-	GameMode.request_new_game(creative)
+		creative: bool = false, difficulty_id: StringName = &"normal", custom_flags: Dictionary = {}) -> Error:
+	if not creative and not Difficulty.new().start(difficulty_id, custom_flags):
+		return ERR_INVALID_PARAMETER
 	if with_saves:
 		var error: Error = SaveSystem.delete_slot(slot)
 		if error != OK and error != ERR_FILE_NOT_FOUND:
 			return error
-	return tree.change_scene_to_file("res://src/world/main.tscn")
+	GameMode.request_new_game(creative, difficulty_id, custom_flags)
+	var error: Error = tree.change_scene_to_file("res://src/world/main.tscn")
+	if error != OK:
+		GameMode.request_new_game(false)
+	return error
 
 
 ## Returning discards only unsaved changes; the existing morning save is intact.
@@ -2853,6 +2951,7 @@ func _report_sources(day: int) -> DayReportSources:
 	sources.regulars = regulars
 	sources.viral = viral_review
 	sources.owner = owner_progress
+	sources.staff_nicknames = staff_roster.nicknames()
 	sources.service_events = service_events
 	sources.notes = day_notes
 	sources.reputation_average = reputation.average()
@@ -2860,7 +2959,7 @@ func _report_sources(day: int) -> DayReportSources:
 	sources.food_cost = _food_cost_today
 	sources.haggle_receipt = _haggle_receipt
 	sources.stock_forecast = StockAlerts.forecast(Economy.stock,
-		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), auto_reorder_premium,
+		_reorder(true), _shelf_lives(), day + 1, _unit_costs(day + 1), Economy.spendable(), _reorder_premium(true),
 		_storage_capacity(), StorageSpace.kinds_of(content), deliveries.pending_by_id())
 	sources.demand_forecast = forecast_next_demand()
 	return sources
@@ -2886,7 +2985,11 @@ func _new_game() -> void:
 	# Career or Creative, as the title asked (FK-141). Creative later also
 	# needs: choosing any lot and neighbourhood (TODO #405), and saving a
 	# design as a blueprint to place in career (TODO #432).
-	GameMode.begin_new_game()
+	difficulty = GameMode.begin_new_game()
+	_loaded_difficulty = null
+	_morning_paper_day = 0
+	if _morning_paper != null:
+		_morning_paper.dismiss()
 	_loaded_collection_toast_ids.clear()
 	_has_loaded_collection_toast_section = false
 	$HUD.clear_collection_toasts()
@@ -2916,6 +3019,8 @@ func _new_game() -> void:
 	$HUD.set_menu_notice("")
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
+	menu_presets = MenuPresetLibrary.new()
+	_loaded_menu_presets = null
 	# A fresh clock and seed too, so a half-loaded save can't leave its day
 	# or random state behind.
 	Clock.sim = SimClock.new()
@@ -2978,6 +3083,7 @@ func _load_autosave() -> bool:
 
 
 func _load_autosave_sections() -> bool:
+	_loaded_difficulty = null
 	_booking_paid_total = 0
 	curb_appeal_score = 0.0
 	curb_appeal_factor = 1.0
@@ -2993,6 +3099,7 @@ func _load_autosave_sections() -> bool:
 	_loaded_regulars = null
 	_loaded_blueprints = null
 	_blueprint_load_notes.clear()
+	_loaded_menu_presets = null
 	_loaded_layout = null
 	_loaded_menu = null
 	_loaded_daily_special = null
@@ -3249,6 +3356,8 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 		else {"version": AquariumCare.SAVE_VERSION, "tanks": []}, Clock.sim.day)
 	_loaded_aquarium = {}
 	if with_globals:
+		difficulty = _loaded_difficulty if _loaded_difficulty != null else Difficulty.new()
+		_loaded_difficulty = null
 		site_book = _loaded_sites if _loaded_sites != null else SiteBook.new()
 		_loaded_sites = null
 	_loaded_layout = layout
@@ -3307,6 +3416,8 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 	_last_delivery.clear()
 	if with_globals:
 		blueprint_library = _loaded_blueprints if _loaded_blueprints != null else BlueprintLibrary.new()
+		menu_presets = _loaded_menu_presets if _loaded_menu_presets != null else MenuPresetLibrary.new()
+		_loaded_menu_presets = null
 		for note: String in _blueprint_load_notes:
 			world.log_event(note)
 	if _loaded_layout != null:
@@ -3493,6 +3604,7 @@ func _clear_site_staging() -> void:
 ## switch replaces them (the counterpart of _wire_session, _connect_session
 ## and _bind_build_session). Autoload and panel signals stay connected.
 func _disconnect_session() -> void:
+	$Overlay/TodayPanel.bind_log(null)
 	clear_selection()
 	if sound != null:
 		sound.unbind()
@@ -3600,6 +3712,10 @@ func _restore_collection_toasts(data: Dictionary) -> bool:
 func _update_collection_toasts(result: CollectionModel.Result) -> void:
 	if result == null or not result.valid:
 		return
+	for id: StringName in _pending_collection_toast_ids.duplicate():
+		if not result.completed_ids.has(id):
+			$HUD.drop_pending_collection_toast(id)
+			_pending_collection_toast_ids.erase(id)
 	for id: StringName in result.completed_ids:
 		if _shown_collection_toast_ids.has(id) or _pending_collection_toast_ids.has(id):
 			continue
@@ -3741,6 +3857,18 @@ func _restore_opening_week(data: Dictionary) -> bool:
 	return true
 
 
+func _capture_difficulty() -> Dictionary:
+	return difficulty.to_dict()
+
+
+func _restore_difficulty(data: Dictionary) -> bool:
+	var candidate: Difficulty = Difficulty.new()
+	if not candidate.from_dict(data):
+		return false
+	_loaded_difficulty = candidate
+	return true
+
+
 func _capture_reorder() -> Dictionary:
 	return reorder_settings.to_dict()
 
@@ -3803,7 +3931,7 @@ func _refresh_lease_offer() -> void:
 	_menu_panel.set_lease_offer(true,
 		"More land to expand, free." if GameMode.is_creative()
 		else "Deposit %s · Daily rent %s. More land to expand; floor is bought separately." % [
-			Fmt.money(lease.deposit), Fmt.money(lease.daily_rent)],
+			Fmt.money(lease.deposit), Fmt.money(AwaySites.adjusted_rent(lease.daily_rent, difficulty.mult(&"rent")))],
 		RestockBudgetWarning.text(Economy.spendable(), lease.deposit, build_restock_estimate()), lease_refusal())
 
 
@@ -4217,6 +4345,7 @@ func _show_service_event_card(entry: Dictionary) -> void:
 	_service_event_resume_speed = Clock.speed
 	Clock.set_speed(0)
 	$HUD.set_event_card_active(true)
+	_on_close_system_guide()
 	_service_event_card.show_card(event.id, String(card["title"]), String(card["text"]),
 		StringName(card["icon"]), labels, previews, enabled)
 
@@ -4242,7 +4371,9 @@ func service_event_pick(index: int) -> bool:
 		_close_service_event_card(true)
 		refresh_presentation()
 		return false
-	world.log_event("Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]])
+	var line: String = "Service event: %s. %s. %s" % [outcome["title"], outcome["label"], outcome["result"]]
+	world.log_event(line)
+	sim.log_today(DayLog.Kind.SERVICE_EVENT, line)
 	_close_service_event_card(true)
 	refresh_presentation()
 	return true
@@ -4350,10 +4481,14 @@ func _apply_service_event_buzz() -> void:
 	sim.event_arrival_factor *= factor
 	var buzz: float = service_events.next_day_factor(Clock.sim.day, site)
 	if buzz != 1.0:
-		world.log_event(ServiceEventText.buzz_line(buzz))
+		var line: String = ServiceEventText.buzz_line(buzz)
+		world.log_event(line)
+		sim.log_today(DayLog.Kind.SERVICE_EVENT, line)
 	# Multi-day nudges (#506) each name their card.
 	for boost: Dictionary in service_events.boosts_on(Clock.sim.day, site):
-		world.log_event(ServiceEventText.later_line(String(boost["title"]), int(boost["percent"])))
+		var line: String = ServiceEventText.later_line(String(boost["title"]), int(boost["percent"]))
+		world.log_event(line)
+		sim.log_today(DayLog.Kind.SERVICE_EVENT, line)
 
 
 func _service_event_unit_cost(entry: Dictionary) -> int:
@@ -4602,6 +4737,18 @@ func _on_tray_requested(level: int) -> void:
 	tray_buy(level)
 
 
+func _capture_menu_presets() -> Dictionary:
+	return menu_presets.to_save()
+
+
+func _restore_menu_presets(data: Dictionary) -> bool:
+	var restored: MenuPresetLibrary = MenuPresetLibrary.new()
+	if not restored.restore(data):
+		return false
+	_loaded_menu_presets = restored
+	return true
+
+
 func _capture_menu() -> Dictionary:
 	return menu_settings.to_dict() if menu_settings != null else {}
 
@@ -4646,6 +4793,22 @@ func can_view_staff() -> bool:
 
 func can_edit_staff() -> bool:
 	return can_view_staff() and Clock.sim.phase == SimClock.Phase.MORNING
+
+
+## A nickname changes presentation on the same live person. The existing
+## roster provider writes it at the next morning autosave.
+func staff_rename(id: StringName, text: String) -> bool:
+	if not can_view_staff():
+		return false
+	var name_text: String = staff_roster.rename_member(id, text)
+	if name_text.is_empty():
+		return false
+	var employee: StaffAgent = sim.employee(id)
+	if employee != null:
+		employee.display_name = name_text
+	_staff_panel.refresh()
+	_inspect_panel.refresh()
+	return true
 
 
 ## Selection changes apply at the next pick. Install a detached row on the
@@ -5047,10 +5210,25 @@ func _reorder(tomorrow: bool = false) -> ReorderSettings:
 				if ingredient != null and not used.has(ingredient.id):
 					used.append(ingredient.id)
 	reorder_settings.set_in_use(used)
-	if sim == null or _demand_day != Clock.sim.day or menu_settings == null:
-		return reorder_settings
-	return reorder_settings.with_forecast(restock_forecast_targets(
-		tomorrow or Clock.sim.phase == SimClock.Phase.CLOSED))
+	var planned: ReorderSettings = reorder_settings
+	if sim != null and _demand_day == Clock.sim.day and menu_settings != null:
+		planned = reorder_settings.with_forecast(restock_forecast_targets(
+			tomorrow or Clock.sim.phase == SimClock.Phase.CLOSED))
+	var policy: Difficulty = _reorder_difficulty(tomorrow)
+	if not policy.auto(&"buy") or policy.mode() == &"easy":
+		if planned == reorder_settings:
+			planned = reorder_settings.copy()
+		for id: StringName in planned.ids():
+			planned.set_enabled(id, policy.auto(&"buy"))
+	return planned
+
+
+func _reorder_difficulty(tomorrow: bool = false) -> Difficulty:
+	return difficulty.for_day(Clock.sim.day + 1) if tomorrow else difficulty
+
+
+func _reorder_premium(tomorrow: bool = false) -> float:
+	return auto_reorder_premium if _reorder_difficulty(tomorrow).auto(&"buy_premium") else 0.0
 
 
 ## Approximate menu shares use the authored visit hours and current eligible
@@ -5209,7 +5387,7 @@ func _refresh_menu_boards() -> void:
 			prices[recipe.id] = menu_settings.price_of(recipe)
 		view.wall_finish_view.set_menu_board_content(menu_settings.restaurant_name(),
 			menu_settings.enabled_recipes(), prices,
-			DailySpecialText.name_for(daily_special.recipe_id(), menu_settings.enabled_recipes()),
+			daily_special.recipe_id(),
 			signature_state.signature_recipe_id() if signature_state != null else &"")
 
 
@@ -5236,13 +5414,17 @@ func menu_set_enabled(recipe_id: StringName, enabled: bool) -> bool:
 	var was_enabled: bool = menu_settings.is_enabled(recipe_id)
 	if not menu_settings.set_enabled(recipe_id, enabled):
 		return false
+	_apply_menu_edit(was_enabled != menu_settings.is_enabled(recipe_id))
+	return true
+
+
+func _apply_menu_edit(enabled_changed: bool) -> void:
 	_apply_menu(sim, menu_settings)
 	_sync_effective_signature()
-	if was_enabled != menu_settings.is_enabled(recipe_id):
+	if enabled_changed:
 		_recompute_vibe()
 		_refresh_stock_panel()
 	_refresh_menu_details()
-	return true
 
 
 func menu_set_signature(recipe_id: StringName) -> bool:
@@ -5283,6 +5465,21 @@ func menu_set_price(recipe_id: StringName, price: int) -> bool:
 	return true
 
 
+func menu_load_preset(index: int) -> Dictionary:
+	if not can_edit_menu():
+		return {}
+	var preset: Dictionary = menu_presets.get_preset(index)
+	if preset.is_empty():
+		return {}
+	var enabled: Array[StringName] = preset["enabled"]
+	var prices: Dictionary[StringName, int] = preset["prices"]
+	var result: Dictionary = menu_settings.apply_preset(enabled, prices)
+	_apply_menu_edit(bool(result["enabled_changed"]))
+	if result["prices_changed"]:
+		_observe_opening(OpeningGoal.Condition.PRICE_CHANGED, 1.0)
+	return result
+
+
 func menu_reset_prices() -> bool:
 	if not can_edit_menu() or not menu_settings.reset_all_prices_to_standard():
 		return false
@@ -5320,6 +5517,7 @@ func set_menu_visible(value: bool) -> bool:
 		set_stock_visible(false)
 		_refresh_menu_details()
 		_menu_panel.set_drink_hints(drink_station_hints())
+		_menu_panel.preset_controls().set_names(menu_presets.names())
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 		_menu_panel.set_property_available(PropertyMarket.shown(owner_progress.career_tier))
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -5436,6 +5634,7 @@ func _property_buyer() -> PropertyPanel.Buyer:
 	buyer.limits = SITE_LIMITS
 	buyer.cash = Economy.spendable()
 	buyer.loan = Economy.loan.principal
+	buyer.rent_multiplier = difficulty.mult(&"rent")
 	return buyer
 
 
@@ -5466,6 +5665,11 @@ func _purchase_refusal(lot: LotDef) -> PropertyMarket.Refusal:
 	return PropertyMarket.purchase_refusal(lot, owner_progress.career_tier, closing_reputation(),
 		site_book.owns_lot(lot.id), site_book.site_count(), SITE_LIMITS, Economy.spendable(),
 		Economy.loan.principal)
+
+
+func _site_lot_tags() -> Array[StringName]:
+	var lot: LotDef = _lot_def(site_book.lot_id(site_book.active_id)) if site_book != null else null
+	return lot.tags if lot != null else ([] as Array[StringName])
 
 
 func _lot_def(lot_id: StringName) -> LotDef:
@@ -5800,6 +6004,7 @@ func _refresh_goals(force: bool = false) -> void:
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
 		"day": Clock.sim.day, "career_tier": owner_progress.career_tier,
 		"collections": _collection_progress_snapshot(vibe_result.collection_result),
+		"prestige": _prestige.value(), "golden_ladles": sim.critic.golden_ladles,
 		"opening": opening_week.to_dict(), "opening_values": _opening_values()}
 	if force or snapshot != _goals_snapshot:
 		# A Creative game (FK-141) hides career goals, the weekly goal, the
@@ -5808,6 +6013,7 @@ func _refresh_goals(force: bool = false) -> void:
 		_goals_panel.set_goals(null if creative else milestone_catalogue, completed, progress,
 			owner_progress.level, null if creative else weekly_challenge, Clock.sim.day, observation)
 		_goals_panel.set_career_tier_line("" if creative else CAREER_TIERS.goal_text(owner_progress.career_tier))
+		_goals_panel.set_golden_ladles(_prestige.value(), sim.critic.golden_ladles)
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content, not creative))
 		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_panel.set_opening_week(null if creative else opening_week, _chain_set(),
@@ -5828,6 +6034,20 @@ func _collection_progress_snapshot(result: CollectionModel.Result) -> Array[Stri
 	return snapshot
 
 
+func _refresh_difficulty() -> void:
+	var creative: bool = GameMode.is_creative()
+	_settings_panel.set_difficulty(null if creative else difficulty)
+	var label: Label = $HUD/Top/Row/Difficulty
+	label.text = Difficulty.mode_name(difficulty.mode())
+	label.visible = not creative and difficulty.mode() != &"normal"
+
+
+func _on_difficulty_requested(mode_id: StringName, flags: Dictionary) -> void:
+	if _started and not display_only and not GameMode.is_creative():
+		difficulty.request_change(mode_id, flags, Clock.sim.day + 1)
+		_refresh_difficulty()
+
+
 func set_settings_visible(value: bool) -> bool:
 	if value and (is_haggle_active() or is_service_event_visible()):
 		return false
@@ -5836,6 +6056,7 @@ func set_settings_visible(value: bool) -> bool:
 	if _settings_panel.visible == value:
 		return true
 	if value:
+		_today_panel.hide()
 		_dismiss_goals()
 		_dismiss_property()
 		$HUD.dismiss_loan_repayment()
@@ -5900,6 +6121,40 @@ func _on_shortcuts_close_requested() -> void:
 	set_shortcuts_visible(false)
 
 
+func is_system_guide_visible() -> bool:
+	return _guide_panel != null and _guide_panel.visible
+
+
+func _on_open_system_guide() -> void:
+	if is_system_guide_visible() or not _started or display_only \
+			or is_haggle_active() or is_service_event_visible() or is_site_card_visible() \
+			or is_owner_picker_visible() or is_settings_visible():
+		return
+	set_shortcuts_visible(false)
+	$HUD.dismiss_loan_repayment()
+	var viewport: Viewport = get_viewport()
+	_guide_previous_focus = viewport.gui_get_focus_owner()
+	if _guide_panel == null:
+		_guide_panel = SYSTEM_GUIDE_SCENE.instantiate() as GuidePanel
+		_guide_panel.close_requested.connect(_on_close_system_guide)
+		$Overlay.add_child(_guide_panel)
+	_guide_panel.show()
+	_guide_panel.focus_topics()
+
+
+func _on_close_system_guide() -> void:
+	if not is_system_guide_visible():
+		return
+	_guide_panel.hide()
+	var previous_focus: Control = _guide_previous_focus
+	_guide_previous_focus = null
+	if is_instance_valid(previous_focus) and previous_focus.is_visible_in_tree() \
+			and previous_focus.focus_mode != Control.FOCUS_NONE:
+		previous_focus.grab_focus()
+	else:
+		get_viewport().gui_release_focus()
+
+
 func _on_menu_settings_requested() -> void:
 	set_settings_visible(true)
 
@@ -5924,6 +6179,58 @@ func _on_menu_signature_requested(recipe_id: StringName) -> void:
 
 func _on_menu_price_requested(recipe_id: StringName, price: int) -> void:
 	menu_set_price(recipe_id, price)
+
+
+func _on_menu_preset_save_requested(preset_name: String) -> void:
+	if not can_edit_menu():
+		return
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not menu_presets.save_menu(preset_name, menu_settings):
+		controls.set_feedback("This menu could not be saved as a preset.")
+		return
+	var names: Array[String] = menu_presets.names()
+	controls.set_names(names, names.size() - 1)
+	controls.set_feedback("Menu preset saved.")
+
+
+func _on_menu_preset_load_requested(index: int) -> void:
+	var result: Dictionary = menu_load_preset(index)
+	if result.is_empty():
+		return
+	_menu_panel.set_drink_hints(drink_station_hints())
+	var notes: PackedStringArray = [
+		"Kept the current dishes." if result["kept_current_menu"] else "Menu preset loaded.",
+	]
+	var unavailable: int = result["unavailable"]
+	if unavailable == 1:
+		notes.append("1 dish in this preset is unavailable.")
+	elif unavailable > 1:
+		notes.append("%d dishes in this preset are unavailable." % unavailable)
+	var over_limit: int = result["over_limit"]
+	if over_limit == 1:
+		notes.append("1 dish did not fit the menu limit.")
+	elif over_limit > 1:
+		notes.append("%d dishes did not fit the menu limit." % over_limit)
+	_menu_panel.preset_controls().set_feedback(" ".join(notes))
+
+
+func _on_menu_preset_rename_requested(index: int, preset_name: String) -> void:
+	if not can_edit_menu():
+		return
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not menu_presets.rename(index, preset_name):
+		controls.set_feedback("This preset could not be renamed.")
+		return
+	controls.set_names(menu_presets.names(), index)
+	controls.set_feedback("Menu preset renamed.")
+
+
+func _on_menu_preset_delete_requested(index: int) -> void:
+	if not can_edit_menu() or not menu_presets.remove(index):
+		return
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	controls.set_names(menu_presets.names(), index)
+	controls.set_feedback("Menu preset deleted.")
 
 
 func _on_menu_reset_prices_requested() -> void:
@@ -6159,6 +6466,7 @@ func _on_loan_repayment_requested(amount: int, repay_all: bool) -> void:
 	var phase: SimClock.Phase = Clock.sim.phase
 	if not _started or display_only or world == null or Clock.attached_world != world \
 			or is_haggle_active() or is_owner_picker_visible() or is_settings_visible() or is_shortcuts_visible() \
+			or is_system_guide_visible() \
 			or is_site_card_visible() \
 			or (phase != SimClock.Phase.MORNING and phase != SimClock.Phase.CLOSED):
 		return
@@ -6187,6 +6495,9 @@ func shop_sell(item_id: int) -> int:
 
 ## Morning setup: new counters, a stocked fridge, and an autosave.
 func _begin_morning() -> void:
+	$Overlay/TodayPanel.hide()
+	difficulty.apply_morning(Clock.sim.day)
+	_refresh_difficulty()
 	# Opening-week toasts held under last night's report show now, whichever
 	# button started the day.
 	for line: String in _held_opening_toasts:
@@ -6241,6 +6552,9 @@ func _begin_morning() -> void:
 	# Keep authored gaps. Demand joins the existing scaled_gap exactly once.
 	# Derive actual editable facts before the first gap, without a random draw.
 	_recompute_vibe()
+	# Clear yesterday's notice first: _refresh_demand returns early on a bad
+	# vibe or factor and would otherwise leave it showing.
+	_menu_panel.set_viral_notice("")
 	if demand_state.begin_morning(Clock.sim.day, demand_tuning):
 		_demand_day = Clock.sim.day
 		_demand_reputation = reputation.average()
@@ -6251,7 +6565,7 @@ func _begin_morning() -> void:
 		_demand_breakdown = null
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
-	_menu_panel.set_viral_notice(ViralReviewText.morning(viral_review.factor(Clock.sim.day)))
+		_menu_panel.set_viral_notice("")
 	sim.start_day(owner_progress.effective_tier())
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.
@@ -6274,6 +6588,7 @@ func _begin_morning() -> void:
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
 	_food_cost_today = PurchaseBasis.zero()
+	var yesterday: DayReport = shown_report
 	shown_report = null
 	_begin_weekly_challenge_if_needed()
 	_begin_opening_week_morning()
@@ -6308,6 +6623,39 @@ func _begin_morning() -> void:
 	_refresh_stock_panel()
 	refresh_presentation()
 	_offer_site_card()
+	_show_morning_paper(yesterday)
+
+
+func _show_morning_paper(yesterday: DayReport) -> void:
+	var day: int = Clock.sim.day
+	if _morning_paper == null or not Preferences.morning_paper_enabled or _morning_paper_day == day:
+		return
+	_morning_paper_day = day
+	if yesterday != null and yesterday.day != day - 1:
+		yesterday = null
+	var history: Dictionary = {}
+	if yesterday == null and day > 1:
+		var recent: Array[Dictionary] = business_history.recent(1)
+		if not recent.is_empty() and int(recent[0]["day"]) == day - 1:
+			history = recent[0]
+	var dishes: Dictionary = yesterday.dishes_sold if yesterday != null else history.get("dishes_sold", {})
+	var dish: String = MorningPaper.best_dish(dishes, content)
+	var notes: Array[String] = [sim.rush_hour.morning_notice()]
+	if group_booking != null and group_booking.has_active_booking() \
+			and int(group_booking.booking.get("service_day", -1)) == day:
+		var booking: Dictionary = group_booking.booking
+		notes.append("A table for %d is booked at %s today." % [
+			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
+	if not dish.is_empty():
+		notes.append("%s was yesterday’s favorite." % dish)
+	_morning_paper.set_panel_top(float($HUD.call("panel_top")))
+	_morning_paper.show_paper(MorningPaper.build(day, yesterday, world.weather.kind, notes,
+		GameState.rng(&"paper"), dish, history))
+
+
+func _on_morning_paper_preference_changed(key: StringName) -> void:
+	if key == &"morning_paper" and not Preferences.morning_paper_enabled:
+		_morning_paper.dismiss()
 
 
 ## Fetch the current run's stream lazily: reloads and legacy saves fetch none.
@@ -6392,15 +6740,17 @@ func _shelf_lives() -> Dictionary:
 	return lives
 
 
-## One price map feeds every live purchase and quote. Future restock forecasts
+## The active lot's price map feeds purchases, auto-orders and quotes. Future forecasts
 ## pass their purchase day explicitly; paid deliveries retain their stored lines.
 func _unit_costs(for_day: int = 0) -> Dictionary:
 	var day: int = Clock.sim.day if for_day < 1 else for_day
 	var costs: Dictionary = {}
 	if content == null:
 		return costs
+	var lot_tags: Array[StringName] = _site_lot_tags()
 	for ingredient: IngredientDef in content.ingredients():
-		costs[ingredient.id] = Season.purchase_unit_cost(ingredient.id, ingredient.unit_cost, day, season_tuning)
+		if LotAccess.allowed(ingredient, lot_tags):
+			costs[ingredient.id] = Season.purchase_unit_cost(ingredient.id, ingredient.unit_cost, day, season_tuning)
 	return costs
 
 
@@ -6443,7 +6793,7 @@ func _restock() -> void:
 	_last_delivery.clear()
 	_deliver_due(true)
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.spendable(),
-		auto_reorder_premium, false, storage_space())
+		_reorder_premium(), false, storage_space())
 	_morning_order = {"short": order["short"], "unfit": order["unfit"]}
 	_buy_standing(order, "The morning auto-order could not be paid")
 	var short: Dictionary = order["short"]
@@ -6553,6 +6903,8 @@ func stock_cart_set(id: StringName, qty: int) -> bool:
 	if qty == 0:
 		trial.erase(id)
 	else:
+		if not LotAccess.allowed(content.ingredient(id), _site_lot_tags()):
+			return false
 		trial[id] = qty
 	# Only the added ingredient's own kind must fit: a cart left over in
 	# another kind never blocks it.
@@ -6579,8 +6931,7 @@ func stock_cart_list_total() -> int:
 	var costs: Dictionary = _unit_costs()
 	var total: int = 0
 	for id: StringName in stock_cart:
-		var ingredient: IngredientDef = content.ingredient(id)
-		if ingredient != null:
+		if costs.has(id):
 			total += int(costs[id]) * int(stock_cart[id])
 	return total
 
@@ -6667,6 +7018,10 @@ func _reset_haggle() -> void:
 func stock_cart_refusal() -> String:
 	if stock_cart.is_empty():
 		return "Choose some ingredients first"
+	var lot_tags: Array[StringName] = _site_lot_tags()
+	for id: StringName in stock_cart:
+		if not LotAccess.allowed(content.ingredient(id), lot_tags):
+			return "An ingredient in the cart is unavailable at this lot"
 	var kind: int = storage_space().first_overflow(stock_cart)
 	if kind >= 0:
 		return StorageSpace.refusal(kind)
@@ -6763,14 +7118,18 @@ func _cart_order() -> Array[StringName]:
 
 
 func stock_set_auto(id: StringName, enabled: bool) -> bool:
-	if not can_edit_stock() or not reorder_settings.set_enabled(id, enabled):
+	if not can_edit_stock() or not difficulty.auto(&"buy") or difficulty.mode() == &"easy" \
+			or not LotAccess.allowed(content.ingredient(id), _site_lot_tags()) \
+			or not reorder_settings.set_enabled(id, enabled):
 		return false
 	_refresh_stock_panel()
 	return true
 
 
 func stock_set_target(id: StringName, target: int) -> bool:
-	if not can_edit_stock() or not reorder_settings.set_target(id, target):
+	if not can_edit_stock() or not difficulty.auto(&"buy") \
+			or not LotAccess.allowed(content.ingredient(id), _site_lot_tags()) \
+			or not reorder_settings.set_target(id, target):
 		return false
 	_refresh_stock_panel()
 	return true
@@ -6858,12 +7217,13 @@ func stock_rows() -> Array[Dictionary]:
 		for in_use: bool in [true, false]:
 			for id: StringName in reorder_settings.all_ids():
 				var ingredient: IngredientDef = content.ingredient(id)
-				if ingredient == null or int(ingredient.storage) != kind or used.has(id) != in_use:
+				if ingredient == null or not costs.has(id) or int(ingredient.storage) != kind \
+					or used.has(id) != in_use:
 					continue
 				rows.append({"id": id, "name": ingredient.display_name, "count": Economy.stock.count(id),
 					"expiring": int(expiring.get(id, 0)), "unit_cost": int(costs[id]),
 					"season_tag": SeasonText.ingredient_tag(id, Clock.sim.day, season_tuning, ingredient.unit_cost),
-					"enabled": reorder_settings.is_enabled(id), "target": planned.target(id),
+					"enabled": planned.is_enabled(id), "target": planned.target(id),
 					"max_target": ReorderSettings.MAX_TARGET, "kind": kind, "in_use": in_use,
 					"cart": int(stock_cart.get(id, 0)), "on_order": int(pending.get(id, 0)),
 					"no_dish": not in_dishes.has(id)})
@@ -7003,7 +7363,8 @@ func _refresh_stock_panel() -> void:
 	if _stock_panel == null or Clock.sim == null or content == null or world == null:
 		return
 	_stock_panel.set_view({"rows": stock_rows(), "groups": stock_groups(), "cash": Economy.spendable(),
-		"editable": can_edit_stock(), "notes": stock_notes(), "premium": auto_reorder_premium,
+		"editable": can_edit_stock(), "notes": stock_notes(), "premium": _reorder_premium(),
+		"auto_buy": difficulty.auto(&"buy"), "auto_buy_forced": difficulty.mode() == &"easy",
 		"cart_total": stock_cart_total(), "cart_refusal": stock_cart_refusal(),
 		"haggle_available": can_start_haggle(), "haggle_percent": stock_haggle_percent(),
 		"haggle_morning": Clock.sim.phase == SimClock.Phase.MORNING,
@@ -7085,7 +7446,7 @@ func _on_stock_close_requested() -> void:
 ## nothing here. Like #183's top-up it arrives at once.
 func _restock_station_supplies() -> void:
 	var order: Dictionary = _reorder().plan(Economy.stock, _unit_costs(), Economy.spendable(),
-		auto_reorder_premium, true, storage_space())
+		_reorder_premium(), true, storage_space())
 	_buy_standing(order, "The opening top-up could not be paid")
 	var short: Dictionary = order["short"]
 	for id: StringName in short:
@@ -7116,7 +7477,7 @@ func _charge_closing_costs() -> void:
 	# (#465), on every close: a service, a renovation day or "Close for today".
 	var lot: StringName = site_book.lot_id(site_book.active_id)
 	var rent: int = AwaySites.lot_rent(lot, _home_rent(), content.lot(lot) if content != null else null,
-		lease_expanded)
+		lease_expanded, difficulty.mult(&"rent"))
 	if rent == AwaySites.UNKNOWN_RENT:
 		push_warning("This site's lot is missing from the game's data; no rent charged")
 		rent = 0
@@ -7154,7 +7515,7 @@ func _close_away_sites(day: int) -> void:
 	if content != null:
 		lots = content.lots()
 	var plans: Array[Dictionary] = AwaySites.plan_close(site_book, day, _home_rent(), SITE_MANAGERS,
-		BOOKING_TUNING, lots)
+		BOOKING_TUNING, lots, difficulty.mult(&"rent"))
 	# A day of renovation done at every fixer-upper (docs/TECH.md "Limits and
 	# renovation"), before tonight's lines say how much is left.
 	var ready: Array[StringName] = site_book.count_down_renovations()
@@ -7291,6 +7652,7 @@ func _settle_booking(booking_id: int, review: Dictionary) -> void:
 	if bool(review.get("good_service", false)):
 		var tip: int = BookingSettlement.good_service_tip(_booking_paid_total,
 			int(review.get("stars", 0)), BOOKING_TUNING)
+		tip = roundi(float(tip) * sim.tip_jar_multiplier())
 		if tip > 0 and group_booking.claim_effect(booking_id, GroupBooking.EFFECT_TIP):
 			Economy.add_cash(tip, Ledger.TIP, "Booking service tip")
 	if group_booking.settle(booking_id):
@@ -7335,6 +7697,12 @@ func _on_service_closed(day: int) -> void:
 			GameState.rng.bind(&"viral"))
 		demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
 			sim.demand_factor, demand_tuning)
+		if not sim.critic_result.is_empty():
+			var score: int = Prestige.score(world.grid, content, shop_editor.decor)
+			var eligible: int = Prestige.ladles(score, PRESTIGE_TUNING)
+			var earned: int = sim.critic.award_golden_ladles(sim.critic_result, eligible)
+			if earned > 0:
+				sim.critic_result["golden_ladles_awarded"] = earned
 	_remember_menu_quality()
 	_charge_closing_costs()
 	_settle_due_booking_at_close(day)
@@ -7355,8 +7723,7 @@ func _on_service_closed(day: int) -> void:
 			Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 			Ledger.EARLY_LOAN_REPAYMENT]:
 		operating_profit -= int(day_movements.get(category, 0))
-	# A closed day still evaluates the weekly goal (its saved day must follow
-	# the calendar) but with nothing earned: no profit, sales or guests.
+	# A closed day still advances the weekly goal's saved calendar.
 	var closing_observation: MilestoneDay = _milestone_observation(operating_profit if business_day else 0)
 	# A Creative game (FK-141) has no owner XP, career goals, weekly goal or
 	# tier climb: everything is already unlocked.
@@ -7456,7 +7823,7 @@ func _award_weekly_challenge(observation: MilestoneDay, business_day: bool) -> v
 	var first_week_pool: WeeklyChallengePool = WEEKLY_CHALLENGES if business_day and observation.day == 1 else null
 	var seats: int = sim.seat_count() if first_week_pool != null else 0
 	var staged: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(
-		weekly_challenge, observation, Economy.cash, first_week_pool, seats)
+		weekly_challenge, observation, Economy.cash, first_week_pool, seats, business_day)
 	if staged == null:
 		return
 	weekly_challenge = staged.state
@@ -7732,7 +8099,8 @@ func _unlocked_at_levels(previous_level: int, current_level: int,
 		if _newly_open(recipe.unlock_level, recipe.unlock_tier, previous_level, current_level, previous_tier, current_tier):
 			unlocked.append(recipe.display_name + " recipe")
 	for item: ItemDef in content.items():
-		if item.catalogue_visible and item.unlock_level > previous_level and item.unlock_level <= current_level:
+		if item.catalogue_visible and item.announce_unlock \
+				and item.unlock_level > previous_level and item.unlock_level <= current_level:
 			unlocked.append(item.display_name)
 	for style: FloorStyleDef in content.floor_styles():
 		if _newly_open(style.unlock_level, style.unlock_tier, previous_level, current_level, previous_tier, current_tier):
@@ -7752,6 +8120,8 @@ static func _newly_open(level: int, tier: int, previous_level: int, current_leve
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
 	if phase != SimClock.Phase.MORNING:
+		if _morning_paper != null:
+			_morning_paper.dismiss()
 		# The receipt stays for tonight's report; an unspent offer expires.
 		if is_haggle_active():
 			_haggle_game.call("_on_skip_pressed")

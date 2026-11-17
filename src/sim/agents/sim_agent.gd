@@ -210,6 +210,10 @@ func movement_multiplier() -> float:
 	return 1.0
 
 
+func _baseline_move_speed(multiplier: float) -> float:
+	return move_speed / multiplier
+
+
 ## Scale the EXISTING edge's quantized travel time, rather than geometric
 ## distance: a neutral 0.25 agent takes 4 straight / 6 diagonal ticks. Scaling
 ## raw distance only for Quick would inadvertently give an 18% diagonal gain.
@@ -220,7 +224,7 @@ func _step_move_scaled(world: SimWorld, multiplier: float) -> MoveResult:
 		return MoveResult.MOVING if world.movement.is_stopping(id) else MoveResult.ARRIVED
 	if not is_finite(multiplier) or multiplier <= 0.0 or not is_finite(move_speed) or move_speed <= 0.0:
 		return MoveResult.MOVING
-	var baseline_speed: float = move_speed / multiplier
+	var baseline_speed: float = _baseline_move_speed(multiplier)
 	if not is_finite(baseline_speed) or baseline_speed <= 0.0:
 		return MoveResult.MOVING
 	var budget: float = multiplier

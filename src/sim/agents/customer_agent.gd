@@ -84,6 +84,7 @@ var booking_recipe_preference: float = 0.0
 ## Detached preferences captured before arrival. Existing guests never change type.
 var customer_type_id: StringName = &"regular"
 var customer_type_name: String = "Regular"
+var customer_type_report_name: String = "Regulars"
 ## Named regular identity is durable in the cast, not in a transient visit.
 var regular_profile: RegularProfile = null
 var regular_arrival_tick: int = 0
@@ -123,6 +124,7 @@ var _restroom_spot: Vector2i = SimGrid.NO_CELL
 var _restroom_ticks: int = 0
 ## Survives morning report resets so stale removal callbacks cannot count twice.
 var departure_recorded: bool = false
+var _departure_mood: float = -1.0
 var rng: RandomNumberGenerator
 
 var _restaurant: WeakRef
@@ -152,6 +154,9 @@ func configure_type(kind: CustomerType) -> bool:
 	_type_configured = true
 	customer_type_id = kind.id
 	customer_type_name = kind.display_name
+	customer_type_report_name = kind.report_name.strip_edges()
+	if customer_type_report_name.is_empty():
+		customer_type_report_name = customer_type_name
 	budget_multiplier = kind.budget_multiplier
 	drink_add_chance = kind.drink_add_chance
 	pastry_add_chance = kind.pastry_add_chance
@@ -416,6 +421,11 @@ func mood() -> float:
 	return 1.0
 
 
+## The final mood before a guest starts walking out or is removed directly.
+func departure_mood() -> float:
+	return _departure_mood if _departure_mood >= 0.0 else mood()
+
+
 ## Fraction (0..1) of the relevant patience already used while waiting for a
 ## table, an order taker or food. 0 in every other state (#307).
 func urgency() -> float:
@@ -512,6 +522,7 @@ static func _patience_fraction(waited: int, budget: int) -> float:
 
 ## Removal always releases the seat and withdraws unfinished work and tickets.
 func on_removed(world: SimWorld) -> void:
+	_departure_mood = departure_mood()
 	var sim: RestaurantSim = _restaurant.get_ref() as RestaurantSim
 	if party != null and party.size() > 1 and not party.seated:
 		PartySeating.leave_waiting(party, world, sim, leave_reason if leave_reason != &"happy" else &"no_table")
@@ -1261,6 +1272,7 @@ func _leave(world: SimWorld, sim: RestaurantSim, reason: StringName) -> void:
 	if party != null and party.size() > 1 and not party.seated and not party.departing:
 		PartySeating.leave_waiting(party, world, sim, reason)
 		return
+	_departure_mood = departure_mood()
 	leave_reason = reason
 	_cancel_work(world, sim)
 	release_waiting_seat(world)

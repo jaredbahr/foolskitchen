@@ -658,3 +658,72 @@ func test_a_new_site_starts_with_a_copy_of_the_menu_it_was_bought_from() -> void
 	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
 	assert_eq(JSON.stringify(_main.call("_capture_menu")), home_menu, "home's menu is unchanged")
 	assert_ne(JSON.stringify(_book().frozen_sections(FIXER)["menu"]), home_menu, "the new site kept its own change")
+
+
+func test_lot_tags_follow_the_active_site_in_build_blueprints_and_stock() -> void:
+	_start()
+	var catalogue: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
+	var content: ContentDB = _main.get("content") as ContentDB
+	var fresh: StringName = &"fresh_catch"
+	var counter: StringName = &"cocktail_station"
+	var rooftop: StringName = &"skyscraper_rooftop"
+	var entry: ShopPlacement = ShopPlacement.new()
+	entry.item_id = counter
+	var blueprint: Blueprint = Blueprint.new()
+	blueprint.entries = [entry]
+	_set_cash(100000)
+
+	assert_false(catalogue.ordered_ids().has(counter), "the home catalogue hides the rooftop item")
+	assert_true(catalogue.ordered_ids().has(&"bar_counter"), "the unrestricted counter stays in the catalogue")
+	assert_false(_has_stock_row(fresh), "the home Stock panel hides the seaside ingredient")
+	assert_false(_main.call("stock_set_target", fresh, 5))
+	assert_false(_main.call("stock_set_auto", fresh, false))
+	assert_false(_main.call("stock_cart_set", fresh, 1))
+
+	var cash: int = Economy.cash
+	assert_false(_main.call("shop_stamp", blueprint, Vector2i.ZERO))
+	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
+	assert_eq(editor.last_check.why, "Only available at a lot with: Rooftop")
+	assert_eq(Economy.cash, cash, "the refused stamp charges nothing")
+	assert_false(_main.call("shop_buy", counter, Vector2i.ZERO))
+	assert_eq(editor.last_check.why, "Only available at a lot with: Rooftop")
+
+	# Build two frozen sites with their actual authored shells; the real site
+	# switch runs the same validation and UI rebinding as the morning card.
+	for id: StringName in [SEASIDE, rooftop]:
+		var lot: LotDef = content.lot(id)
+		var sections: Dictionary = _main.call("_new_site_sections", lot)
+		assert_false(sections.is_empty())
+		assert_true(_book().add_site(id, id, lot.display_name, Clock.sim.day, sections))
+	assert_true(_main.call("switch_site", SEASIDE))
+	assert_true(_has_stock_row(fresh), "a seaside site lists Fresh catch without an enabled recipe")
+	assert_true(_main.call("stock_set_target", fresh, 5), "the visible row accepts a player target")
+	assert_true(_main.call("stock_set_auto", fresh, false))
+	assert_true(_main.call("stock_cart_set", fresh, 1))
+	assert_true(_main.call("stock_place_order"))
+	assert_eq(Economy.stock.count(fresh), 1)
+	assert_false(catalogue.ordered_ids().has(counter))
+
+	assert_true(_main.call("switch_site", rooftop))
+	assert_true(catalogue.ordered_ids().has(counter))
+	assert_false(_has_stock_row(fresh))
+	assert_false(_main.call("stock_cart_set", fresh, 1))
+	editor = _main.get("shop_editor") as ShopEditor
+	editor.set_owner_level(4)
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var stamped: bool = false
+	for cell: Vector2i in sim.world.grid.cells():
+		if editor.check_stamp(blueprint, cell).ok:
+			stamped = _main.call("shop_stamp", blueprint, cell)
+			break
+	assert_true(stamped, "the rooftop accepts a valid stamp with the same tagged item")
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID))
+	assert_false(catalogue.ordered_ids().has(counter), "switching home removes the rooftop card")
+	assert_false(_has_stock_row(fresh))
+
+
+func _has_stock_row(id: StringName) -> bool:
+	for row: Dictionary in _main.call("stock_rows"):
+		if row["id"] == id:
+			return true
+	return false

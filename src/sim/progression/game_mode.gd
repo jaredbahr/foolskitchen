@@ -18,6 +18,8 @@ static var _creative: bool = false
 ## The mode the next new game starts in, set by the title's choice (or the
 ## in-game Start over, which keeps the current mode). Used once.
 static var _requested_creative: bool = false
+static var _requested_difficulty: StringName = &"normal"
+static var _requested_custom_flags: Dictionary = {}
 
 
 static func is_creative() -> bool:
@@ -25,14 +27,19 @@ static func is_creative() -> bool:
 
 
 ## Asks for the next new game's mode; _new_game() takes it with begin_new_game().
-static func request_new_game(creative: bool) -> void:
+static func request_new_game(creative: bool, difficulty: StringName = &"normal", flags: Dictionary = {}) -> void:
 	_requested_creative = creative
+	_requested_difficulty = difficulty if not creative else &"normal"
+	_requested_custom_flags = flags.duplicate() if not creative else {}
 
 
 ## A new game starts in the requested mode; the request is used up.
-static func begin_new_game() -> void:
+static func begin_new_game() -> Difficulty:
 	_creative = _requested_creative
-	_requested_creative = false
+	var difficulty: Difficulty = Difficulty.new()
+	difficulty.start(_requested_difficulty, _requested_custom_flags)
+	request_new_game(false)
+	return difficulty
 
 
 ## Before a load: a save from before Creative has no section and is a career game.

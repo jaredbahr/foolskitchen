@@ -147,7 +147,7 @@ func record_critic(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuote
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
 	var cause: StringName = &"critic_good" if stars >= critic.good_stars else &"critic_bad"
-	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
+	var quote_cause: StringName = &"signature_dish" if cause == &"critic_good" \
 			and visit.ate_signature_dish else cause
 	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
 	# Up to review_weight copies, but never more than a quarter of the reviews
@@ -176,6 +176,8 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 		+ _unit(visit.dirt_fraction) * tuning.dirt_weight
 	var maximum: float = vibe_tuning.max_review_bonus if vibe_tuning != null and vibe_tuning.is_valid() else 0.0
 	var vibe_bonus: float = clampf(visit.vibe_review_bonus, 0.0, maximum) if is_finite(visit.vibe_review_bonus) else 0.0
+	var difficulty_bonus: float = clampf(visit.difficulty_review_bonus, -1.0, 1.0) \
+		if is_finite(visit.difficulty_review_bonus) else 0.0
 	# Keep the physical star domain before integer conversion, even for large
 	# finite authored caps. Ordinary rounding and final-score quote policy agree.
 	# Half-quality is neutral; bad food can hurt quality-sensitive guests too.
@@ -186,7 +188,8 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 	# Restrooms (FK-101): both terms are exactly zero in a shop that has none
 	# and is below the seat threshold.
 	var restroom: float = _bounded(visit.restroom_bonus, 1.0) - _bounded(visit.restroom_penalty, 4.0)
-	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom, 1.0, 5.0))
+	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom + difficulty_bonus,
+		1.0, 5.0))
 
 
 static func _bounded(value: float, maximum: float) -> float:

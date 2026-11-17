@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=25 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://src/world/build_preview.tscn" id="9_build"]
 [ext_resource type="PackedScene" path="res://src/ui/build_catalogue.tscn" id="10_catalogue"]
 [ext_resource type="PackedScene" path="res://src/ui/menu_panel.tscn" id="9_menu"]
+[ext_resource type="PackedScene" path="res://src/ui/morning_paper_card.tscn" id="22_paper"]
 [ext_resource type="PackedScene" path="res://src/ui/staff_panel.tscn" id="11_staff"]
 [ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="12_settings"]
 [ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
@@ -25,6 +26,7 @@
 [ext_resource type="PackedScene" path="res://src/minigames/haggle_game.tscn" id="18_haggle"]
 [ext_resource type="Script" path="res://src/world/photo_mode.gd" id="19_photo"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="20_theme"]
+[ext_resource type="PackedScene" path="res://src/ui/today_panel.tscn" id="21_today"]
 
 [node name="Main" type="Node3D"]
 process_priority = 10
@@ -60,11 +62,15 @@ layer = 10
 
 [node name="StockPanel" parent="Overlay" instance=ExtResource("14_stock")]
 
+[node name="MorningPaper" parent="Overlay" instance=ExtResource("22_paper")]
+
 [node name="SettingsPanel" parent="Overlay" instance=ExtResource("12_settings")]
 
 [node name="GoalsPanel" parent="Overlay" instance=ExtResource("13_goals")]
 
 [node name="PropertyPanel" parent="Overlay" instance=ExtResource("13_property")]
+
+[node name="TodayPanel" parent="Overlay" instance=ExtResource("21_today")]
 
 [node name="SiteCard" parent="Overlay" instance=ExtResource("13_site_card")]
 

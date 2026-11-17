@@ -1,0 +1,92 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/guide_panel.gd" id="1_script"]
+[ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+
+[node name="GuidePanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+color = Color(0, 0, 0, 0.62)
+
+[node name="Card" type="PanelContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.14
+anchor_top = 0.1
+anchor_right = 0.86
+anchor_bottom = 0.9
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Column" type="VBoxContainer" parent="Card"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Header" type="HBoxContainer" parent="Card/Column"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Card/Column/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+text = "Guide"
+
+[node name="Close" type="Button" parent="Card/Column/Header"]
+custom_minimum_size = Vector2(96, 44)
+layout_mode = 2
+focus_next = NodePath("../../Pages/Topics")
+focus_previous = NodePath("../../Pages/Reading")
+text = "Close"
+
+[node name="Pages" type="HBoxContainer" parent="Card/Column"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 22
+
+[node name="Topics" type="ItemList" parent="Card/Column/Pages"]
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+focus_next = NodePath("../Reading")
+focus_previous = NodePath("../../Header/Close")
+mouse_force_pass_scroll_events = false
+theme_override_constants/v_separation = 16
+theme_override_font_sizes/font_size = 17
+
+[node name="Reading" type="ScrollContainer" parent="Card/Column/Pages"]
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 2
+focus_next = NodePath("../../Header/Close")
+focus_previous = NodePath("../Topics")
+mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+
+[node name="Article" type="VBoxContainer" parent="Card/Column/Pages/Reading"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="Heading" type="Label" parent="Card/Column/Pages/Reading/Article"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+autowrap_mode = 3
+
+[node name="Body" type="Label" parent="Card/Column/Pages/Reading/Article"]
+layout_mode = 2
+theme_override_constants/line_spacing = 6
+theme_override_font_sizes/font_size = 18
+autowrap_mode = 3

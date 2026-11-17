@@ -18,6 +18,7 @@ var day: int = 1
 ## Snapshot of the name used for this service day and its review heading.
 var restaurant_name: String = MenuSettings.DEFAULT_NAME
 var income: Dictionary = {}
+var tip_jar_percent: int = 0
 var costs: Dictionary = {}
 ## Transient first-advance introduction, supplied by the closing session.
 var loan_first_advance: bool = false
@@ -37,6 +38,8 @@ var customers_lost: int = 0
 ## already counted among customers_served. Saved only on days there were any.
 var takeaways: int = 0
 var leave_reasons: Dictionary = {}
+## Detached observations of who came and how they felt when they left.
+var visitor_breakdown: Array[Dictionary] = []
 var reviews: Array[String] = []
 ## Worst observed floor condition, already mapped to a player-facing word.
 var cleanliness_label: String = ""
@@ -110,6 +113,7 @@ var demand_forecast: Dictionary = {}:
 var staff_activity: Dictionary = {}:
 	set(value):
 		staff_activity = StaffActivity.public_snapshot(value)
+var staff_nicknames: Array[String] = []
 
 
 ## Returns income across all categories in whole currency units.
@@ -268,6 +272,8 @@ func to_dict() -> Dictionary:
 		"stock_on_hand_recorded": stock_on_hand_recorded,
 		"demand_forecast": public_demand_forecast(demand_forecast),
 	}
+	if tip_jar_percent > 0:
+		result["tip_jar_percent"] = tip_jar_percent
 	var public_slowest_snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
 	if not public_slowest_snapshot.is_empty():
 		result["slowest_seller_snapshot"] = public_slowest_snapshot
@@ -286,6 +292,8 @@ func to_dict() -> Dictionary:
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
+	if not staff_nicknames.is_empty():
+		result["staff_nicknames"] = staff_nicknames.duplicate()
 	if takeaways > 0:
 		result["takeaways"] = takeaways
 	# Only on days a critic reviewed, so every other report keeps its exact shape.
@@ -299,13 +307,40 @@ func to_dict() -> Dictionary:
 		result["record_lines"] = record_lines.duplicate()
 	if not away_site_lines.is_empty():
 		result["away_site_lines"] = away_site_lines.duplicate()
+	var visitors: Array[Dictionary] = _public_visitor_breakdown(visitor_breakdown)
+	if not visitors.is_empty():
+		result["visitor_breakdown"] = visitors
 	return result
+
+
+static func _public_visitor_breakdown(value: Variant) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if not value is Array:
+		return rows
+	for saved: Variant in value:
+		if not saved is Dictionary:
+			continue
+		var label: Variant = saved.get("name")
+		var count: Variant = saved.get("count")
+		var mood: Variant = saved.get("average_mood")
+		if not label is String or label.strip_edges().is_empty() or label.contains("\n") \
+				or label.contains("\r") or not _whole_in_range(count, 1, MAX_FORECAST_INTEGER):
+			continue
+		if mood != null and (not (mood is float or mood is int) \
+				or not is_finite(float(mood)) or float(mood) < 0.0 or float(mood) > 1.0):
+			continue
+		rows.append({"name": label.strip_edges(), "count": int(count),
+			"average_mood": float(mood) if mood != null else null})
+	return rows
 
 
 ## Restores a snapshot, including JSON's string keys and numeric values.
 static func from_dict(data: Dictionary) -> DayReport:
 	var report: DayReport = DayReport.new()
 	report.day = int(data.get("day", 1))
+	var saved_tip_bonus: Variant = data.get("tip_jar_percent", 0)
+	if saved_tip_bonus is int or saved_tip_bonus is float:
+		report.tip_jar_percent = clampi(int(saved_tip_bonus), 0, 100)
 	var saved_name: Variant = data.get("restaurant_name", MenuSettings.DEFAULT_NAME)
 	if saved_name is String:
 		var normalized: String = MenuSettings.normalized_restaurant_name(saved_name)
@@ -324,6 +359,7 @@ static func from_dict(data: Dictionary) -> DayReport:
 	report.customers_lost = int(data.get("customers_lost", 0))
 	report.takeaways = clampi(int(data.get("takeaways", 0)), 0, maxi(0, report.customers_served))
 	report.leave_reasons = _name_counts(data.get("leave_reasons", {}))
+	report.visitor_breakdown = _public_visitor_breakdown(data.get("visitor_breakdown", []))
 	var saved_reviews: Variant = data.get("reviews", [])
 	if saved_reviews is Array:
 		for quote: Variant in saved_reviews:
@@ -418,6 +454,13 @@ static func from_dict(data: Dictionary) -> DayReport:
 			report.set(field + "_recorded", flag)
 	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
 	report.staff_activity = StaffActivity.public_snapshot(data.get("staff_activity", {}))
+	var saved_nicknames: Variant = data.get("staff_nicknames", [])
+	if saved_nicknames is Array:
+		for nickname: Variant in saved_nicknames:
+			if nickname is String and not nickname.is_empty() and StaffMember.normalized_nickname(nickname) == nickname:
+				report.staff_nicknames.append(nickname)
+				if report.staff_nicknames.size() >= StaffRoster.CAPACITY:
+					break
 	return report
 
 
@@ -440,6 +483,13 @@ static func public_demand_forecast(value: Variant) -> Dictionary:
 				or not is_finite(float(factor)) or float(factor) <= 0.0:
 			return {}
 		result[key] = float(factor)
+	# The recorded forecast may include the weekday's contribution.
+	if forecast.has("weekday"):
+		var weekday: Variant = forecast["weekday"]
+		if (typeof(weekday) != TYPE_INT and typeof(weekday) != TYPE_FLOAT) \
+				or not is_finite(float(weekday)) or float(weekday) <= 0.0:
+			return {}
+		result["weekday"] = float(weekday)
 	# Old forecasts have no viral factor and stay neutral without a shape change.
 	if forecast.has("viral"):
 		var viral: Variant = forecast["viral"]

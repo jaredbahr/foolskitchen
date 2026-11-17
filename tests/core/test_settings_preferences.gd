@@ -99,6 +99,21 @@ func test_changes_save_immediately_and_round_trip_all_choices() -> void:
 	restored.free()
 
 
+func test_morning_paper_preference_round_trips_and_defaults_for_legacy_files() -> void:
+	assert_true(_model.morning_paper_enabled)
+	assert_true(_model.set_morning_paper_enabled(false))
+	var restored: SettingsPreferences = SettingsPreferences.new(_path)
+	assert_true(restored.load_from_disk())
+	assert_false(restored.morning_paper_enabled)
+	var config: ConfigFile = ConfigFile.new()
+	assert_eq(config.load(_path), OK)
+	config.erase_section_key(SettingsPreferences.SECTION, "morning_paper")
+	assert_eq(config.save(_path), OK)
+	assert_true(restored.load_from_disk())
+	assert_true(restored.morning_paper_enabled)
+	restored.free()
+
+
 func test_auto_pause_uses_defaults_for_legacy_preferences_and_rejects_invalid_values() -> void:
 	var config: ConfigFile = ConfigFile.new()
 	assert_true(_model.set_volume_percent(&"Master", 37))

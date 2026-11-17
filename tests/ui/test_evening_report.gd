@@ -39,6 +39,25 @@ func test_haggle_note_uses_actual_saving_and_is_not_serialized_or_reused() -> vo
 	assert_false((rows.get_child(1) as Label).text.contains("haggle"))
 
 
+func test_visitor_breakdown_shows_plain_names_counts_moods_and_clears_on_empty() -> void:
+	var day: DayReport = DayReport.new()
+	day.visitor_breakdown = [
+		{"name": "Students", "count": 2, "average_mood": 0.35},
+		{"name": "Families", "count": 2, "average_mood": 0.34},
+		{"name": "Regulars", "count": 3, "average_mood": 0.6},
+	]
+	_report.call("show_report", day)
+	var label: Label = _report.get_node("%VisitorBreakdown") as Label
+	assert_eq(label.text, "Regulars 3 (happy) · Families 2 (unhappy) · Students 2 (neutral)")
+	assert_true(label.visible)
+	assert_eq(day.visitor_breakdown[0]["name"], "Students", "display sorting does not mutate report data")
+	_report.call("show_report", DayReport.from_dict({"customers_served": 4}))
+	assert_eq(label.text, "")
+	assert_false(label.visible, "older reports have no visitor data")
+	_report.call("show_report", DayReport.new())
+	assert_false(label.visible, "there is no breakdown without guests")
+
+
 func test_booking_cash_rows_name_deposit_refund_and_applied_advance() -> void:
 	var day: DayReport = DayReport.new()
 	day.income[Ledger.BOOKING_DEPOSIT] = 30
@@ -190,3 +209,17 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")
 	viewport.remove_child(_report)
 	viewport.free()
+
+
+func test_tip_row_retains_its_amount_and_shows_the_active_bonus_after_restore() -> void:
+	var day: DayReport = DayReport.new()
+	day.income[Ledger.TIP] = 6
+	assert_false(day.to_dict().has("tip_jar_percent"), "no jar preserves the old report shape")
+	var rows: GridContainer = _report.get_node("%IncomeRows") as GridContainer
+	_report.call("show_report", day)
+	assert_eq((rows.get_child(0) as Label).text, "Tip")
+	day.tip_jar_percent = 10
+	var restored: DayReport = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	_report.call("show_report", restored)
+	assert_eq((rows.get_child(0) as Label).text, "Tip (tip jar +10%)")
+	assert_eq((rows.get_child(1) as Label).text, "$6")

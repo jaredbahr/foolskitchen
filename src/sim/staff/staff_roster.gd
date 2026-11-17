@@ -50,6 +50,23 @@ func candidates() -> Array[StaffMember]:
 	return _copies(_candidates)
 
 
+## Employee-only cosmetic edit. Return the effective name for the live copy.
+func rename_member(member_id: StringName, text: String) -> String:
+	var index: int = _find(_members, member_id)
+	if index < 0 or not _members[index].set_nickname(text):
+		return ""
+	return _members[index].display_name
+
+
+## Only authored-by-player names need a separate label in the evening report.
+func nicknames() -> Array[String]:
+	var result: Array[String] = []
+	for member: StaffMember in _members:
+		if not member.nickname().is_empty():
+			result.append(member.nickname())
+	return result
+
+
 ## A service event's mood nudge (#495). Mood stays between 1 and 3, so an
 ## event never makes anyone quit; a worker already leaving is left alone.
 ## Returns the new mood, or -1 when nobody changed.
@@ -292,7 +309,7 @@ func draw_candidates(day: int, random: RandomNumberGenerator, managers: bool = f
 		return false
 	var used_names: Dictionary[String, bool] = {}
 	for member: StaffMember in _members:
-		used_names[member.display_name.strip_edges().to_lower()] = true
+		used_names[member.original_name.strip_edges().to_lower()] = true
 	var names: Array[String] = []
 	for name: String in catalogue.candidate_names:
 		var key: String = name.strip_edges().to_lower()

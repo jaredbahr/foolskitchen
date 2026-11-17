@@ -45,16 +45,35 @@ func test_board_uses_only_todays_enabled_dishes_and_at_most_four() -> void:
 		"name, section and four dishes fit the actual board face vertically")
 
 
+func test_only_the_matching_section_and_auto_board_show_the_special() -> void:
+	var menu: Array[RecipeDef] = [
+		_recipe(&"main", "Tea", RecipeDef.Section.MAINS),
+		_recipe(&"starter", "Bread", RecipeDef.Section.STARTERS),
+		_recipe(&"drink_a", "Tea", RecipeDef.Section.DRINKS),
+		_recipe(&"drink_b", "Milk", RecipeDef.Section.DRINKS),
+		_recipe(&"drink_c", "Water", RecipeDef.Section.DRINKS),
+		_recipe(&"drink_d", "Coffee", RecipeDef.Section.DRINKS),
+	]
+	var line: String = "Today's special: Tea"
+	var automatic: String = MenuBoardText.text("Corner", menu, -1, &"main")
+	assert_true(automatic.contains("Starters"))
+	assert_true(automatic.contains(line))
+	assert_true(MenuBoardText.text("Corner", menu, RecipeDef.Section.MAINS, &"main").contains(line))
+	assert_eq(MenuBoardText.text("Corner", menu, RecipeDef.Section.DRINKS, &"main"),
+		"Corner\nDrinks\n• Tea\n• Milk\n• Water\n• Coffee")
+	assert_false(MenuBoardText.text("Corner", menu, -1, &"missing").contains("Today's special"))
+
+
 func test_special_uses_a_face_line_and_leaves_room_for_three_dishes() -> void:
 	var menu: Array[RecipeDef] = []
 	for letter: String in ["a", "b", "c", "d", "e"]:
 		menu.append(_recipe(StringName(letter), "Dish " + letter, RecipeDef.Section.MAINS))
 	var ordinary: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS)
-	var copy: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS, "Soup")
+	var copy: String = MenuBoardText.text("Fool's Kitchen", menu, RecipeDef.Section.MAINS, &"a")
 	var lines: PackedStringArray = copy.split("\n")
 	assert_eq(ordinary, "Fool's Kitchen\nMains\n• Dish a\n• Dish b\n• Dish c\n• Dish d")
 	assert_eq(lines.size(), 6, "the special keeps the board within its six-line face")
-	assert_eq(lines[2], "Today's special: Soup")
+	assert_eq(lines[2], "Today's special: Dish a")
 	assert_eq(lines[3], "• Dish a")
 	assert_eq(lines[5], "• Dish c")
 	assert_false(copy.contains("Dish d"), "a special reserves the fourth dish line")
@@ -99,18 +118,18 @@ func test_signature_star_marks_only_the_enabled_matching_dish_and_still_fits() -
 	var burger: RecipeDef = _recipe(&"burger", "Burger", RecipeDef.Section.MAINS)
 	var fries: RecipeDef = _recipe(&"fries", "Fries", RecipeDef.Section.MAINS)
 	var menu: Array[RecipeDef] = [burger, fries]
-	assert_eq(MenuBoardText.text("Corner", menu, RecipeDef.Section.MAINS, "", &"burger"),
+	assert_eq(MenuBoardText.text("Corner", menu, RecipeDef.Section.MAINS, &"", &"burger"),
 		"Corner\nMains\n* Burger\n• Fries")
 	var settings: MenuSettings = MenuSettings.new(menu)
 	assert_true(settings.set_enabled(&"burger", false))
 	var disabled_text: String = MenuBoardText.text("Corner", settings.enabled_recipes(),
-		RecipeDef.Section.MAINS, "", &"burger")
+		RecipeDef.Section.MAINS, &"", &"burger")
 	assert_eq(disabled_text, "Corner\nMains\n• Fries", "disabled signatures are absent from the real board list")
 	assert_eq(MenuBoardText.text("Corner", menu), "Corner\nMains\n• Burger\n• Fries",
 		"the default optional ID preserves old board output")
 	var long_starred: String = MenuBoardText.text("Corner",
 		[_recipe(&"long", "W".repeat(100), RecipeDef.Section.MAINS)] as Array[RecipeDef],
-		RecipeDef.Section.MAINS, "", &"long")
+		RecipeDef.Section.MAINS, &"", &"long")
 	assert_true(long_starred.split("\n")[2].begins_with("* "))
 	assert_true(long_starred.split("\n")[2].ends_with(MenuBoardText.ELLIPSIS))
 	var font: Font = MenuBoardText.THEME.default_font if MenuBoardText.THEME.default_font != null else ThemeDB.fallback_font

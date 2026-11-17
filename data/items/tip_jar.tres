@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_definition"]
+[ext_resource type="PackedScene" path="res://assets/props/tip_jar.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_definition")
+id = &"tip_jar"
+display_name = "Tip jar"
+category = 6
+placement_layer = 3
+solid = false
+price = 25
+unlock_level = 2
+announce_unlock = false
+view_scene = ExtResource("2_view")
+paintable = false

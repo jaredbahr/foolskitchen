@@ -261,3 +261,64 @@ func test_building_twice_gives_the_same_report() -> void:
 	var first: DayReport = DayReportBuilder.build(5, sources)
 	var second: DayReport = DayReportBuilder.build(5, sources)
 	assert_eq(first.to_dict(), second.to_dict())
+
+
+func test_visitor_counts_and_final_mood_are_detached_and_reset_the_next_morning() -> void:
+	var sources: DayReportSources = _sources()
+	var sim: RestaurantSim = sources.sim
+	sim.world = SimWorld.new(SimGrid.new(Vector2i(6, 6)), SimClock.new())
+	sim.spawner = CustomerSpawner.new(sim.rng)
+	var types: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
+	var fake_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	fake_rng.seed = 42
+	var regular: CustomerAgent = sim.add_customer(Vector2i(1, 1), fake_rng)
+	var student: CustomerAgent = sim.add_customer(Vector2i(2, 1), fake_rng, types.find_type(&"student"))
+	var party_randoms: Array[RandomNumberGenerator] = [RandomNumberGenerator.new(), RandomNumberGenerator.new()]
+	party_randoms[0].seed = 43
+	party_randoms[1].seed = 44
+	var party: Party = sim.add_party(Vector2i(3, 1), party_randoms, types.find_type(&"family"))
+	assert_not_null(party)
+	var early: DayReport = DayReportBuilder.build(1, sources)
+	assert_eq(early.visitor_breakdown, [
+		{"name": "Regulars", "count": 1, "average_mood": null},
+		{"name": "Students", "count": 1, "average_mood": null},
+		{"name": "Families", "count": 2, "average_mood": null},
+	])
+	regular.state = CustomerAgent.State.QUEUED
+	regular.queue_patience = 100
+	regular._queue_wait = 100
+	regular.give_up_blocked(sim.world)
+	assert_eq(regular.state, CustomerAgent.State.LEAVING)
+	assert_eq(regular.mood(), 1.0, "the live mood query remains unchanged")
+	sim.world.remove_agent(regular)
+	sim.record_departure(regular)
+	student.state = CustomerAgent.State.WAITING_FOOD
+	student.food_patience = 100
+	student._food_wait = 50
+	sim.world.remove_agent(student)
+	var remaining: Array[CustomerAgent] = sim.customers()
+	assert_eq(remaining.size(), 2, "up to two individual family arrivals may share the entry")
+	for index: int in range(remaining.size()):
+		var guest: CustomerAgent = remaining[index]
+		guest.state = CustomerAgent.State.QUEUED
+		guest.queue_patience = 100
+		guest._queue_wait = 80 + index * 30
+	# The real closing tick removes both the admitted and pending family guests.
+	# Removing the first can start the second leaving as part of the same party.
+	sim.world.clock.phase = SimClock.Phase.LAST_ORDERS
+	sim.world.clock.last_orders_max_ticks = 1
+	sim.advance()
+	assert_eq(sim.world.clock.phase, SimClock.Phase.CLOSED)
+	assert_true(sim.customers().is_empty())
+	var report: DayReport = DayReportBuilder.build(1, sources)
+	assert_eq(report.visitor_breakdown, [
+		{"name": "Regulars", "count": 1, "average_mood": 0.0},
+		{"name": "Students", "count": 1, "average_mood": 0.5},
+		{"name": "Families", "count": 2, "average_mood": 0.1},
+	])
+	assert_eq(report.customers_lost, 4)
+	assert_null(early.visitor_breakdown[2]["average_mood"], "earlier snapshots are detached")
+	assert_true(sim.world.clock.next_day())
+	sim.start_day()
+	assert_true(DayReportBuilder.build(2, sources).visitor_breakdown.is_empty())
+	assert_eq(report.visitor_breakdown.size(), 3, "morning cannot change yesterday's snapshot")

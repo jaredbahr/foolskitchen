@@ -23,7 +23,9 @@ signal paint_toggled()
 signal menu_pressed()
 signal staff_pressed()
 signal stock_pressed()
+signal today_pressed()
 signal loan_repayment_requested(amount: int, repay_all: bool)
+signal guide_pressed()
 signal settings_pressed()
 ## A site that cannot open this morning (renovating or still hiring, #464)
 ## ends the day without a service instead.
@@ -96,6 +98,7 @@ var _report_button: Button
 var _report_hidden: bool = false
 var _staff_button: Button
 var _stock_button: Button
+var _today_button: Button
 var _sold_out_label: Label
 var _sold_out_names: Array[String] = []
 var _settings_button: Button
@@ -154,6 +157,14 @@ func queue_collection_toast(collection_id: StringName, text: String) -> void:
 		return
 	_collection_toast_queue.append({"id": collection_id, "text": text})
 	_show_collection_toast()
+
+
+func drop_pending_collection_toast(collection_id: StringName) -> void:
+	if collection_id.is_empty():
+		return
+	for index: int in range(_collection_toast_queue.size() - 1, -1, -1):
+		if _collection_toast_queue[index]["id"] == collection_id:
+			_collection_toast_queue.remove_at(index)
 
 
 ## A plain notice in the same toast slot (the opening week, #494). It never
@@ -309,8 +320,8 @@ func refresh() -> void:
 	if _day_label == null:
 		_day_label = get_node("Top/Row/Day") as Label
 		_season_label = _day_label.get_node("Season") as Label
-		_time_label = get_node("Top/Row/Time") as Label
-		_phase_label = get_node("Top/Row/Phase") as Label
+		_time_label = get_node("Top/Row/TimeStatus/Time") as Label
+		_phase_label = get_node("Top/Row/TimeStatus/Phase") as Label
 		_cash_label = get_node("Top/Row/Cash") as Label
 		_loan_label = get_node("Top/Row/Loan") as Label
 		_loan_trigger = _loan_label.get_node("OpenRepayment") as Button
@@ -361,7 +372,15 @@ func refresh() -> void:
 		_staff_button.pressed.connect(_on_staff_pressed)
 		_stock_button = get_node("Top/Row/Stock") as Button
 		_stock_button.pressed.connect(_on_stock_pressed)
+		_today_button = get_node("Today") as Button
+		_today_button.pressed.connect(_on_today_pressed)
+		IconStyle.compact_button(_today_button)
+		_build_hints.item_rect_changed.connect(_layout_today_button)
+		_build_hints.visibility_changed.connect(_layout_today_button)
 		_sold_out_label = get_node("Top/Row/SoldOut") as Label
+		var guide_button: Button = $Guide
+		guide_button.pressed.connect(_on_guide_pressed)
+		IconStyle.compact_button(guide_button)
 		_settings_button = get_node("Top/Row/Settings") as Button
 		_settings_button.pressed.connect(_on_settings_pressed)
 		_style_header()
@@ -428,7 +447,7 @@ func set_weather(kind: int) -> void:
 
 
 func _render_day_and_season() -> void:
-	_day_label.text = "Day %d" % Clock.sim.day
+	_day_label.text = "Day %d · %s" % [Clock.sim.day, DemandText.weekday_name(Clock.sim.day).left(3)]
 	_season_label.text = SeasonText.name_for_day(Clock.sim.day)
 	var day_font: Font = _day_label.get_theme_font("font")
 	var day_size: int = _day_label.get_theme_font_size("font_size")
@@ -710,6 +729,7 @@ func _on_header_resized() -> void:
 		return
 	_layout_menu_notice()
 	_layout_build_hints()
+	_layout_today_button()
 	_layout_booking_status()
 	_layout_opening_week()
 	_layout_loan_repayment()
@@ -856,6 +876,10 @@ func _render_sold_out() -> void:
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
+
+
+func _on_guide_pressed() -> void:
+	guide_pressed.emit()
 
 
 func _on_settings_pressed() -> void:
@@ -1038,6 +1062,14 @@ func _layout_build_hints() -> void:
 	_build_hints.position = Vector2(12.0, top)
 
 
+## Keep the log launcher clear of the header and active build instructions.
+func _layout_today_button() -> void:
+	var top: float = panel_top()
+	if _build_hints.visible:
+		top = maxf(top, _build_hints.get_global_rect().end.y + 8.0)
+	_today_button.position.y = top
+
+
 ## Both lines' native Label heights at their current wrapping width (the
 ## container's cached minimum lags a width change, a Label's own does not).
 func _hint_height() -> float:
@@ -1157,6 +1189,11 @@ func _refresh_wall_mode() -> void:
 
 func _on_sim_ticked(_tick: int) -> void:
 	refresh()
+
+
+func _on_today_pressed() -> void:
+	if not _haggle_active and not _event_card_active:
+		today_pressed.emit()
 
 
 func _on_phase_changed(_day: int, _phase: int) -> void:

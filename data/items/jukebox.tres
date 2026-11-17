@@ -36,6 +36,7 @@ station_type = &""
 capacity = 1
 quality_bonus = 0.0
 price = 90
+prestige_cap = 15
 unlock_level = 3
 charm = 2
 theme_tags = Array[StringName]([])

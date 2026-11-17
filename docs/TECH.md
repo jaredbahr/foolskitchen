@@ -358,10 +358,14 @@ Settings both have a What's new button, and "All release notes" calls
   build hints, booking card, goals tracker) to `set_hygiene_keep_clear`, and
   the card takes the first layout that clears them and the screen centre: one
   fact a line; smaller with facts sharing lines (125%); or, with no room above
-  the panel (150% has about 40 px), a short strip over the panel's foot.
-  Escape (consumed) or a click elsewhere puts the card away while the toggle
-  and the floor tint stay on; pointing at the button, reopening Build or
-  leaving Paint shows it again. Only left clicks stop at the card.
+  the panel, a strip over the panel's foot. At 150% the strip starts at the
+  item grid's left edge and keeps the facts on one line. Hover for the full
+  text. The vertical wheel over the strip scrolls the catalogue.
+  Escape closes Shortcuts first if it covers Build. Otherwise Escape or a
+  click elsewhere puts the card away while the toggle and the floor tint
+  stay on. Right-click over the strip closes it and leaves the held build
+  ghost in place, as over the rest of the catalogue. Pointing at the button,
+  reopening Build or leaving Paint shows the card again.
   `HYGIENE_REVIEW_SCALE=125` or `150` renders the fixture below at that UI size.
   `bash tools/screenshot.sh --scene=res://tools/hygiene_review.tscn --speed=0
   --frames=12,60 --quarter=2` shows an explicitly staged, unsaved slightly messy
@@ -3106,7 +3110,8 @@ There is no new save point or SaveSystem migration.
 - **View hooks:** ShopView plays the back-door creak when a leaf starts to open and a thud when a crate lands at play speed. Main plays the level-up or milestone sting as the evening report opens.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
 - **Dining-room ambience** (#366): the room tone, the chatter layers and the table clinks play on the **Ambience** bus (`default_bus_layout.tres`; Settings' Ambience slider, saved as the optional `ambience_volume` key, so older settings files load at 100%). Every level is in `data/audio/ambience.tres` (`AmbienceTuning`): loops and their gains (`room_tone`, `chatter_light/busy/packed`), `room_tone_full_guests`, the crowd size each chatter layer peaks at, the chatter fade and jukebox duck, and one `ClinkSet` per clink kind (at least 4 variants, gain, minimum interval). `SoundDirector` plays `plate` or `glass` on `OrderBook.order_delivered` (the recipe's `is_drink()`), `dish_stack` on a completed `bus_table` task, `sink` when `Kitchen.plates_changed` shows a plate washed (dirty down, clean up) and `cutlery` from a random eating guest at `AmbienceMix.cutlery_rate` (per eater, capped), with exponential gaps. Clinks fire only while open, running (speed above 0) and not `display_only`. `Sfx.play_clink` picks the variant and a pitch within `pitch_spread` (5%) from its own seeded generator (`CLINK_SEED`), never the sim's, throttles each kind, reports `clink_played` headless and plays through `AudioStreamPlayer3D`s at the table with attenuation off, so the camera's listener pans them. Chatter: `AmbienceMix.chatter_levels(crowd, anchors)` crossfades the layers that have a file at equal power by the guests not leaving, fades at `chatter_fade_seconds`, and ducks under a playing jukebox. The chatter loops (`assets/commons/audio/chatter_*.ogg`, 30 s, made from a public-domain recording; see `SOURCE.txt`) sit at -24 dB so the murmur is barely audible (Jared: a few percent of full volume). A null loop keeps its level and plays nothing, and a layer with no file drops out of the crossfade (its neighbours cover it). Adding the files is a `.tres` edit.
-- **Music** (`Sfx`, `src/audio/music_tracks.gd`): one player per track (looping, except a playlist track, which plays once via `Sfx.music_stream_for` so it can end and hand over) on the **Music** bus (Settings' Music slider; the bus sits 6 dB under the slider via `SettingsPreferences.MUSIC_TRIM_DB`). `MusicTracks.BY_CONTEXT` is the table from context to its tracks in play order: `title` is Stir It Slow, `service_day` is Buoyant Swing Groove then Kitchen Jamboree, `service_evening` Smoky Vamp (`assets/music/*.ogg`, Ogg q5, leading/trailing silence trimmed so loops have no gap); morning and closed with no report open have none. A one-track context loops; a context with several (day service) plays each once and `Sfx` advances to the next when one finishes (`advance_music`, wrapping round, no RNG; entering a context always starts at its first track), crossfading like a context change. `Sounds.set_music_context(ctx)` says where the game is, and tracks fade (`Sfx.MUSIC_FADE_SECONDS`, 2 s), so a change of context is a crossfade. The title screen sets `title` and clears it on leaving; `SoundDirector.refresh(light, report_open)` sets the service context from the phase and the shop light (the evening report has no song: while it is open, Main passes `_report.visible` every frame and `service_context` counts the shop as still serving, so the day or evening service track carries on under it) (dusk is `MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`), so opening after dusk goes straight to Smoky Vamp. `SoundDirector` ducks the music (`Sounds.set_music_ducked`) for as long as the shop is open with a counted jukebox, paused or not. A display-only Main (the title backdrop) sets `SoundDirector.display_only` and never touches the music. Silence rules match the cues: no players in headless or `--script` runs (fade levels are still tracked for tests), nothing before the first click on the web. A new track is a table line plus a `set_music_context` call.
+- **Music.** `Sfx` plays on the Music bus through a two-second crossfade. Settings keeps the bus 6 dB under the slider. `MusicTracks.BY_CONTEXT` keeps Stir It Slow on the title, Buoyant Swing Groove followed by Kitchen Jamboree for the daytime fallback, and Smoky Vamp at dusk (`MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`). The fallback playlist starts at its first track and advances when each track ends. The title and evening tracks loop. Morning and report have empty contexts.
+- **Themed service (#367).** `SoundDirector` receives Main's thresholded `VibeModel.Result.active_theme`. The table `MusicTracks.BY_THEME` maps bar, diner, café and seafood to their tracks. If a theme has several tracks, it loops the one at `day % count`, so a reload selects the same track without using RNG. Changes involving a themed selection wait for 60 seconds of monotonic time since the last service selection. The fallback still changes naturally at dusk. The evening report holds the current service song and playlist position when it first opens. Once the report closes, the music fades out. The counted jukebox uses the same daily selection for its style, with the made Effects loop as the fallback and the existing quiet gain for either source. A display-only Main leaves the title music alone. Headless and script runs still select and fade their tracks without creating players. On the web playback begins after the first input. To add a theme track, place its Ogg in `assets/music/`, set `loop=true` in its import sidecar and add the preload to `BY_THEME`.
 
 ### Supplier haggle (FK-136, #327)
 
@@ -3230,10 +3235,13 @@ uses decimal strings for signed currency and joins only the existing morning
 autosave. Load stages it until the whole morning validates; older saves start
 empty. Version 1 saves retain the same row format. The evening report defaults to
 seven days, with a 7 / 30 day toggle remembered by the report for the session only;
-it never enters a save. Thirty-day charts label every fifth day and shorter
-histories show only the rows that exist. Both ranges use the current theme, with separate
-dish-profit and guest scales, today's label, unknown-profit gaps and comparisons
-between equal recorded-day windows. "Last week" requires two complete weeks.
+it never enters a save. The chart appears after two recorded days. Thirty-day
+charts label every fifth day and the newest recorded bar, with the newest
+label taking priority if they overlap. Both ranges use separate dish-profit
+and guest scales, today's label and unknown-profit gaps. The short comparison
+uses equal recorded-day windows, and "last week" requires two complete weeks.
+From 20 records, the long comparison uses average daily dish profit over the
+most recent 15 recorded days and up to 15 earlier recorded days.
 
 - JSON in `user://saves/`, with a `version` field and migration functions per version.
 - Only sim state is saved, never nodes. The world is rebuilt from sim state on load.

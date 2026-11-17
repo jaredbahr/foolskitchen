@@ -184,3 +184,28 @@ func _close(main: Node) -> void:
 
 func _path() -> String:
 	return _save_dir.path_join(SLOT + ".json")
+
+
+func test_tip_jar_boost_is_paid_once_and_written_to_the_evening_report() -> void:
+	var main: Node = _start(false)
+	var profile: RegularProfile = _promote(main)
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	var counter: PlacedItem = ShopBuilder.items_with_def(sim.world, &"pass_counter")[0]
+	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
+	assert_true(main.call("shop_buy", &"tip_jar", counter.origin))
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 51
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], random)
+	guest.regular_profile = profile
+	guest.regular_favourite_available = true
+	var order: Order = Order.new()
+	order.price = 25
+	order.recipe_id = profile.favourite_dish
+	var before: int = Economy.cash
+	sim.pay(guest, order)
+	sim.pay(guest, order)
+	assert_eq(Economy.cash - before, 28)
+	var day: DayReport = main.call("build_report", Clock.sim.day) as DayReport
+	assert_eq(day.income.get(Ledger.SALE), 25)
+	assert_eq(day.income.get(Ledger.TIP), 3)
+	assert_eq(day.tip_jar_percent, 10)

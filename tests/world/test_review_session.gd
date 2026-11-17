@@ -126,7 +126,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 	var book: ReputationBook = main.get("reputation") as ReputationBook
 	assert_true(book.from_dict({"version": 1, "scores": [5, 5, 5, 5, 5]}))
 	# FK-120 replaces the old 1.2 reputation-only division. The authored base
-	# gap is drawn once, then scaled by the literal five-star starting factor.
+	# gap is drawn once, then scaled by the five-star factor and Thursday's demand.
 	var expected_min: int = ECONOMY_TUNING.arrival_gap_min
 	var expected_max: int = ECONOMY_TUNING.arrival_gap_max
 	var expected_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -134,7 +134,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 	var drawn_gap: int = expected_rng.randi_range(expected_min, expected_max)
 	# Authored curve knots use PackedFloat32Array; retain that representation
 	# when this draw lands exactly on a half-tick boundary.
-	var expected_factor: float = PackedFloat32Array([1.6])[0]
+	var expected_factor: float = PackedFloat32Array([1.6])[0] * 1.0
 	var first_gap: int = maxi(1, roundi(float(drawn_gap) / expected_factor))
 	main.call("_begin_morning")
 	assert_eq(sim.spawner.min_gap, expected_min)
@@ -143,7 +143,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 		"the first arrival uses today's rating, not yesterday's gap")
 	assert_eq(GameState.rng(&"customers").state, expected_rng.state)
 	assert_eq(sim.reputation_before_day, 5.0)
-	assert_almost_eq(sim.arrival_rate(), 1.6, 0.00001,
+	assert_almost_eq(sim.arrival_rate(), expected_factor, 0.00001,
 		"five stars latch into demand before the first gap")
 	_certain_reviews(sim, book)
 	assert_true(Clock.sim.start_service())
@@ -152,7 +152,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 	assert_eq(sim.spawner.min_gap, expected_min,
 		"a review cannot change the active day's arrival rate")
 	assert_eq(sim.spawner.max_gap, expected_max)
-	assert_almost_eq(sim.arrival_rate(), 1.6, 0.00001,
+	assert_almost_eq(sim.arrival_rate(), expected_factor, 0.00001,
 		"reviews do not change today's latched demand")
 	assert_eq(int(sim.spawner.get("_remaining")), first_gap)
 

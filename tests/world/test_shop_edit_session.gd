@@ -159,10 +159,12 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	var report: DayReport = first.get("shown_report") as DayReport
 	assert_eq(report.owner_level_before, 1)
 	assert_eq(report.owner_level_after, 2)
-	assert_eq(report.owner_unlocks, ["A-frame sign", "Bar fries recipe", "Club sandwich recipe", "Corner cabinet",
-		"Fish & chips recipe", "Four-seat table", "Freezer", "Fries recipe", "Fryer", "Hot dog recipe", "Mountain print",
-		"Potted plant", "Rectangular rug", "Round table", "Rounded chair", "Shop name sign", "Side table", "Side table with a square lamp", "Small tiles floor", "Square floor lamp", "Square rug",
-		"Standing coat rack", "Subway tiles walls", "Tomato melt recipe", "Two-seat bench", "Wine recipe"] as Array[String],
+	assert_eq(report.owner_unlocks, ["A-frame sign", "Bacon and eggs recipe", "Bar fries recipe", "Cereal recipe",
+		"Club sandwich recipe", "Corner cabinet", "Fish & chips recipe", "Four-seat table", "Freezer", "Fried eggs recipe",
+		"Fries recipe", "Fryer", "Hot dog recipe", "Mountain print", "Muffin recipe", "Pancakes recipe", "Potted plant", "Rectangular rug",
+		"Round table", "Rounded chair", "Shop name sign", "Side table", "Side table with a square lamp", "Small tiles floor",
+		"Square floor lamp", "Square rug", "Standing coat rack", "Subway tiles walls", "Tomato melt recipe",
+		"Two-seat bench", "Waffles recipe", "Wine recipe"] as Array[String],
 		"the level-up banner lists every available level-two unlock")
 	var panel: Control = first.get_node("Overlay/EveningReport") as Control
 	var banner: Label = panel.get_node("Panel/Column/Scroll/Content/LevelUpCallout/OwnerLevelUp") as Label

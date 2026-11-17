@@ -26,17 +26,6 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.RENOVATION: "Renovation",
 }
 
-const LEAVE_LABELS: Dictionary = {
-	&"out_of_stock": "Dish was out of stock",
-	&"kitchen_failed": "The kitchen couldn't make the dish",
-	&"no_menu": "Nothing on the menu",
-	&"closing": "Shop closed",
-	&"waited_too_long": "Waited too long",
-	&"too_expensive": "Too expensive",
-	&"no_table": "No table available",
-	&"no_clean_plates": "No clean plates",
-	&"no_way_through": "Couldn't get through",
-}
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
 const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
@@ -116,7 +105,7 @@ func show_report(report: DayReport) -> void:
 	else:
 		_profit.text = "Operating profit not recorded"
 		_profit.remove_theme_color_override("font_color")
-	_fill_money(_income, report.income, "No income today")
+	_fill_money(_income, report.income, "No income today", report.tip_jar_percent)
 	var displayed_costs: Dictionary = report.costs.duplicate()
 	if report.stock_values_recorded:
 		displayed_costs.erase(Ledger.INGREDIENTS)
@@ -161,6 +150,7 @@ func show_report(report: DayReport) -> void:
 	if guest_total == 0:
 		_guests.text = "No guests visited today"
 	_show_takeaways(report.takeaways)
+	_show_visitor_breakdown(report.visitor_breakdown)
 	(get_node("%FoodQuality") as Label).text = report.food_quality_text()
 	_cleanliness.text = "Cleanliness: %s" % report.cleanliness_label \
 		if not report.cleanliness_label.is_empty() else ""
@@ -221,7 +211,7 @@ func show_report(report: DayReport) -> void:
 	critic_summary.text = "\n".join(PackedStringArray(report.critic_lines.slice(1)))
 	critic_summary.visible = report.critic_lines.size() > 1
 	_fill_reasons(report.leave_reasons)
-	_render_team(report.staff_activity, report.leave_reasons)
+	_render_team(report.staff_activity, report.leave_reasons, report.staff_nicknames)
 	_clear(_low_stock)
 	for line: String in report.low_stock:
 		_add_label(_low_stock, line)
@@ -259,10 +249,10 @@ func show_history(rows: Array[Dictionary], today: int) -> void:
 
 func _refresh_history() -> void:
 	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
-	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today)
+	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today, _trend_days)
 	var chart: BusinessTrendChart = %BusinessTrendChart
 	chart.set_history(_trend_rows, _trend_today if not _trend_rows.is_empty() else 0, _trend_days)
-	chart.visible = not _trend_rows.is_empty()
+	chart.visible = _trend_rows.size() >= 2
 	for button: Button in _trend_buttons:
 		button.set_pressed_no_signal(int(button.get_meta("days")) == _trend_days)
 	(%BusinessTrendSection as VBoxContainer).visible = not GameMode.is_creative()
@@ -299,6 +289,30 @@ func _show_takeaways(count: int) -> void:
 	label.visible = count > 0
 
 
+func _show_visitor_breakdown(visitors: Array[Dictionary]) -> void:
+	var rows: Array[Dictionary] = visitors.duplicate()
+	rows.sort_custom(_visitor_row_before)
+	var parts: PackedStringArray = []
+	for row: Dictionary in rows:
+		var part: String = "%s %d" % [row["name"], row["count"]]
+		var mood: Variant = row["average_mood"]
+		if mood != null:
+			var word: String = "unhappy"
+			if mood >= CustomerAgent.MOOD_HAPPY_THRESHOLD:
+				word = "happy"
+			elif mood >= CustomerAgent.MOOD_WAITING_THRESHOLD:
+				word = "neutral"
+			part += " (%s)" % word
+		parts.append(part)
+	var label: Label = %VisitorBreakdown
+	label.text = " · ".join(parts)
+	label.visible = not parts.is_empty()
+
+
+static func _visitor_row_before(a: Dictionary, b: Dictionary) -> bool:
+	return a["name"] < b["name"] if a["count"] == b["count"] else a["count"] > b["count"]
+
+
 func _render_vibe() -> void:
 	vibe_summary.text = _vibe_text
 	vibe_summary.visible = not _vibe_text.is_empty()
@@ -311,7 +325,7 @@ func _render_demand(forecast: Dictionary) -> void:
 	_demand_section.visible = not _demand_summary.text.is_empty()
 
 
-func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
+func _render_team(summary: Dictionary, leave_reasons: Dictionary, nicknames: Array[String]) -> void:
 	var clean: Dictionary = StaffActivity.public_snapshot(summary)
 	var rows: VBoxContainer = %TeamActivityRows
 	for index: int in range(StaffAdviceText.ROLES.size()):
@@ -321,7 +335,16 @@ func _render_team(summary: Dictionary, leave_reasons: Dictionary) -> void:
 	var advice: Label = %TeamAdvice
 	advice.text = StaffAdviceText.recommendation(STAFF_ADVICE_RULES.recommendation(clean, leave_reasons))
 	advice.visible = not advice.text.is_empty()
-	(%TeamSection as VBoxContainer).visible = not clean.is_empty()
+	var section: VBoxContainer = %TeamSection
+	var names: Label = section.get_node_or_null("StaffNicknames") as Label
+	if names == null and not nicknames.is_empty():
+		names = _add_label(section, "")
+		names.name = "StaffNicknames"
+		section.move_child(names, rows.get_index())
+	if names != null:
+		names.text = "Staff nicknames: " + ", ".join(nicknames)
+		names.visible = not nicknames.is_empty()
+	section.visible = not clean.is_empty() or not nicknames.is_empty()
 
 
 func _bind_nodes() -> void:
@@ -530,12 +553,14 @@ func _fill_milestones(milestones: Array[Dictionary]) -> void:
 	_milestone_rows.visible = shown > 0
 
 
-func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String) -> void:
+func _fill_money(rows: GridContainer, amounts: Dictionary, empty_text: String, tip_jar_percent: int = 0) -> void:
 	_clear(rows)
 	for id: String in _sorted_ids(amounts):
 		var title: String = String(MONEY_LABELS.get(StringName(id), id.capitalize()))
 		if rows == _costs and StringName(id) == Ledger.BOOKING_DEPOSIT:
 			title = "Deposit taken off the bill"
+		if tip_jar_percent > 0 and StringName(id) == Ledger.TIP:
+			title += " (tip jar +%d%%)" % tip_jar_percent
 		_add_row(rows, title, _money(int(amounts[StringName(id)])))
 	if amounts.is_empty() and not empty_text.is_empty():
 		_add_row(rows, empty_text, "")
@@ -550,7 +575,7 @@ func _fill_reasons(reasons: Dictionary) -> void:
 		return a_count > b_count if a_count != b_count else a < b
 	)
 	for id: String in ids:
-		var title: String = str(LEAVE_LABELS.get(StringName(id), id.capitalize()))
+		var title: String = LeaveReasonText.label(StringName(id))
 		_add_row(_reasons, title, str(reasons[StringName(id)]))
 	if reasons.is_empty():
 		_add_row(_reasons, "No unhappy departures today", "")

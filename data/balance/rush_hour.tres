@@ -13,4 +13,4 @@ ramp_minutes = 10
 opening_margin_minutes = 30
 last_orders_margin_minutes = 60
 peak_multiplier = 2.5
-occasions = PackedStringArray("Book club", "Chess meet", "Garden circle", "Craft morning", "Walking group", "Choir practice", "Sketch club", "Local meetup")
+occasions = PackedStringArray("Market day", "Big match on the telly", "Parade down the high street", "Fun run finish line", "Concert in the park", "Farmers' fair", "Street festival", "School sports day")

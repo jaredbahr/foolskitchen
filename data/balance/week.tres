@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="WeekRhythm" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/week_rhythm.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+first_weekday = 3
+arrival_percent = PackedInt32Array(80, 90, 95, 100, 120, 125, 90)

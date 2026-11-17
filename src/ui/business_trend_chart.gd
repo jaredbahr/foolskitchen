@@ -124,19 +124,37 @@ func _labels(snapshot: Dictionary) -> Array[Dictionary]:
 		var slot: float = plot.size.x / float(maxi(1, labels.size()))
 		var day_baseline: float = plot.end.y + 10.0 + font.get_ascent(font_size)
 		var sparse: bool = _range_days == 30 and labels.size() > 7
-		for index: int in labels.size():
+		var columns: Array[Dictionary] = []
+		var latest_value: Rect2
+		var latest_day: Rect2
+		# Give the newest recorded column its own space before measuring older labels.
+		for index: int in range(labels.size() - 1, -1, -1):
+			var is_latest: bool = index == labels.size() - 1
 			var left: float = plot.position.x + float(index) * slot
 			var label_width: float = minf(plot.size.x, slot * 5.0) if sparse else slot
-			var label_left: float = left + (slot - label_width) * 0.5
-			var text: String = BusinessTrendText.GAP if values[index] == null else (
-				BusinessTrendText.profit_label(int(values[index])) if profit \
-				else BusinessTrendText.served_label(int(values[index])))
-			if not sparse or int(snapshot["days"][index]) % 5 == 0:
-				result.append(_label(key, "value", text, label_left, label_width, plot.position.y - 8.0, true))
-				result.append(_label(key, "day", labels[index], label_left, label_width, day_baseline, true))
+			if not sparse or is_latest or int(snapshot["days"][index]) % 5 == 0:
+				var text: String = BusinessTrendText.GAP if values[index] == null else (
+					BusinessTrendText.profit_label(int(values[index])) if profit \
+					else BusinessTrendText.served_label(int(values[index])))
+				if sparse and is_latest:
+					label_width = minf(size.x, maxf(label_width, maxf(
+						font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x,
+						font.get_string_size(labels[index], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)))
+				var label_left: float = left + (slot - label_width) * 0.5
+				var value_label: Dictionary = _label(key, "value", text, label_left, label_width, plot.position.y - 8.0, true)
+				var day_label: Dictionary = _label(key, "day", labels[index], label_left, label_width, day_baseline, true)
+				var value_bounds: Rect2 = _rect(value_label["rect"])
+				var day_bounds: Rect2 = _rect(day_label["rect"])
+				if is_latest:
+					latest_value = value_bounds.grow(2.0)
+					latest_day = day_bounds.grow(2.0)
+				if not sparse or is_latest or (not latest_value.intersects(value_bounds) and not latest_day.intersects(day_bounds)):
+					columns.push_front(day_label)
+					columns.push_front(value_label)
 			if index == int(snapshot["today_index"]):
-				result.append(_label(key, "today", BusinessTrendText.TODAY, label_left, label_width,
-					day_baseline + font.get_height(font_size) + 6.0, true))
+				columns.append(_label(key, "today", BusinessTrendText.TODAY, left + (slot - label_width) * 0.5,
+					label_width, day_baseline + font.get_height(font_size) + 6.0, true))
+		result.append_array(columns)
 	return result
 
 

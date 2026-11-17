@@ -54,6 +54,13 @@ focus_mode = 0
 mouse_filter = 0
 text = "Close"
 
+[node name="GoldenLadles" type="Label" parent="Panel/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+
 [node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
 layout_mode = 2
 size_flags_vertical = 3
