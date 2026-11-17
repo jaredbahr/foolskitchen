@@ -298,6 +298,11 @@ layout_mode = 2
 focus_mode = 0
 text = "Buy"
 
+[node name="PinnedPriorities" type="Panel" parent="."]
+unique_name_in_owner = true
+visible = false
+mouse_filter = 0
+
 [connection signal="pressed" from="Panel/Content/Title/Owner/Close" to="." method="_on_close_pressed"]
 [connection signal="pressed" from="Panel/Content/Scroll/List/TraysRow/TraysBuy" to="." method="_on_trays_buy_pressed"]
 [connection signal="pressed" from="Panel/Content/Scroll/List/BigTraysRow/BigTraysBuy" to="." method="_on_big_trays_buy_pressed"]

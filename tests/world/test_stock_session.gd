@@ -281,6 +281,23 @@ func test_bar_fries_real_service_cooks_delivers_and_pays_for_the_single_fryer_re
 		sim.served_today, sim.lost_today, Economy.stock.count(&"frozen_fries")])
 
 
+func test_sundae_stock_needs_a_freezer_and_the_menu_shows_why() -> void:
+	var main: Node = _start(false)
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	assert_true(settings.set_owner_level(4))
+	assert_false(settings.is_enabled(&"ice_cream_sundae"), "a level-up leaves the player's menu alone")
+	assert_false(main.call("stock_cart_set", &"ice_cream", 3))
+	var details: Dictionary = main.call("menu_recipe_details")
+	assert_true(details[&"ice_cream_sundae"]["equipment"].has({"text": "Buy a freezer", "met": false}))
+	(main.get("shop_editor") as ShopEditor).set_owner_level(4)
+	assert_true(main.call("shop_buy", &"freezer", Vector2i(12, 3), 0))
+	assert_true(main.call("stock_cart_set", &"ice_cream", 3))
+	assert_true(main.call("stock_place_order"))
+	assert_eq(Economy.stock.count(&"ice_cream"), 3)
+	details = main.call("menu_recipe_details")
+	assert_true(details[&"ice_cream_sundae"]["equipment"].has({"text": "Freezer ready", "met": true}))
+
+
 func _bar_fries_shop(with_freezer: bool) -> Node:
 	var main: Node = _start(false)
 	# Closed-MORNING construction staging: the fryer at (9, 3) must

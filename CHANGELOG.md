@@ -12,9 +12,17 @@ Each line ends with its PR number.
 
 ### Players
 - The seaside site has a car-free promenade out front instead of a road: wide paving with a wave inlaid down its middle, double-lantern lamp posts that glow at night, benches, planters, bollards and an ice-cream cart, with people strolling, jogging, cycling, pushing prams and walking dogs. Your shop now stands in a terrace of pastel beach shops with painted signs: Surf Hire on one side and Bucket & Spade on the other, then a fish-and-chip kiosk, beach huts with deckchairs, and an arcade whose sign lights up in bulbs after dark. (#599)
+- Easy fills missing cook and server jobs, replaces staff who quit, and hires for busy kitchens or dining rooms when cash covers five days of the new wage. Look for the hire in the morning news. (#579)
+- Easy handles fair raise requests each morning, and declines requests above the usual wage for the role. In Custom you can turn on automatic wages, and the Staff panel shows who is handling raises. (#580)
+- The evening report counts guests who have left. Walkouts count as unhappy, and unserved guests who are sent home at closing count as neutral. (#583)
+- Furnish a varied shop to earn prestige more easily. The fourth through sixth copies of an item earn half points, and later copies earn a quarter. The Vibe tooltip shows each item’s contribution. (#585)
+- Easy sets standard menu prices and resets staff jobs each morning. Custom lets you turn either on separately. (#581)
+- Golden Ladles stay visible after removing decor. Property cards show tomorrow’s rent, duplicate staff nicknames get an explanation, and Today stays out of Build and Paint. The Daily Ladle keeps the same edition after reloading and fits beside goals and bookings at 150% UI size. (#584)
 - The seaside street now has a beach behind the shop: dunes and beach grass, a plank path down to the sand, umbrellas, sunbathers, a lifeguard hut, a sandcastle and people paddling in the surf, with sailboats out at sea and gulls overhead. At sunset the water glows warm and a few people stay to watch; at night the beach empties and the lighthouse sweeps its light across the water. You can pan a little further back to look out over it. (#588)
 - New art for the coming walk-up window and seaside treats: a serving hatch for the shop wall in wood, painted and blue-and-white seaside styles with a roll-down shutter, a soft-serve machine, a shaved-ice cart, ice-cream cones, shaved ice, a paper cone of fries, and an evening dress kit (tablecloths, a candle and a small vase). They are not buildable yet; the walk-up window and its menu come in a later update. (#589)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
+- Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
+- See each dish's sales, average quality and happy guests over the last seven days in the Menu, and sort by sales or by name within each group. (#539)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
 - The Daily Ladle slides in each morning with a headline about yesterday and a few notes for today. Press Close or Esc to put it away, or turn off “Show the morning paper” in Settings. (#551)
 - From owner level 2, add fried eggs, bacon and eggs, pancakes, waffles, cereal, or a muffin from Breakfast in the Menu. They stay off until you choose them. (#557)
@@ -149,6 +157,7 @@ Each line ends with its PR number.
 - Regulars who drop in for coffee but order their usual meal now take the normal time to eat it. (#234)
 - The kitchen divider is now thin, leaving more floor space. Walls has a visible Remove button with red refund previews and undo; Sell also handles walls and window or door frames. Existing shops retain or receive refunds for affected wall finishes and decorations. (#248)
 - Build a seafood menu with fish and chips, mussels in broth, salmon maki, shrimp skewers and seafood stew, using new ingredients that restock only while needed. Lay sea-coloured Deck planks at level 4. (#229)
+- Add five diner classics as you reach owner levels 2–4. Hot dog, pizza slice, taco and club sandwich join Mains, and ice cream sundae joins Desserts. On wide screens, Stock puts checkout beside the ingredient list. (#558)
 - Choose diner booth and stool looks in Buy, or change an existing piece in Paint. Copying, undoing and loading keep the chosen look. (#220)
 
 - Add a wall-hung restroom mirror and hand dryer with a little charm, a gentle room-label hint, and thin light-laminate stall partitions in Build > Walls that keep toilet and basin access clear. (#217)
@@ -250,6 +259,7 @@ Each line ends with its PR number.
 - Sold-out advice is easier to read and points you to Stock for more ingredients during service. (#279)
 
 - Continue now explains when a saved game cannot be loaded and a fresh shop opens, while keeping the existing save for now. (#277)
+- The evening report has a Week tab showing what came in and what went out over the last seven days. (#540)
 - Open Guide from the shop HUD or the F1 keyboard shortcuts to read how nine shop systems work, including prices, stock, staff, building and loans. (#563)
 - Choose Easy, Normal, Hard or Custom when starting a Career. Easy buys ingredients at list price, Hard leaves stock orders to you, and Custom lets you pick those options. Difficulty changes in Settings take effect the next morning. (#565)
 
@@ -260,6 +270,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
 - Loading a save no longer keeps 34 separate holding variables in the 8,000-line game session script: they moved into one small class with its own tests, which check that every held section is emptied when a load or a new game should empty it. Saving and loading are unchanged. (#586)

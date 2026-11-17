@@ -29,6 +29,7 @@ const LOCKED_COLOR: Color = Color("766b60")
 const ADVICE_COLOR: Color = Color("7F5100")
 const SECTION_FONT_SIZE: int = 22
 const MORNING_HINT: String = "Menu changes are available in the morning."
+const AUTO_PRICE_TEXT: String = "Standard price (auto)"
 ## Widest panel; narrower windows (or a large UI scale) keep a margin each side.
 const PANEL_MAX_WIDTH: float = 1000.0
 const PANEL_SIDE_MARGIN: float = 12.0
@@ -39,8 +40,11 @@ var _details: Dictionary[StringName, Dictionary] = {}
 var _selected_recipe: StringName = &""
 var _recipe_tree: Tree
 var _tree_items: Dictionary[StringName, TreeItem] = {}
+var _dish_week: Dictionary[StringName, Dictionary] = {}
+var _sort_by_sold: bool = false
 var _detail_heading: Label
 var _quality_label: Label
+var _dish_history_label: Label
 var _requirements_box: VBoxContainer
 var _name_edit: LineEdit
 var _name_apply: Button
@@ -85,6 +89,7 @@ var _open_minute: int = 11 * 60
 var _close_minute: int = 21 * 60
 var _hours_tuning: OpeningHoursTuning = null
 var _bulk_controls: Dictionary[String, Button] = {}
+var _bulk_price_label: Label
 
 
 func _ready() -> void:
@@ -120,6 +125,7 @@ func bind_menu(model: MenuSettings) -> void:
 		_menu = model
 		_catalogue.clear()
 		_details.clear()
+		_dish_week.clear()
 		_selected_recipe = &""
 		_name_dirty = false
 		if _name_feedback != null:
@@ -275,6 +281,7 @@ func refresh() -> void:
 	if _needs_rebuild or _catalogue_changed():
 		_rebuild_rows()
 	var editable: bool = _phase == SimClock.Phase.MORNING
+	var prices_automatic: bool = _menu != null and _menu.automatic_prices()
 	# Only outside the morning: the controls themselves say what to choose.
 	_status.text = MORNING_HINT
 	_status.visible = not editable
@@ -288,7 +295,7 @@ func refresh() -> void:
 		_preset_controls.set_open(false)
 	_name_edit.tooltip_text = "Name your restaurant (up to 24 characters)." if editable else MORNING_HINT
 	_name_apply.tooltip_text = "Use this restaurant name." if editable else MORNING_HINT
-	_refresh_bulk_controls(editable)
+	_refresh_bulk_controls(editable, prices_automatic)
 	_refresh_hours(editable)
 	_refresh_drinks_section()
 	if _menu == null or not _menu.is_valid():
@@ -332,11 +339,13 @@ func refresh() -> void:
 		toggle.text = "Locked" if locked else ("Remove from menu" if enabled else "Add to menu")
 		toggle.disabled = locked or not available or not editable or last_enabled or at_limit
 		toggle.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else ("Keep at least one dish on the menu." if last_enabled else (limit_hint if at_limit else "Offer this dish today.")))
-		minus.disabled = locked or not available or not editable or price <= minimum
-		plus.disabled = locked or not available or not editable or price >= maximum
+		minus.visible = not prices_automatic
+		plus.visible = not prices_automatic
+		minus.disabled = prices_automatic or locked or not available or not editable or price <= minimum
+		plus.disabled = prices_automatic or locked or not available or not editable or price >= maximum
 		minus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Minimum price: $%d" % minimum)
 		plus.tooltip_text = unlock_hint if locked else (MORNING_HINT if not editable else "Maximum price: $%d" % maximum)
-		amount.text = "$%d" % price
+		amount.text = "$%d · %s" % [price, AUTO_PRICE_TEXT] if prices_automatic else "$%d" % price
 		var walkout: Label = row["walkout"]
 		var chance: float = float(_details.get(definition.id, {}).get("price_walkout_chance", -1.0))
 		walkout.visible = not locked and chance >= 0.0
@@ -546,8 +555,8 @@ func _build_sections() -> void:
 	special_line.add_child(_special_option)
 	var bulk_line: HBoxContainer = _add_line(list, "BulkPrices")
 	bulk_line.add_theme_constant_override("separation", 6)
-	var bulk_label: Label = _add_label(bulk_line, "Label", "All prices")
-	bulk_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_bulk_price_label = _add_label(bulk_line, "Label", "All prices")
+	_bulk_price_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	var lower: Button = _add_button(bulk_line, "MinusTen", "−10%")
 	lower.pressed.connect(_on_bulk_price.bind(-1))
 	_bulk_controls["MinusTen"] = lower
@@ -602,7 +611,9 @@ func _refresh_special_picker() -> void:
 				selected = item_index
 	_special_option.select(selected)
 	_special_option.disabled = _phase != SimClock.Phase.MORNING
-	_special_option.tooltip_text = MORNING_HINT if _special_option.disabled else DailySpecialText.selection_hint()
+	var prices_automatic: bool = _menu != null and _menu.automatic_prices()
+	_special_option.tooltip_text = MORNING_HINT if _special_option.disabled \
+		else DailySpecialText.selection_hint(prices_automatic)
 	_special_option.set_block_signals(false)
 
 
@@ -722,14 +733,10 @@ func _rebuild_rows() -> void:
 			"signature_button": signature_button, "signature_status": signature_status,
 			"signature_sales": signature_sales}
 		index += 1
-	_rebuild_recipe_tree()
 	if not _rows.has(_selected_recipe):
 		var definitions: Array[RecipeDef] = _display_recipes()
 		_selected_recipe = definitions[0].id if not definitions.is_empty() else &""
-	if _tree_items.has(_selected_recipe):
-		_recipe_tree.set_block_signals(true)
-		_tree_items[_selected_recipe].select(0)
-		_recipe_tree.set_block_signals(false)
+	_rebuild_recipe_tree()
 
 
 func _add_line(parent: Node, title: String) -> HBoxContainer:
@@ -813,7 +820,8 @@ static func _price_walkout_text(chance: float) -> String:
 
 
 func _on_price_step(recipe_id: StringName, direction: int) -> void:
-	if _phase != SimClock.Phase.MORNING or _menu == null or (direction != -1 and direction != 1):
+	if _phase != SimClock.Phase.MORNING or _menu == null or _menu.automatic_prices() \
+			or (direction != -1 and direction != 1):
 		return
 	var definition: RecipeDef = _menu.recipe(recipe_id)
 	if definition == null or definition.unlock_level > _menu.owner_level():
@@ -832,17 +840,19 @@ func _on_price_step(recipe_id: StringName, direction: int) -> void:
 	refresh()
 
 
-func _refresh_bulk_controls(editable: bool) -> void:
+func _refresh_bulk_controls(editable: bool, prices_automatic: bool) -> void:
+	_bulk_price_label.text = AUTO_PRICE_TEXT if prices_automatic else "All prices"
 	for button_name: String in _bulk_controls:
 		var button: Button = _bulk_controls[button_name]
-		button.disabled = not editable or _menu == null or not _menu.is_valid()
+		button.visible = not prices_automatic
+		button.disabled = prices_automatic or not editable or _menu == null or not _menu.is_valid()
 		button.tooltip_text = MORNING_HINT if not editable else "Change prices through today's menu."
 
 
 ## The session handles each request through its existing single-dish path.
 func _on_bulk_price(direction: int) -> void:
 	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid() \
-			or (direction != -1 and direction != 1):
+			or _menu.automatic_prices() or (direction != -1 and direction != 1):
 		return
 	var model: MenuSettings = _menu
 	for definition: RecipeDef in model.enabled_recipes():
@@ -859,7 +869,7 @@ func _on_bulk_price(direction: int) -> void:
 
 ## The session resets all known prices, including disabled and stashed dishes.
 func _on_bulk_reset() -> void:
-	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid():
+	if _phase != SimClock.Phase.MORNING or _menu == null or not _menu.is_valid() or _menu.automatic_prices():
 		return
 	reset_prices_requested.emit()
 	refresh()
@@ -907,6 +917,16 @@ func set_recipe_details(definitions: Array[RecipeDef], details: Dictionary[Strin
 	_catalogue = definitions.duplicate()
 	_details = details.duplicate(true)
 	refresh()
+
+
+func set_dish_week(week: Dictionary[StringName, Dictionary]) -> void:
+	if _dish_week == week:
+		return
+	_dish_week = week.duplicate(true)
+	if _sort_by_sold:
+		_rebuild_recipe_tree()
+		_refresh_tree_state()
+	_refresh_selection()
 
 
 func _display_recipes() -> Array[RecipeDef]:
@@ -960,13 +980,26 @@ func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
 
 
 func _build_recipe_tree() -> void:
+	var heading: HBoxContainer = %ListHeading
+	_menu_count.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	var sort: OptionButton = OptionButton.new()
+	sort.name = "DishSort"
+	sort.theme = SHARED_THEME
+	sort.add_theme_font_size_override("font_size", 16)
+	sort.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sort.add_item("By name")
+	sort.add_item("Most sold")
+	sort.tooltip_text = "Sort dishes by name within sections and unlocks, or rank all dishes by sales."
+	sort.item_selected.connect(_on_dish_sort_selected)
+	heading.add_child(sort)
 	_recipe_tree = Tree.new()
 	_recipe_tree.name = "RecipeTree"
 	_recipe_tree.theme = SHARED_THEME
 	_recipe_tree.columns = 2
 	_recipe_tree.column_titles_visible = false
-	_recipe_tree.set_column_expand_ratio(0, 4)
-	_recipe_tree.set_column_expand_ratio(1, 5)
+	_recipe_tree.set_column_expand_ratio(0, 5)
+	_recipe_tree.set_column_expand_ratio(1, 4)
+	_recipe_tree.set_column_clip_content(0, true)
 	_recipe_tree.set_column_clip_content(1, true)
 	_recipe_tree.hide_root = true
 	_recipe_tree.select_mode = Tree.SELECT_ROW
@@ -983,6 +1016,10 @@ func _build_recipe_tree() -> void:
 	_detail.move_child(_detail_heading, 0)
 	_quality_label = _add_label(_detail, "DishQuality", "")
 	_detail.move_child(_quality_label, 1)
+	_dish_history_label = _add_label(_detail, "DishHistory", "")
+	_dish_history_label.add_theme_font_size_override("font_size", 16)
+	_dish_history_label.add_theme_color_override("font_color", LOCKED_COLOR)
+	_detail.move_child(_dish_history_label, 2)
 	_requirements_box = VBoxContainer.new()
 	_requirements_box.name = "Requirements"
 	_requirements_box.theme = SHARED_THEME
@@ -994,13 +1031,28 @@ func _rebuild_recipe_tree() -> void:
 	_recipe_tree.clear()
 	_tree_items.clear()
 	var root: TreeItem = _recipe_tree.create_item()
-	var sections: Dictionary[int, TreeItem] = {}
 	var remaining: Array[RecipeDef] = _display_recipes()
-	remaining.sort_custom(_section_before)
+	remaining.sort_custom(_dish_before)
+	if _sort_by_sold:
+		for recipe: RecipeDef in remaining:
+			_add_recipe_node(recipe, root)
+	else:
+		_add_grouped_dishes(remaining, root)
+	if _tree_items.has(_selected_recipe):
+		_recipe_tree.set_block_signals(true)
+		_tree_items[_selected_recipe].select(0)
+		_recipe_tree.set_block_signals(false)
+
+
+func _add_grouped_dishes(remaining: Array[RecipeDef], root: TreeItem) -> void:
+	var sections: Dictionary[int, TreeItem] = {}
 	while not remaining.is_empty():
 		var advanced: bool = false
+		# Admit a whole depth at a time so siblings stay alphabetized even
+		# when their names fall on either side of the parent's name.
+		var parents: Dictionary[StringName, TreeItem] = _tree_items.duplicate()
 		for recipe: RecipeDef in remaining.duplicate():
-			var parent: TreeItem = _tree_items.get(recipe.unlock_from) as TreeItem
+			var parent: TreeItem = parents.get(recipe.unlock_from) as TreeItem
 			if not recipe.unlock_from.is_empty() and parent == null:
 				continue
 			if parent == null:
@@ -1008,6 +1060,7 @@ func _rebuild_recipe_tree() -> void:
 				if not sections.has(section):
 					var heading: TreeItem = _recipe_tree.create_item(root)
 					heading.set_text(0, RecipeDef.section_name(section))
+					heading.set_expand_right(0, true)
 					heading.set_selectable(0, false)
 					heading.set_selectable(1, false)
 					sections[section] = heading
@@ -1021,6 +1074,36 @@ func _rebuild_recipe_tree() -> void:
 			for recipe: RecipeDef in remaining:
 				_add_recipe_node(recipe, root)
 			break
+
+
+func _on_dish_sort_selected(index: int) -> void:
+	_sort_by_sold = index == 1
+	_rebuild_recipe_tree()
+	_refresh_tree_state()
+
+
+func _dish_before(first: RecipeDef, second: RecipeDef) -> bool:
+	if _sort_by_sold:
+		var first_sold: int = _dish_week.get(first.id, {}).get("sold", 0)
+		var second_sold: int = _dish_week.get(second.id, {}).get("sold", 0)
+		if first_sold != second_sold:
+			return first_sold > second_sold
+	elif first.menu_section() != second.menu_section():
+		return first.menu_section() < second.menu_section()
+	var names: int = first.display_name.naturalnocasecmp_to(second.display_name)
+	return names < 0 if names != 0 else String(first.id) < String(second.id)
+
+
+static func _dish_history_text(metrics: Dictionary) -> String:
+	var sold: int = metrics.get("sold", 0)
+	if sold == 0:
+		return "7 days: no sales yet"
+	var quality: float = DishQuality.stars_on_five(float(metrics["quality_sum"]) / float(sold))
+	var eaten: int = metrics["eaten"]
+	var feedback: String = "No guest feedback"
+	if eaten > 0:
+		feedback = "%d%% happy" % roundi(100.0 * float(metrics["happy"]) / float(eaten))
+	return "7 days: %d sold · %.1f / 5 stars · %s" % [sold, quality, feedback]
 
 
 func _add_recipe_node(recipe: RecipeDef, parent: TreeItem) -> void:
@@ -1090,6 +1173,7 @@ func _refresh_selection() -> void:
 			(child as Label).visible = false # Section headings now live in the tree.
 	_detail_heading.visible = chosen != null
 	_quality_label.visible = chosen != null
+	_dish_history_label.visible = chosen != null
 	_requirements_box.visible = chosen != null
 	for child: Node in _requirements_box.get_children():
 		_requirements_box.remove_child(child)
@@ -1097,6 +1181,7 @@ func _refresh_selection() -> void:
 	if chosen == null:
 		return
 	_detail_heading.text = "%s - %s" % [chosen.display_name, RecipeDef.section_name(chosen.menu_section())]
+	_dish_history_label.text = _dish_history_text(_dish_week.get(chosen.id, {}))
 	var details: Dictionary = _details.get(chosen.id, {})
 	var signature: Dictionary = _signature_details(chosen.id)
 	var signature_button: Button = _rows[chosen.id]["signature_button"] as Button

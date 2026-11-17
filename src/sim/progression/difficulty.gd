@@ -127,6 +127,10 @@ func auto(key: StringName) -> bool:
 	return false
 
 
+func hire_wage_reserve_days() -> int:
+	return _tuning().hire_wage_reserve_days
+
+
 func mult(key: StringName) -> float:
 	var preset: DifficultyModeTuning = _tuning().mode_data(_active_mode)
 	if preset == null:

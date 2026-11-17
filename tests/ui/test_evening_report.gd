@@ -13,6 +13,86 @@ func after_each() -> void:
 	_report.free()
 
 
+func test_week_tab_displays_seven_cash_flow_days_and_keeps_next_day_available() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_report)
+	var ledger: Ledger = Ledger.new()
+	ledger.record(3, 130, Ledger.SALE)
+	ledger.record(5, -40, Ledger.WAGES)
+	var day: DayReport = DayReport.new()
+	day.day = 9
+	_report.call("show_report", day)
+	_report.call("show_week_cash_flow", ledger.week_cash_flow(day.day))
+	var tabs: TabBar = _report.get_node("%ReportTabs") as TabBar
+	var today: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var week: ScrollContainer = _report.get_node("%WeekScroll") as ScrollContainer
+	var scroll: PanelScroll = _report.get_node("PanelScroll") as PanelScroll
+	var grid: GridContainer = _report.get_node("%WeekCashFlow") as GridContainer
+	var next_day: Button = _report.get_node("%NextDay") as Button
+	var today_next_day_parent: Node = next_day.get_parent()
+	assert_true(tabs.visible)
+	assert_eq(tabs.get_tab_title(0), "Today")
+	assert_eq(tabs.get_tab_title(1), "Week")
+	assert_false(week.visible)
+
+	tabs.current_tab = 1
+	assert_true(week.visible)
+	assert_false(today.visible)
+	assert_eq(scroll.main_scroll(), week)
+	assert_true(next_day.is_visible_in_tree())
+	assert_eq(grid.columns, 8)
+	assert_eq(grid.get_child_count(), 80)
+	assert_eq((grid.get_child(1) as Label).text, "Day 3")
+	assert_eq((grid.get_child(7) as Label).text, "Day 9")
+	assert_eq((grid.get_child(9) as Label).text, "$130")
+	assert_eq((grid.get_child(10) as Label).text, "$0")
+	var wage: Label = grid.get_child(grid.columns * 4 + 3) as Label
+	assert_eq(wage.text, "-$40")
+	assert_eq(wage.get_theme_color("font_color"), Color("a83e35"))
+	assert_eq((grid.get_child(grid.columns * 9) as Label).text, "Net cash")
+	assert_eq((grid.get_child(grid.columns * 9 + 3) as Label).text, "-$40")
+
+	tabs.current_tab = 0
+	assert_true(today.visible)
+	assert_false(week.visible)
+	assert_eq(scroll.main_scroll(), today)
+	assert_eq(next_day.get_parent(), today_next_day_parent)
+	tabs.current_tab = 1
+	_report.call("show_report", day)
+	_report.call("show_week_cash_flow", ledger.week_cash_flow(day.day))
+	assert_eq(tabs.current_tab, 1, "refreshing the same day keeps Week selected")
+	assert_eq(grid.get_child_count(), 80)
+	_report.call("show_report", DayReport.new())
+	assert_eq(tabs.current_tab, 0)
+	assert_false(tabs.visible)
+	assert_eq(grid.get_child_count(), 0)
+
+
+func test_week_categories_retain_width_at_large_ui_scale() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(854, 480)
+	tree.root.add_child(viewport)
+	viewport.add_child(_report)
+	var ledger: Ledger = Ledger.new()
+	var report: DayReport = DayReport.new()
+	report.day = 7
+	for day: int in range(1, 8):
+		ledger.record(day, 9999999, Ledger.SALE)
+		ledger.record(day, -999999, Ledger.WAGES)
+	_report.call("show_report", report)
+	_report.call("show_week_cash_flow", ledger.week_cash_flow(7))
+	(_report.get_node("%ReportTabs") as TabBar).current_tab = 1
+	for frame: int in 4:
+		await tree.process_frame
+	var grid: GridContainer = _report.get_node("%WeekCashFlow") as GridContainer
+	for row: int in range(10):
+		var category: Label = grid.get_child(row * grid.columns) as Label
+		assert_true(category.size.x >= 140.0, category.text)
+	viewport.remove_child(_report)
+	viewport.free()
+
+
 func test_food_quality_line_displays_average_and_empty_day_in_plain_words() -> void:
 	var day: DayReport = DayReport.new()
 	day.dish_quality_count = 2
@@ -207,6 +287,45 @@ func test_long_report_name_and_review_heading_fit_small_and_large_panels() -> vo
 		assert_true(name.get_global_rect().position.x >= panel.get_global_rect().position.x)
 		assert_true(name.get_global_rect().end.x <= panel.get_global_rect().end.x)
 		assert_true(heading.size.x <= panel.size.x, "the named review heading wraps rather than widening the report")
+	viewport.remove_child(_report)
+	viewport.free()
+
+
+func test_report_headline_and_next_day_stay_fixed_when_body_scrolls() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var viewport: SubViewport = SubViewport.new()
+	viewport.size = Vector2i(1600, 900)
+	tree.root.add_child(viewport)
+	viewport.add_child(_report)
+	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
+	var content: Control = scroll.get_node("Content") as Control
+	content.custom_minimum_size.y = 1600.0
+	var day: DayReport = DayReport.new()
+	day.day = 4
+	_report.call("show_report", day)
+	for frame: int in 3:
+		await tree.process_frame
+	var header: Label = _report.get_node("%Header") as Label
+	var profit: Label = _report.get_node("%Profit") as Label
+	var footer: Button = _report.get_node("%NextDay") as Button
+	var header_bounds: Rect2 = header.get_global_rect()
+	var profit_bounds: Rect2 = profit.get_global_rect()
+	var footer_bounds: Rect2 = footer.get_global_rect()
+	assert_eq(header.text, "Day 4: Closed")
+	assert_true(header_bounds.end.y <= scroll.get_global_rect().position.y)
+	assert_true(profit_bounds.end.y <= scroll.get_global_rect().position.y)
+	assert_true(footer_bounds.position.y >= scroll.get_global_rect().end.y)
+	assert_true(viewport.get_visible_rect().encloses(footer_bounds))
+	scroll.scroll_vertical = 500
+	await tree.process_frame
+	assert_eq(scroll.scroll_vertical, 500)
+	assert_eq(header.get_global_rect(), header_bounds)
+	assert_eq(profit.get_global_rect(), profit_bounds)
+	assert_eq(footer.get_global_rect(), footer_bounds)
+	var requests: Array[bool] = []
+	_report.connect("next_day_pressed", func() -> void: requests.append(true))
+	footer.pressed.emit()
+	assert_eq(requests, [true] as Array[bool], "the pinned button emits the original request")
 	viewport.remove_child(_report)
 	viewport.free()
 
