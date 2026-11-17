@@ -713,7 +713,6 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
 	var detail: Label = _staff_cell(details, "Trait", trait_def.display_name)
 	detail.add_theme_font_size_override(&"font_size", 14)
-	detail.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	detail.mouse_filter = Control.MOUSE_FILTER_PASS
 	detail.tooltip_text = "%s: %s" % [trait_def.display_name, trait_def.description_for(member.role)]
 	if not candidate and member.role != StaffMember.MANAGER:

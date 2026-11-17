@@ -65,7 +65,7 @@ columns = 2
 [node name="Audio" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Columns"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 6
+theme_override_constants/separation = 4
 
 [node name="MasterLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio"]
 layout_mode = 2
@@ -171,7 +171,7 @@ text = "A guest leaves angry"
 [node name="DisplayAndPlay" type="VBoxContainer" parent="Panel/Column/Scroll/Content/Columns"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 6
+theme_override_constants/separation = 4
 
 [node name="ScaleLabel" type="Label" parent="Panel/Column/Scroll/Content/Columns/DisplayAndPlay"]
 layout_mode = 2
@@ -257,7 +257,7 @@ text = "Quit to title"
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 7
+theme_override_constants/separation = 4
 
 [node name="Heading" type="Label" parent="Panel/Column/Scroll/Content/Columns/Audio/Difficulty"]
 layout_mode = 2
