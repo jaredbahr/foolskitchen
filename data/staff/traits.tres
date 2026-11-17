@@ -55,7 +55,7 @@ late_speed_multiplier = 1.1
 script = ExtResource("2_trait")
 id = &"neat_freak"
 display_name = "Neat freak"
-description = "Takes care around tables."
+description = "Tidies seats while bussing tables, so only a server gets the benefit."
 role_descriptions = Dictionary[StringName, String]({
 &"server": "Clears dirt from the seats when bussing a table, but takes 10% longer."
 })
