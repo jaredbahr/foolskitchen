@@ -7586,8 +7586,7 @@ func _on_service_closed(day: int) -> void:
 			Ledger.LOT_PURCHASE, Ledger.RENOVATION,
 			Ledger.EARLY_LOAN_REPAYMENT]:
 		operating_profit -= int(day_movements.get(category, 0))
-	# A closed day still evaluates the weekly goal (its saved day must follow
-	# the calendar) but with nothing earned: no profit, sales or guests.
+	# A closed day still advances the weekly goal's saved calendar.
 	var closing_observation: MilestoneDay = _milestone_observation(operating_profit if business_day else 0)
 	# A Creative game (FK-141) has no owner XP, career goals, weekly goal or
 	# tier climb: everything is already unlocked.
@@ -7687,7 +7686,7 @@ func _award_weekly_challenge(observation: MilestoneDay, business_day: bool) -> v
 	var first_week_pool: WeeklyChallengePool = WEEKLY_CHALLENGES if business_day and observation.day == 1 else null
 	var seats: int = sim.seat_count() if first_week_pool != null else 0
 	var staged: WeeklyChallengeSettlement = WeeklyChallengeSettlement.prepare(
-		weekly_challenge, observation, Economy.cash, first_week_pool, seats)
+		weekly_challenge, observation, Economy.cash, first_week_pool, seats, business_day)
 	if staged == null:
 		return
 	weekly_challenge = staged.state
