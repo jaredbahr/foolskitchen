@@ -21,8 +21,15 @@ signal review_recorded(row: Dictionary)
 ## Emitted once service has closed and every guest's departure is recorded,
 ## so the day's numbers are final. Listen to this, not the clock, for reports.
 signal service_closed(day: int)
+## Emitted at the changeover tick before orders or arrivals for that tick.
+signal evening_service_started
 
 var world: SimWorld
+
+var _evening_tick: int = 0
+var evening_active: bool = false
+var day_parts_tuning: DayPartsTuning = null
+
 var orders: OrderBook = OrderBook.new()
 var day_log: DayLog = DayLog.new()
 var _today_low_stock: Dictionary[StringName, bool] = {}
@@ -386,6 +393,18 @@ func _staff_to_posts() -> void:
 			world.reset_agent_position(staff, staff_spawns[staff.role])
 
 
+func schedule_evening(changeover_tick: int, tuning: DayPartsTuning) -> void:
+	_evening_tick = changeover_tick
+	evening_active = false
+	day_parts_tuning = tuning
+
+
+func _begin_evening_service() -> void:
+	_evening_tick = 0
+	evening_active = true
+	evening_service_started.emit()
+
+
 ## One fixed world tick, arrivals, then departed-guest cleanup.
 func advance() -> void:
 	var was_closed: bool = world.clock.phase == SimClock.Phase.CLOSED
@@ -397,7 +416,11 @@ func advance() -> void:
 		staff_activity.observe(world)
 	if world.booking_hold != null:
 		world.booking_hold.prepare_next_tick(world)
-	world.advance()
+	var before_agents: Callable = Callable()
+	if _evening_tick > 0 and world.clock.phase == SimClock.Phase.OPEN \
+			and world.clock.phase_tick + 1 == _evening_tick:
+		before_agents = _begin_evening_service
+	world.advance(before_agents)
 	if _anyone_going_home():
 		_release_sent_home(world.clock.phase == SimClock.Phase.CLOSED)
 	# The hold synchronizes lazily from the advanced service clock inside each

@@ -163,6 +163,91 @@ func test_preset_controls_explain_a_missing_dish_and_apply_the_rest() -> void:
 	assert_eq(choices.price_of(choices.recipe(&"burger")), 11)
 
 
+func test_evening_schedule_switches_real_orders_and_round_trips_at_morning() -> void:
+	var first: Node = _start()
+	var controls: MenuPresetControls = _open_preset_controls(first)
+	assert_true(first.call("menu_set_enabled", &"grilled_cheese", false))
+	assert_true(first.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(first.call("menu_set_price", &"burger", 8))
+	_submit_preset_name(controls, "Lunch")
+	assert_true(first.call("menu_set_enabled", &"grilled_cheese", true))
+	assert_true(first.call("menu_set_enabled", &"burger", false))
+	assert_true(first.call("menu_set_price", &"grilled_cheese", 7))
+	_submit_preset_name(controls, "Dinner")
+
+	var morning_file: String = FileAccess.get_file_as_string(_path())
+	assert_false(first.call("set_evening_schedule", true, 691, "Lunch", "Dinner"))
+	assert_false(first.call("set_evening_schedule", true, 690, "Missing", "Dinner"))
+	var enabled: CheckButton = controls.get_node("%ScheduleEnabled")
+	var time: OptionButton = controls.get_node("%ScheduleMinute")
+	var dinner: OptionButton = controls.get_node("%ScheduleEvening")
+	var apply: Button = controls.get_node("%ApplySchedule")
+	enabled.button_pressed = true
+	time.select(time.get_item_index(690))
+	dinner.select(1)
+	assert_false(apply.disabled)
+	apply.pressed.emit()
+	assert_eq((controls.get_node("%PresetFeedback") as Label).text, "Evening schedule set.")
+	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+
+	var sim: RestaurantSim = first.get("sim")
+	sim.spawner.min_gap = 1000
+	sim.spawner.max_gap = 1000
+	assert_true(Clock.sim.start_service())
+	assert_true(apply.disabled)
+	assert_false(first.call("set_evening_schedule", false, 0, "", ""))
+	assert_eq(sim.menu[0].id, &"burger")
+	var lunch_order: Order = _order_at_menu(sim, 1001)
+	assert_not_null(lunch_order)
+	if lunch_order == null:
+		return
+	var lunch_price: int = lunch_order.price
+	first.call("run_ticks", 179)
+	assert_false(sim.evening_active)
+	assert_eq(Clock.sim.display_minutes(), 689)
+	assert_eq(sim.menu[0].id, &"burger")
+	first.call("run_ticks", 1)
+	assert_true(sim.evening_active)
+	assert_eq(Clock.sim.display_minutes(), 690)
+	assert_eq(sim.menu[0].id, &"grilled_cheese")
+	assert_eq(lunch_order.recipe_id, &"burger")
+	assert_eq(lunch_order.price, lunch_price)
+	assert_eq(lunch_price, 8)
+	var dinner_order: Order = _order_at_menu(sim, 1002)
+	assert_not_null(dinner_order)
+	if dinner_order == null:
+		return
+	assert_eq(dinner_order.recipe_id, &"grilled_cheese")
+	assert_eq(dinner_order.price, 7)
+
+	for guard: int in range(8):
+		if Clock.sim.phase == SimClock.Phase.CLOSED:
+			break
+		first.call("run_ticks", 1000)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_true(Clock.sim.next_day())
+	assert_false(sim.evening_active)
+	assert_eq(sim.menu[0].id, &"burger")
+	var saved: Dictionary = _document()["data"]["menu"]["evening_schedule"]
+	assert_eq(saved, {"version": 1.0, "enabled": true, "minute": 690.0,
+		"day_preset": "Lunch", "evening_preset": "Dinner"})
+	_close(first)
+	var second: Node = _start()
+	var restored: EveningSchedule = second.get("evening_schedule")
+	assert_eq(JSON.parse_string(JSON.stringify(restored.to_save())), saved)
+	var restored_sim: RestaurantSim = second.get("sim")
+	assert_eq(restored_sim.menu[0].id, &"burger")
+
+
+func _order_at_menu(sim: RestaurantSim, seed: int) -> Order:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], rng)
+	guest.state = CustomerAgent.State.ORDERING
+	assert_true(guest.call("_take_order", null))
+	return guest.order
+
+
 func _open_preset_controls(main: Node) -> MenuPresetControls:
 	assert_true(main.call("set_menu_visible", true))
 	var panel: MenuPanel = main.get_node("Overlay/MenuPanel")
