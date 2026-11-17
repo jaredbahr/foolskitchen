@@ -1,9 +1,8 @@
 name: Checks
 
 on:
+  # No push-to-main run (Jared, 2026-11-17): the PR run already tested the change.
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read

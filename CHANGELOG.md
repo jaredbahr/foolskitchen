@@ -257,6 +257,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
 - The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#549)
 - Claude can hand small, self-contained coding tasks (boilerplate, test scaffolds, log summaries) to DeepSeek with `tools/deepseek.py`, and checks the result before it goes in. (#543)
