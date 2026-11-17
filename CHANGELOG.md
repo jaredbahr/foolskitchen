@@ -259,6 +259,7 @@ Each line ends with its PR number.
 ### Under the hood
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
+- Loading a save no longer keeps 34 separate holding variables in the 8,000-line game session script: they moved into one small class with its own tests, which check that every held section is emptied when a load or a new game should empty it. Saving and loading are unchanged. (#586)
 - The code that writes the evening report moved out of the 8,000-line game session script into its own small class with its own tests, so new report lines no longer collide there. The evening report is unchanged. (#549)
 - Claude can hand small, self-contained coding tasks (boilerplate, test scaffolds, log summaries) to DeepSeek with `tools/deepseek.py`, and checks the result before it goes in. (#543)
 - The first piece taken out of the 8,000-line game session script: the facts a closing day leaves for the evening report (XP earned, goals reached, records, tier rises) now live in one small tested class, and `tools/main_map.py` prints which pieces can come out next. The evening report is unchanged. (#534)
