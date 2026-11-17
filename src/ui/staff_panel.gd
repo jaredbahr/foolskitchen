@@ -46,6 +46,7 @@ var _snapshot: Dictionary = {}
 var _wage_factor: float = 1.0
 var _rows: Dictionary[StringName, Control] = {}
 var _morning_day: int = 0
+var _auto_wages: bool = false
 var _morning_notices: Array[Dictionary] = []
 var _morning_snapshot: Dictionary = {}
 var _morning_generation: int = 0
@@ -98,6 +99,12 @@ func bind_roster(roster: StaffRoster) -> void:
 func set_phase(phase: int) -> void:
 	_phase = phase
 	refresh()
+
+
+func set_auto_wages(enabled: bool) -> void:
+	if _auto_wages != enabled:
+		_auto_wages = enabled
+		refresh()
 
 
 ## Main retains this detached last-service summary across the morning reset.
@@ -202,8 +209,10 @@ func refresh() -> void:
 		_snapshot = snapshot
 	_refresh_employee_names()
 	_refresh_work()
-	var offers: Array[Dictionary] = _roster.morning_raise_offers(_morning_day, _phase)
-	var morning_snapshot: Dictionary = {"offers": offers,
+	var offers: Array[Dictionary] = []
+	if not _auto_wages:
+		offers = _roster.morning_raise_offers(_morning_day, _phase)
+	var morning_snapshot: Dictionary = {"offers": offers, "auto_wages": _auto_wages,
 		"notices": _morning_notices if _phase == SimClock.Phase.MORNING else []}
 	if morning_snapshot != _morning_snapshot:
 		_rebuild_morning_items(offers)
@@ -769,7 +778,9 @@ func _rebuild_morning_items(offers: Array[Dictionary]) -> void:
 			label.text = String(notice["message"])
 			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			notice_box.add_child(label)
-	(%RaiseTitle as Label).visible = not offers.is_empty()
+	var raise_title: Label = %RaiseTitle
+	raise_title.text = "Wages: handled for you" if _auto_wages else "Staff updates"
+	raise_title.visible = _auto_wages or not offers.is_empty()
 	offer_box.visible = not offers.is_empty()
 	for offer: Dictionary in offers:
 		var member_id: StringName = StringName(offer["member_id"])
@@ -798,7 +809,7 @@ func _rebuild_morning_items(offers: Array[Dictionary]) -> void:
 
 
 func _on_raise_request(member_id: StringName, accepting: bool, generation: int) -> void:
-	if _phase != SimClock.Phase.MORNING or _roster == null or _morning_day < 1 \
+	if _auto_wages or _phase != SimClock.Phase.MORNING or _roster == null or _morning_day < 1 \
 			or generation != _morning_generation:
 		return
 	var found: bool = false
