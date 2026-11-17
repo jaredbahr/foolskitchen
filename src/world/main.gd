@@ -1786,6 +1786,7 @@ func _refresh_demand() -> void:
 	var previous: float = demand_state.last_service_factor \
 		if demand_state.last_service_day == _demand_day - 1 else 0.0
 	$HUD.set_demand_status(next.total, previous)
+	_menu_panel.set_viral_notice(ViralReviewText.morning(next.viral, next.total >= demand_tuning.total_cap))
 
 
 ## What the street sees on `day`: the frontage's curb appeal and the health
@@ -1838,10 +1839,13 @@ func forecast_next_demand() -> Dictionary:
 		return {}
 	var signature_id: StringName = _effective_signature_id()
 	var signature_recipe: RecipeDef = content.recipe(signature_id) if not signature_id.is_empty() else null
+	var phase: SimClock.Phase = Clock.sim.phase
+	var open_service_pending: bool = phase != SimClock.Phase.CLOSED \
+		and (phase != SimClock.Phase.MORNING or Clock.sim.opening_refusal.is_empty())
 	var next: DemandBreakdown = DemandBreakdown.evaluate(demand_tuning,
 		reputation.average(), projected.renown, _demand_enabled_dishes(),
 		vibe_result.score, projected.day, _street_factor(projected.day),
-		viral_review.factor(projected.day),
+		viral_review.factor_for_tomorrow(Clock.sim.day, open_service_pending),
 		_effective_signature_factor(),
 		signature_recipe.display_name if signature_recipe != null else "")
 	if next == null:
@@ -3669,6 +3673,10 @@ func _restore_collection_toasts(data: Dictionary) -> bool:
 func _update_collection_toasts(result: CollectionModel.Result) -> void:
 	if result == null or not result.valid:
 		return
+	for id: StringName in _pending_collection_toast_ids.duplicate():
+		if not result.completed_ids.has(id):
+			$HUD.drop_pending_collection_toast(id)
+			_pending_collection_toast_ids.erase(id)
 	for id: StringName in result.completed_ids:
 		if _shown_collection_toast_ids.has(id) or _pending_collection_toast_ids.has(id):
 			continue
@@ -6438,6 +6446,9 @@ func _begin_morning() -> void:
 	# Keep authored gaps. Demand joins the existing scaled_gap exactly once.
 	# Derive actual editable facts before the first gap, without a random draw.
 	_recompute_vibe()
+	# Clear yesterday's notice first: _refresh_demand returns early on a bad
+	# vibe or factor and would otherwise leave it showing.
+	_menu_panel.set_viral_notice("")
 	if demand_state.begin_morning(Clock.sim.day, demand_tuning):
 		_demand_day = Clock.sim.day
 		_demand_reputation = reputation.average()
@@ -6448,7 +6459,7 @@ func _begin_morning() -> void:
 		_demand_breakdown = null
 		sim.demand_factor = 1.0
 		$HUD.set_demand_status(1.0, 0.0)
-	_menu_panel.set_viral_notice(ViralReviewText.morning(viral_review.factor(Clock.sim.day)))
+		_menu_panel.set_viral_notice("")
 	sim.start_day(owner_progress.effective_tier())
 	# A visit is decided here, once a day; the named stream is created only on a
 	# day one is possible, so earlier games' streams are untouched.

@@ -222,6 +222,37 @@ func test_only_visible_collection_toasts_are_saved_and_pending_notice_survives_r
 	assert_false((loaded_hud.get_node("CollectionToast") as Control).visible)
 
 
+func test_incomplete_set_loses_its_pending_toast_until_completed_again() -> void:
+	var main: Node = await _start()
+	var result: CollectionModel.Result = _complete_coffee_and_rustic_collections_in_main(main)
+	assert_eq(result.completed_ids, [&"coffee_break", &"rustic_nook"] as Array[StringName])
+	assert_eq(main.get("_pending_collection_toast_ids"), [&"rustic_nook"] as Array[StringName])
+	var grid: SimGrid = (main.get("world") as SimWorld).grid
+	var bookcase: PlacedItem
+	for placed: PlacedItem in grid.items():
+		var definition: ItemDef = placed.def as ItemDef
+		if definition != null and definition.id == &"bookcase_open_low":
+			bookcase = placed
+			break
+	assert_not_null(bookcase)
+	if bookcase == null:
+		return
+	assert_true(grid.remove(bookcase.id))
+	assert_eq(main.get("_pending_collection_toast_ids"), [] as Array[StringName])
+	var hud: Node = main.get_node("HUD")
+	assert_true((hud.get_node("CollectionToast/Text") as Label).text.contains("Coffee Break"))
+	(hud.get_node("CollectionToastTimer") as Timer).stop()
+	hud.call("_on_collection_toast_timeout")
+	assert_false((hud.get_node("CollectionToast") as Control).visible)
+	main.call("_begin_morning")
+	var document: Dictionary = JSON.parse_string(_saved_text()) as Dictionary
+	assert_eq((document["data"]["collection_toasts"] as Dictionary)["shown_ids"], ["coffee_break"])
+	assert_not_null(grid.place_def(bookcase.def as ItemDef, bookcase.origin, bookcase.quarter_turns))
+	assert_eq((hud.get_node("CollectionToast/Text") as Label).text,
+		"Collection complete: Rustic Nook — A leafy corner with room to settle in.")
+	assert_eq(main.get("_shown_collection_toast_ids"), [&"coffee_break", &"rustic_nook"] as Array[StringName])
+
+
 func test_collection_progress_snapshot_tracks_equal_count_item_replacement() -> void:
 	var main: Node = await _start()
 	var content: ContentDB = main.get("content") as ContentDB

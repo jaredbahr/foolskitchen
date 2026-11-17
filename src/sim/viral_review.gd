@@ -65,6 +65,14 @@ func factor(day: int) -> float:
 	return _factor_for_strength(days_left)
 
 
+## Project one completed open service without consuming it or predicting a new post.
+func factor_for_tomorrow(today: int, before_service_close: bool) -> float:
+	if before_service_close and today > last_close_day and today > last_trigger_day \
+			and tuning != null and tuning.is_valid():
+		return _factor_for_strength(maxi(0, days_left - 1))
+	return factor(today + 1)
+
+
 func triggered_on(day: int) -> bool:
 	return day > 0 and day == last_trigger_day
 

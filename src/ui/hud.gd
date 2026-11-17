@@ -159,6 +159,14 @@ func queue_collection_toast(collection_id: StringName, text: String) -> void:
 	_show_collection_toast()
 
 
+func drop_pending_collection_toast(collection_id: StringName) -> void:
+	if collection_id.is_empty():
+		return
+	for index: int in range(_collection_toast_queue.size() - 1, -1, -1):
+		if _collection_toast_queue[index]["id"] == collection_id:
+			_collection_toast_queue.remove_at(index)
+
+
 ## A plain notice in the same toast slot (the opening week, #494). It never
 ## reports a collection as shown.
 func queue_toast(text: String) -> void:
