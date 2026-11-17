@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The seaside site has a car-free promenade out front instead of a road: wide paving with a wave inlaid down its middle, double-lantern lamp posts that glow at night, benches, planters, bollards and an ice-cream cart, with people strolling, jogging, cycling, pushing prams and walking dogs. Your shop now stands in a terrace of pastel beach shops with painted signs: Surf Hire on one side and Bucket & Spade on the other, then a fish-and-chip kiosk, beach huts with deckchairs, and an arcade whose sign lights up in bulbs after dark. (#599)
 - Paying guests sometimes leave spare change in the tip jar. Collect it at closing. (#582)
 - Easy fills missing cook and server jobs, replaces staff who quit, and hires for busy kitchens or dining rooms when cash covers five days of the new wage. Look for the hire in the morning news. (#579)
 - Easy handles fair raise requests each morning, and declines requests above the usual wage for the role. In Custom you can turn on automatic wages, and the Staff panel shows who is handling raises. (#580)

@@ -24,6 +24,8 @@ const SHADOW_LIFT: float = 0.004
 const DOOR_HALF: float = 0.75
 const DOOR_DEPTH: float = 2.3
 const LOT_MARGIN: float = 0.5
+## A promenade's far-edge line (v) for FAR props (#596); MID props use its centre band.
+const FAR_V: float = 7.9
 
 class Placed extends RefCounted:
 	var kind: int = 0
@@ -31,6 +33,8 @@ class Placed extends RefCounted:
 	var v: float = 0.0
 	var size: Vector3 = Vector3.ONE
 	var seed_value: int = 0
+	## StreetPropSpec.Zone: a bench on a promenade's centre band turns to face the shops.
+	var zone: int = 0
 
 	## The footprint in (u, v).
 	func rect() -> Rect2:
@@ -71,6 +75,10 @@ func plan() -> void:
 	for spec: StreetPropSpec in street.furniture:
 		var size: Vector3 = StreetPropSpec.size_of(spec.kind)
 		var centre_v: float = BAND_HI - size.z * 0.5 if spec.zone == StreetPropSpec.Zone.KERB else BAND_LO + size.z * 0.5
+		if spec.zone == StreetPropSpec.Zone.MID:
+			centre_v = NeighbourhoodPromenade.BAND_V
+		elif spec.zone == StreetPropSpec.Zone.FAR:
+			centre_v = FAR_V
 		for copy: int in spec.count:
 			number += 1
 			var best: Placed = null
@@ -83,6 +91,7 @@ func plan() -> void:
 				candidate.u = u
 				candidate.v = centre_v
 				candidate.size = size
+				candidate.zone = spec.zone
 				var rect: Rect2 = candidate.rect()
 				if rect.position.x < u_range.x or rect.end.x > u_range.y or not _free(rect, blocked):
 					continue
@@ -140,7 +149,8 @@ func build_meshes(paving_top: float, shift: float, light_shift: Vector2, lamps: 
 	var pen: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
 	var shadows: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
 	for item: Placed in placed:
-		pen.xf = Transform3D(Basis.IDENTITY, Vector3(item.u, paving_top, shift + item.v))
+		var turn: float = PI if item.zone == StreetPropSpec.Zone.MID else 0.0
+		pen.xf = Transform3D(Basis(Vector3.UP, turn), Vector3(item.u, paving_top, shift + item.v))
 		_prop(pen, item)
 		_shadow(shadows, item, paving_top + SHADOW_LIFT, shift, light_shift)
 	for foot: Vector2 in lamps:
@@ -197,6 +207,12 @@ func _prop(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 			_catch_crates(pen, item)
 		StreetPropSpec.Kind.BUNTING:
 			_bunting(pen, item)
+		StreetPropSpec.Kind.PLANTER:
+			_planter(pen, item)
+		StreetPropSpec.Kind.ICE_CREAM_CART:
+			_ice_cream_cart(pen, item)
+		StreetPropSpec.Kind.IRON_BOLLARD:
+			_iron_bollard(pen)
 		_:
 			_postbox(pen)
 
@@ -402,6 +418,75 @@ func _bunting(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 		last_point = point
 
 
+## A long timber trough of seaside planting (#596): marram grass, sea pinks and a few
+## bright blooms.
+func _planter(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
+	var wood: Color = street.wood.lightened(0.05)
+	pen.box(Vector3(-0.45, 0.0, -0.21), Vector3(0.45, 0.32, 0.21), wood)
+	pen.box(Vector3(-0.47, 0.3, -0.23), Vector3(0.47, 0.35, 0.23), wood.lightened(0.16))
+	for x: float in [-0.3, 0.0, 0.3]:
+		pen.box(Vector3(x - 0.008, 0.02, 0.21), Vector3(x + 0.008, 0.3, 0.215), wood.darkened(0.25))
+	pen.box(Vector3(-0.42, 0.35, -0.18), Vector3(0.42, 0.37, 0.18), street.soil)
+	var grass: Color = street.hedge_colors[int(_r(item.seed_value, 3) * float(street.hedge_colors.size())) % street.hedge_colors.size()]
+	for index: int in 7:
+		var x: float = -0.34 + 0.113 * float(index)
+		var z: float = -0.08 + 0.16 * float(index % 2)
+		var tall: float = 0.14 + 0.08 * _r(item.seed_value, 10 + index)
+		pen.lump(Vector3(x, 0.37 + tall * 0.5, z), 0.07, tall, 0.06, float(index), grass.lightened(0.08), grass.darkened(0.2))
+	for index: int in 4:
+		var bloom: Color = street.bloom_colors[(item.seed_value + index) % street.bloom_colors.size()]
+		var x: float = -0.28 + 0.19 * float(index)
+		pen.lump(Vector3(x, 0.46 + 0.03 * float(index % 2), 0.1 - 0.18 * float(index % 2)), 0.05, 0.05, 0.05, float(index), bloom, bloom.darkened(0.2))
+
+
+## An ice-cream tricycle (#596): a striped canopy on poles over a cool box, cones on top.
+func _ice_cream_cart(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
+	var pink: Color = street.bloom_colors[1 % street.bloom_colors.size()]
+	var box: Color = street.trim
+	var band: Color = street.bin_colors[0] if street.bin_colors.size() > 0 else street.metal
+	var tyre: Color = Color("45342b")
+	# Two wheels under the cool box and one at the saddle end.
+	for z: float in [-0.19, 0.19]:
+		pen.box(Vector3(-0.22, 0.0, z - 0.02), Vector3(-0.02, 0.2, z + 0.02), tyre)
+		pen.box(Vector3(-0.13, 0.09, z - 0.025), Vector3(-0.11, 0.11, z + 0.025), street.metal)
+	pen.box(Vector3(0.34, 0.0, -0.02), Vector3(0.48, 0.14, 0.02), tyre)
+	pen.box(Vector3(-0.36, 0.17, -0.17), Vector3(0.1, 0.6, 0.17), box)
+	pen.box(Vector3(-0.37, 0.38, -0.18), Vector3(0.11, 0.44, 0.18), band)
+	pen.box(Vector3(-0.37, 0.58, -0.18), Vector3(0.11, 0.62, 0.18), pink.darkened(0.1))
+	# The saddle and the bars.
+	pen.box(Vector3(0.1, 0.12, -0.015), Vector3(0.42, 0.15, 0.015), street.metal)
+	pen.box(Vector3(0.34, 0.15, -0.015), Vector3(0.37, 0.42, 0.015), street.metal)
+	pen.box(Vector3(0.3, 0.42, -0.05), Vector3(0.42, 0.45, 0.05), tyre)
+	pen.box(Vector3(0.1, 0.4, -0.13), Vector3(0.13, 0.62, 0.13), street.metal)
+	# The canopy: two poles and a striped sunshade.
+	for x: float in [-0.31, 0.07]:
+		pen.box(Vector3(x - 0.012, 0.62, -0.012), Vector3(x + 0.012, 1.08, 0.012), street.metal)
+	var stripes: int = 6
+	for index: int in stripes:
+		var x0: float = -0.46 + 0.68 * float(index) / float(stripes)
+		var x1: float = x0 + 0.68 / float(stripes)
+		var tone: Color = pink if index % 2 == 0 else street.trim
+		var base: Array[Vector3] = [Vector3(x0, 1.08, -0.28), Vector3(x1, 1.08, -0.28), Vector3(x1, 1.08, 0.28), Vector3(x0, 1.08, 0.28)]
+		pen.slab(base, Vector3(0.0, 0.03, 0.0), tone)
+		pen.box(Vector3(x0, 1.03, 0.26), Vector3(x1, 1.08, 0.29), tone)
+		pen.box(Vector3(x0, 1.03, -0.29), Vector3(x1, 1.08, -0.26), tone)
+	# Three cones on the lid.
+	for index: int in 3:
+		var x: float = -0.25 + 0.12 * float(index)
+		var scoop: Color = street.bloom_colors[(item.seed_value + index) % street.bloom_colors.size()].lightened(0.2)
+		pen.box(Vector3(x - 0.022, 0.62, 0.06), Vector3(x + 0.022, 0.7, 0.1), Color("c99a55"))
+		pen.lump(Vector3(x, 0.72, 0.08), 0.035, 0.03, 0.035, float(index), scoop, scoop.darkened(0.15))
+
+
+## A short cast-iron bollard with a ball top, in the promenade's railing paint.
+func _iron_bollard(pen: NeighbourhoodBuildings.Pen) -> void:
+	var iron: Color = street.bin_colors[0].darkened(0.2) if street.bin_colors.size() > 0 else street.metal
+	_drum(pen, 0.0, 0.0, 0.0, 0.05, 0.08, 0.075, 8, iron.darkened(0.1))
+	_drum(pen, 0.0, 0.0, 0.05, 0.28, 0.055, 0.045, 8, iron)
+	_drum(pen, 0.0, 0.0, 0.26, 0.29, 0.065, 0.065, 8, street.trim)
+	pen.lump(Vector3(0.0, 0.31, 0.0), 0.05, 0.05, 0.05, 0.4, iron.lightened(0.1), iron)
+
+
 # --- baked shadows ----------------------------------------------------------
 
 func _shadow(soup: NeighbourhoodGround.Soup, item: Placed, y: float, shift: float, light_shift: Vector2) -> void:
@@ -427,9 +512,9 @@ func _shadow(soup: NeighbourhoodGround.Soup, item: Placed, y: float, shift: floa
 				var foot: Vector2 = Vector2(item.u + post, item.v)
 				_emit_hull(soup, _post_shadow(foot, light_shift, height), y, shift)
 			return
-		StreetPropSpec.Kind.BIN, StreetPropSpec.Kind.HYDRANT, StreetPropSpec.Kind.ROPE_BOLLARD:
+		StreetPropSpec.Kind.BIN, StreetPropSpec.Kind.HYDRANT, StreetPropSpec.Kind.ROPE_BOLLARD, StreetPropSpec.Kind.IRON_BOLLARD:
 			var centre: Vector2 = Vector2(item.u, item.v)
-			var radius: float = 0.09 if item.kind == StreetPropSpec.Kind.HYDRANT else 0.12
+			var radius: float = 0.09 if item.kind == StreetPropSpec.Kind.HYDRANT or item.kind == StreetPropSpec.Kind.IRON_BOLLARD else 0.12
 			for index: int in 8:
 				var angle: float = TAU * float(index) / 8.0
 				points.append(centre + Vector2(cos(angle), sin(angle)) * radius)

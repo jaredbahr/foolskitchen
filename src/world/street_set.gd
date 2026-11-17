@@ -38,6 +38,11 @@ enum Fence { PICKET, HEDGE, WALL, RAIL }
 @export var shop_heights: Array[float] = []
 @export var fences: Array[int] = []
 @export var shops: Array[ShopStyle] = []
+## A named terrace (#596): when set, the row on each side is these neighbours, in
+## order outward from the lot (left is -u), instead of `shops_per_side` hashed picks
+## from `shops`. Each is its own node the view can show closed and for sale.
+@export var terrace_left: Array[ShopStyle] = []
+@export var terrace_right: Array[ShopStyle] = []
 ## Street furniture on the near pavement (#423): what stands there and how many.
 @export var furniture: Array[StreetPropSpec] = []
 @export var metal: Color = Color.WHITE
@@ -58,6 +63,11 @@ static func standard() -> StreetSet:
 	return StreetPreset.starter().buildings.duplicate_deep(Resource.DEEP_DUPLICATE_ALL) as StreetSet
 
 
+## True when the row beside the lot is a named terrace (#596).
+func has_terrace() -> bool:
+	return not terrace_left.is_empty() or not terrace_right.is_empty()
+
+
 ## A string that changes whenever anything in the set does; used in cache keys.
 func signature() -> String:
 	var parts: Array = [seed_salt, shops_per_side, house_count, wall_colors, roof_colors, door_colors, hedge_colors,
@@ -68,4 +78,9 @@ func signature() -> String:
 		parts.append([int(spec.kind), spec.count, int(spec.zone)])
 	for style: ShopStyle in shops:
 		parts.append([style.id, style.wall, style.awning_a, style.awning_b, style.sign_board, style.door, int(style.accent)])
+	for side: Array[ShopStyle] in ([terrace_left, terrace_right] if has_terrace() else []):
+		for style: ShopStyle in side:
+			parts.append([style.id, style.wall, style.awning_a, style.awning_b, style.sign_board, style.door, int(style.accent),
+				int(style.form), style.sign_text, style.width])
+		parts.append("|")
 	return var_to_str(parts)
