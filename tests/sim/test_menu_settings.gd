@@ -90,6 +90,19 @@ func test_level_locked_recipe_is_visible_but_cannot_be_enabled_or_priced() -> vo
 	assert_eq(menu.to_dict()["prices"]["seasonal"], "14")
 
 
+func test_fresh_and_fallback_menus_prefer_default_recipes_to_opt_in_recipes() -> void:
+	var breakfast: RecipeDef = _recipe(&"bacon_and_eggs", 10)
+	breakfast.unlock_level = 2
+	breakfast.default_enabled = false
+	var menu: MenuSettings = MenuSettings.new([breakfast, _burger], 2)
+	assert_eq(_ids(menu.enabled_recipes()), [&"burger"] as Array[StringName])
+	assert_true(menu.set_catalogue([breakfast, _soup]))
+	assert_eq(_ids(menu.enabled_recipes()), [&"tomato_soup"] as Array[StringName])
+	assert_true(menu.set_catalogue([breakfast]))
+	assert_eq(_ids(menu.enabled_recipes()), [&"bacon_and_eggs"] as Array[StringName],
+		"A catalogue with one cookable dish keeps the existing minimum")
+
+
 func test_level_advance_allows_selection_without_enabling_it_automatically() -> void:
 	var seasonal: RecipeDef = _recipe(&"seasonal", 14)
 	seasonal.unlock_level = 2

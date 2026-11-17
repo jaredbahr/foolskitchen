@@ -705,9 +705,9 @@ func test_authored_croissant_tree_and_detail_show_bakery_without_menu_edits() ->
 	assert_true(_enable_requests.is_empty() and _price_requests.is_empty())
 
 
-func test_all_six_sections_use_readable_headings_in_menu_order() -> void:
+func test_all_seven_sections_use_readable_headings_in_menu_order() -> void:
 	var recipes: Array[RecipeDef] = []
-	for section: int in [RecipeDef.Section.BAKERY, RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
+	for section: int in [RecipeDef.Section.BREAKFAST, RecipeDef.Section.BAKERY, RecipeDef.Section.DESSERTS, RecipeDef.Section.DRINKS,
 		RecipeDef.Section.SIDES, RecipeDef.Section.MAINS, RecipeDef.Section.STARTERS]:
 		var dish: RecipeDef = _recipe(StringName("section%d" % section), "Example dish", 6)
 		dish.section = section as RecipeDef.Section
@@ -717,9 +717,32 @@ func test_all_six_sections_use_readable_headings_in_menu_order() -> void:
 	var tree: Tree = _panel.get("_recipe_tree") as Tree
 	for section: TreeItem in tree.get_root().get_children():
 		headings.append(section.get_text(0))
-	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts", "Bakery"] as Array[String])
+	assert_eq(headings, ["Starters", "Mains", "Sides", "Drinks", "Desserts", "Bakery", "Breakfast"] as Array[String])
 	for dish: RecipeDef in recipes:
 		assert_not_null(_panel.row_for(dish.id), "grouping retains each interactive dish row")
+
+
+func test_authored_breakfast_appears_at_level_two_without_enabling_the_dishes() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var ids: Array[StringName] = [&"bacon_and_eggs", &"cereal", &"fried_eggs", &"muffin", &"pancakes", &"waffles"]
+	var menu: MenuSettings = MenuSettings.new(content.recipes())
+	var fresh_level_two: MenuSettings = MenuSettings.new(content.recipes(), 2)
+	_panel.bind_menu(menu)
+	for id: StringName in ids:
+		var choice: TreeItem = _panel.tree_item_for(id)
+		assert_not_null(choice)
+		assert_eq(choice.get_parent().get_text(0), "Breakfast")
+		assert_eq(choice.get_text(1), "Lv 2")
+		assert_false(menu.set_enabled(id, true), "Breakfast remains locked at level 1")
+		assert_false(fresh_level_two.is_enabled(id), "Breakfast is opt-in on a fresh eligible menu")
+	assert_true(menu.set_owner_level(2))
+	for id: StringName in ids:
+		assert_false(menu.is_enabled(id), "A level-up does not change the chosen menu")
+	assert_true(menu.set_enabled(&"burger", false))
+	assert_true(menu.set_enabled(&"pancakes", true))
+	assert_true(_panel.select_recipe(&"pancakes"))
+	assert_eq((_panel.get("_detail_heading") as Label).text, "Pancakes - Breakfast")
 
 
 func test_tree_links_and_selection_show_only_one_detail_without_menu_mutation() -> void:

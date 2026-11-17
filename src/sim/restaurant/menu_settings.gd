@@ -57,9 +57,16 @@ func _init(cookable_recipes: Array[RecipeDef] = [], owner_level: int = 1, tuning
 	for definition: RecipeDef in _recipes:
 		_by_id[definition.id] = definition
 		_standards[definition.id] = definition.standard_price
-		if definition.unlock_level <= _owner_level and _enabled.size() < _tuning.limit_for_level(_owner_level):
+		if definition.default_enabled and definition.unlock_level <= _owner_level \
+				and _enabled.size() < _tuning.limit_for_level(_owner_level):
 			_enabled[definition.id] = true
 		_prices[definition.id] = definition.standard_price
+	# Keep the minimum of one dish for a catalogue with only opt-in recipes.
+	if _enabled.is_empty():
+		for definition: RecipeDef in _recipes:
+			if definition.unlock_level <= _owner_level:
+				_enabled[definition.id] = true
+				break
 	_valid = true
 
 
@@ -233,7 +240,7 @@ func set_catalogue(cookable_recipes: Array[RecipeDef]) -> bool:
 		_fallback_id = &""
 	if enabled.is_empty():
 		for definition: RecipeDef in next._recipes:
-			if definition.unlock_level <= _owner_level:
+			if next._enabled.has(definition.id):
 				enabled[definition.id] = true
 				if not _enabled.has(definition.id):
 					_fallback_id = definition.id

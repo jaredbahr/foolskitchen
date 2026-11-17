@@ -5,7 +5,7 @@ extends TestCase
 func test_starter_data_loads_without_validation_errors() -> void:
 	var db: ContentDB = ContentDB.new()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 22)
+	assert_eq(db.ingredients().size(), 27)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 81)
 	assert_eq(db.collections().size(), 6)
@@ -32,13 +32,16 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	var ingredient_ids: Array[StringName] = []
 	for definition: IngredientDef in db.ingredients():
 		ingredient_ids.append(definition.id)
-	assert_eq(ingredient_ids, [&"beef_patty", &"beer", &"bread", &"bun", &"cheese", &"coffee_beans", &"dough",
-		&"fish_fillet", &"frozen_fries", &"lemon", &"lettuce", &"mussels", &"oil", &"pastry", &"potato", &"rice", &"shrimp", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
+	assert_eq(ingredient_ids, [&"bacon", &"beef_patty", &"beer", &"bread", &"bun", &"cereal", &"cheese", &"coffee_beans",
+		&"dough", &"egg", &"fish_fillet", &"flour", &"frozen_fries", &"lemon", &"lettuce", &"milk", &"mussels", &"oil",
+		&"pastry", &"potato", &"rice", &"shrimp", &"soda", &"soup_stock", &"tea", &"tomato", &"wine"])
 	var recipe_ids: Array[StringName] = []
 	for definition: RecipeDef in db.recipes():
 		recipe_ids.append(definition.id)
-	assert_eq(recipe_ids, [&"bar_fries", &"beer", &"burger", &"coffee", &"croissant", &"fish_and_chips", &"fries", &"grilled_cheese", &"mussels_broth", &"salmon_maki", &"savoury_pie", &"seafood_stew", &"shrimp_skewer", &"soft_drink",
-		&"tea", &"tomato_melt", &"tomato_soup", &"wine"])
+	assert_eq(recipe_ids, [&"bacon_and_eggs", &"bar_fries", &"beer", &"burger", &"cereal", &"coffee", &"croissant",
+		&"fish_and_chips", &"fried_eggs", &"fries", &"grilled_cheese", &"muffin", &"mussels_broth", &"pancakes",
+		&"salmon_maki", &"savoury_pie", &"seafood_stew", &"shrimp_skewer", &"soft_drink", &"tea", &"tomato_melt",
+		&"tomato_soup", &"waffles", &"wine"])
 	var item_ids: Array[StringName] = []
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
@@ -64,7 +67,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 func test_reloading_does_not_duplicate_definitions() -> void:
 	var db: ContentDB = _starter_db()
 	assert_eq(db.load_all().size(), 0)
-	assert_eq(db.ingredients().size(), 22)
+	assert_eq(db.ingredients().size(), 27)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
 	assert_eq(db.items().size(), 81)
 
@@ -79,7 +82,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 121)
+	assert_eq(content_paths, 132)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -375,8 +378,34 @@ func test_recipe_menu_sections_validate_without_changing_shared_content() -> voi
 	var errors: PackedStringArray = ContentDB.validate_definitions([], [invalid], [_station()])
 	assert_eq(errors.size(), 1)
 	assert_true(_has_error(errors, "unknown menu section"))
-	assert_eq(definition.section, RecipeDef.Section.BAKERY)
+	assert_eq(definition.section, RecipeDef.Section.BREAKFAST)
 	assert_eq(_starter_db().recipe(&"tomato_soup").section, RecipeDef.Section.STARTERS)
+
+
+func test_breakfast_uses_existing_stations_and_stocks_chilled_and_dry_ingredients() -> void:
+	var db: ContentDB = _starter_db()
+	var cooked: Array[StringName] = [&"bacon_and_eggs", &"fried_eggs", &"pancakes", &"waffles"]
+	var breakfast: Array[StringName] = []
+	for recipe: RecipeDef in db.recipes():
+		if recipe.menu_section() != RecipeDef.Section.BREAKFAST:
+			continue
+		breakfast.append(recipe.id)
+		assert_eq(recipe.unlock_level, 2)
+		assert_eq(recipe.unlock_tier, 1)
+		assert_false(recipe.default_enabled)
+		assert_eq(recipe.theme_tags, [&"cafe", &"cosy"] as Array[StringName])
+		assert_false(recipe.ingredients.is_empty())
+		for ingredient: IngredientDef in recipe.ingredients:
+			assert_eq(ingredient, db.ingredient(ingredient.id), "uses a stocked ingredient")
+		assert_eq(recipe.steps.size(), 2 if cooked.has(recipe.id) else 1)
+		assert_eq(recipe.steps[0].station_type, db.item(&"prep_counter").station_type)
+		if cooked.has(recipe.id):
+			assert_eq(recipe.steps[1].station_type, db.item(&"stove").station_type)
+	assert_eq(breakfast, [&"bacon_and_eggs", &"cereal", &"fried_eggs", &"muffin", &"pancakes", &"waffles"] as Array[StringName])
+	for ingredient_id: StringName in [&"egg", &"bacon", &"milk"]:
+		assert_eq(db.ingredient(ingredient_id).storage, IngredientDef.Storage.FRIDGE)
+	for ingredient_id: StringName in [&"cereal", &"flour", &"pastry"]:
+		assert_eq(db.ingredient(ingredient_id).storage, IngredientDef.Storage.SHELF)
 
 
 func _starter_db() -> ContentDB:

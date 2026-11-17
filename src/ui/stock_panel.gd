@@ -344,7 +344,7 @@ func _rebuild_rows() -> void:
 		header.name = "Group%d" % kind
 		header.theme = SHARED_THEME
 		header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		header.add_theme_constant_override("separation", 3)
+		header.add_theme_constant_override("separation", 0)
 		_rows_node.add_child(header)
 		var line: HBoxContainer = _add_line(header, "Header")
 		var title: Label = _add_label(line, "Title")
@@ -376,7 +376,7 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	row.name = "Ingredient%d" % index
 	row.theme = SHARED_THEME
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 2)
+	row.add_theme_constant_override("separation", 0)
 	parent.add_child(row)
 	var line: HBoxContainer = _add_line(row, "Line")
 	line.add_theme_constant_override("separation", 4)
@@ -438,6 +438,8 @@ func _build_row(parent: Node, id: StringName, index: int) -> Dictionary:
 	var separator: HSeparator = HSeparator.new()
 	separator.theme = SHARED_THEME
 	separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# A thin divider separates rows without taking space from their controls.
+	separator.add_theme_constant_override("separation", 1)
 	row.add_child(separator)
 	parts.merge({"throw": throw, "auto": auto, "target_label": target_label,
 		"minus": minus, "target": target, "plus": plus})
