@@ -117,7 +117,7 @@ func _open_real_service() -> void:
 
 
 func _validate_service_hud() -> void:
-	var phase: Label = $HUD/Top/Row/Phase as Label
+	var phase: Label = $HUD/Top/Row/TimeStatus/Phase as Label
 	var header: Control = $HUD/Top as Control
 	var rect: Rect2 = phase.get_global_rect() if phase != null else Rect2()
 	var recipe: RecipeDef = menu_settings.recipe(BURGER_ID)

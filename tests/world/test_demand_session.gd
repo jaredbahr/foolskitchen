@@ -94,7 +94,7 @@ func _sample_second_morning(stars: int) -> Dictionary:
 		return _invalid_sample()
 	assert_eq(menu.enabled_count(), 3)
 	assert_eq(sim.visit_kinds(), [RecipeDef.FOOD])
-	assert_almost_eq(sim.arrival_rate(), 1.0, 0.0001, "neutral day-1 baseline control")
+	assert_almost_eq(sim.arrival_rate(), 1.0, 0.0001, "normal Thursday baseline control")
 	if menu.enabled_count() != 3 or sim.visit_kinds() != [RecipeDef.FOOD] \
 			or not is_finite(sim.arrival_rate()) or absf(sim.arrival_rate() - 1.0) > 0.0001:
 		return _invalid_sample()
@@ -171,7 +171,6 @@ func _close_main() -> void:
 
 # End of initial existing-API session regression prefix.
 
-# Integration coverage below deliberately retains the accepted RED above byte-for-byte.
 const DEMAND_SLOT: String = "demand_session"
 var _demand_old_dir: String
 var _demand_dir: String
@@ -311,8 +310,9 @@ func test_forecast_is_detached_projects_one_decay_and_never_advances_rng_or_save
 	assert_almost_eq(float(first.get("word_of_mouth", 0)), 1.0 + 0.8 * 114.0 / 204.0)
 	assert_almost_eq(float(first.get("vibe", 0)), 0.9)
 	# Real authored opening is 3600 ticks and mean gap is (100 + 260) / 2.
-	# Food has full hourly weight: round(20 * .9 * (1 + .8 * 114 / 204)) = 26.
-	assert_eq(first.get("expected_guests"), 26)
+	# Food has full hourly weight: round(20 * 1.2 * .9 * (1 + .8 * 114 / 204)) = 31.
+	assert_almost_eq(float(first.get("weekday", 0)), 1.2)
+	assert_eq(first.get("expected_guests"), 31)
 	var expected: Dictionary = first.duplicate(true)
 	first["total"] = 999.0
 	first["day"] = 999
@@ -340,17 +340,17 @@ func test_accepted_menu_actions_refresh_live_factor_without_redrawing_gap_or_sav
 	assert_true(menu.set_owner_level(owner.level))
 	assert_true(_main.call("menu_set_enabled", &"tomato_melt", true))
 	assert_eq(menu.enabled_count(), 4)
-	assert_almost_eq(sim.demand_factor, 1.04)
+	assert_almost_eq(sim.demand_factor, 1.0 * 1.04)
 	assert_true(_main.call("menu_set_enabled", &"tomato_melt", true))
-	assert_almost_eq(sim.demand_factor, 1.04, 0.00001, "a unique dish counts once")
+	assert_almost_eq(sim.demand_factor, 1.0 * 1.04, 0.00001, "a unique dish counts once")
 	assert_true(_main.call("menu_set_price", &"burger", 15))
 	assert_eq(sim.spawner._remaining, countdown)
 	assert_eq(GameState.call("_capture_save"), streams)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), saved)
 	var detached: Dictionary = _main.call("current_demand_snapshot")
 	detached["total"] = 999.0
-	assert_almost_eq(sim.demand_factor, 1.04)
-	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 1.04)
+	assert_almost_eq(sim.demand_factor, 1.0 * 1.04)
+	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 1.0 * 1.04)
 	assert_true(_main.call("menu_set_enabled", &"tomato_melt", false))
 	assert_almost_eq(sim.demand_factor, 1.0)
 	assert_eq(sim.spawner._remaining, countdown)
@@ -388,7 +388,7 @@ func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
-	assert_almost_eq(sim.demand_factor, 0.9)
+	assert_almost_eq(sim.demand_factor, 1.2 * 0.9)
 	var countdown: int = sim.spawner._remaining
 	var streams: Dictionary = GameState.call("_capture_save")
 	var saved: String = FileAccess.get_file_as_string(_demand_path())
@@ -397,8 +397,8 @@ func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_
 	assert_true(_main.call("shop_buy", &"potted_plant", Vector2i(13, 11), 0))
 	assert_true(sim.vibe_result.valid)
 	assert_true(sim.vibe_result.score > 0.0)
-	assert_almost_eq(sim.demand_factor, 0.9 + 0.25 * sim.vibe_result.score / 100.0)
-	assert_true(sim.demand_factor > 0.9)
+	assert_almost_eq(sim.demand_factor, 1.2 * (0.9 + 0.25 * sim.vibe_result.score / 100.0))
+	assert_true(sim.demand_factor > 1.2 * 0.9)
 	assert_eq(sim.spawner._remaining, countdown)
 	assert_eq(GameState.call("_capture_save"), streams)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), saved)
@@ -478,6 +478,7 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 # economy, messes, traffic and the cook/plate service-speed work (#291) subsequently changed its recorded outcomes.
 # #307 (most impatient guests first) shifts which guest staff reach first: same 18 served and 0 lost, close two ticks later (4437), new events hash and cleanliness stream state.
 # #389 (the deeper starter room, tables one row lower): same 18 served and 0 lost, close at tick 4443, new events hash and cleanliness stream state.
+# Day 1 is now a normal-demand Thursday (factor 1.0), so it matches the pre-weekday-rhythm run: 18 served, 0 lost, close at tick 4443, same events hash and stream states as before the weekday rhythm (#566).
 # Full before/after signed events and source-bound replays remain outside the project.
 const DAY_ONE_EVENTS_SHA256: String = "ef56a8dc95c0954618a0dacaf23dae87643d365cda3137b81938d5310c526565"
 ## Exact whole stream dictionary; existing lifecycle draws follow actual outcomes.

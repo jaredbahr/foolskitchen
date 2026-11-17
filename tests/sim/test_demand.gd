@@ -2,6 +2,46 @@ extends TestCase
 ## Literal demand arithmetic and persistent transition contracts.
 
 const AUTHORED: DemandTuning = preload("res://data/balance/demand.tres")
+const WEEK: WeekRhythm = preload("res://data/balance/week.tres")
+
+
+func test_week_rhythm_repeats_from_thursday_and_has_an_exact_neutral_week() -> void:
+	assert_true(WEEK.is_valid())
+	var expected: Array[float] = [0.80, 0.90, 0.95, 1.0, 1.20, 1.25, 0.90]
+	var total: float = 0.0
+	for day: int in range(1, 15):
+		# Day 1 is a Thursday (index 3): the authored week starts mid-cycle.
+		assert_eq(WEEK.weekday_index(day), (day + 2) % 7)
+		assert_almost_eq(WEEK.factor_for_day(day), expected[(day + 2) % 7])
+		total += WEEK.factor_for_day(day)
+	assert_almost_eq(total, 14.0)
+	assert_eq(DemandText.weekday_name(1), "Thursday")
+	assert_almost_eq(WEEK.factor_for_day(1), 1.0)
+	assert_eq(DemandText.weekday_name(2), "Friday")
+	assert_eq(DemandText.weekday_name(3), "Saturday")
+	assert_eq(DemandText.weekday_name(12), "Monday")
+	var malformed: WeekRhythm = WeekRhythm.new()
+	malformed.arrival_percent = PackedInt32Array([79, 90, 95, 100, 120, 125, 90])
+	assert_false(malformed.is_valid())
+
+
+func test_weekday_changes_demand_before_the_cap_and_survives_the_forecast_snapshot() -> void:
+	var friday: DemandBreakdown = DemandBreakdown.evaluate(AUTHORED, 3.0, 0.0, 3,
+		0.0, 2, 1.0, 1.0, 1.0, "", WEEK)
+	assert_not_null(friday)
+	if friday == null:
+		return
+	assert_almost_eq(friday.weekday, 1.2)
+	assert_almost_eq(friday.total, 0.9 * 1.2)
+	var forecast: Dictionary = friday.to_dict()
+	forecast["day"] = 2
+	forecast["expected_guests"] = 22
+	assert_eq(DayReport.public_demand_forecast(forecast), forecast)
+	assert_true(DemandText.factor_lines(forecast).has("Friday crowd +20%"))
+	assert_eq(DemandText.forecast_note(forecast), DemandText.FORECAST_EXPLANATION)
+	var capped: DemandBreakdown = DemandBreakdown.evaluate(AUTHORED, 5.0, 1000000.0,
+		99, 100.0, 3, 2.0, 1.0, 1.0, "", WEEK)
+	assert_almost_eq(capped.total, AUTHORED.total_cap)
 
 
 func test_authored_starting_context_has_five_neutral_factors_and_no_hidden_vibe() -> void:

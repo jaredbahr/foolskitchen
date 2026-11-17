@@ -27,6 +27,44 @@ func after_each() -> void:
 	GameState.new_run(1)
 
 
+func test_thursday_restock_forecasts_friday_crowd_without_side_effects() -> void:
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	_main = MAIN.instantiate()
+	_main.set("use_saves", false)
+	_main.set("skip_owner_picker", true)
+	_main.set("new_game_seed_override", 7)
+	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
+	_main.call("start")
+	Clock.set_speed(0)
+	assert_true(_main.call("menu_set_enabled", &"tomato_soup", false))
+	assert_true(_main.call("menu_set_enabled", &"grilled_cheese", false))
+	# A new game starts on a Thursday, so day 1 is Thursday and day 2 is Friday.
+	assert_eq(Clock.sim.day, 1)
+	var current: Dictionary = _main.call("current_demand_snapshot")
+	assert_almost_eq(float(current.get("weekday", 0)), 1.0)
+	var rng: Dictionary = GameState._capture_save()
+	var stock: Dictionary = Economy.stock.to_dict()
+	var cash: int = Economy.cash
+	var forecast: Dictionary = _main.call("forecast_next_demand")
+	assert_eq(forecast.get("day"), 2)
+	assert_almost_eq(float(forecast.get("weekday", 0)), 1.2)
+	var today: Dictionary = _main.call("restock_forecast_targets")
+	var tomorrow: Dictionary = _main.call("restock_forecast_targets", true)
+	assert_true(int(today.get(&"bun", 0)) > 0)
+	assert_true(int(tomorrow.get(&"bun", 0)) > int(today.get(&"bun", 0)))
+	assert_eq(GameState._capture_save(), rng)
+	assert_eq(Economy.stock.to_dict(), stock)
+	assert_eq(Economy.cash, cash)
+	reset_weekly_for_synthetic_day_jump(_main)
+	Clock.sim.phase = SimClock.Phase.CLOSED
+	assert_eq(_main.call("_reorder").target(&"bun"), tomorrow.get(&"bun"))
+	assert_true(Clock.sim.next_day())
+	var friday: Dictionary = _main.call("current_demand_snapshot")
+	assert_almost_eq(float(friday.get("weekday", 0)), 1.2)
+	assert_almost_eq(float(friday.get("total", 0)), float(forecast.get("total", -1)))
+	assert_eq(_main.call("restock_forecast_targets"), tomorrow)
+
+
 func test_standing_order_target_follows_expected_crowd_without_side_effects() -> void:
 	await (Engine.get_main_loop() as SceneTree).process_frame
 	_main = MAIN.instantiate()

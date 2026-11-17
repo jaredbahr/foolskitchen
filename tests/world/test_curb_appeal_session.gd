@@ -53,7 +53,7 @@ func test_bare_front_is_exactly_neutral_and_report_forecast_queries_are_pure() -
 	_start_main()
 	_assert_bare()
 	assert_eq(_sim().demand_factor, 1.0)
-	assert_eq(_sim().arrival_rate(), 1.0, "the bare starter still uses the original day-one rate")
+	assert_eq(_sim().arrival_rate(), 1.0, "the bare starter uses the authored Thursday rate (normal demand)")
 	var live: Dictionary = _main.call("current_demand_snapshot")
 	var forecast: Dictionary = _main.call("forecast_next_demand")
 	assert_eq(live["curb_appeal"], 1.0)
@@ -206,7 +206,7 @@ func test_legacy_bare_checkpoint_and_fresh_run_do_not_inherit_unsaved_front_scor
 	_start_main()
 	_assert_bare()
 	assert_eq(_main.call("current_demand_snapshot"), {"reputation": 1.0, "word_of_mouth": 1.0,
-		"menu": 1.0, "vibe": 1.0, "curb_appeal": 1.0, "total": 1.0})
+		"menu": 1.0, "vibe": 1.0, "curb_appeal": 1.0, "weekday": 1.0, "total": 1.0})
 	assert_true(_main.call("shop_hang", &"street_awning_2", _canopy, &"sage"))
 	assert_true(float(_main.get("curb_appeal_score")) > 0.0)
 	_close_main()

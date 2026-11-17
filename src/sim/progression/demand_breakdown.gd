@@ -11,13 +11,15 @@ var viral: float = 1.0
 var signature: float = 1.0
 var signature_name: String = ""
 var total: float = 1.0
+var weekday: float = 1.0
+var _has_weekday: bool = false
 
 
 ## Invalid facts fail without changing a live session or emitting engine errors.
 static func evaluate(tuning: DemandTuning, stars: float, renown: float,
 		enabled_dishes: int, vibe_score: float, day: int,
 		curb_factor: float = 1.0, viral_factor: float = 1.0, signature_factor: float = 1.0,
-		signature_display_name: String = "") -> DemandBreakdown:
+		signature_display_name: String = "", week: WeekRhythm = null) -> DemandBreakdown:
 	if tuning == null or not tuning.is_valid() or not is_finite(stars) \
 			or not is_finite(renown) or renown < 0.0 or enabled_dishes < 0 \
 			or not is_finite(vibe_score) or vibe_score < 0.0 \
@@ -27,7 +29,8 @@ static func evaluate(tuning: DemandTuning, stars: float, renown: float,
 			or not is_finite(signature_factor) or signature_factor <= 0.0 \
 			or (signature_display_name.strip_edges().is_empty() and signature_factor != 1.0):
 		return null
-	if stars < tuning.reputation_stars[0] or stars > tuning.reputation_stars[2]:
+	if stars < tuning.reputation_stars[0] or stars > tuning.reputation_stars[2] \
+			or (week != null and not week.is_valid()):
 		return null
 	var result: DemandBreakdown = DemandBreakdown.new()
 	var lower: int = 0 if stars <= tuning.reputation_stars[1] else 1
@@ -51,6 +54,10 @@ static func evaluate(tuning: DemandTuning, stars: float, renown: float,
 	var product: float = result.reputation * result.word_of_mouth * result.menu * result.vibe \
 		* result.curb_appeal * result.signature
 	product *= result.viral
+	if week != null:
+		result._has_weekday = true
+		result.weekday = week.factor_for_day(day)
+		product *= result.weekday
 	if not is_finite(product) or product <= 0.0:
 		return null
 	result.total = minf(tuning.total_cap, product)
@@ -60,7 +67,9 @@ static func evaluate(tuning: DemandTuning, stars: float, renown: float,
 func to_dict() -> Dictionary:
 	var values: Dictionary = {"reputation": reputation, "word_of_mouth": word_of_mouth,
 		"menu": menu, "vibe": vibe, "curb_appeal": curb_appeal, "total": total}
-	# Neutral demand keeps legacy/default snapshots byte-for-byte shaped as before.
+	# A forecast includes a neutral weekday when it has an authored schedule.
+	if _has_weekday:
+		values["weekday"] = weekday
 	if viral > 1.0:
 		values["viral"] = viral
 	if not signature_name.is_empty():
