@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/ice-cream-cup.glb" id="1_cup"]
+[ext_resource type="PackedScene" path="res://assets/made/walkup/shaved_ice_topping.glb" id="2_ice"]
+
+[node name="ShavedIce" type="Node3D"]
+
+[node name="Cup" parent="." instance=ExtResource("1_cup")]
+
+[node name="Ice" parent="." instance=ExtResource("2_ice")]
