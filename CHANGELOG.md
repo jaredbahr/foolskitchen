@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The seaside street now has a beach behind the shop: dunes and beach grass, a plank path down to the sand, umbrellas, sunbathers, a lifeguard hut, a sandcastle and people paddling in the surf, with sailboats out at sea and gulls overhead. At sunset the water glows warm and a few people stay to watch; at night the beach empties and the lighthouse sweeps its light across the water. You can pan a little further back to look out over it. (#588)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
 - The Daily Ladle slides in each morning with a headline about yesterday and a few notes for today. Press Close or Esc to put it away, or turn off “Show the morning paper” in Settings. (#551)

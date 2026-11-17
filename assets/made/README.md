@@ -160,3 +160,30 @@ tank's swim box). Deterministic: no random draws. No textures, light nodes or ba
 
 ## UI control icons (#498)
 `ui/*.png` (switch on/off, slider handle, dropdown arrow, menu radio dots) are drawn by `tools/make_ui_controls.py` in the theme palette: rounded, outlined in the ink colour, no gradients. Re-run the script to regenerate.
+
+## Seaside beach (#588)
+
+No kit has beach pieces, so these are made in the Kenney style, the same way as the
+street's other code-built scenery (trees, hedges, street furniture, birds): chunky,
+flat-shaded, vertex-coloured meshes built in `src/world/neighbourhood_shore.gd` from
+boxes, six- and eight-sided posts and low-poly lumps. They are not files under
+`assets/made/`: no textures, no imported models. Colours come from the street's
+`ShoreSkin` in `data/streets/seaside.tres`, drawn from the shared swatches (Oat, Cream,
+Birch, Sand, Milk, Coral, Tomato, Sunflower, Teal, Navy, Pewter) and the seaside
+street's own blues; the sea's blues are the seaside accent colours D32 allows. People
+on the beach are unchanged Mini Characters.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Beach umbrella with its towel (open: eight striped panels and a valance on a pole; furled from dusk) | the street's awning stripes, `lampRoundFloor` pole, a flat `rugRectangle`-like slab | 66 open, 16 furled |
+| Beach ball (six coloured wedges) | the street furniture's lumps, at toy size | 36 |
+| Sandcastle with towers, flag, bucket and spade | stacked kit-style boxes and six-sided posts | about 280 |
+| Lifeguard hut on stilts, ramp and flag | `wall` and `doorwayFront` proportions, street-front awning colours | 100 |
+| Plank path with rope posts | the boardwalk's plank pitch, `lampRoundFloor` posts | 236 |
+| Dunes and marram grass | the ground's lumps and the hedges' shapes, in sand | 12 a dune, 5 a tuft |
+| Lighthouse on its rocks (lamp glows at night, beam sweeps) | eight-sided banded tower, kit lamp glow | 356 |
+| Sailboat (hull, deck, mast, main and jib, mast lamp) | `compact_car`'s bevelled body proportions | about 40 |
+| Gull (body, beak, two flapping wings) | the street's birds (#423) | about 45 |
+
+The sea is one shader (`src/world/sea.gdshader`): flat bands of colour, a foam edge,
+rolling crests and glints, driven by the street's display clock.

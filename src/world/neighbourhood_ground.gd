@@ -26,6 +26,12 @@ const SHADOW_Y: float = -0.022
 const PLANT_Y: float = -0.032
 const SHADOW_LAWN_Y: float = -0.029
 const BLOCK_V: float = 8.105
+## The back lane runs this far behind the maximum lot's back edge.
+const LANE_GAP: float = 3.1
+## With a shore (#588) the lane runs closer, so the beach is in view from the shop.
+const SHORE_LANE_GAP: float = 1.8
+## With a shore (#588), nothing of the meadow is planted this far past the lane's centre.
+const SHORE_CLEAR: float = 0.85
 
 ## One accumulating vertex-coloured triangle soup, turned into a single mesh.
 class Soup extends RefCounted:
@@ -104,6 +110,9 @@ var shadow_casters: Array[AABB] = []
 var light_shift: Vector2 = Vector2.ZERO
 ## The street's look; null means the standard meadow.
 var skin: GroundSkin
+## True when a beach lies behind the back lane (#588): the far hedge, the meadow's
+## planting and the tree line stop at the lane, and NeighbourhoodShore takes over.
+var shore: bool = false
 
 var _soup: Soup = Soup.new()
 var _shadows: Soup = Soup.new()
@@ -123,6 +132,11 @@ var _shade: Color
 static func world_rect(maximum_lot: Rect2i) -> Rect2:
 	var centre: Vector2 = (Vector2(maximum_lot.position) + Vector2(maximum_lot.size) * 0.5) * GridMath.CELL_SIZE
 	return Rect2(centre - Vector2.ONE * WORLD_HALF, Vector2.ONE * WORLD_HALF * 2.0)
+
+
+## The back lane's centre line (local z) behind a lot's local reserve box.
+static func back_lane_v(reserve: AABB, has_shore: bool = false) -> float:
+	return reserve.position.z - (SHORE_LANE_GAP if has_shore else LANE_GAP)
 
 
 ## Deterministic 0..1 value for an integer pair and a salt.
@@ -209,7 +223,7 @@ func _plan_exclusions() -> void:
 	# The street itself, pavements and road, reaches the full width of the world.
 	_blocked.append(Rect2(world_centre.x - WORLD_HALF - BEYOND, shift - 0.9,
 		(WORLD_HALF + BEYOND) * 2.0, BLOCK_V + 0.9 + 0.45))
-	_lane_v = shift - lot.size.y - 3.1
+	_lane_v = back_lane_v(local_reserve, shore)
 	_blocked.append(Rect2(world_centre.x - WORLD_HALF - BEYOND, _lane_v - 1.0,
 		(WORLD_HALF + BEYOND) * 2.0, 2.0))
 
@@ -332,6 +346,9 @@ func _hedges() -> void:
 	var span: float = 30.0
 	var rows: Array[float] = [shift - 0.34, shift + BLOCK_V + 0.7, _lane_v - 1.18, _lane_v + 1.18 + 0.0]
 	for row_index: int in rows.size():
+		# The beach side of the lane opens onto the dunes.
+		if shore and row_index == 2:
+			continue
 		var z: float = rows[row_index]
 		var u: float = world_centre.x - span
 		var step: int = 0
@@ -368,7 +385,7 @@ func _scatter() -> void:
 		for iz: int in steps:
 			var at: Vector2 = centre - Vector2.ONE * WORLD_HALF + Vector2((float(ix) + hash01(ix, iz, 31)) * cell,
 				(float(iz) + hash01(ix, iz, 32)) * cell)
-			if _is_blocked(at, 0.2):
+			if _is_blocked(at, 0.2) or _on_shore(at.y, 0.6):
 				continue
 			var reach: float = maxf(absf(at.x - centre.x), absf(at.y - centre.y))
 			if reach > WORLD_HALF - 6.5:
@@ -385,6 +402,11 @@ func _scatter() -> void:
 				_bush(at, 0.34 + hash01(ix, iz, 35) * 0.3, ix * 17 + iz, 0.7)
 			elif roll < tree_chance + 0.2 * skin.flower_density + 0.32 * skin.flower_density:
 				_flowers(at, 2 + int(hash01(ix, iz, 36) * 3.0), ix * 29 + iz)
+
+
+## True past the back lane when a shore lies there (`margin` keeps crowns off the dunes).
+func _on_shore(z: float, margin: float) -> bool:
+	return shore and z < _lane_v - SHORE_CLEAR + margin
 
 
 func _distance_to_lot(point: Vector2) -> float:
@@ -419,6 +441,8 @@ func _forest_edge() -> void:
 						at = centre + Vector2(distance, along)
 				# Road and lane exits are left open on the two street-facing ends.
 				if side >= 2 and ((at.y > shift - 1.2 and at.y < shift + BLOCK_V + 1.2) or absf(at.y - _lane_v) < 1.7):
+					continue
+				if _on_shore(at.y, 1.2):
 					continue
 				var size: float = 1.7 + hash01(index, row * 4 + side, 43) * 0.6
 				_tree(at, size, index * 53 + row * 7 + side, true)
