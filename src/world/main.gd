@@ -85,6 +85,8 @@ var service_events: ServiceEvents = ServiceEvents.new(SERVICE_EVENT_TUNING)
 var _service_event_definitions: Array[ServiceEventDef] = []
 var _loaded_service_events: ServiceEvents = null
 var _service_event_card: ServiceEventCard
+var _morning_paper: MorningPaperCard
+var _morning_paper_day: int = 0
 ## The speed to return to once a card is answered.
 var _service_event_resume_speed: int = 1
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -586,6 +588,9 @@ func _bind_world_presentation() -> void:
 	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
 		_shortcuts_panel.close_requested.connect(_on_shortcuts_close_requested)
 	_settings_panel.bind_preferences(Preferences)
+	_morning_paper = $Overlay/MorningPaper
+	if not Preferences.changed.is_connected(_on_morning_paper_preference_changed):
+		Preferences.changed.connect(_on_morning_paper_preference_changed)
 	_settings_panel.set_quit_to_title_available(true)
 	_settings_panel.set_show_guide_available(true)
 	if not _settings_panel.show_guide_requested.is_connected(_on_show_guide_requested):
@@ -703,6 +708,8 @@ func _on_header_layout_changed() -> void:
 		panel.offset_top = top
 	if _settings_panel != null:
 		_settings_panel.set_panel_top(top)
+	if _morning_paper != null:
+		_morning_paper.set_panel_top(top)
 
 
 func _ready() -> void:
@@ -1099,6 +1106,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key != null and key.pressed and not key.echo:
 		var code: Key = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
 		if code == KEY_ESCAPE:
+			var paper_was_visible: bool = _morning_paper != null and _morning_paper.visible
+			if paper_was_visible:
+				_morning_paper.dismiss()
 			if $HUD.dismiss_loan_repayment(true):
 				_mark_input_handled()
 				return
@@ -1117,7 +1127,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif _inspect_panel.selected_agent_id >= 0 or _inspect_panel.selected_item_id >= 0 \
 					or _inspect_panel.selected_menu_board_anchor != WallFaces.NO_FACE:
 				clear_selection()
-			else:
+			elif not paper_was_visible:
 				set_settings_visible(true)
 			_mark_input_handled()
 		else:
@@ -2902,6 +2912,9 @@ func _new_game() -> void:
 	# needs: choosing any lot and neighbourhood (TODO #405), and saving a
 	# design as a blueprint to place in career (TODO #432).
 	GameMode.begin_new_game()
+	_morning_paper_day = 0
+	if _morning_paper != null:
+		_morning_paper.dismiss()
 	_loaded_collection_toast_ids.clear()
 	_has_loaded_collection_toast_section = false
 	$HUD.clear_collection_toasts()
@@ -6325,6 +6338,7 @@ func _begin_morning() -> void:
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
 	_food_cost_today = PurchaseBasis.zero()
+	var yesterday: DayReport = shown_report
 	shown_report = null
 	_begin_weekly_challenge_if_needed()
 	_begin_opening_week_morning()
@@ -6359,6 +6373,39 @@ func _begin_morning() -> void:
 	_refresh_stock_panel()
 	refresh_presentation()
 	_offer_site_card()
+	_show_morning_paper(yesterday)
+
+
+func _show_morning_paper(yesterday: DayReport) -> void:
+	var day: int = Clock.sim.day
+	if _morning_paper == null or not Preferences.morning_paper_enabled or _morning_paper_day == day:
+		return
+	_morning_paper_day = day
+	if yesterday != null and yesterday.day != day - 1:
+		yesterday = null
+	var history: Dictionary = {}
+	if yesterday == null and day > 1:
+		var recent: Array[Dictionary] = business_history.recent(1)
+		if not recent.is_empty() and int(recent[0]["day"]) == day - 1:
+			history = recent[0]
+	var dishes: Dictionary = yesterday.dishes_sold if yesterday != null else history.get("dishes_sold", {})
+	var dish: String = MorningPaper.best_dish(dishes, content)
+	var notes: Array[String] = [sim.rush_hour.morning_notice()]
+	if group_booking != null and group_booking.has_active_booking() \
+			and int(group_booking.booking.get("service_day", -1)) == day:
+		var booking: Dictionary = group_booking.booking
+		notes.append("A table for %d is booked at %s today." % [
+			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
+	if not dish.is_empty():
+		notes.append("%s was yesterday’s favorite." % dish)
+	_morning_paper.set_panel_top(float($HUD.call("panel_top")))
+	_morning_paper.show_paper(MorningPaper.build(day, yesterday, world.weather.kind, notes,
+		GameState.rng(&"paper"), dish, history))
+
+
+func _on_morning_paper_preference_changed(key: StringName) -> void:
+	if key == &"morning_paper" and not Preferences.morning_paper_enabled:
+		_morning_paper.dismiss()
 
 
 ## Fetch the current run's stream lazily: reloads and legacy saves fetch none.
@@ -7803,6 +7850,8 @@ static func _newly_open(level: int, tier: int, previous_level: int, current_leve
 
 func _on_day_phase_changed(_day: int, phase: int) -> void:
 	if phase != SimClock.Phase.MORNING:
+		if _morning_paper != null:
+			_morning_paper.dismiss()
 		# The receipt stays for tonight's report; an unspent offer expires.
 		if is_haggle_active():
 			_haggle_game.call("_on_skip_pressed")

@@ -42,6 +42,7 @@ var _whats_new: WhatsNewPanel
 @onready var _play_grid: CheckButton = %PlayGridToggle
 @onready var _build_grid: CheckButton = %BuildGridToggle
 @onready var _service_events: CheckButton = %ServiceEventsToggle
+@onready var _morning_paper: CheckButton = %MorningPaperToggle
 @onready var _auto_pause_toggles: Dictionary[StringName, CheckButton] = {
 	SettingsPreferences.PAUSE_ON_SOLD_OUT: %PauseOnSoldOut,
 	SettingsPreferences.PAUSE_ON_INSPECTOR: %PauseOnInspector,
@@ -83,6 +84,7 @@ func _ready() -> void:
 	_service_events.text = SERVICE_EVENTS_LABEL
 	_service_events.tooltip_text = SERVICE_EVENTS_TIP
 	_service_events.toggled.connect(_on_service_events_toggled)
+	_morning_paper.toggled.connect(_on_morning_paper_toggled)
 	for key: StringName in _auto_pause_toggles:
 		_auto_pause_toggles[key].toggled.connect(_on_auto_pause_toggled.bind(key))
 	_close.pressed.connect(_on_close_pressed)
@@ -157,6 +159,7 @@ func refresh() -> void:
 	_play_grid.set_pressed_no_signal(_preferences.play_grid_enabled)
 	_build_grid.set_pressed_no_signal(_preferences.build_grid_enabled)
 	_service_events.set_pressed_no_signal(_preferences.service_events_enabled)
+	_morning_paper.set_pressed_no_signal(_preferences.morning_paper_enabled)
 	for key: StringName in _auto_pause_toggles:
 		_auto_pause_toggles[key].set_pressed_no_signal(_preferences.auto_pause_enabled(key))
 	_status.text = "Changes are saved automatically."
@@ -267,6 +270,10 @@ func _on_edge_pan_toggled(value: bool) -> void:
 
 func _on_service_events_toggled(value: bool) -> void:
 	_record(_preferences != null and _preferences.set_service_events_enabled(value))
+
+
+func _on_morning_paper_toggled(value: bool) -> void:
+	_record(_preferences != null and _preferences.set_morning_paper_enabled(value))
 
 
 func _on_play_grid_toggled(value: bool) -> void:

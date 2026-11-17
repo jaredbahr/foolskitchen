@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3 uid="uid://b0fkmain0001"]
+[gd_scene load_steps=25 format=3 uid="uid://b0fkmain0001"]
 
 [ext_resource type="Script" path="res://src/world/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://src/world/shop_view.tscn" id="2"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://src/world/build_preview.tscn" id="9_build"]
 [ext_resource type="PackedScene" path="res://src/ui/build_catalogue.tscn" id="10_catalogue"]
 [ext_resource type="PackedScene" path="res://src/ui/menu_panel.tscn" id="9_menu"]
+[ext_resource type="PackedScene" path="res://src/ui/morning_paper_card.tscn" id="22_paper"]
 [ext_resource type="PackedScene" path="res://src/ui/staff_panel.tscn" id="11_staff"]
 [ext_resource type="PackedScene" path="res://src/ui/settings_panel.tscn" id="12_settings"]
 [ext_resource type="PackedScene" path="res://src/ui/goals_panel.tscn" id="13_goals"]
@@ -59,6 +60,8 @@ layer = 10
 [node name="StaffPanel" parent="Overlay" instance=ExtResource("11_staff")]
 
 [node name="StockPanel" parent="Overlay" instance=ExtResource("14_stock")]
+
+[node name="MorningPaper" parent="Overlay" instance=ExtResource("22_paper")]
 
 [node name="SettingsPanel" parent="Overlay" instance=ExtResource("12_settings")]
 
