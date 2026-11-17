@@ -527,6 +527,66 @@ func test_report_hides_rounded_zero_and_notices_experienced_theme_without_claimi
 	assert_eq(_side_effects(), before, "report presentation changes no save, ledger, clock or RNG state")
 
 
+func test_prestige_flows_to_goals_an_actual_service_close_and_next_morning_save() -> void:
+	var main: Node = await _start()
+	var goals: GoalsPanel = main.get("_goals_panel") as GoalsPanel
+	var line: Label = goals.get_node("%GoldenLadles") as Label
+	assert_true(main.call("set_goals_visible", true))
+	assert_false(line.visible)
+	var content: ContentDB = main.get("content") as ContentDB
+	var grid: SimGrid = (main.get("world") as SimWorld).grid
+	var pendant: ItemDef = content.item(&"lamp_pendant")
+	# Stage the layout through the real grid notifications without hiring or spending.
+	var lamps: int = 0
+	for cell: Vector2i in grid.cells():
+		if grid.place_def(pendant, cell) != null:
+			lamps += 1
+		if lamps == 10:
+			break
+	assert_eq(lamps, 10)
+	assert_true(line.visible)
+	assert_eq(line.text, "Golden Ladles: 0 of 3")
+	var build: BuildCatalogue = main.get("_build_catalogue") as BuildCatalogue
+	assert_true(build.vibe_meter.tooltip_text.ends_with("Prestige 40"))
+	assert_true(main.call("set_goals_visible", false))
+
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.spawner.reset()
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	# Stage the served meal, then record the real review and close on the clock.
+	var visit: ReviewVisit = ReviewVisit.new()
+	visit.served = true
+	visit.quality = 0.95
+	visit.quality_weight = sim.critic.tuning.quality_weight
+	sim._record_critic_review(visit)
+	assert_eq(sim.critic_result.get("cause"), &"critic_good")
+	var before: DayReport = main.call("build_report", Clock.sim.day) as DayReport
+	var award: String = "The critic awarded your kitchen two Golden Ladles!"
+	assert_false(before.critic_lines.has(award))
+	assert_eq(sim.critic.golden_ladles, 0)
+	main.call("run_ticks", 3)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	assert_eq(sim.critic.golden_ladles, 2)
+	var shown: DayReport = main.get("shown_report") as DayReport
+	assert_true(shown.critic_lines.has(award))
+
+	assert_true(Clock.sim.next_day())
+	_close(main)
+	var resumed: Node = await _start()
+	var restored: RestaurantSim = resumed.get("sim") as RestaurantSim
+	assert_eq(restored.critic.golden_ladles, 2)
+	var resumed_goals: GoalsPanel = resumed.get("_goals_panel") as GoalsPanel
+	var resumed_line: Label = resumed_goals.get_node("%GoldenLadles") as Label
+	assert_true(resumed.call("set_goals_visible", true))
+	assert_true(resumed_line.visible)
+	assert_eq(resumed_line.text, "Golden Ladles: 2 of 3")
+
+
+
 func _start(settle_frames: int = 2) -> Node:
 	await _frames(1)
 	var main: Node = MAIN.instantiate()

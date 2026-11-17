@@ -42,6 +42,7 @@ const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
+const PRESTIGE_TUNING: PrestigeTuning = preload("res://data/balance/prestige.tres")
 const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_managers.tres")
 ## How many sites each career tier allows (FK-087, D28).
 const SITE_LIMITS: SiteLimitTuning = preload("res://data/balance/sites.tres")
@@ -359,6 +360,7 @@ var _site_prompt_target: StringName = &""
 ## trending post or demand).
 var _closed_day: int = 0
 var _goals_snapshot: Dictionary = {}
+var _prestige: Prestige.Result = Prestige.Result.new()
 var _stock_panel: StockPanel
 var _owner_picker: OwnerPicker
 var _owner_first_morning_pending: bool = false
@@ -1733,7 +1735,8 @@ func _recompute_vibe() -> void:
 	var result: VibeModel.Result = vibe_result
 	if inputs != null:
 		_update_collection_toasts(collection_result)
-	_build_catalogue.set_vibe(result)
+	_prestige = Prestige.evaluate(world.grid, content, shop_editor.decor)
+	_build_catalogue.set_vibe(result, _prestige)
 	$HUD.set_vibe(result)
 	_report.call(&"set_vibe", result, _experienced_vibe_theme())
 	vibe_changed.emit(vibe_result)
@@ -5981,6 +5984,7 @@ func _refresh_goals(force: bool = false) -> void:
 		"weekly_progress": weekly_challenge.projected_progress(observation) if weekly_challenge != null else 0,
 		"day": Clock.sim.day, "career_tier": owner_progress.career_tier,
 		"collections": _collection_progress_snapshot(vibe_result.collection_result),
+		"prestige": _prestige.value(), "golden_ladles": sim.critic.golden_ladles,
 		"opening": opening_week.to_dict(), "opening_values": _opening_values()}
 	if force or snapshot != _goals_snapshot:
 		# A Creative game (FK-141) hides career goals, the weekly goal, the
@@ -5989,6 +5993,7 @@ func _refresh_goals(force: bool = false) -> void:
 		_goals_panel.set_goals(null if creative else milestone_catalogue, completed, progress,
 			owner_progress.level, null if creative else weekly_challenge, Clock.sim.day, observation)
 		_goals_panel.set_career_tier_line("" if creative else CAREER_TIERS.goal_text(owner_progress.career_tier))
+		_goals_panel.set_golden_ladles(_prestige.value(), sim.critic.golden_ladles)
 		_goals_panel.set_records(ShopRecordsText.rows(snapshot["records"], content, not creative))
 		_goals_panel.set_collections(vibe_result.collection_result)
 		_goals_panel.set_opening_week(null if creative else opening_week, _chain_set(),
@@ -7660,6 +7665,12 @@ func _on_service_closed(day: int) -> void:
 			GameState.rng.bind(&"viral"))
 		demand_state.award_close(day, int(sim.leave_reasons_today.get(&"happy", 0)),
 			sim.demand_factor, demand_tuning)
+		if not sim.critic_result.is_empty():
+			var score: int = Prestige.score(world.grid, content, shop_editor.decor)
+			var eligible: int = Prestige.ladles(score, PRESTIGE_TUNING)
+			var earned: int = sim.critic.award_golden_ladles(sim.critic_result, eligible)
+			if earned > 0:
+				sim.critic_result["golden_ladles_awarded"] = earned
 	_remember_menu_quality()
 	_charge_closing_costs()
 	_settle_due_booking_at_close(day)

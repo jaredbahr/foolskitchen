@@ -73,6 +73,7 @@ CAPTURE_FRAMES = {
         "business-trend-30": (60,),
         "regulars-review": (12, 90),
         "food-critic": (12, 90),
+        "prestige": (30, 90),
         "rush-hour": (12, 90),
         "service-event": (60,),
         "paint": (60,),

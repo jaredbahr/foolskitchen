@@ -350,9 +350,9 @@ func set_tool_state(tool: int, can_undo: bool, can_redo: bool, undo_text: String
 		_apply_category()
 
 
-func set_vibe(result: VibeModel.Result) -> void:
+func set_vibe(result: VibeModel.Result, prestige: Prestige.Result = null) -> void:
 	_prepare_layout()
-	vibe_meter.set_vibe(result)
+	vibe_meter.set_vibe(result, prestige)
 	var text: String = "No theme yet"
 	if result != null and result.valid and not result.active_theme.is_empty() and not result.theme_label.strip_edges().is_empty():
 		text = "Theme: %s" % result.theme_label

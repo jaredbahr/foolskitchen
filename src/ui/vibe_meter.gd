@@ -47,7 +47,7 @@ func _init() -> void:
 
 
 ## Updates presentation only. Gameplay effects remain owned by the sim model.
-func set_vibe(result: VibeModel.Result) -> void:
+func set_vibe(result: VibeModel.Result, prestige: Prestige.Result = null) -> void:
 	if not _is_presentable(result):
 		_set_unavailable()
 		return
@@ -55,6 +55,10 @@ func set_vibe(result: VibeModel.Result) -> void:
 	_value = clampf(result.score, 0.0, 100.0)
 	_caption = "Vibe %d / 100" % roundi(_value)
 	_tooltip = _make_tooltip(result)
+	if prestige != null:
+		_tooltip += "\nPrestige %d" % prestige.uncapped_score
+		if prestige.uncapped_score > prestige.value():
+			_tooltip += " (capped at %d by %s)" % [prestige.value(), prestige.cap_item.display_name]
 	_apply_presentation()
 
 
