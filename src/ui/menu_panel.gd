@@ -1053,6 +1053,8 @@ func _refresh_tree_state() -> void:
 		node.set_icon(0, IconCatalogue.texture_for(&"reputation") if _regular_favourites.has(recipe.id) else null)
 		node.set_icon_max_width(0, IconCatalogue.PANEL_SIZE)
 		node.set_tooltip_text(0, RegularText.FAVOURITE if _regular_favourites.has(recipe.id) else recipe.display_name)
+		var signature: bool = bool(_signature_details(recipe.id).get("selected", false))
+		node.set_text(0, "%s (signature)" % recipe.display_name if signature else recipe.display_name)
 		node.set_text(1, status)
 		node.set_tooltip_text(1, tooltip)
 		node.set_custom_color(0, LOCKED_COLOR if locked else STANDARD_COLOR)
