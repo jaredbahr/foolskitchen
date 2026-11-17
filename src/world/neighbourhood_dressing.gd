@@ -120,6 +120,9 @@ var _configured: bool = false
 ## Street furniture, night lamps and small life (#423).
 var _life_root: Node3D
 var _life: NeighbourhoodLife
+## The beach and sea behind the back lane (#588), when the street has a shore.
+var _shore_root: Node3D
+var _shore: NeighbourhoodShore
 var _furniture: Array[NeighbourhoodFurniture.Placed] = []
 var _crowns: Array[Vector3] = []
 var _building_signs: Array[Dictionary] = []
@@ -183,7 +186,7 @@ func rebuild() -> void:
 				built.append(cell)
 	var key: Array = [_grid.get_instance_id() if _grid != null else 0, _maximum_lot,
 		_frontages, _native_pavement, built, ground_skin.signature() if ground_skin != null else "standard",
-		street_set.signature()]
+		street_set.signature(), preset.shore.signature() if has_shore() else ""]
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -251,6 +254,7 @@ func rebuild() -> void:
 	_build_lamps()
 	_build_furniture()
 	_build_life()
+	_build_shore()
 	_initialize_players()
 	_configured = build_error.is_empty()
 	static_root.visible = _configured
@@ -259,6 +263,7 @@ func rebuild() -> void:
 	_actors_root.visible = _configured
 	_traffic_root.visible = _configured
 	_life_root.visible = _configured
+	_shore_root.visible = _configured
 	_apply_night()
 	_apply_time(_effective_time())
 
@@ -289,6 +294,9 @@ func _ensure_roots() -> void:
 	_life_root = Node3D.new()
 	_life_root.name = "Life"
 	add_child(_life_root)
+	_shore_root = Node3D.new()
+	_shore_root.name = "Shore"
+	add_child(_shore_root)
 
 
 func _clear_static() -> void:
@@ -301,6 +309,10 @@ func _clear_static() -> void:
 		_life_root.remove_child(child)
 		child.free()
 	_life = null
+	for child: Node in _shore_root.get_children():
+		_shore_root.remove_child(child)
+		child.free()
+	_shore = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -342,6 +354,7 @@ func _hide_actors() -> void:
 	_actors_root.hide()
 	_traffic_root.hide()
 	_life_root.hide()
+	_shore_root.hide()
 	if car != null:
 		car.hide()
 
@@ -773,7 +786,7 @@ func _build_ground() -> void:
 	_shadow_casters = _compute_shadow_casters()
 	_light_shift = _compute_light_shift()
 	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _lot_boxes, _shadow_casters, _light_shift,
-			ground_skin.signature() if ground_skin != null else "standard"]
+			ground_skin.signature() if ground_skin != null else "standard", has_shore()]
 	if key == _ground_key and ground_root.get_child_count() > 0:
 		ground_root.transform = _frame
 		return
@@ -793,6 +806,7 @@ func _build_ground() -> void:
 	builder.skin = ground_skin
 	builder.shadow_casters = _shadow_casters
 	builder.light_shift = _light_shift
+	builder.shore = has_shore()
 	var rect: Rect2 = world_rect()
 	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
 	builder.world_centre = Vector2(centre.x, centre.z)
@@ -1140,6 +1154,8 @@ func _window_level(tier: int) -> float:
 
 
 func _apply_night() -> void:
+	if _shore != null:
+		_shore.set_night(_night, _late)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
@@ -1228,6 +1244,32 @@ func _build_life() -> void:
 	_life.build(_life_root)
 
 
+## True when the street's preset has a beach behind its back lane (#588).
+func has_shore() -> bool:
+	return preset != null and preset.shore != null
+
+
+## The beach and sea (#588): built on the street frame behind the back lane.
+func _build_shore() -> void:
+	_shore_root.transform = _frame
+	if not has_shore():
+		return
+	_shore = NeighbourhoodShore.new()
+	_shore.skin = preset.shore
+	_shore.salt = street_set.seed_salt
+	_shore.lane_v = NeighbourhoodGround.back_lane_v(_local_reserve, true)
+	_shore.path_u = _local_reserve.get_center().x
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_shore.world_centre = Vector2(centre.x, centre.z)
+	_shore.light_shift = _compute_light_shift()
+	_shore.build(_shore_root)
+
+
+func shore() -> NeighbourhoodShore:
+	return _shore
+
+
 ## Local-frame footprints (u, v) and sizes of the street furniture, for tools and tests.
 func furniture_plan() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -1289,6 +1331,8 @@ func _apply_time(seconds: float) -> void:
 		return
 	if _life != null:
 		_life.apply(seconds)
+	if _shore != null:
+		_shore.apply(seconds)
 	if pedestrians.size() != 3 or _routes.size() != 3 or car == null:
 		return
 	for index: int in 3:
