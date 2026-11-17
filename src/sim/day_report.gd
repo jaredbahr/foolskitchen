@@ -18,7 +18,10 @@ var day: int = 1
 ## Snapshot of the name used for this service day and its review heading.
 var restaurant_name: String = MenuSettings.DEFAULT_NAME
 var income: Dictionary = {}
+## Legacy reports can supply a percentage without a separately paid bonus.
 var tip_jar_percent: int = 0
+## -1 means no qualifying jar or a report saved before the daily payout.
+var tip_jar_bonus: int = -1
 var costs: Dictionary = {}
 ## Transient first-advance introduction, supplied by the closing session.
 var loan_first_advance: bool = false
@@ -274,6 +277,8 @@ func to_dict() -> Dictionary:
 	}
 	if tip_jar_percent > 0:
 		result["tip_jar_percent"] = tip_jar_percent
+	if tip_jar_bonus >= 0:
+		result["tip_jar_bonus"] = str(tip_jar_bonus)
 	var public_slowest_snapshot: Dictionary = public_slowest_seller_snapshot(slowest_seller_snapshot)
 	if not public_slowest_snapshot.is_empty():
 		result["slowest_seller_snapshot"] = public_slowest_snapshot
@@ -347,6 +352,11 @@ static func from_dict(data: Dictionary) -> DayReport:
 		if not normalized.is_empty():
 			report.restaurant_name = normalized
 	report.income = _name_counts(data.get("income", {}))
+	var saved_jar_amount: Variant = data.get("tip_jar_bonus", null)
+	if saved_jar_amount is String and saved_jar_amount.is_valid_int():
+		var jar_amount: int = int(saved_jar_amount)
+		if jar_amount >= 0 and jar_amount <= int(report.income.get(Ledger.TIP, 0)):
+			report.tip_jar_bonus = jar_amount
 	report.costs = _name_counts(data.get("costs", {}))
 	var saved_loan_notice: Variant = data.get("loan_first_advance", false)
 	report.loan_first_advance = saved_loan_notice is bool and saved_loan_notice

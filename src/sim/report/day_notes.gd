@@ -22,6 +22,8 @@ var career_tier_reached: int = 0
 var away_site_day: int = 0
 var away_site_lines: Array[String] = []
 var loan_notice_day: int = 0
+var tip_jar_day: int = 0
+var tip_jar_bonus: int = -1
 var milestones_reached: Array[Milestone] = []
 var milestone_award_day: int = 0
 var milestone_xp: int = 0
@@ -55,6 +57,8 @@ func clear_awards() -> void:
 	away_site_day = 0
 	away_site_lines.clear()
 	loan_notice_day = 0
+	tip_jar_day = 0
+	tip_jar_bonus = -1
 	weekly_challenge_reward_day = 0
 	weekly_challenge_line = ""
 

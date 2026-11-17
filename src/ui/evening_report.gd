@@ -105,7 +105,13 @@ func show_report(report: DayReport) -> void:
 	else:
 		_profit.text = "Operating profit not recorded"
 		_profit.remove_theme_color_override("font_color")
-	_fill_money(_income, report.income, "No income today", report.tip_jar_percent)
+	var displayed_income: Dictionary = report.income.duplicate()
+	if report.tip_jar_bonus > 0:
+		displayed_income[Ledger.TIP] = int(displayed_income.get(Ledger.TIP, 0)) - report.tip_jar_bonus
+	var legacy_jar_percent: int = report.tip_jar_percent if report.tip_jar_bonus < 0 else 0
+	_fill_money(_income, displayed_income, "No income today", legacy_jar_percent)
+	if report.tip_jar_bonus >= 0:
+		_add_row(_income, "Tip jar", "+" + _money(report.tip_jar_bonus))
 	var displayed_costs: Dictionary = report.costs.duplicate()
 	if report.stock_values_recorded:
 		displayed_costs.erase(Ledger.INGREDIENTS)

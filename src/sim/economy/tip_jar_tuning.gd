@@ -2,6 +2,8 @@ class_name TipJarTuning
 extends Resource
 ## One supported jar close to any service counter qualifies.
 
+const LEDGER_NOTE: String = "Tip jar"
+
 @export_range(1.0, 2.0, 0.01) var tip_jar_multiplier: float = 1.10
 @export_range(0, 10, 1) var range_cells: int = 3
 

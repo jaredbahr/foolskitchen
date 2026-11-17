@@ -223,3 +223,12 @@ func test_tip_row_retains_its_amount_and_shows_the_active_bonus_after_restore() 
 	_report.call("show_report", restored)
 	assert_eq((rows.get_child(0) as Label).text, "Tip (tip jar +10%)")
 	assert_eq((rows.get_child(1) as Label).text, "$6")
+	day.tip_jar_percent = 0
+	day.tip_jar_bonus = 1
+	restored = DayReport.from_dict(JSON.parse_string(JSON.stringify(day.to_dict())))
+	_report.call("show_report", restored)
+	assert_eq((rows.get_child(0) as Label).text, "Tip")
+	assert_eq((rows.get_child(1) as Label).text, "$5")
+	assert_eq((rows.get_child(2) as Label).text, "Tip jar")
+	assert_eq((rows.get_child(3) as Label).text, "+$1")
+	assert_eq(restored.income[Ledger.TIP], 6)

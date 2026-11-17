@@ -186,26 +186,47 @@ func _path() -> String:
 	return _save_dir.path_join(SLOT + ".json")
 
 
-func test_tip_jar_boost_is_paid_once_and_written_to_the_evening_report() -> void:
+func test_small_tips_pay_one_bonus_at_close_even_if_the_jar_leaves_midday() -> void:
 	var main: Node = _start(false)
 	var profile: RegularProfile = _promote(main)
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	var counter: PlacedItem = ShopBuilder.items_with_def(sim.world, &"pass_counter")[0]
 	(main.get("shop_editor") as ShopEditor).set_owner_level(2)
 	assert_true(main.call("shop_buy", &"tip_jar", counter.origin))
-	var random: RandomNumberGenerator = RandomNumberGenerator.new()
-	random.seed = 51
-	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], random)
-	guest.regular_profile = profile
-	guest.regular_favourite_available = true
-	var order: Order = Order.new()
-	order.price = 25
-	order.recipe_id = profile.favourite_dish
-	var before: int = Economy.cash
-	sim.pay(guest, order)
-	sim.pay(guest, order)
-	assert_eq(Economy.cash - before, 28)
-	var day: DayReport = main.call("build_report", Clock.sim.day) as DayReport
-	assert_eq(day.income.get(Ledger.SALE), 25)
-	assert_eq(day.income.get(Ledger.TIP), 3)
-	assert_eq(day.tip_jar_percent, 10)
+	var jar: PlacedItem = ShopBuilder.items_with_def(sim.world, &"tip_jar")[0]
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	sim.spawner._remaining = 100000
+	for index: int in range(6):
+		if index == 3:
+			assert_true(sim.world.grid.remove(jar.id))
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 51 + index
+		var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], random)
+		guest.regular_profile = profile
+		var order: Order = Order.new()
+		order.price = 25
+		order.recipe_id = profile.favourite_dish
+		sim.pay(guest, order)
+		sim.pay(guest, order)
+	var day: int = Clock.sim.day
+	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), 6, "one dollar per sale before close")
+	main.call("run_ticks", 5)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var report: DayReport = main.get("shown_report") as DayReport
+	assert_not_null(report)
+	if report == null:
+		return
+	assert_eq(report.income.get(Ledger.TIP), 7)
+	assert_eq(report.tip_jar_bonus, 1)
+	var payments: Array[Dictionary] = []
+	for entry: Dictionary in Economy.ledger.entries_for_day(day):
+		if entry["note"] == TipJarTuning.LEDGER_NOTE:
+			payments.append(entry)
+	assert_eq(payments.size(), 1)
+	assert_true(main.call("show_closed_report"))
+	assert_eq((main.get("shown_report") as DayReport).tip_jar_bonus, 1)
+	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), 7)
+	assert_true(Clock.sim.next_day())
+	assert_eq(sim.tip_jar_bonus(6), -1, "jar eligibility starts over each morning")

@@ -7652,7 +7652,6 @@ func _settle_booking(booking_id: int, review: Dictionary) -> void:
 	if bool(review.get("good_service", false)):
 		var tip: int = BookingSettlement.good_service_tip(_booking_paid_total,
 			int(review.get("stars", 0)), BOOKING_TUNING)
-		tip = roundi(float(tip) * sim.tip_jar_multiplier())
 		if tip > 0 and group_booking.claim_effect(booking_id, GroupBooking.EFFECT_TIP):
 			Economy.add_cash(tip, Ledger.TIP, "Booking service tip")
 	if group_booking.settle(booking_id):
@@ -7713,6 +7712,10 @@ func _on_service_closed(day: int) -> void:
 	# entries count (FK-087), and other sites' money never does.
 	var site: StringName = Economy.active_site
 	var day_movements: Dictionary = Economy.ledger.day_totals(day, site)
+	day_notes.tip_jar_day = day
+	day_notes.tip_jar_bonus = sim.tip_jar_bonus(int(day_movements.get(Ledger.TIP, 0)))
+	if day_notes.tip_jar_bonus > 0:
+		Economy.add_cash(day_notes.tip_jar_bonus, Ledger.TIP, TipJarTuning.LEDGER_NOTE)
 	var operating_profit: int = Economy.ledger.day_profit(day, site)
 	# Deliberately not all of DayReport.NON_OPERATING_CATEGORIES: same-day
 	# financing posted before the close keeps its existing profit basis
