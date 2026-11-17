@@ -40,6 +40,7 @@ const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
 const CRITIC: CriticTuning = preload("res://data/balance/critic.tres")
 const SERVICE_EVENT_TUNING: ServiceEventTuning = preload("res://data/balance/service_events.tres")
 const RUSH_TUNING: RushTuning = preload("res://data/balance/rush_hour.tres")
+const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 const VIRAL_TUNING: ViralTuning = preload("res://data/balance/viral.tres")
 const PROGRESSION_TUNING: ProgressionTuning = preload("res://data/balance/progression.tres")
 const CAREER_TIERS: CareerTierTuning = preload("res://data/balance/career_tiers.tres")
@@ -6580,10 +6581,14 @@ func _begin_morning() -> void:
 	$HUD.set_reputation(reputation.average(), reputation.scores().size())
 	day_notes.clear_awards()
 	_closed_report_day = 0
-	# Loading today's persisted pool must not advance the saved hiring stream.
+	var auto_hire: bool = difficulty.auto(&"hire") and not GameMode.is_creative()
+	var replacement_role: StringName = _morning_replacement_role(notices) if auto_hire else &""
+	var morning_pool_drawn: bool = false
+	# The daily pool is saved with the rest of the roster. Loading the same
+	# morning must neither redraw it nor make a second hiring decision.
 	if staff_roster.candidate_day != Clock.sim.day:
-		staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
-			_managers_on_offer())
+		morning_pool_drawn = staff_roster.draw_candidates(Clock.sim.day, GameState.rng(&"hiring"),
+			_managers_on_offer(), replacement_role)
 	_staff_panel.set_phase(Clock.sim.phase)
 	_staff_panel.set_morning(Clock.sim.day, _staff_notices)
 	dishes_sold_today.clear()
@@ -6596,6 +6601,11 @@ func _begin_morning() -> void:
 	_refresh_sold_out_hud()
 	_expire_stock()
 	_restock()
+	var hire_note: String = ""
+	if auto_hire and morning_pool_drawn:
+		hire_note = _auto_hire_for_morning(replacement_role, yesterday)
+		if not hire_note.is_empty() and (_morning_paper == null or not Preferences.morning_paper_enabled):
+			$HUD.queue_toast(hire_note)
 	_plan_morning_booking()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
@@ -6623,10 +6633,43 @@ func _begin_morning() -> void:
 	_refresh_stock_panel()
 	refresh_presentation()
 	_offer_site_card()
-	_show_morning_paper(yesterday)
+	_show_morning_paper(yesterday, hire_note)
 
 
-func _show_morning_paper(yesterday: DayReport) -> void:
+func _morning_replacement_role(notices: Array[Dictionary]) -> StringName:
+	for notice: Dictionary in notices:
+		var role: StringName = notice.get("departed_role", &"")
+		if not role.is_empty() and _may_hire_role(role):
+			return role
+	return &""
+
+
+func _auto_hire_for_morning(replacement_role: StringName, yesterday: DayReport) -> String:
+	var needed: Array[StringName] = staff_roster.missing_service_roles()
+	var role: StringName
+	var reason: StringName
+	var reserve_days: int = 0
+	if not needed.is_empty():
+		role = needed[0]
+		reason = &"missing"
+	elif not replacement_role.is_empty():
+		role = replacement_role
+		reason = &"replacement"
+	elif yesterday != null and yesterday.day == Clock.sim.day - 1:
+		role = STAFF_ADVICE_RULES.recommendation(yesterday.staff_activity, yesterday.leave_reasons)
+		if role not in [&"cook", &"server"]:
+			return ""
+		reason = &"bottleneck"
+		reserve_days = difficulty.hire_wage_reserve_days()
+	else:
+		return ""
+	var candidate: StaffMember = staff_roster.best_value_candidate(role, Economy.cash, reserve_days)
+	if candidate == null or not staff_hire(candidate.id):
+		return ""
+	return StaffAdviceText.hire_notice(candidate, reason)
+
+
+func _show_morning_paper(yesterday: DayReport, hire_note: String = "") -> void:
 	var day: int = Clock.sim.day
 	if _morning_paper == null or not Preferences.morning_paper_enabled or _morning_paper_day == day:
 		return
@@ -6640,7 +6683,7 @@ func _show_morning_paper(yesterday: DayReport) -> void:
 			history = recent[0]
 	var dishes: Dictionary = yesterday.dishes_sold if yesterday != null else history.get("dishes_sold", {})
 	var dish: String = MorningPaper.best_dish(dishes, content)
-	var notes: Array[String] = [sim.rush_hour.morning_notice()]
+	var notes: Array[String] = [hire_note, sim.rush_hour.morning_notice()]
 	if group_booking != null and group_booking.has_active_booking() \
 			and int(group_booking.booking.get("service_day", -1)) == day:
 		var booking: Dictionary = group_booking.booking
