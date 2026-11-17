@@ -1299,8 +1299,7 @@ func _publish_customer_arrival(customer: CustomerAgent) -> void:
 	_visiting_types[customer.id] = kind
 	if not _visitor_types_today.has(kind):
 		_visitor_types_today[kind] = {"name": customer.customer_type_report_name,
-			"count": 0, "departed": 0, "mood_total": 0.0}
-	_visitor_types_today[kind]["count"] += 1
+			"count": 0, "mood_total": 0.0}
 	world.log_event("Guest #%d arrived" % customer.id)
 	customer_arrived.emit(customer)
 
@@ -1445,15 +1444,14 @@ func customers() -> Array[CustomerAgent]:
 	return out
 
 
-## Per-type visitor counts and the average of moods recorded so far. The
-## evening report reads this after all guests, including those still waiting
-## outside at closing, have departed.
+## Per-type counts and average moods for guests whose visits have ended.
 func visitor_breakdown() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	for entry: Dictionary in _visitor_types_today.values():
-		var departed: int = entry["departed"]
-		var average: Variant = float(entry["mood_total"]) / departed if departed > 0 else null
-		rows.append({"name": entry["name"], "count": entry["count"], "average_mood": average})
+		var count: int = entry["count"]
+		if count > 0:
+			rows.append({"name": entry["name"], "count": count,
+				"average_mood": float(entry["mood_total"]) / count})
 	return rows
 
 
@@ -1480,8 +1478,13 @@ func record_departure(customer: CustomerAgent) -> void:
 	customer.departure_recorded = true
 	if _visiting_types.has(customer.id):
 		var entry: Dictionary = _visitor_types_today[_visiting_types[customer.id]]
-		entry["departed"] += 1
-		entry["mood_total"] += customer.departure_mood()
+		entry["count"] += 1
+		var departure_mood: float = 0.0
+		if customer.paid:
+			departure_mood = customer.departure_mood()
+		elif customer.leave_reason == &"closing":
+			departure_mood = 0.5
+		entry["mood_total"] += departure_mood
 		_visiting_types.erase(customer.id)
 	_record_regular_visit(customer)
 	# A takeaway leaves no crumbs at a table: they never sat (#293).

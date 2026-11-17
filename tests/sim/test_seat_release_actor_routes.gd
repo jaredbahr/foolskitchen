@@ -77,6 +77,7 @@ func test_customer_keeps_real_downward_exit_after_no_menu_releases_booked_seat()
 	assert_eq(_table.reserved_by(SEAT), _guest.id, "a partial edge cannot release its occupied source seat")
 	assert_false(_sim.world.movement.is_stopping(_guest.id), "ordinary departure must not be replaced by busser STOP")
 	_finish_customer_exit()
+	assert_eq(_sim.visitor_breakdown(), [{"name": "Regulars", "count": 1, "average_mood": 0.0}])
 
 
 func test_customer_partial_departure_replan_preserves_real_edge_and_booking() -> void:
