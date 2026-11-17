@@ -970,13 +970,7 @@ func _reveal_detail_keeping_row(row_item: TreeItem) -> void:
 
 
 func _build_recipe_tree() -> void:
-	var heading: HBoxContainer = HBoxContainer.new()
-	heading.name = "ListHeading"
-	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_list.add_child(heading)
-	_list.move_child(heading, 0)
-	_menu_count.reparent(heading, false)
-	_menu_count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var heading: HBoxContainer = %ListHeading
 	_menu_count.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var sort: OptionButton = OptionButton.new()
 	sort.name = "DishSort"
