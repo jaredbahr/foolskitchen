@@ -50,12 +50,36 @@ func candidates() -> Array[StaffMember]:
 	return _copies(_candidates)
 
 
+## A read-only check shared by the editor and the actual roster command.
+func rename_refusal(member_id: StringName, text: String) -> String:
+	var index: int = _find(_members, member_id)
+	if index < 0:
+		return "That employee is no longer on the team."
+	var normalized: Variant = StaffMember.normalized_nickname(text)
+	if normalized == null:
+		return "Use up to 20 characters on one line."
+	var current: StaffMember = _members[index]
+	var proposed: String = current.original_name if normalized == "" else String(normalized)
+	if proposed == current.display_name:
+		return ""
+	var key: String = proposed.to_lower()
+	for member: StaffMember in _members:
+		if member.id != member_id and member.display_name.to_lower() == key:
+			return "That name is already in use."
+	for candidate: StaffMember in _candidates:
+		if candidate.display_name.to_lower() == key:
+			return "That name is already in use."
+	return ""
+
+
 ## Employee-only cosmetic edit. Return the effective name for the live copy.
 func rename_member(member_id: StringName, text: String) -> String:
-	var index: int = _find(_members, member_id)
-	if index < 0 or not _members[index].set_nickname(text):
+	if not rename_refusal(member_id, text).is_empty():
 		return ""
-	return _members[index].display_name
+	var member: StaffMember = _members[_find(_members, member_id)]
+	if not member.set_nickname(text):
+		return ""
+	return member.display_name
 
 
 ## Only authored-by-player names need a separate label in the evening report.

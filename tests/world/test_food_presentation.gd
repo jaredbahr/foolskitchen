@@ -863,7 +863,8 @@ func test_unmapped_valid_recipe_uses_a_prewarmed_real_plate_without_allocating_d
 	var future: RecipeDef = _future_recipe()
 	var definitions: Array[RecipeDef] = _content.recipes()
 	definitions.append(future)
-	assert_eq(ContentDB.validate_definitions(_content.ingredients(), definitions, _content.items()), PackedStringArray())
+	assert_eq(ContentDB.validate_definitions(_content.ingredients(), definitions, _content.items(),
+		_content.lots()), PackedStringArray())
 	for warm_future: bool in [false, true]:
 		var dish: DishVisual = DishVisual.new()
 		dish.prepare(definitions if warm_future else _content.recipes())
@@ -909,7 +910,8 @@ func test_future_valid_recipe_with_no_model_survives_ready_carry_cancel_and_pool
 	var future: RecipeDef = _future_recipe()
 	var definitions: Array[RecipeDef] = _content.recipes()
 	definitions.append(future)
-	assert_eq(ContentDB.validate_definitions(_content.ingredients(), definitions, _content.items()), PackedStringArray())
+	assert_eq(ContentDB.validate_definitions(_content.ingredients(), definitions, _content.items(),
+		_content.lots()), PackedStringArray())
 	# ContentDB has no mutation API: add one validated in-memory future resource
 	# to this test-owned catalogue so both Kitchen and presentation read it.
 	_content._recipes[future.id] = future

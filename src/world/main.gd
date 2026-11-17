@@ -89,6 +89,7 @@ var _service_event_definitions: Array[ServiceEventDef] = []
 var _service_event_card: ServiceEventCard
 var _morning_paper: MorningPaperCard
 var _morning_paper_day: int = 0
+var _morning_paper_edition: Dictionary = {}
 ## The speed to return to once a card is answered.
 var _service_event_resume_speed: int = 1
 ## Tools that boot Main directly retain the old default appearance and flow.
@@ -574,6 +575,9 @@ func _bind_world_presentation() -> void:
 		_shortcuts_panel.close_requested.connect(_on_shortcuts_close_requested)
 	_settings_panel.bind_preferences(Preferences)
 	_morning_paper = $Overlay/MorningPaper
+	_morning_paper.set_keep_clear_source($HUD.morning_card_rects, $HUD/Today)
+	if not $HUD.morning_cards_changed.is_connected(_morning_paper.refresh_layout):
+		$HUD.morning_cards_changed.connect(_morning_paper.refresh_layout)
 	if not Preferences.changed.is_connected(_on_morning_paper_preference_changed):
 		Preferences.changed.connect(_on_morning_paper_preference_changed)
 	_settings_panel.set_quit_to_title_available(true)
@@ -783,6 +787,7 @@ func start() -> void:
 	SaveSystem.register("demand", _capture_demand, _restore_demand)
 	SaveSystem.register("viral", _capture_viral, _restore_viral)
 	SaveSystem.register("business_history", _capture_business_history, _restore_business_history)
+	SaveSystem.register("morning_paper", _capture_morning_paper, _restore_morning_paper)
 	SaveSystem.register("shop_records", _capture_shop_records, _restore_shop_records)
 	SaveSystem.register("collection_toasts", _capture_collection_toasts, _restore_collection_toasts)
 	SaveSystem.register("cat", _capture_cat, _restore_cat)
@@ -1148,7 +1153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_today_pressed() -> void:
 	if is_site_card_visible() or is_service_event_visible() or is_settings_visible() \
-			or is_shortcuts_visible() or is_owner_picker_visible():
+			or is_shortcuts_visible() or is_owner_picker_visible() or is_build_active() or is_paint_active():
 		return
 	_align_today_panel()
 	_today_panel.toggle()
@@ -1156,6 +1161,8 @@ func _on_today_pressed() -> void:
 
 func _align_today_panel() -> void:
 	_today_panel.set_panel_top(($HUD/Today as Button).get_global_rect().end.y + 8.0)
+	if _morning_paper != null and _morning_paper.visible:
+		_morning_paper.refresh_layout()
 
 
 func _take_photo_key(photo: PhotoMode, key: InputEventKey) -> void:
@@ -2427,6 +2434,8 @@ func _on_build_changed() -> void:
 func _update_build_controls() -> void:
 	_sync_wall_build_preview()
 	var active: bool = is_build_active()
+	if (active or _paint_active) and _today_panel != null:
+		_today_panel.hide()
 	var available: bool = _build_ready and shop_editor != null and shop_editor.can_edit()
 	var reason: String = build_mode.feedback_text()
 	var summary: String = ""
@@ -2959,6 +2968,7 @@ func _new_game() -> void:
 	difficulty = GameMode.begin_new_game()
 	_staged.clear()
 	_morning_paper_day = 0
+	_morning_paper_edition.clear()
 	if _morning_paper != null:
 		_morning_paper.dismiss()
 	$HUD.clear_collection_toasts()
@@ -3017,6 +3027,7 @@ func _load_autosave() -> bool:
 
 
 func _load_autosave_sections() -> bool:
+	_morning_paper_edition.clear()
 	_staged.clear()
 	_booking_paid_total = 0
 	curb_appeal_score = 0.0
@@ -5513,7 +5524,7 @@ func _property_buyer() -> PropertyPanel.Buyer:
 	buyer.limits = SITE_LIMITS
 	buyer.cash = Economy.spendable()
 	buyer.loan = Economy.loan.principal
-	buyer.rent_multiplier = difficulty.mult(&"rent")
+	buyer.rent_multiplier = difficulty.for_day(Clock.sim.day + 1).mult(&"rent")
 	return buyer
 
 
@@ -6506,6 +6517,7 @@ func _begin_morning() -> void:
 	_plan_morning_booking()
 	Economy.ledger.prune_before(Clock.sim.day - Ledger.HISTORY_DAYS)
 	_report.hide()
+	_prepare_morning_paper(yesterday, hire_note)
 	if use_saves and _skip_next_autosave:
 		var warning: AcceptDialog = $Overlay/AutosaveLoadFailure
 		warning.theme = ($Overlay/QuitToTitle as ConfirmationDialog).theme
@@ -6530,7 +6542,7 @@ func _begin_morning() -> void:
 	_refresh_stock_panel()
 	refresh_presentation()
 	_offer_site_card()
-	_show_morning_paper(yesterday, hire_note)
+	_show_morning_paper()
 
 
 func _morning_replacement_role(notices: Array[Dictionary]) -> StringName:
@@ -6566,11 +6578,13 @@ func _auto_hire_for_morning(replacement_role: StringName, yesterday: DayReport) 
 	return StaffAdviceText.hire_notice(candidate, reason)
 
 
-func _show_morning_paper(yesterday: DayReport, hire_note: String = "") -> void:
+## Select one edition before the existing morning autosave. A reload uses
+## that text even when yesterday's full closing report is gone.
+func _prepare_morning_paper(yesterday: DayReport, hire_note: String = "") -> void:
 	var day: int = Clock.sim.day
-	if _morning_paper == null or not Preferences.morning_paper_enabled or _morning_paper_day == day:
+	if _morning_paper == null or not Preferences.morning_paper_enabled \
+			or _morning_paper_edition.get("day", 0) == day:
 		return
-	_morning_paper_day = day
 	if yesterday != null and yesterday.day != day - 1:
 		yesterday = null
 	var history: Dictionary = {}
@@ -6588,9 +6602,46 @@ func _show_morning_paper(yesterday: DayReport, hire_note: String = "") -> void:
 			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
 	if not dish.is_empty():
 		notes.append("%s was yesterday’s favorite." % dish)
+	_morning_paper_edition = MorningPaper.build(day, yesterday, world.weather.kind, notes,
+		GameState.rng(&"paper"), dish, history)
+	_morning_paper_edition["day"] = day
+
+
+func _show_morning_paper() -> void:
+	var day: int = Clock.sim.day
+	if _morning_paper == null or not Preferences.morning_paper_enabled \
+			or _morning_paper_day == day or _morning_paper_edition.get("day", 0) != day:
+		return
+	_morning_paper_day = day
 	_morning_paper.set_panel_top(float($HUD.call("panel_top")))
-	_morning_paper.show_paper(MorningPaper.build(day, yesterday, world.weather.kind, notes,
-		GameState.rng(&"paper"), dish, history))
+	_morning_paper.show_paper(_morning_paper_edition)
+
+
+func _capture_morning_paper() -> Dictionary:
+	if _morning_paper_edition.get("day", 0) != Clock.sim.day:
+		return {}
+	return {"day": Clock.sim.day, "headline": _morning_paper_edition["headline"],
+		"notes": _morning_paper_edition["notes"].duplicate()}
+
+
+func _restore_morning_paper(data: Dictionary) -> bool:
+	_morning_paper_edition.clear()
+	# An older or stale edition can be rebuilt from this morning's history.
+	var day: Variant = data.get("day")
+	var headline: Variant = data.get("headline")
+	var notes: Variant = data.get("notes")
+	if (not day is int and not day is float) or float(day) != float(Clock.sim.day) \
+			or not headline is String or headline.is_empty() \
+			or not notes is Array or notes.size() > MorningPaper.MAX_NOTES:
+		return true
+	var briefs: Array[String] = []
+	for note: Variant in notes:
+		if not note is String:
+			return true
+		briefs.append(note)
+	_morning_paper_edition = {"day": Clock.sim.day, "masthead": MorningPaper.MASTHEAD,
+		"headline": headline, "notes": briefs}
+	return true
 
 
 func _on_morning_paper_preference_changed(key: StringName) -> void:

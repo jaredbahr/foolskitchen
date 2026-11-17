@@ -402,10 +402,13 @@ func _on_employee_name_input(event: InputEvent, id: StringName) -> void:
 		if member.id != id:
 			continue
 		_finish_name_edit(true)
+		if is_instance_valid(_name_edit):
+			_finish_name_edit(false)
 		_editing_employee = id
 		_name_edit = LineEdit.new()
 		_name_edit.name = "NameEdit"
 		_name_edit.max_length = StaffMember.MAX_NICKNAME_LENGTH
+		_name_edit.keep_editing_on_text_submit = true
 		_name_edit.text = member.display_name
 		_name_edit.placeholder_text = member.original_name
 		_name_edit.tooltip_text = "Up to 20 characters. Clear the name to restore the original."
@@ -431,15 +434,42 @@ func _finish_name_edit(save_name: bool) -> void:
 	var editor: LineEdit = _name_edit
 	var id: StringName = _editing_employee
 	var text: String = editor.text
+	var title: Label = editor.get_parent() as Label
+	if save_name:
+		var refusal: String = _roster.rename_refusal(id, text)
+		if not refusal.is_empty():
+			_show_name_refusal(title, editor, refusal)
+			return
 	_name_edit = null
 	_editing_employee = &""
-	var title: Label = editor.get_parent() as Label
+	var feedback: Label = title.get_node_or_null("NameFeedback") as Label
+	if feedback != null:
+		feedback.hide()
+		feedback.queue_free()
 	title.custom_minimum_size.y = 0.0
 	title.self_modulate.a = 1.0
 	editor.hide()
 	editor.queue_free()
 	if save_name:
 		rename_requested.emit(id, text)
+
+
+func _show_name_refusal(title: Label, editor: LineEdit, reason: String) -> void:
+	var feedback: Label = title.get_node_or_null("NameFeedback") as Label
+	if feedback == null:
+		feedback = Label.new()
+		feedback.name = "NameFeedback"
+		feedback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		feedback.add_theme_font_size_override("font_size", 14)
+		title.add_child(feedback)
+	feedback.text = reason
+	feedback.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	var feedback_height: float = feedback.get_combined_minimum_size().y
+	feedback.offset_top = -feedback_height
+	feedback.offset_bottom = 0.0
+	editor.offset_bottom = -feedback_height
+	editor.tooltip_text = reason
+	title.custom_minimum_size.y = editor.get_combined_minimum_size().y + feedback_height
 
 
 func offer_row_for(id: StringName) -> Control:

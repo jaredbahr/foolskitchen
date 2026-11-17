@@ -16,6 +16,7 @@ Each line ends with its PR number.
 - The evening report counts guests who have left. Walkouts count as unhappy, and unserved guests who are sent home at closing count as neutral. (#583)
 - Furnish a varied shop to earn prestige more easily. The fourth through sixth copies of an item earn half points, and later copies earn a quarter. The Vibe tooltip shows each item’s contribution. (#585)
 - Easy sets standard menu prices and resets staff jobs each morning. Custom lets you turn either on separately. (#581)
+- Golden Ladles stay visible after removing decor. Property cards show tomorrow’s rent, duplicate staff nicknames get an explanation, and Today stays out of Build and Paint. The Daily Ladle keeps the same edition after reloading and fits beside goals and bookings at 150% UI size. (#584)
 - The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
 - See each dish's sales, average quality and happy guests over the last seven days in the Menu, and sort by sales or by name within each group. (#539)
@@ -266,6 +267,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
 - Loading a save no longer keeps 34 separate holding variables in the 8,000-line game session script: they moved into one small class with its own tests, which check that every held section is emptied when a load or a new game should empty it. Saving and loading are unchanged. (#586)

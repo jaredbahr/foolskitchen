@@ -604,6 +604,9 @@ func test_focused_staff_name_edit_cancels_commits_and_saves_at_next_morning() ->
 	var window: Window = tree.root
 	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
 	var cook_id: StringName = &"starter_cook"
+	# Use names outside the authored applicant pool for successful edits.
+	var enter_name: String = "Kitchen Robin"
+	var click_away_name: String = "Evening Jules"
 	var cook: StaffAgent = _live_staff(main, cook_id)
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	sim.spawner.min_gap = 100000
@@ -634,24 +637,24 @@ func test_focused_staff_name_edit_cancels_commits_and_saves_at_next_morning() ->
 	await _frames(2)
 	_name_click(window, title.get_global_rect().get_center())
 	editor = title.get_node("NameEdit") as LineEdit
-	editor.text = "  Robin  "
+	editor.text = "  %s  " % enter_name
 	_name_key(window, KEY_ENTER)
-	assert_eq(_member(main, cook_id).display_name, "Robin")
+	assert_eq(_member(main, cook_id).display_name, enter_name)
 	assert_true(_live_staff(main, cook_id) == cook, "editing never reinstalls a worker")
 	assert_true(panel.row_for(cook_id).find_child("Name", true, false) == title)
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file)
 	await _frames(2)
 	_name_click(window, title.get_global_rect().get_center())
 	editor = title.get_node("NameEdit") as LineEdit
-	editor.text = " Jules "
+	editor.text = " %s " % click_away_name
 	await _frames(2)
 	var close: Button = panel.get_node("Panel/Content/Title/Owner/Close") as Button
 	_name_click(window, close.get_global_rect().get_center())
 	assert_false(panel.visible)
-	assert_eq(_member(main, cook_id).display_name, "Jules", "click-away commits before closing Staff")
+	assert_eq(_member(main, cook_id).display_name, click_away_name, "click-away commits before closing Staff")
 	assert_true(main.call("select_agent", cook.id))
 	var inspector_title: Label = main.get_node("Overlay/InspectPanel/Panel/Rows/Title") as Label
-	assert_true(inspector_title.text.begins_with("Jules ("))
+	assert_true(inspector_title.text.begins_with("%s (" % click_away_name))
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file)
 	main.call("run_ticks", 3)
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
@@ -659,18 +662,48 @@ func test_focused_staff_name_edit_cancels_commits_and_saves_at_next_morning() ->
 	var report_label: Label = report.find_child("StaffNicknames", true, false) as Label
 	assert_not_null(report_label)
 	assert_true(report.visible and report_label.visible)
-	assert_eq(report_label.text, "Staff nicknames: Jules")
+	assert_eq(report_label.text, "Staff nicknames: %s" % click_away_name)
 	assert_eq(FileAccess.get_file_as_string(_path()), original_file)
 	main.get_node("HUD").emit_signal(&"next_day_requested")
 	assert_eq(Clock.sim.day, 2)
-	assert_eq(_document()["data"]["staff"]["members"][0]["nickname"], "Jules")
+	assert_eq(_document()["data"]["staff"]["members"][0]["nickname"], click_away_name)
 	assert_eq(_document()["data"]["staff"]["members"][0]["name"], "Alex")
 	_close(main)
 	var restored: Node = _start()
-	assert_eq(_member(restored, cook_id).display_name, "Jules")
-	assert_eq(_live_staff(restored, cook_id).display_name, "Jules")
+	assert_eq(_member(restored, cook_id).display_name, click_away_name)
+	assert_eq(_live_staff(restored, cook_id).display_name, click_away_name)
 	assert_true(restored.call("staff_rename", cook_id, ""))
 	assert_eq(_live_staff(restored, cook_id).display_name, "Alex")
+
+
+func test_duplicate_nickname_explains_the_refusal_inside_the_editor() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var main: Node = _start(false)
+	var panel: StaffPanel = main.get_node("Overlay/StaffPanel") as StaffPanel
+	var cook: StringName = &"starter_cook"
+	assert_true(main.call("set_staff_visible", true))
+	await _frames(4)
+	var title: Label = panel.row_for(cook).find_child("Name", true, false) as Label
+	_name_click(tree.root, title.get_global_rect().get_center())
+	var editor: LineEdit = title.get_node_or_null("NameEdit") as LineEdit
+	assert_not_null(editor)
+	if editor == null:
+		return
+	var original: String = _member(main, cook).display_name
+	editor.text = _member(main, &"starter_server").display_name.to_upper()
+	_name_key(tree.root, KEY_ENTER)
+	assert_eq(_member(main, cook).display_name, original)
+	assert_true(editor.visible and panel.name_edit_has_focus())
+	var feedback: Label = title.get_node_or_null("NameFeedback") as Label
+	assert_not_null(feedback)
+	if feedback == null:
+		return
+	assert_true(feedback.is_visible_in_tree())
+	assert_eq(feedback.text, "That name is already in use.")
+	editor.text = "Kitchen captain"
+	_name_key(tree.root, KEY_ENTER)
+	assert_eq(_member(main, cook).display_name, "Kitchen captain")
+	assert_false(feedback.visible)
 
 
 func _name_click(viewport: Viewport, point: Vector2) -> void:

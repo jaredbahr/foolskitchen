@@ -37,9 +37,26 @@ func test_definition_validation_rejects_empty_and_malformed_lot_tags() -> void:
 	var errors: PackedStringArray = ContentDB.validate_definitions([ingredient], [], [item])
 	assert_true(errors.has("item 'cart': lot tags must be non-empty ids"))
 	assert_true(errors.has("ingredient 'catch': lot tags must be non-empty ids"))
-	item.lot_tags = [&"rooftop"]
-	ingredient.lot_tags = [&"seaside"]
+	item.lot_tags = []
+	ingredient.lot_tags = []
 	assert_eq(ContentDB.validate_definitions([ingredient], [], [item]), PackedStringArray())
+
+
+func test_content_lot_tags_must_be_declared_by_a_lot() -> void:
+	var lot: LotDef = LotDef.new()
+	lot.tags = [&"seaside"]
+	var item: ItemDef = ItemDef.new()
+	item.id = &"cart"
+	item.lot_tags = [&"rooftop"]
+	var ingredient: IngredientDef = IngredientDef.new()
+	ingredient.id = &"catch"
+	ingredient.lot_tags = [&"seaside", &"seasdie"]
+	var errors: PackedStringArray = ContentDB.validate_definitions([ingredient], [], [item], [lot])
+	assert_true(errors.has("item 'cart': lot tag 'rooftop' is not declared by any lot"))
+	assert_true(errors.has("ingredient 'catch': lot tag 'seasdie' is not declared by any lot"))
+	lot.tags.append(&"rooftop")
+	ingredient.lot_tags = [&"seaside"]
+	assert_eq(ContentDB.validate_definitions([ingredient], [], [item], [lot]), PackedStringArray())
 
 
 func test_lookups_find_each_kind_and_unknown_ids_return_null() -> void:

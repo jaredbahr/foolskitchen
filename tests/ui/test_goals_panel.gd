@@ -20,6 +20,17 @@ func after_each() -> void:
 	_panel.free()
 
 
+func test_earned_golden_ladles_stay_visible_when_prestige_is_removed() -> void:
+	var label: Label = _panel.get_node("%GoldenLadles") as Label
+	_panel.set_golden_ladles(0, 0)
+	assert_false(label.visible)
+	_panel.set_golden_ladles(20, 0)
+	assert_true(label.visible)
+	_panel.set_golden_ladles(0, 2)
+	assert_true(label.visible)
+	assert_eq(label.text, "Golden Ladles: 2 of 3")
+
+
 func test_selection_keeps_authored_order_limits_active_goals_and_shows_known_completions() -> void:
 	var completed: Array[StringName] = [&"done", &"done_locked", &"unknown_private_id"]
 	var progress: Dictionary[StringName, float] = {&"first": 4.0, &"second": 3.0, &"third": 2.0}

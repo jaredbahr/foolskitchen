@@ -36,6 +36,7 @@ signal next_day_requested()
 ## Shows the evening report again after its Close or Esc hid it (#497).
 signal report_requested()
 signal header_layout_changed()
+signal morning_cards_changed()
 signal collection_toast_shown(collection_id: StringName)
 
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
@@ -150,6 +151,7 @@ func set_booking_status(text: String) -> void:
 	_booking_status.get_parent().visible = not text.is_empty()
 	_layout_booking_status()
 	_layout_opening_week()
+	morning_cards_changed.emit()
 
 
 func queue_collection_toast(collection_id: StringName, text: String) -> void:
@@ -222,6 +224,7 @@ func set_opening_week(lines: Array[String], title: String = "") -> void:
 			_opening_rows.add_child(row)
 	_opening_panel.visible = not lines.is_empty()
 	_layout_opening_week()
+	morning_cards_changed.emit()
 
 
 ## The tracker's heading now, empty when hidden (tests and captures).
@@ -688,12 +691,21 @@ func _layout_header() -> void:
 func box_rects() -> Array[Rect2]:
 	var rects: Array[Rect2] = []
 	var boxes: Array[Control] = [get_node("Top") as Control, get_node("MenuNotice") as Control,
-		get_node("DemandNotice") as Control, get_node("BuildHints") as Control, _opening_panel]
-	if _booking_status != null:
-		boxes.append(_booking_status.get_parent() as Control)
+		get_node("DemandNotice") as Control, get_node("BuildHints") as Control]
 	for box: Control in boxes:
 		if box != null and box.is_visible_in_tree():
 			rects.append(box.get_global_rect())
+	rects.append_array(morning_card_rects())
+	return rects
+
+
+## The two right-hand cards can share a row with the paper if there is room.
+func morning_card_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	var booking: Control = _booking_status.get_parent() as Control if _booking_status != null else null
+	for card: Control in [_opening_panel, booking] as Array[Control]:
+		if card != null and card.is_visible_in_tree():
+			rects.append(card.get_global_rect())
 	return rects
 
 
