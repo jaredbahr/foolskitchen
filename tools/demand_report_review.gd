@@ -1,8 +1,8 @@
 extends "res://src/world/main.gd"
-## Actual unsaved default service, not a staged demand forecast. Five real days
-## earn reviews and word of mouth. Only UI scrolling follows the final close.
+## Actual unsaved default service, not a staged demand forecast. Two real days
+## (Thursday, then Friday, so the forecast is Saturday) earn reviews and word of mouth. Only UI scrolling follows the final close.
 
-const REVIEW_DAYS: int = 5
+const REVIEW_DAYS: int = 2
 var _review_ready: bool = false
 var _review_frames: int = 0
 var _review_state: Dictionary = {}
@@ -68,10 +68,10 @@ func _review_validate(section: Control) -> void:
 	var expected_count: String = str(int(forecast["expected_guests"]))
 	var hud_day: Label = $HUD/Top/Row/Day
 	var forecast_lines: PackedStringArray = factors.text.split("\n", false)
-	var saturday_line: String = "Saturday crowd " + DemandText.change_text(WEEK_RHYTHM.factor_for_day(6))
+	var saturday_line: String = "Saturday crowd " + DemandText.change_text(WEEK_RHYTHM.factor_for_day(3))
 	if not _report.is_visible_in_tree() or not section.is_visible_in_tree() \
 			or heading.text != "Tomorrow's crowd" or not summary.text.contains(expected_count + " guests expected") \
-			or hud_day.text != "Day 5 · Fri" or forecast_lines.size() != 6 \
+			or hud_day.text != "Day 2 · Fri" or forecast_lines.size() != 6 \
 			or not forecast_lines.has(saturday_line) or explanation.text.is_empty() \
 			or not scroll.get_global_rect().grow(1.0).encloses(section.get_global_rect()) \
 			or not get_viewport().get_visible_rect().encloses(section.get_global_rect()):
@@ -81,7 +81,7 @@ func _review_validate(section: Control) -> void:
 			or _review_report != shown_report.to_dict() or use_saves:
 		_review_fail("rendering the report changed the session snapshot")
 		return
-	print("DEMAND_REPORT_REVIEW ", JSON.stringify({"fixture": "actual default seed1 five-day service; no saves or grants",
+	print("DEMAND_REPORT_REVIEW ", JSON.stringify({"fixture": "actual default seed1 two-day service; no saves or grants",
 		"day": shown_report.day, "forecast": forecast, "heading": heading.text,
 		"summary": summary.text, "factors": factors.text, "explanation": explanation.text,
 		"hud_day": hud_day.text,

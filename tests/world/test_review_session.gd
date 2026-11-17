@@ -126,7 +126,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 	var book: ReputationBook = main.get("reputation") as ReputationBook
 	assert_true(book.from_dict({"version": 1, "scores": [5, 5, 5, 5, 5]}))
 	# FK-120 replaces the old 1.2 reputation-only division. The authored base
-	# gap is drawn once, then scaled by the five-star factor and Monday's demand.
+	# gap is drawn once, then scaled by the five-star factor and Thursday's demand.
 	var expected_min: int = ECONOMY_TUNING.arrival_gap_min
 	var expected_max: int = ECONOMY_TUNING.arrival_gap_max
 	var expected_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -134,7 +134,7 @@ func test_arrival_curve_is_sampled_before_first_gap_and_locked_for_the_day() -> 
 	var drawn_gap: int = expected_rng.randi_range(expected_min, expected_max)
 	# Authored curve knots use PackedFloat32Array; retain that representation
 	# when this draw lands exactly on a half-tick boundary.
-	var expected_factor: float = PackedFloat32Array([1.6])[0] * 0.8
+	var expected_factor: float = PackedFloat32Array([1.6])[0] * 1.0
 	var first_gap: int = maxi(1, roundi(float(drawn_gap) / expected_factor))
 	main.call("_begin_morning")
 	assert_eq(sim.spawner.min_gap, expected_min)

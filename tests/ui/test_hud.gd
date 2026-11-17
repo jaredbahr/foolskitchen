@@ -41,7 +41,7 @@ func after_each() -> void:
 
 
 func test_initial_labels_and_shared_theme_before_ready() -> void:
-	assert_eq((_control("Day") as Label).text, "Day 1 · Mon")
+	assert_eq((_control("Day") as Label).text, "Day 1 · Thu")
 	assert_eq((_hud.get_node("Top/Row/Day/Season") as Label).text, "Spring")
 	assert_eq((_control("TimeStatus/Time") as Label).text, "11:00")
 	assert_eq((_control("TimeStatus/Phase") as Label).text, "Morning")
@@ -66,9 +66,9 @@ func test_initial_labels_and_shared_theme_before_ready() -> void:
 func test_day_label_tracks_season_boundaries() -> void:
 	var day_label: Label = _control("Day") as Label
 	var season_label: Label = day_label.get_node("Season") as Label
-	for row: Array in [[28, "Sun", "Spring"], [29, "Mon", "Summer"], [56, "Sun", "Summer"],
-			[57, "Mon", "Autumn"], [84, "Sun", "Autumn"], [85, "Mon", "Winter"],
-			[112, "Sun", "Winter"], [113, "Mon", "Spring"]]:
+	for row: Array in [[28, "Wed", "Spring"], [29, "Thu", "Summer"], [56, "Wed", "Summer"],
+			[57, "Thu", "Autumn"], [84, "Wed", "Autumn"], [85, "Thu", "Winter"],
+			[112, "Wed", "Winter"], [113, "Thu", "Spring"]]:
 		Clock.sim.day = int(row[0])
 		_hud.call("refresh")
 		assert_eq(day_label.text, "Day %d · %s" % [int(row[0]), String(row[1])])
@@ -491,7 +491,7 @@ func test_context_cycles_day_and_tick_events_update_clock() -> void:
 	assert_true(context.visible)
 	assert_eq(context.text, "Next day")
 	context.pressed.emit()
-	assert_eq((_control("Day") as Label).text, "Day 2 · Tue")
+	assert_eq((_control("Day") as Label).text, "Day 2 · Fri")
 	assert_eq((_hud.get_node("Top/Row/Day/Season") as Label).text, "Spring")
 	assert_eq(context.text, "Open shop")
 

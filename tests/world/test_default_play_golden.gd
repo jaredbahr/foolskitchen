@@ -12,15 +12,16 @@ extends TestCase
 ## #490 sizes the weekly review target from the first day's result. It stays
 ## open after day two, so the same operating sales close without the $100 reward.
 ## #491 skips reviews for pre-seating walkouts, changing the first day's review RNG state.
-## The quieter Monday and Tuesday change the traffic, books and stream states.
+## Day 1 is a normal-demand Thursday (factor 1.0), so it serves 18 guests again (14 on a quiet
+## Monday, 18 before the weekday rhythm); day 2 is a busy Friday (factor 1.2) and serves 19.
 
 const MainScene: PackedScene = preload("res://src/world/main.tscn")
 const MANUAL_MAIN: GDScript = preload("res://tests/fixtures/manual_restock_main.gd")
 const LAYOUT: ShopLayout = preload("res://data/layouts/tier1_deeper.tres")
 ## Day -> [served, lost, sales, closing cash, customers RNG state, reviews RNG state].
 const EXPECTED: Array = [
-	[15, 1, 141, 293, "1735181905615594380", "-7351475014487353182"],
-	[17, 1, 157, 320, "8827733613648338141", "-2904874033639707141"],
+	[18, 3, 166, 338, "-3340690172320019757", "759273845251939063"],
+	[19, 3, 175, 370, "-6401669890371742284", "4855308092454611495"],
 ]
 
 var _main: Node

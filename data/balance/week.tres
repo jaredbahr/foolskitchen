@@ -4,5 +4,5 @@
 
 [resource]
 script = ExtResource("1")
-first_weekday = 0
+first_weekday = 3
 arrival_percent = PackedInt32Array(80, 90, 95, 100, 120, 125, 90)

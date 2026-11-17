@@ -38,19 +38,15 @@ func test_thursday_restock_forecasts_friday_crowd_without_side_effects() -> void
 	Clock.set_speed(0)
 	assert_true(_main.call("menu_set_enabled", &"tomato_soup", false))
 	assert_true(_main.call("menu_set_enabled", &"grilled_cheese", false))
-	for morning: int in range(1, 4):
-		assert_eq(Clock.sim.day, morning)
-		reset_weekly_for_synthetic_day_jump(_main)
-		Clock.sim.phase = SimClock.Phase.CLOSED
-		assert_true(Clock.sim.next_day())
-	assert_eq(Clock.sim.day, 4)
+	# A new game starts on a Thursday, so day 1 is Thursday and day 2 is Friday.
+	assert_eq(Clock.sim.day, 1)
 	var current: Dictionary = _main.call("current_demand_snapshot")
 	assert_almost_eq(float(current.get("weekday", 0)), 1.0)
 	var rng: Dictionary = GameState._capture_save()
 	var stock: Dictionary = Economy.stock.to_dict()
 	var cash: int = Economy.cash
 	var forecast: Dictionary = _main.call("forecast_next_demand")
-	assert_eq(forecast.get("day"), 5)
+	assert_eq(forecast.get("day"), 2)
 	assert_almost_eq(float(forecast.get("weekday", 0)), 1.2)
 	var today: Dictionary = _main.call("restock_forecast_targets")
 	var tomorrow: Dictionary = _main.call("restock_forecast_targets", true)

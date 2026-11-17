@@ -94,9 +94,9 @@ func _sample_second_morning(stars: int) -> Dictionary:
 		return _invalid_sample()
 	assert_eq(menu.enabled_count(), 3)
 	assert_eq(sim.visit_kinds(), [RecipeDef.FOOD])
-	assert_almost_eq(sim.arrival_rate(), 0.8, 0.0001, "quiet Monday baseline control")
+	assert_almost_eq(sim.arrival_rate(), 1.0, 0.0001, "normal Thursday baseline control")
 	if menu.enabled_count() != 3 or sim.visit_kinds() != [RecipeDef.FOOD] \
-			or not is_finite(sim.arrival_rate()) or absf(sim.arrival_rate() - 0.8) > 0.0001:
+			or not is_finite(sim.arrival_rate()) or absf(sim.arrival_rate() - 1.0) > 0.0001:
 		return _invalid_sample()
 	if stars == 1:
 		var installed: bool = book.from_dict({"version": 1, "scores": [1, 1, 1, 1, 1]})
@@ -295,7 +295,7 @@ func test_later_whole_load_failure_discards_staged_renown_before_new_session() -
 	assert_null(_main.get("_loaded_demand"))
 	assert_almost_eq((_main.get("demand_state") as DemandState).renown, 0.0)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), failed_file)
-	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 0.8)
+	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 1.0)
 	_finish_demand()
 
 
@@ -310,9 +310,9 @@ func test_forecast_is_detached_projects_one_decay_and_never_advances_rng_or_save
 	assert_almost_eq(float(first.get("word_of_mouth", 0)), 1.0 + 0.8 * 114.0 / 204.0)
 	assert_almost_eq(float(first.get("vibe", 0)), 0.9)
 	# Real authored opening is 3600 ticks and mean gap is (100 + 260) / 2.
-	# Food has full hourly weight: round(20 * .9 * .9 * (1 + .8 * 114 / 204)) = 23.
-	assert_almost_eq(float(first.get("weekday", 0)), 0.9)
-	assert_eq(first.get("expected_guests"), 23)
+	# Food has full hourly weight: round(20 * 1.2 * .9 * (1 + .8 * 114 / 204)) = 31.
+	assert_almost_eq(float(first.get("weekday", 0)), 1.2)
+	assert_eq(first.get("expected_guests"), 31)
 	var expected: Dictionary = first.duplicate(true)
 	first["total"] = 999.0
 	first["day"] = 999
@@ -340,19 +340,19 @@ func test_accepted_menu_actions_refresh_live_factor_without_redrawing_gap_or_sav
 	assert_true(menu.set_owner_level(owner.level))
 	assert_true(_main.call("menu_set_enabled", &"tomato_melt", true))
 	assert_eq(menu.enabled_count(), 4)
-	assert_almost_eq(sim.demand_factor, 0.8 * 1.04)
+	assert_almost_eq(sim.demand_factor, 1.0 * 1.04)
 	assert_true(_main.call("menu_set_enabled", &"tomato_melt", true))
-	assert_almost_eq(sim.demand_factor, 0.8 * 1.04, 0.00001, "a unique dish counts once")
+	assert_almost_eq(sim.demand_factor, 1.0 * 1.04, 0.00001, "a unique dish counts once")
 	assert_true(_main.call("menu_set_price", &"burger", 15))
 	assert_eq(sim.spawner._remaining, countdown)
 	assert_eq(GameState.call("_capture_save"), streams)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), saved)
 	var detached: Dictionary = _main.call("current_demand_snapshot")
 	detached["total"] = 999.0
-	assert_almost_eq(sim.demand_factor, 0.8 * 1.04)
-	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 0.8 * 1.04)
+	assert_almost_eq(sim.demand_factor, 1.0 * 1.04)
+	assert_almost_eq((_main.call("current_demand_snapshot") as Dictionary)["total"], 1.0 * 1.04)
 	assert_true(_main.call("menu_set_enabled", &"tomato_melt", false))
-	assert_almost_eq(sim.demand_factor, 0.8)
+	assert_almost_eq(sim.demand_factor, 1.0)
 	assert_eq(sim.spawner._remaining, countdown)
 	assert_eq(GameState.call("_capture_save"), streams)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), saved)
@@ -369,7 +369,7 @@ func test_morning_reputation_and_renown_remain_latched_during_edit_refresh() -> 
 	var current: Dictionary = _main.call("current_demand_snapshot")
 	assert_almost_eq(float(current["reputation"]), 1.0)
 	assert_almost_eq(float(current["word_of_mouth"]), 1.0)
-	assert_almost_eq(float(current["total"]), 0.8)
+	assert_almost_eq(float(current["total"]), 1.0)
 	var tomorrow: Dictionary = _main.call("forecast_next_demand")
 	assert_almost_eq(float(tomorrow["reputation"]), 0.6)
 	assert_almost_eq(float(tomorrow["word_of_mouth"]), 1.0 + 0.8 * 57.0 / 147.0)
@@ -388,7 +388,7 @@ func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_
 	Clock.sim.phase = SimClock.Phase.CLOSED
 	assert_true(Clock.sim.next_day())
 	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
-	assert_almost_eq(sim.demand_factor, 0.9 * 0.9)
+	assert_almost_eq(sim.demand_factor, 1.2 * 0.9)
 	var countdown: int = sim.spawner._remaining
 	var streams: Dictionary = GameState.call("_capture_save")
 	var saved: String = FileAccess.get_file_as_string(_demand_path())
@@ -397,8 +397,8 @@ func test_accepted_layout_edit_updates_actual_raw_vibe_without_rng_gap_reset_or_
 	assert_true(_main.call("shop_buy", &"potted_plant", Vector2i(13, 11), 0))
 	assert_true(sim.vibe_result.valid)
 	assert_true(sim.vibe_result.score > 0.0)
-	assert_almost_eq(sim.demand_factor, 0.9 * (0.9 + 0.25 * sim.vibe_result.score / 100.0))
-	assert_true(sim.demand_factor > 0.9 * 0.9)
+	assert_almost_eq(sim.demand_factor, 1.2 * (0.9 + 0.25 * sim.vibe_result.score / 100.0))
+	assert_true(sim.demand_factor > 1.2 * 0.9)
 	assert_eq(sim.spawner._remaining, countdown)
 	assert_eq(GameState.call("_capture_save"), streams)
 	assert_eq(FileAccess.get_file_as_string(_demand_path()), saved)
@@ -478,20 +478,20 @@ func _reject_after_demand(_value: Dictionary) -> bool:
 # economy, messes, traffic and the cook/plate service-speed work (#291) subsequently changed its recorded outcomes.
 # #307 (most impatient guests first) shifts which guest staff reach first: same 18 served and 0 lost, close two ticks later (4437), new events hash and cleanliness stream state.
 # #389 (the deeper starter room, tables one row lower): same 18 served and 0 lost, close at tick 4443, new events hash and cleanliness stream state.
-# The quieter Monday starts the same streams and serves 14 guests with 0 lost, closing at tick 4274.
+# Day 1 is now a normal-demand Thursday (factor 1.0), so it matches the pre-weekday-rhythm run: 18 served, 0 lost, close at tick 4443, same events hash and stream states as before the weekday rhythm (#566).
 # Full before/after signed events and source-bound replays remain outside the project.
-const DAY_ONE_EVENTS_SHA256: String = "fc496172ea5e074f17c382c5f7e58dc6ef5fdc9ae3bbbbf0dfc0cdbbb946c1f1"
+const DAY_ONE_EVENTS_SHA256: String = "ef56a8dc95c0954618a0dacaf23dae87643d365cda3137b81938d5310c526565"
 ## Exact whole stream dictionary; existing lifecycle draws follow actual outcomes.
 const DAY_ONE_STREAMS: Dictionary = {
 	"master_seed": "1",
 	"rngs": {
 		"cleanliness": {
 			"seed": "2378578401",
-			"state": "-2433117606531369276"
+			"state": "6142260159820504405"
 		},
 		"customers": {
 			"seed": "232337077",
-			"state": "2842700289883978556"
+			"state": "-1878107458494558784"
 		},
 		"hiring": {
 			"seed": "524528529",
@@ -499,7 +499,7 @@ const DAY_ONE_STREAMS: Dictionary = {
 		},
 		"reviews": {
 			"seed": "7543029",
-			"state": "-7959563632922150682"
+			"state": "-7929524535254594193"
 		},
 		"weekly": {
 			"seed": "1106350689",
@@ -521,11 +521,11 @@ func test_manual_stock_day_one_events_private_rng_and_named_streams_match_record
 	assert_eq(first["streams"], DAY_ONE_STREAMS, "complete named-stream seed/state dictionary")
 	assert_eq(first["events_sha256"], DAY_ONE_EVENTS_SHA256,
 		"recorded arrival/payment/departure ticks and signed private RNG seeds/states")
-	assert_eq(first["tick"], 4274)
-	assert_eq(first["served"], 14)
+	assert_eq(first["tick"], 4443)
+	assert_eq(first["served"], 18)
 	assert_eq(first["lost"], 0)
-	assert_eq(first["happy"], 14)
-	assert_almost_eq(float(first["renown"]), 14.0, 0.00001, "progress accrues from recorded happy departures")
+	assert_eq(first["happy"], 18)
+	assert_almost_eq(float(first["renown"]), 18.0, 0.00001, "progress accrues from recorded happy departures")
 
 
 func _played_day_one() -> Dictionary:
@@ -537,7 +537,7 @@ func _played_day_one() -> Dictionary:
 	sim.customer_arrived.connect(_demand_trace_arrived)
 	sim.customer_paid.connect(_demand_trace_paid)
 	sim.customer_left.connect(_demand_trace_left)
-	assert_almost_eq(sim.demand_factor, 0.8)
+	assert_almost_eq(sim.demand_factor, 1.0)
 	assert_true(sim.vibe_result.valid)
 	assert_almost_eq(sim.vibe_result.score, 0.0)
 	assert_true(Clock.sim.start_service())
