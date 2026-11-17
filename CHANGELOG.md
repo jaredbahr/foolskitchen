@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- The top bar shows the weekday next to the day number. A new game starts on a Thursday, Mondays are quieter, Fridays and Saturdays bring bigger crowds, and tomorrow’s crowd and stock forecasts account for the day. (#566)
 - Career goals take less space, staff details line up in columns, and the evening report keeps the day, profit and Next day button in view. Settings uses two columns on wider screens. (#515)
 - At 150% UI size, the Hygiene overview fits on one row at the foot of the Build catalogue. Scrolling over it moves the item cards, and Escape closes Shortcuts first when both are open. (#552)
 - The Daily Ladle slides in each morning with a headline about yesterday and a few notes for today. Press Close or Esc to put it away, or turn off “Show the morning paper” in Settings. (#551)

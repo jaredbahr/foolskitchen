@@ -81,13 +81,17 @@ func _layout_bubble() -> void:
 	_text.custom_minimum_size.x = maxf(1.0, width - padding.x)
 	_panel.size = Vector2(width, _panel.get_combined_minimum_size().y)
 	var x: float = size.x - width - MARGIN
-	var y: float = size.y - _panel.size.y - MARGIN
+	var bottom: float = size.y - _panel.size.y
+	var max_y: float = bottom - MARGIN
+	var y: float = max_y
 	if is_instance_valid(_target):
 		var target_rect: Rect2 = _target.get_global_rect()
 		x = target_rect.get_center().x - width * 0.5
 		y = maxf(_top, target_rect.end.y + MARGIN)
+		# Give the guide space below the header before reserving a bottom margin.
+		max_y = maxf(max_y, minf(y, bottom))
 	_panel.position = Vector2(clampf(x, MARGIN, maxf(MARGIN, size.x - width - MARGIN)),
-		clampf(y, MARGIN, maxf(MARGIN, size.y - _panel.size.y - MARGIN)))
+		clampf(y, MARGIN, maxf(MARGIN, max_y)))
 	queue_redraw()
 
 

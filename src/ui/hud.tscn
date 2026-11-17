@@ -36,7 +36,7 @@ text_overrun_behavior = 3
 
 [node name="Day" type="Label" parent="Top/Row"]
 layout_mode = 2
-text = "Day 1"
+text = "Day 1 · Mon"
 vertical_alignment = 0
 
 [node name="Season" type="Label" parent="Top/Row/Day"]
@@ -51,11 +51,16 @@ mouse_filter = 2
 theme_override_font_sizes/font_size = 14
 text = "Sunny"
 
-[node name="Time" type="Label" parent="Top/Row"]
+[node name="TimeStatus" type="VBoxContainer" parent="Top/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Time" type="Label" parent="Top/Row/TimeStatus"]
 layout_mode = 2
 text = "11:00"
 
-[node name="Phase" type="Label" parent="Top/Row"]
+[node name="Phase" type="Label" parent="Top/Row/TimeStatus"]
 layout_mode = 2
 text = "Morning"
 

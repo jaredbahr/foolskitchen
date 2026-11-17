@@ -1,8 +1,8 @@
 extends "res://src/world/main.gd"
-## Actual unsaved default service, not a staged demand forecast. Five real days
-## earn reviews and word of mouth. Only UI scrolling follows the final close.
+## Actual unsaved default service, not a staged demand forecast. Two real days
+## (Thursday, then Friday, so the forecast is Saturday) earn reviews and word of mouth. Only UI scrolling follows the final close.
 
-const REVIEW_DAYS: int = 5
+const REVIEW_DAYS: int = 2
 var _review_ready: bool = false
 var _review_frames: int = 0
 var _review_state: Dictionary = {}
@@ -55,7 +55,7 @@ func _review_validate(section: Control) -> void:
 			or int(forecast.get("expected_guests", -1)) < 0:
 		_review_fail("the report lacks an actual next-day forecast")
 		return
-	for key: String in ["reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "total"]:
+	for key: String in ["reputation", "word_of_mouth", "menu", "vibe", "curb_appeal", "weekday", "total"]:
 		var value: Variant = forecast.get(key)
 		if not (value is float or value is int) or not is_finite(float(value)) or float(value) <= 0.0:
 			_review_fail("the report has an invalid actual demand factor")
@@ -66,9 +66,13 @@ func _review_validate(section: Control) -> void:
 	var explanation: Label = section.get_node("Explanation") as Label
 	var scroll: ScrollContainer = _report.get_node("Panel/Column/Scroll") as ScrollContainer
 	var expected_count: String = str(int(forecast["expected_guests"]))
+	var hud_day: Label = $HUD/Top/Row/Day
+	var forecast_lines: PackedStringArray = factors.text.split("\n", false)
+	var saturday_line: String = "Saturday crowd " + DemandText.change_text(WEEK_RHYTHM.factor_for_day(3))
 	if not _report.is_visible_in_tree() or not section.is_visible_in_tree() \
 			or heading.text != "Tomorrow's crowd" or not summary.text.contains(expected_count + " guests expected") \
-			or factors.text.split("\n", false).size() != 5 or explanation.text.is_empty() \
+			or hud_day.text != "Day 2 · Fri" or forecast_lines.size() != 6 \
+			or not forecast_lines.has(saturday_line) or explanation.text.is_empty() \
 			or not scroll.get_global_rect().grow(1.0).encloses(section.get_global_rect()) \
 			or not get_viewport().get_visible_rect().encloses(section.get_global_rect()):
 		_review_fail("the native forecast text is missing or clipped")
@@ -77,9 +81,10 @@ func _review_validate(section: Control) -> void:
 			or _review_report != shown_report.to_dict() or use_saves:
 		_review_fail("rendering the report changed the session snapshot")
 		return
-	print("DEMAND_REPORT_REVIEW ", JSON.stringify({"fixture": "actual default seed1 five-day service; no saves or grants",
+	print("DEMAND_REPORT_REVIEW ", JSON.stringify({"fixture": "actual default seed1 two-day service; no saves or grants",
 		"day": shown_report.day, "forecast": forecast, "heading": heading.text,
 		"summary": summary.text, "factors": factors.text, "explanation": explanation.text,
+		"hud_day": hud_day.text,
 		"rect": [section.global_position.x, section.global_position.y, section.size.x, section.size.y],
 		"world_tick": world.now, "rng": GameState._capture_save(), "unchanged": true}))
 
