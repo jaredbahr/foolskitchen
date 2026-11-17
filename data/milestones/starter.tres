@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="MilestoneSet" load_steps=15 format=3]
+[gd_resource type="Resource" script_class="MilestoneSet" load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://src/sim/progression/milestone_set.gd" id="1_set"]
 [ext_resource type="Script" path="res://src/sim/progression/milestone.gd" id="2_goal"]
@@ -14,7 +14,24 @@
 [ext_resource type="Resource" path="res://data/milestones/team_of_three.tres" id="m10"]
 [ext_resource type="Resource" path="res://data/milestones/level_three.tres" id="m11"]
 [ext_resource type="Resource" path="res://data/milestones/clean_run.tres" id="m12"]
+[ext_resource type="Resource" path="res://data/milestones/fifty_guests.tres" id="fifty_guests"]
+[ext_resource type="Resource" path="res://data/milestones/twenty_five_in_a_day.tres" id="twenty_five_in_a_day"]
+[ext_resource type="Resource" path="res://data/milestones/two_hundred_plates.tres" id="two_hundred_plates"]
+[ext_resource type="Resource" path="res://data/milestones/profit_125.tres" id="profit_125"]
+[ext_resource type="Resource" path="res://data/milestones/thirty_five_in_a_day.tres" id="thirty_five_in_a_day"]
+[ext_resource type="Resource" path="res://data/milestones/team_of_five.tres" id="team_of_five"]
+[ext_resource type="Resource" path="res://data/milestones/level_five.tres" id="level_five"]
+[ext_resource type="Resource" path="res://data/milestones/five_hundred_plates.tres" id="five_hundred_plates"]
+[ext_resource type="Resource" path="res://data/milestones/thousand_plates.tres" id="thousand_plates"]
+[ext_resource type="Resource" path="res://data/milestones/rating_45.tres" id="rating_45"]
 
 [resource]
 script = ExtResource("1_set")
-milestones = Array[ExtResource("2_goal")]([ExtResource("m1"), ExtResource("m2"), ExtResource("m3"), ExtResource("m4"), ExtResource("m5"), ExtResource("m6"), ExtResource("m7"), ExtResource("m8"), ExtResource("m9"), ExtResource("m10"), ExtResource("m11"), ExtResource("m12")])
+milestones = Array[ExtResource("2_goal")]([
+ExtResource("m1"), ExtResource("m2"), ExtResource("m3"), ExtResource("fifty_guests"),
+ExtResource("twenty_five_in_a_day"), ExtResource("m4"), ExtResource("two_hundred_plates"),
+ExtResource("m5"), ExtResource("m6"), ExtResource("m7"), ExtResource("m8"), ExtResource("m9"),
+ExtResource("profit_125"), ExtResource("m10"), ExtResource("thirty_five_in_a_day"),
+ExtResource("team_of_five"), ExtResource("m11"), ExtResource("level_five"), ExtResource("m12"),
+ExtResource("five_hundred_plates"), ExtResource("thousand_plates"), ExtResource("rating_45")
+])
