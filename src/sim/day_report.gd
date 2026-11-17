@@ -110,6 +110,7 @@ var demand_forecast: Dictionary = {}:
 var staff_activity: Dictionary = {}:
 	set(value):
 		staff_activity = StaffActivity.public_snapshot(value)
+var staff_nicknames: Array[String] = []
 
 
 ## Returns income across all categories in whole currency units.
@@ -286,6 +287,8 @@ func to_dict() -> Dictionary:
 	var activity: Dictionary = StaffActivity.public_snapshot(staff_activity)
 	if not activity.is_empty():
 		result["staff_activity"] = activity
+	if not staff_nicknames.is_empty():
+		result["staff_nicknames"] = staff_nicknames.duplicate()
 	if takeaways > 0:
 		result["takeaways"] = takeaways
 	# Only on days a critic reviewed, so every other report keeps its exact shape.
@@ -418,6 +421,13 @@ static func from_dict(data: Dictionary) -> DayReport:
 			report.set(field + "_recorded", flag)
 	report.demand_forecast = public_demand_forecast(data.get("demand_forecast", {}))
 	report.staff_activity = StaffActivity.public_snapshot(data.get("staff_activity", {}))
+	var saved_nicknames: Variant = data.get("staff_nicknames", [])
+	if saved_nicknames is Array:
+		for nickname: Variant in saved_nicknames:
+			if nickname is String and not nickname.is_empty() and StaffMember.normalized_nickname(nickname) == nickname:
+				report.staff_nicknames.append(nickname)
+				if report.staff_nicknames.size() >= StaffRoster.CAPACITY:
+					break
 	return report
 
 

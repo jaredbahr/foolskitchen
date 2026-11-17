@@ -10,6 +10,7 @@ signal tray_requested(level: int)
 signal close_requested()
 signal job_priority_requested(id: StringName, job: StringName, value: int)
 signal owner_look_requested()
+signal rename_requested(id: StringName, text: String)
 ## Send an employee to another of the owner's restaurants (#473).
 signal transfer_requested(id: StringName, site: StringName)
 
@@ -59,6 +60,9 @@ var _priority_buttons: Dictionary[StringName, Dictionary] = {}
 var _owner_name: String = OwnerAppearance.DEFAULT_NAME
 var _team_activity: Dictionary = {}
 var _transfer_sites: Array[TransferSite] = []
+var _employee_titles: Dictionary[StringName, Label] = {}
+var _editing_employee: StringName = &""
+var _name_edit: LineEdit
 
 
 func _ready() -> void:
@@ -192,9 +196,11 @@ func refresh() -> void:
 		for member: Dictionary in snapshot.get(section, []):
 			member.erase("priorities")
 			member.erase("work")
+			member.erase("nickname")
 	if snapshot != _snapshot:
 		_rebuild_rows()
 		_snapshot = snapshot
+	_refresh_employee_names()
 	_refresh_work()
 	var offers: Array[Dictionary] = _roster.morning_raise_offers(_morning_day, _phase)
 	var morning_snapshot: Dictionary = {"offers": offers,
@@ -310,6 +316,93 @@ func _hiring_precedes(first: StaffMember, second: StaffMember, mode: int) -> boo
 
 func row_for(id: StringName) -> Control:
 	return _rows.get(id) as Control
+
+
+func name_edit_has_focus() -> bool:
+	return is_instance_valid(_name_edit) and _name_edit.has_focus()
+
+
+func _input(event: InputEvent) -> void:
+	if not name_edit_has_focus():
+		return
+	var key: InputEventKey = event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_finish_name_edit(false)
+		return
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT \
+			and not _name_edit.get_global_rect().has_point(mouse.position):
+		_finish_name_edit(true)
+
+
+## Both Staff row layouts own their existing title. Bind the editor to the
+## actual name label, keeping the surrounding columns and their controls.
+func _bind_employee_name(member: StaffMember) -> void:
+	var title: Label = _rows[member.id].find_child("Name", true, false) as Label
+	title.set_meta(&"name_suffix", title.text.substr(member.display_name.length()))
+	title.mouse_filter = Control.MOUSE_FILTER_STOP
+	title.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	title.focus_mode = Control.FOCUS_ALL
+	title.gui_input.connect(_on_employee_name_input.bind(member.id))
+	_employee_titles[member.id] = title
+
+
+func _refresh_employee_names() -> void:
+	for member: StaffMember in _roster.members():
+		var title: Label = _employee_titles[member.id]
+		title.text = member.display_name + String(title.get_meta(&"name_suffix"))
+		title.tooltip_text = "Rename " + member.display_name
+
+
+func _on_employee_name_input(event: InputEvent, id: StringName) -> void:
+	var mouse: InputEventMouseButton = event as InputEventMouseButton
+	if not (mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT) \
+			and not event.is_action_pressed(&"ui_accept"):
+		return
+	var title: Label = _employee_titles[id]
+	for member: StaffMember in _roster.members():
+		if member.id != id:
+			continue
+		_finish_name_edit(true)
+		_editing_employee = id
+		_name_edit = LineEdit.new()
+		_name_edit.name = "NameEdit"
+		_name_edit.max_length = StaffMember.MAX_NICKNAME_LENGTH
+		_name_edit.text = member.display_name
+		_name_edit.placeholder_text = member.original_name
+		_name_edit.tooltip_text = "Up to 20 characters. Clear the name to restore the original."
+		_name_edit.text_submitted.connect(_on_name_submitted)
+		_name_edit.focus_exited.connect(_finish_name_edit.bind(true))
+		title.add_child(_name_edit)
+		_name_edit.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		title.custom_minimum_size.y = _name_edit.get_combined_minimum_size().y
+		title.self_modulate.a = 0.0
+		title.accept_event()
+		_name_edit.grab_focus()
+		_name_edit.select_all()
+		return
+
+
+func _on_name_submitted(_text: String) -> void:
+	_finish_name_edit(true)
+
+
+func _finish_name_edit(save_name: bool) -> void:
+	if not is_instance_valid(_name_edit):
+		return
+	var editor: LineEdit = _name_edit
+	var id: StringName = _editing_employee
+	var text: String = editor.text
+	_name_edit = null
+	_editing_employee = &""
+	var title: Label = editor.get_parent() as Label
+	title.custom_minimum_size.y = 0.0
+	title.self_modulate.a = 1.0
+	editor.hide()
+	editor.queue_free()
+	if save_name:
+		rename_requested.emit(id, text)
 
 
 func offer_row_for(id: StringName) -> Control:
@@ -514,6 +607,8 @@ func _on_priority_request(id: StringName, job: StringName, source: Button) -> vo
 
 
 func _rebuild_rows() -> void:
+	_finish_name_edit(false)
+	_employee_titles.clear()
 	for parent: VBoxContainer in [%Members, %Candidates]:
 		for child: Node in parent.get_children():
 			parent.remove_child(child)
@@ -525,6 +620,7 @@ func _rebuild_rows() -> void:
 	_rows.clear()
 	for member: StaffMember in _roster.members():
 		_add_row(%Members as VBoxContainer, member, false)
+		_bind_employee_name(member)
 	for member: StaffMember in _roster.candidates():
 		_add_row(%Candidates as VBoxContainer, member, true)
 
