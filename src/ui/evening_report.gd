@@ -26,17 +26,6 @@ const MONEY_LABELS: Dictionary = {
 	Ledger.RENOVATION: "Renovation",
 }
 
-const LEAVE_LABELS: Dictionary = {
-	&"out_of_stock": "Dish was out of stock",
-	&"kitchen_failed": "The kitchen couldn't make the dish",
-	&"no_menu": "Nothing on the menu",
-	&"closing": "Shop closed",
-	&"waited_too_long": "Waited too long",
-	&"too_expensive": "Too expensive",
-	&"no_table": "No table available",
-	&"no_clean_plates": "No clean plates",
-	&"no_way_through": "Couldn't get through",
-}
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
 const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
@@ -550,7 +539,7 @@ func _fill_reasons(reasons: Dictionary) -> void:
 		return a_count > b_count if a_count != b_count else a < b
 	)
 	for id: String in ids:
-		var title: String = str(LEAVE_LABELS.get(StringName(id), id.capitalize()))
+		var title: String = LeaveReasonText.label(StringName(id))
 		_add_row(_reasons, title, str(reasons[StringName(id)]))
 	if reasons.is_empty():
 		_add_row(_reasons, "No unhappy departures today", "")

@@ -23,6 +23,8 @@ signal service_closed(day: int)
 
 var world: SimWorld
 var orders: OrderBook = OrderBook.new()
+var day_log: DayLog = DayLog.new()
+var _today_low_stock: Dictionary[StringName, bool] = {}
 var menu: Array[RecipeDef] = []
 ## Effective selected-and-enabled recipe for this service. Empty keeps the
 ## historical review path unchanged, including its seeded quote draw.
@@ -294,6 +296,8 @@ func patio_keeping_up() -> bool:
 
 ## Clears daily reports and redraws the first arrival; the caller opens the clock.
 func start_day(career_tier: int = 1) -> void:
+	day_log.clear()
+	_today_low_stock.clear()
 	# Daily weather can close patio seats without a layout edit. Indoor-only
 	# shops retain their existing cache and exact morning behavior.
 	if world.grid.rooms().values().has(SimGrid.Room.PATIO):
@@ -416,6 +420,8 @@ func advance() -> void:
 		# Anything not put away by closing is stored, before the day's books.
 		if dock != null:
 			dock.store_all()
+		if critic.arrived:
+			day_log.reveal_critic()
 		service_closed.emit(world.clock.day)
 
 
@@ -486,6 +492,7 @@ func _advance_inspection() -> void:
 	inspector = arrival
 	_inspector_looked = 0
 	world.add_agent(arrival)
+	log_today(DayLog.Kind.INSPECTOR, "The health inspector arrived")
 	health_inspector_arrived.emit()
 
 
@@ -517,6 +524,7 @@ func record_event_review(stars: int, quote: String) -> Dictionary:
 		return {}
 	var row: Dictionary = {"stars": result["stars"], "quote": quote,
 		"before": result["before"], "after": result["after"]}
+	_log_today_review(int(row["stars"]))
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
 	return row
@@ -760,6 +768,11 @@ func refresh_sold_out() -> void:
 		var short: StringName = _short_ingredient(recipe, {})
 		if not short.is_empty():
 			_mark_sold_out(recipe.id, short)
+			for ingredient: IngredientDef in recipe.ingredients:
+				if ingredient != null and ingredient.id == short:
+					record_today_stock(ingredient, stock.count(short))
+					break
+			log_today(DayLog.Kind.SOLD_OUT, "%s sold out" % recipe.display_name)
 			dish_sold_out.emit(recipe.display_name)
 
 
@@ -812,8 +825,10 @@ func restock_sold_out() -> int:
 
 
 ## Goods put away (or stored at closing) can bring sold-out dishes back.
-func _on_dock_stored(_lines: Array[Dictionary]) -> void:
+func _on_dock_stored(lines: Array[Dictionary]) -> void:
 	if _in_service():
+		for line: Dictionary in lines:
+			_today_low_stock.erase(StringName(line.get("id", "")))
 		restock_sold_out()
 
 
@@ -1034,6 +1049,34 @@ func _mark_sold_out(recipe_id: StringName, ingredient_id: StringName) -> void:
 	world.log_event("%s ran out: %s sold out" % [ingredient_id, recipe_id])
 
 
+## Presentation observes the current clock, including the final departures at close.
+func log_today(kind: DayLog.Kind, text: String) -> void:
+	if world == null or world.clock.phase == SimClock.Phase.MORNING:
+		return
+	day_log.clock = world.clock
+	day_log.add(world.clock.tick, kind, text)
+
+
+## Report a serving's last ingredients or a shortfall found by the menu check.
+## A delivery re-arms the notice. Repeated checks of the same stock state don't.
+func record_today_stock(ingredient: IngredientDef, serving_units: int) -> void:
+	if ingredient == null or not _in_service():
+		return
+	var usable: int = stock.count(ingredient.id)
+	if usable > serving_units:
+		_today_low_stock.erase(ingredient.id)
+		return
+	var ran_out: bool = usable == 0
+	if _today_low_stock.has(ingredient.id) and _today_low_stock[ingredient.id] == ran_out:
+		return
+	_today_low_stock[ingredient.id] = ran_out
+	log_today(DayLog.Kind.STOCK_LOW, StockAlerts.today_stock_line(ingredient, usable))
+
+
+func _log_today_review(stars: int) -> void:
+	log_today(DayLog.Kind.REVIEW, "New %d-star review" % stars)
+
+
 ## Missing overrides use the unchanged content price.
 func price_of(recipe: RecipeDef) -> int:
 	if recipe == null:
@@ -1097,6 +1140,7 @@ func try_disguise_critic(customer: CustomerAgent) -> bool:
 	if not customer.disguise_as_critic(critic.tells, critic.tuning):
 		return false
 	critic.mark_arrived(world.clock.day)
+	log_today(DayLog.Kind.CRITIC, "A food critic arrived")
 	# The critic is not a repeat guest: give back the cohort slot they took, so
 	# later arrivals get the same cohort keys as without a critic.
 	if had_cohort_slot:
@@ -1385,6 +1429,7 @@ func record_departure(customer: CustomerAgent) -> void:
 	if not customer.paid:
 		lost_today += 1
 	world.log_event("Guest #%d left: %s" % [customer.id, reason])
+	log_today(DayLog.Kind.GUEST_LEFT, LeaveReasonText.label(reason).to_lower())
 	if review_book != null and review_tuning != null and review_quotes != null and review_rng != null:
 		var standard_price: int = 0
 		if customer.order != null:
@@ -1416,6 +1461,7 @@ func record_departure(customer: CustomerAgent) -> void:
 		else:
 			var result: Dictionary = review_book.record_visit(visit, review_tuning, review_quotes, review_rng)
 			if not result.is_empty():
+				_log_today_review(int(result["stars"]))
 				var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 					"before": result["before"], "after": result["after"]}
 				reviews_today.append(row)
@@ -1460,6 +1506,7 @@ func finalize_booking_review(booking_id: int, fallback_no_seat: bool = true) -> 
 	booking_review_results[booking_id] = result.duplicate(true)
 	var row: Dictionary = {"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]}
+	_log_today_review(int(row["stars"]))
 	reviews_today.append(row)
 	review_recorded.emit(row.duplicate())
 	return result.duplicate(true)
@@ -1474,5 +1521,6 @@ func _record_critic_review(visit: ReviewVisit) -> void:
 	if result.is_empty():
 		return
 	critic_result = result
+	_log_today_review(int(result["stars"]))
 	review_recorded.emit({"stars": result["stars"], "quote": result["quote"],
 		"before": result["before"], "after": result["after"]})

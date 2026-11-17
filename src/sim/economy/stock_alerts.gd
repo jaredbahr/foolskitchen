@@ -101,6 +101,12 @@ static func join_names(names: Array[String]) -> String:
 	return ", ".join(names.slice(0, names.size() - 1)) + " and " + names[names.size() - 1]
 
 
+static func today_stock_line(ingredient: IngredientDef, usable: int) -> String:
+	var label: String = ingredient.display_name
+	return "Ran out of %s" % label.to_lower() if usable == 0 \
+		else "Low stock: %s (%d left)" % [label, usable]
+
+
 ## Minutes since midnight as a 24-hour clock.
 static func clock_text(minutes: int) -> String:
 	var normalized: int = maxi(minutes, 0) % (24 * 60)

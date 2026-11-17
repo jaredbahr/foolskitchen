@@ -183,7 +183,8 @@ func test_only_visible_collection_toasts_are_saved_and_pending_notice_survives_r
 	assert_false((document["data"] as Dictionary).has("completed_collections"),
 		"completion itself is never persisted")
 	_close(main)
-	var loaded: Node = await _start()
+	# Inspect the restored toast before the wall-clock timer can expire.
+	var loaded: Node = await _start(0)
 	assert_eq(loaded.get("_shown_collection_toast_ids"), [&"coffee_break", &"rustic_nook"] as Array[StringName],
 		"the restored layout shows and acknowledges the pending second notice")
 	assert_eq(loaded.get("_pending_collection_toast_ids"), [] as Array[StringName])
@@ -495,7 +496,7 @@ func test_report_hides_rounded_zero_and_notices_experienced_theme_without_claimi
 	assert_eq(_side_effects(), before, "report presentation changes no save, ledger, clock or RNG state")
 
 
-func _start() -> Node:
+func _start(settle_frames: int = 2) -> Node:
 	await _frames(1)
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", true)
@@ -509,7 +510,7 @@ func _start() -> Node:
 	(main.get_node("ShopView") as ShopView).set_process(false)
 	Clock.set_speed(0)
 	main.connect("vibe_changed", _on_vibe_changed)
-	await _frames(2)
+	await _frames(settle_frames)
 	return main
 
 
