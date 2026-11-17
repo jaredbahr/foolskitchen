@@ -337,7 +337,7 @@ func test_legacy_and_invalid_collection_toast_sections_are_handled_atomically() 
 		"an invalid provider payload cannot partially replace live acknowledgements")
 	assert_true(main.call("_restore_collection_toasts", {"shown_ids": ["renamed_collection", "diner_classics"]}),
 		"a collection that no longer exists is forgotten, not a broken save")
-	assert_eq(main.get("_loaded_collection_toast_ids"), [&"diner_classics"] as Array[StringName])
+	assert_eq((main.get("_staged") as StagedSections).collection_toast_ids, [&"diner_classics"] as Array[StringName])
 	main.set("_shown_collection_toast_ids", [] as Array[StringName])
 	main.call("_update_collection_toasts", _completed_diner_result(main))
 	main.call("_begin_morning")
