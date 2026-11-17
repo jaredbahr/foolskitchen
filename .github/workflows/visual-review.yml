@@ -1,12 +1,7 @@
 name: Visual review captures
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/visual-review.yml'
-      - 'tools/verify_visual_review.py'
-      - 'tools/business_trend_review*'
+  # No push-to-main run (Jared, 2026-11-17): the PR run already captured the change.
   pull_request:
     paths:
       - 'tools/verify_visual_review.py'
