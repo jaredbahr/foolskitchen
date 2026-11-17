@@ -1921,9 +1921,12 @@ static func catalogue_vibe_evidence(main: Node, world: SimWorld, content: Conten
 		recipes.append(String(recipe.id))
 	recipes.sort()
 	var prestige: Prestige.Result = Prestige.evaluate(world.grid, content, editor.decor)
-	var prestige_line: String = "Prestige %d" % prestige.uncapped_score
-	if prestige.uncapped_score > prestige.value():
-		prestige_line += " (capped at %d by %s)" % [prestige.value(), prestige.cap_item.display_name]
+	var prestige_line: String = "Prestige %s" % VibeMeter._prestige_points(prestige.point_units)
+	var cap_item: ItemDef = prestige.cap_item
+	if cap_item != null and prestige.point_units > cap_item.prestige_cap * PrestigeTuning.UNITS_PER_POINT:
+		prestige_line += " (capped at %d by %s)" % [prestige.value(), cap_item.display_name]
+	for row: Prestige.Contribution in prestige.contributions:
+		prestige_line += "\n%s ×%d: %s" % [row.item.display_name, row.copies, VibeMeter._prestige_points(row.point_units)]
 	return {"available": true, "expected": _vibe_result_record(expected), "main": _vibe_result_record(actual),
 		"expected_prestige": prestige_line,
 		"inputs": {"wall": String(editor.wall_swatch_id), "floor": String(editor.floor_vibe_swatch()),
