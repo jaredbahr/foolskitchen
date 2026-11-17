@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 28)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 82)
+	assert_eq(db.items().size(), 83)
 	assert_eq(db.collections().size(), 6)
 	assert_eq(db.collection(&"diner_classics").item_ids, [&"neon_open_sign", &"menu_board", &"diner_booth"])
 
@@ -91,7 +91,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 82)
+	assert_eq(db.items().size(), 83)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -99,7 +99,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 28)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 82)
+	assert_eq(db.items().size(), 83)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
