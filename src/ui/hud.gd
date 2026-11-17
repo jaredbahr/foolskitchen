@@ -24,6 +24,7 @@ signal menu_pressed()
 signal staff_pressed()
 signal stock_pressed()
 signal loan_repayment_requested(amount: int, repay_all: bool)
+signal guide_pressed()
 signal settings_pressed()
 ## A site that cannot open this morning (renovating or still hiring, #464)
 ## ends the day without a service instead.
@@ -362,6 +363,9 @@ func refresh() -> void:
 		_stock_button = get_node("Top/Row/Stock") as Button
 		_stock_button.pressed.connect(_on_stock_pressed)
 		_sold_out_label = get_node("Top/Row/SoldOut") as Label
+		var guide_button: Button = $Guide
+		guide_button.pressed.connect(_on_guide_pressed)
+		IconStyle.compact_button(guide_button)
 		_settings_button = get_node("Top/Row/Settings") as Button
 		_settings_button.pressed.connect(_on_settings_pressed)
 		_style_header()
@@ -856,6 +860,10 @@ func _render_sold_out() -> void:
 	var row: Container = get_node("Top/Row") as Container
 	row.update_minimum_size()
 	row.queue_sort()
+
+
+func _on_guide_pressed() -> void:
+	guide_pressed.emit()
 
 
 func _on_settings_pressed() -> void:

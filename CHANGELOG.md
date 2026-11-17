@@ -232,6 +232,7 @@ Each line ends with its PR number.
 - Sold-out advice is easier to read and points you to Stock for more ingredients during service. (#279)
 
 - Continue now explains when a saved game cannot be loaded and a fresh shop opens, while keeping the existing save for now. (#277)
+- Open Guide from the shop HUD or the F1 keyboard shortcuts to read how nine shop systems work, including prices, stock, staff, building and loans. (#563)
 
 ### Content
 - Placed chairs now have a usable seat. (#48)

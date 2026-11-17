@@ -858,6 +858,13 @@ func _assert_header_layout(window: Window, context_visible: bool = true) -> void
 	_assert_restaurant_title(window)
 	var pixels: Rect2 = Rect2(Vector2.ZERO, Vector2(window.size))
 	assert_true(pixels.grow(0.5).encloses(_drawn_rect(top, window)), "the whole header stays inside the physical Window")
+	var guide: Button = _hud.get_node("Guide") as Button
+	assert_eq(guide.text, "Guide")
+	assert_false(guide.tooltip_text.is_empty())
+	assert_true(guide.is_visible_in_tree())
+	_assert_readable_control(guide, window)
+	assert_false(_drawn_rect(top, window).intersects(_drawn_rect(guide, window)),
+		"the Guide launcher leaves the top bar and its panel clearance intact")
 	var gear: Button = _control("Settings") as Button
 	assert_eq(gear.get_combined_minimum_size(), Vector2(46.0, 46.0),
 		"the native gear minimum uses the 28px icon instead of its 100px source texture")

@@ -59,6 +59,7 @@ const AUTOSAVE_SLOT: String = "autosave"
 const LOAN_LOCK_REASON: String = "Pay off your bank loan first"
 ## A Creative game's Goals panel (FK-141): collections and records only.
 const CREATIVE_GOALS_TITLE: String = "Collections"
+const SYSTEM_GUIDE_SCENE: PackedScene = preload("res://src/ui/guide_panel.tscn")
 
 ## Save slot used by autosave and the startup load. Tests change it.
 var save_slot: String = AUTOSAVE_SLOT
@@ -332,6 +333,8 @@ var _staff_panel: StaffPanel
 var _settings_panel: SettingsPanel
 var _shortcuts_panel: ShortcutsPanel
 var _shortcuts_previous_focus: Control
+var _guide_panel: GuidePanel
+var _guide_previous_focus: Control
 var _settings_return_to_menu: bool = false
 var _settings_previous_speed: int = 0
 var _quit_title_previous_speed: int = 0
@@ -442,6 +445,8 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"loan_repayment_requested", _on_loan_repayment_requested)
 	if not $HUD.is_connected(&"header_layout_changed", _on_header_layout_changed):
 		$HUD.connect(&"header_layout_changed", _on_header_layout_changed)
+	if not $HUD.is_connected(&"guide_pressed", _on_open_system_guide):
+		$HUD.connect(&"guide_pressed", _on_open_system_guide)
 	if not $HUD.is_connected(&"settings_pressed", _on_hud_settings_requested):
 		$HUD.connect(&"settings_pressed", _on_hud_settings_requested)
 	_report = $Overlay/EveningReport
@@ -576,6 +581,8 @@ func _bind_world_presentation() -> void:
 		$HUD.connect(&"close_day_requested", close_for_today)
 	_settings_panel = $Overlay/SettingsPanel
 	_shortcuts_panel = $Overlay/ShortcutsPanel
+	if not _shortcuts_panel.guide_requested.is_connected(_on_open_system_guide):
+		_shortcuts_panel.guide_requested.connect(_on_open_system_guide)
 	if not _shortcuts_panel.close_requested.is_connected(_on_shortcuts_close_requested):
 		_shortcuts_panel.close_requested.connect(_on_shortcuts_close_requested)
 	_settings_panel.bind_preferences(Preferences)
@@ -1034,6 +1041,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			var settings_code: Key = settings_key.physical_keycode if settings_key.physical_keycode != KEY_NONE else settings_key.keycode
 			if settings_code == KEY_ESCAPE:
 				set_settings_visible(false)
+		_mark_input_handled()
+		return
+	if is_system_guide_visible():
+		if key != null and not key.echo:
+			_on_shift_changed(key)
+			if key.pressed and (key.physical_keycode == KEY_ESCAPE or key.keycode == KEY_ESCAPE):
+				_on_close_system_guide()
 		_mark_input_handled()
 		return
 	if is_shortcuts_visible():
@@ -4218,6 +4232,7 @@ func _show_service_event_card(entry: Dictionary) -> void:
 	_service_event_resume_speed = Clock.speed
 	Clock.set_speed(0)
 	$HUD.set_event_card_active(true)
+	_on_close_system_guide()
 	_service_event_card.show_card(event.id, String(card["title"]), String(card["text"]),
 		StringName(card["icon"]), labels, previews, enabled)
 
@@ -5901,6 +5916,40 @@ func _on_shortcuts_close_requested() -> void:
 	set_shortcuts_visible(false)
 
 
+func is_system_guide_visible() -> bool:
+	return _guide_panel != null and _guide_panel.visible
+
+
+func _on_open_system_guide() -> void:
+	if is_system_guide_visible() or not _started or display_only \
+			or is_haggle_active() or is_service_event_visible() or is_site_card_visible() \
+			or is_owner_picker_visible() or is_settings_visible():
+		return
+	set_shortcuts_visible(false)
+	$HUD.dismiss_loan_repayment()
+	var viewport: Viewport = get_viewport()
+	_guide_previous_focus = viewport.gui_get_focus_owner()
+	if _guide_panel == null:
+		_guide_panel = SYSTEM_GUIDE_SCENE.instantiate() as GuidePanel
+		_guide_panel.close_requested.connect(_on_close_system_guide)
+		$Overlay.add_child(_guide_panel)
+	_guide_panel.show()
+	_guide_panel.focus_topics()
+
+
+func _on_close_system_guide() -> void:
+	if not is_system_guide_visible():
+		return
+	_guide_panel.hide()
+	var previous_focus: Control = _guide_previous_focus
+	_guide_previous_focus = null
+	if is_instance_valid(previous_focus) and previous_focus.is_visible_in_tree() \
+			and previous_focus.focus_mode != Control.FOCUS_NONE:
+		previous_focus.grab_focus()
+	else:
+		get_viewport().gui_release_focus()
+
+
 func _on_menu_settings_requested() -> void:
 	set_settings_visible(true)
 
@@ -6160,6 +6209,7 @@ func _on_loan_repayment_requested(amount: int, repay_all: bool) -> void:
 	var phase: SimClock.Phase = Clock.sim.phase
 	if not _started or display_only or world == null or Clock.attached_world != world \
 			or is_haggle_active() or is_owner_picker_visible() or is_settings_visible() or is_shortcuts_visible() \
+			or is_system_guide_visible() \
 			or is_site_card_visible() \
 			or (phase != SimClock.Phase.MORNING and phase != SimClock.Phase.CLOSED):
 		return
