@@ -304,6 +304,7 @@ func _on_employee_name_input(event: InputEvent, id: StringName) -> void:
 		_editing_employee = id
 		_name_edit = LineEdit.new()
 		_name_edit.name = "NameEdit"
+		_name_edit.max_length = StaffMember.MAX_NICKNAME_LENGTH
 		_name_edit.text = member.display_name
 		_name_edit.placeholder_text = member.original_name
 		_name_edit.tooltip_text = "Up to 20 characters. Clear the name to restore the original."
