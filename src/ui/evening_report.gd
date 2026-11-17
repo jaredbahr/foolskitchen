@@ -28,6 +28,18 @@ const MONEY_LABELS: Dictionary = {
 
 const PROFIT_GREEN: Color = Color("38764b")
 const LOSS_RED: Color = Color("a83e35")
+const CASH_FLOW_LABELS: Dictionary[StringName, String] = {
+	Ledger.SALE: "Dishes",
+	Ledger.TIP: "Tips",
+	Ledger.INGREDIENTS: "Ingredients",
+	Ledger.WAGES: "Wages",
+	Ledger.RENT: "Rent",
+	Ledger.BANK_LOAN: "Loan",
+	Ledger.UPGRADES: "Upgrades and build",
+	Ledger.OTHER: "Other",
+}
+const TODAY_TAB: int = 0
+const WEEK_TAB: int = 1
 const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
 
 var _restaurant_name: Label
@@ -75,12 +87,24 @@ var _trend_days: int = 7
 var _trend_rows: Array[Dictionary] = []
 var _trend_today: int = 0
 var _trend_buttons: Array[Button] = []
+var _report_tabs: TabBar
+var _cash_flow_day: int = 0
+var _title_spacer: Control
+var _today_scroll: ScrollContainer
+var _week_scroll: ScrollContainer
+var _week_grid: GridContainer
+var _week_footer: HBoxContainer
+var _next_day: Button
+var _next_day_parent: Node
+var _next_day_index: int
+var _panel_scroll: PanelScroll
 
 
 func _ready() -> void:
 	_bind_nodes()
 	# One wheel step everywhere, and the wheel works over the whole card (#497).
-	PanelScroll.attach(self, $Panel as Control, $Panel/Column/Scroll as ScrollContainer)
+	_panel_scroll = PanelScroll.attach(self, $Panel as Control, _today_scroll, [_week_scroll])
+	_show_report_tab(_report_tabs.current_tab)
 	_on_report_resized()
 	if not _report_shown:
 		show_report(DayReport.new())
@@ -91,6 +115,10 @@ func show_report(report: DayReport) -> void:
 	_bind_nodes()
 	# Main follows this compatible single-report API with the detached history.
 	show_history([], report.day)
+	if report.day != _cash_flow_day:
+		_cash_flow_day = report.day
+		_set_report_tabs_visible(false)
+		_clear(_week_grid)
 	_report_shown = true
 	_restaurant_name.text = report.restaurant_name
 	var viral: Label = %ViralReviewLine
@@ -247,6 +275,66 @@ func show_history(rows: Array[Dictionary], today: int) -> void:
 	_refresh_history()
 
 
+## Displays the owner's signed ledger totals for the last seven days.
+func show_week_cash_flow(days: Array[Dictionary]) -> void:
+	_bind_nodes()
+	_clear(_week_grid)
+	_set_report_tabs_visible(not days.is_empty() and not GameMode.is_creative())
+	if not _report_tabs.visible:
+		return
+	_week_grid.columns = days.size() + 1
+	_add_week_category("Cash flow")
+	for day: Dictionary in days:
+		var heading: Label = _add_label(_week_grid, "Day %d" % int(day["day"]))
+		heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		heading.autowrap_mode = TextServer.AUTOWRAP_OFF
+	for group: StringName in CASH_FLOW_LABELS:
+		_add_week_category(CASH_FLOW_LABELS[group])
+		for day: Dictionary in days:
+			_add_week_amount(int(day["groups"][group]))
+	_add_week_category("Net cash")
+	for day: Dictionary in days:
+		_add_week_amount(int(day["total"]))
+
+
+func _add_week_category(text: String) -> void:
+	var label: Label = _add_label(_week_grid, text)
+	label.custom_minimum_size.x = 140.0
+
+
+func _add_week_amount(amount: int) -> void:
+	var value: Label = _add_label(_week_grid, Fmt.money(amount))
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.autowrap_mode = TextServer.AUTOWRAP_OFF
+	if amount < 0:
+		value.add_theme_color_override("font_color", LOSS_RED)
+
+
+func _set_report_tabs_visible(tab_available: bool) -> void:
+	if not tab_available:
+		_report_tabs.current_tab = TODAY_TAB
+	_report_tabs.visible = tab_available
+	_title_spacer.visible = not tab_available
+
+
+func _show_report_tab(tab: int) -> void:
+	var show_week: bool = tab == WEEK_TAB
+	_today_scroll.visible = not show_week
+	_week_scroll.visible = show_week
+	# Today keeps its own Next day placement. Bring the same button into the
+	# Week footer only when it would otherwise be hidden with Today's scroll.
+	if show_week and _today_scroll.is_ancestor_of(_next_day):
+		_next_day_parent = _next_day.get_parent()
+		_next_day_index = _next_day.get_index()
+		_next_day.reparent(_week_footer, false)
+	elif not show_week and _next_day.get_parent() == _week_footer:
+		_next_day.reparent(_next_day_parent, false)
+		_next_day_parent.move_child(_next_day, _next_day_index)
+	_week_footer.visible = _next_day.get_parent() == _week_footer
+	if _panel_scroll != null:
+		_panel_scroll.set_main_scroll(_week_scroll if show_week else _today_scroll)
+
+
 func _refresh_history() -> void:
 	(%BusinessTrendHeading as Label).text = BusinessTrendText.HEADING
 	(%BusinessTrendSummary as Label).text = BusinessTrendText.summary(_trend_rows, _trend_today, _trend_days)
@@ -350,6 +438,18 @@ func _render_team(summary: Dictionary, leave_reasons: Dictionary, nicknames: Arr
 func _bind_nodes() -> void:
 	if _nodes_bound:
 		return
+	_report_tabs = %ReportTabs
+	_title_spacer = $Panel/Column/TitleBar/Balance
+	_today_scroll = $Panel/Column/Scroll
+	_week_scroll = %WeekScroll
+	_week_grid = %WeekCashFlow
+	_week_footer = %WeekFooter
+	_next_day = %NextDay
+	var column: VBoxContainer = _today_scroll.get_parent() as VBoxContainer
+	column.move_child(_week_scroll, _today_scroll.get_index() + 1)
+	_report_tabs.add_tab("Today")
+	_report_tabs.add_tab("Week")
+	_report_tabs.tab_changed.connect(_show_report_tab)
 	_restaurant_name = %RestaurantName
 	_header = %Header
 	_profit = %Profit

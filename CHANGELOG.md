@@ -248,6 +248,7 @@ Each line ends with its PR number.
 - Sold-out advice is easier to read and points you to Stock for more ingredients during service. (#279)
 
 - Continue now explains when a saved game cannot be loaded and a fresh shop opens, while keeping the existing save for now. (#277)
+- The evening report has a Week tab showing what came in and what went out over the last seven days. (#540)
 - Open Guide from the shop HUD or the F1 keyboard shortcuts to read how nine shop systems work, including prices, stock, staff, building and loans. (#563)
 - Choose Easy, Normal, Hard or Custom when starting a Career. Easy buys ingredients at list price, Hard leaves stock orders to you, and Custom lets you pick those options. Difficulty changes in Settings take effect the next morning. (#565)
 

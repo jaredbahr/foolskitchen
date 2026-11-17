@@ -40,6 +40,63 @@ func test_category_totals_daily_income_costs_and_profit() -> void:
 	assert_eq(ledger.day_costs(3), 0)
 
 
+## Weekly groups preserve all signed cash, including archived and away-site moves.
+func test_week_cash_flow_groups_and_totals_match_whole_ledger() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.record(3, 100, Ledger.SALE)
+	ledger.record(3, -10, Ledger.SALE, "refund")
+	ledger.record(3, 4, Ledger.TIP)
+	ledger.record(3, -12, Ledger.INGREDIENTS)
+	ledger.record(3, -10, Ledger.WAGES)
+	ledger.record(3, -7, Ledger.AWAY_SITE_WAGES, "", &"second_shop")
+	ledger.record(3, -5, Ledger.RENT)
+	ledger.record(3, -3, Ledger.AWAY_SITE_RENT, "", &"second_shop")
+	ledger.record(3, 50, Ledger.BANK_LOAN)
+	ledger.record(3, -2, Ledger.LOAN_INTEREST)
+	ledger.record(3, -8, Ledger.LOAN_REPAYMENT)
+	ledger.record(3, -5, Ledger.EARLY_LOAN_REPAYMENT)
+	ledger.record(3, -15, Ledger.UPGRADES)
+	ledger.record(3, -20, Ledger.LOT_PURCHASE)
+	ledger.record(3, -6, Ledger.RENOVATION)
+	ledger.record(3, 25, Ledger.AWAY_SITE_INCOME, "", &"second_shop")
+	ledger.record(3, -1, &"future_category")
+	ledger.prune_before(4)
+	ledger.record(3, 6, Ledger.SALE, "late adjustment")
+	ledger.record(7, 2, Ledger.TIP)
+
+	var snapshot: Dictionary = ledger.to_dict()
+	var rows: Array[Dictionary] = ledger.week_cash_flow(7)
+	assert_eq(rows[2]["groups"], {Ledger.SALE: 96, Ledger.TIP: 4,
+		Ledger.INGREDIENTS: -12, Ledger.WAGES: -17, Ledger.RENT: -8,
+		Ledger.BANK_LOAN: 35, Ledger.UPGRADES: -41, Ledger.OTHER: 24})
+	for row: Dictionary in rows:
+		var sum: int = 0
+		for amount: int in row["groups"].values():
+			sum += amount
+		assert_eq(row["total"], sum)
+		assert_eq(row["total"], ledger.day_profit(row["day"]))
+	assert_eq(ledger.to_dict(), snapshot, "reading the week leaves all transactions alone")
+
+
+## A gap stays visible and day zero is outside the valid game calendar.
+func test_week_cash_flow_keeps_missing_days_and_limits_history() -> void:
+	var ledger: Ledger = Ledger.new()
+	ledger.record(1, 35, Ledger.SALE)
+	ledger.record(9, 20, Ledger.SALE)
+	ledger.prune_before(9)
+	assert_eq(ledger.week_cash_flow(0).size(), 0)
+	assert_eq(ledger.week_cash_flow(2).size(), 2)
+	var rows: Array[Dictionary] = ledger.week_cash_flow(9)
+	assert_eq(rows.size(), 7)
+	assert_eq(rows[0]["day"], 3)
+	assert_eq(rows[0]["groups"], {Ledger.SALE: 0, Ledger.TIP: 0,
+		Ledger.INGREDIENTS: 0, Ledger.WAGES: 0, Ledger.RENT: 0,
+		Ledger.BANK_LOAN: 0, Ledger.UPGRADES: 0, Ledger.OTHER: 0})
+	assert_eq(rows[0]["total"], 0)
+	assert_eq(rows[6]["day"], 9)
+	assert_eq(rows[6]["total"], 20)
+
+
 ## Opposite-sign entries in one category preserve gross flows after pruning.
 func test_refund_income_and_costs_survive_pruning() -> void:
 	var ledger: Ledger = Ledger.new()

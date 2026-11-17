@@ -84,6 +84,25 @@ func test_actual_close_records_final_report_and_report_queries_remain_pure() -> 
 	assert_eq(_main.get("shown_report"), report, "a query does not replace the presented report")
 
 
+func test_real_close_and_reopen_feed_the_week_tab_from_the_ledger() -> void:
+	_start_main()
+	var report: DayReport = _finish_service()
+	if report == null:
+		return
+	var overlay: Control = _main.get_node("Overlay/EveningReport") as Control
+	var tabs: TabBar = overlay.get_node("%ReportTabs") as TabBar
+	var grid: GridContainer = overlay.get_node("%WeekCashFlow") as GridContainer
+	assert_true(tabs.is_visible_in_tree())
+	assert_eq(grid.columns, 2)
+	assert_eq((grid.get_child(1) as Label).text, "Day %d" % report.day)
+	tabs.current_tab = 1
+	Economy.add_cash(-7, Ledger.UPGRADES)
+	assert_true(_main.call("show_closed_report"))
+	assert_eq(tabs.current_tab, 1)
+	var expected: int = Economy.ledger.day_profit(report.day)
+	assert_eq((grid.get_child(grid.get_child_count() - 1) as Label).text, Fmt.money(expected))
+
+
 func test_evening_purchase_refresh_upserts_and_next_morning_load_preserves_it() -> void:
 	_start_main()
 	var morning: String = _saved_text()

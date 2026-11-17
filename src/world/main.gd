@@ -7548,6 +7548,7 @@ func _show_evening_report(report: DayReport) -> void:
 		business_history.record(report)
 	_report.call(&"show_report", report)
 	_report.call(&"show_history", business_history.summaries(), report.day)
+	_report.call(&"show_week_cash_flow", Economy.ledger.week_cash_flow(report.day))
 
 
 ## Service is over and every guest's departure is recorded: close the books.
