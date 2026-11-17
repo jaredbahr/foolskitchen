@@ -705,16 +705,21 @@ func _add_row(parent: VBoxContainer, member: StaffMember, candidate: bool) -> vo
 	var title: Label = _staff_cell(person, "Name", member.display_name)
 	title.add_theme_font_size_override(&"font_size", 18)
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	var details: HBoxContainer = HBoxContainer.new()
+	details.name = "Details"
+	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	details.add_theme_constant_override(&"separation", 8)
+	person.add_child(details)
 	var trait_def: StaffTrait = _roster.catalogue.find_trait(member.trait_id)
-	var detail: Label = _staff_cell(person, "Trait",
-		"%s: %s" % [trait_def.display_name, trait_def.description_for(member.role)])
-	detail.add_theme_font_size_override(&"font_size", 13)
+	var detail: Label = _staff_cell(details, "Trait", trait_def.display_name)
+	detail.add_theme_font_size_override(&"font_size", 14)
 	detail.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	detail.mouse_filter = Control.MOUSE_FILTER_PASS
-	detail.tooltip_text = detail.text
+	detail.tooltip_text = "%s: %s" % [trait_def.display_name, trait_def.description_for(member.role)]
 	if not candidate and member.role != StaffMember.MANAGER:
-		var work: Label = _staff_cell(person, "Work", member.work_summary())
-		work.add_theme_font_size_override(&"font_size", 13)
+		var work: Label = _staff_cell(details, "Work", member.work_summary())
+		work.add_theme_font_size_override(&"font_size", 14)
+		work.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		work.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		work.mouse_filter = Control.MOUSE_FILTER_PASS
 		work.tooltip_text = work.text
@@ -784,7 +789,7 @@ func _refresh_work() -> void:
 		var row: Control = _rows.get(member.id) as Control
 		if row == null:
 			continue
-		var work: Label = row.get_node_or_null("Top/Person/Work") as Label
+		var work: Label = row.get_node_or_null("Top/Person/Details/Work") as Label
 		if work != null:
 			work.text = member.work_summary()
 			work.tooltip_text = work.text

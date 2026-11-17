@@ -4445,7 +4445,7 @@ func _staff_state() -> Dictionary:
 		rows.append({"id": String(member.id), "name_and_wage": " ".join([(row.get_node("Top/Person/Name") as Label).text,
 				(row.get_node("Top/Skill/Level") as Label).text.to_lower(),
 				(row.get_node("Top/Wage") as Label).text]),
-			"trait": (row.get_node("Top/Person/Trait") as Label).text, "action": button.text,
+			"trait": (row.get_node("Top/Person/Details/Trait") as Label).text, "action": button.text,
 			"disabled": button.disabled, "visible_in_tree": row.is_visible_in_tree()})
 	var state: Dictionary = {"visible": panel.is_visible_in_tree(), "roster": roster.to_dict(), "rows": rows,
 		"member_count": members.size(), "candidate_count": candidates.size()}

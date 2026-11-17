@@ -52,7 +52,7 @@ func test_staff_rows_show_people_traits_wages_and_role_minimums() -> void:
 		assert_true((row.get_node("Top/Person/Name") as Label).text.contains(member.display_name))
 		assert_eq((row.get_node("Top/Role") as Label).text, "Cook" if member.role == &"cook" else "Server")
 		assert_eq((row.get_node("Top/Skill/Level") as Label).text, "Skill 3")
-		assert_true((row.get_node("Top/Person/Trait") as Label).text.contains("Steady"))
+		assert_true((row.get_node("Top/Person/Details/Trait") as Label).text.contains("Steady"))
 		assert_true((row.get_node("Top/Action") as Button).disabled)
 		assert_eq((row.get_node("Top/Action") as Button).tooltip_text, "Keep at least one cook and one server.")
 	var scroll: ScrollContainer = _panel.get_node("Panel/Content/Scroll") as ScrollContainer
@@ -133,8 +133,8 @@ func test_candidate_trait_text_describes_only_the_bonus_available_to_their_role(
 		var before: Dictionary = _roster.to_dict()
 		_panel.refresh()
 		var candidate: StaffMember = _roster.candidates()[0]
-		var trait_label: Label = _panel.row_for(candidate.id).get_node("Top/Person/Trait") as Label
-		assert_eq(trait_label.text, example["text"])
+		var trait_label: Label = _panel.row_for(candidate.id).get_node("Top/Person/Details/Trait") as Label
+		assert_eq(trait_label.tooltip_text, example["text"])
 		assert_eq(_roster.to_dict(), before, "describing a trait never changes the roster")
 
 
@@ -783,7 +783,7 @@ func _linear_channel(value: float) -> float:
 
 func test_work_summary_updates_in_place_and_omits_zero_other() -> void:
 	var row: Control = _panel.row_for(&"starter_cook")
-	var work: Label = row.get_node("Top/Person/Work") as Label
+	var work: Label = row.get_node("Top/Person/Details/Work") as Label
 	var action: Button = row.get_node("Top/Action") as Button
 	assert_eq(work.text, "Today: 0 tasks   Total: 0 tasks")
 	assert_true(_roster.record_completed_task(&"starter_cook", &"cook"))
@@ -797,7 +797,7 @@ func test_work_summary_updates_in_place_and_omits_zero_other() -> void:
 	assert_eq(work.text, "Today: 1 cooked · 1 other   Total: 1 cooked · 1 other")
 	assert_false(work.text.contains("not_a_task"))
 	for candidate: StaffMember in _roster.candidates():
-		assert_false(_panel.row_for(candidate.id).has_node("Top/Person/Work"), "candidates have not worked here")
+		assert_false(_panel.row_for(candidate.id).has_node("Top/Person/Details/Work"), "candidates have not worked here")
 
 
 func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> void:
@@ -821,7 +821,7 @@ func test_native_hire_down_work_refresh_up_keeps_one_button_and_request() -> voi
 	assert_true(hire.is_pressed())
 	assert_true(_roster.record_completed_task(&"starter_cook", &"cook"))
 	await _priority_frames(2)
-	assert_eq((_panel.row_for(&"starter_cook").get_node("Top/Person/Work") as Label).text,
+	assert_eq((_panel.row_for(&"starter_cook").get_node("Top/Person/Details/Work") as Label).text,
 		"Today: 1 cooked   Total: 1 cooked", "visible work updates without a command refresh")
 	assert_true(_panel.row_for(id).get_node("Top/Action") == hire)
 	assert_true(hire.is_pressed(), "work labels must not replace an in-progress native press")
