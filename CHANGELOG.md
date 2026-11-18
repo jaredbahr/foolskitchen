@@ -285,6 +285,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
 - Agents now send trivial coding chores to DeepSeek and well-specified issues to Codex, so Claude's time goes to hard problems, writing and art. (#547)
