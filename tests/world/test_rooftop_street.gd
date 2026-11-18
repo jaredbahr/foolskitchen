@@ -231,6 +231,28 @@ func test_the_rooftop_is_the_same_every_build_and_frame() -> void:
 	_free(second)
 
 
+## Clouds far off only (#618): none drifts just under the roof. Each puff drifts along
+## u alone (city_cloud.gdshader moves VERTEX.x), so a puff whose every vertex keeps well
+## clear of the roof across v, and deep below it, never comes near the tower.
+func test_no_cloud_drifts_near_the_roof() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _dressing(load(ROOFTOP) as StreetPreset)
+	var roof: NeighbourhoodRooftop = dressing.rooftop()
+	var clouds: MeshInstance3D = dressing.find_child("Clouds", true, false) as MeshInstance3D
+	assert_not_null(clouds, "the rooftop still has clouds, far off")
+	var vertices: PackedVector3Array = clouds.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_true(vertices.size() > 0, "the clouds are drawn")
+	var clear: float = roof.roof.size.y * 0.5 + 8.0
+	var near: int = 0
+	for vertex: Vector3 in vertices:
+		if absf(vertex.z - roof.centre().y) < clear or vertex.y > -20.0:
+			near += 1
+	assert_eq(near, 0, "every cloud stays at least 8 m clear of the roof's sides and 20 m below it")
+	var shader: String = (clouds.material_override as ShaderMaterial).shader.code
+	assert_true(shader.contains("VERTEX.x +=") and not shader.contains("VERTEX.z"), "clouds drift along u only")
+	_free(dressing)
+
+
 func test_the_rooftop_lot_stands_on_the_rooftop() -> void:
 	var lot: LotDef = load(LOT) as LotDef
 	assert_eq(lot.street_preset, ROOFTOP)

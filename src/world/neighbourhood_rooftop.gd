@@ -71,9 +71,16 @@ const MID: float = 72.0
 ## The highest any other building's roof reaches (we are the tallest tower in town);
 ## the tallest of them carry a mast with an aircraft light.
 const TOWER_TOP: float = -0.6
-## Clouds drift past this far below the roof (top and bottom of their band).
-const CLOUD_HIGH: float = -8.0
-const CLOUD_LOW: float = -21.0
+## Clouds lie far off only (#618): deep down among the city's roofs (top and bottom of
+## their band, metres below the roof), in two bands either side of the tower that keep
+## at least CLOUD_GAP clear of its faces across their whole drift and run CLOUD_BAND
+## deep, so none drifts just under the roof or through the tower; CLOUD_HAZE of the
+## haze colour lies over them so they read as far off.
+const CLOUD_HIGH: float = -24.0
+const CLOUD_LOW: float = -40.0
+const CLOUD_GAP: float = 10.0
+const CLOUD_BAND: float = 30.0
+const CLOUD_HAZE: float = 0.45
 ## The plane's height and its path's closest pass to the tower.
 const PLANE_Y: float = 6.0
 const PLANE_PASS: float = 27.0
@@ -264,7 +271,9 @@ func build(parent: Node3D) -> void:
 		city.add_child(chunk)
 	var clouds: MeshInstance3D = _instance("Clouds", meshes["clouds"], _cloud_material)
 	# Each puff drifts in the shader, far from where its mesh says it is.
-	clouds.custom_aabb = AABB(Vector3(centre().x - 120.0, CLOUD_LOW - 4.0, centre().y - 120.0), Vector3(240.0, 30.0, 240.0))
+	var reach: float = roof.size.y * 0.5 + CLOUD_GAP + CLOUD_BAND + 2.0
+	clouds.custom_aabb = AABB(Vector3(centre().x - 120.0, CLOUD_LOW - 4.0, centre().y - reach),
+		Vector3(240.0, CLOUD_HIGH - CLOUD_LOW + 16.0, reach * 2.0))
 	_add(clouds)
 	_bulb_glow = _instance("BulbGlow", meshes["bulbs"], _bulb_material)
 	_bulb_glow.extra_cull_margin = 1.0
@@ -1433,7 +1442,8 @@ func _traffic_sprites() -> ArrayMesh:
 	return _sprites(points, sizes, tints, axes)
 
 
-## Clouds below the roof: a few chunky puffs each, drifting along u (UV2: home, speed).
+## Distant clouds (#618): a few chunky puffs each, drifting along u (UV2: home, speed),
+## in two bands far off on either side of the tower (z), never under the roof itself.
 func _clouds() -> ArrayMesh:
 	var vertices: PackedVector3Array = PackedVector3Array()
 	var colours: PackedColorArray = PackedColorArray()
@@ -1443,9 +1453,12 @@ func _clouds() -> ArrayMesh:
 	for index: int in skin.clouds:
 		var pen: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
 		var home: float = c.x + (_r(index, 401) - 0.5) * 160.0
-		var z: float = c.y + (float(index) / float(maxi(skin.clouds - 1, 1)) - 0.5) * 110.0 + (_r(index, 402) - 0.5) * 8.0
+		var size: float = 2.2 + 1.8 * _r(index, 404)
+		# Alternate sides; the puffs reach about `size` across, so keep that inside the band.
+		var side: float = -1.0 if index % 2 == 0 else 1.0
+		var near: float = roof.size.y * 0.5 + CLOUD_GAP + size
+		var z: float = c.y + side * lerpf(near, near + CLOUD_BAND - size * 2.0, _r(index, 402))
 		var y: float = lerpf(CLOUD_HIGH, CLOUD_LOW, _r(index, 403))
-		var size: float = 3.0 + 3.5 * _r(index, 404)
 		var puffs: int = 7 + int(_r(index, 405) * 5.0)
 		for puff: int in puffs:
 			var t: float = float(puff) / float(puffs - 1) - 0.5
@@ -1750,6 +1763,9 @@ func _apply_night() -> void:
 	var dusk: Color = skin.cloud.lerp(skin.haze_dusk, 0.55)
 	var tint: Color = skin.cloud.lerp(dusk, clampf(_night * 2.0, 0.0, 1.0)) if _night < 0.5 else dusk.lerp(skin.haze_night.lightened(0.25), _night * 2.0 - 1.0)
 	_cloud_material.set_shader_parameter(&"tint", tint)
+	var haze: Color = skin.haze_day.lerp(skin.haze_dusk, _night * 2.0) if _night < 0.5 else skin.haze_dusk.lerp(skin.haze_night, _night * 2.0 - 1.0)
+	_cloud_material.set_shader_parameter(&"haze", haze)
+	_cloud_material.set_shader_parameter(&"haze_mix", CLOUD_HAZE)
 	_cloud_material.set_shader_parameter(&"opacity", lerpf(0.82, 0.2, _night))
 	# Unlit glows still cost a blended pass: hide them by day.
 	var lit: bool = _night > 0.05
