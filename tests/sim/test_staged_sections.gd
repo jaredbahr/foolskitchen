@@ -4,7 +4,7 @@ extends TestCase
 ## fails here until `_filled()` sets it and `clear()` or `clear_site()` resets it.
 
 ## The sections a site switch stages (`SiteSections.PER_SITE` as fields).
-const PER_SITE: PackedStringArray = ["layout", "tray_level", "lease_expanded", "site_hours", "menu",
+const PER_SITE: PackedStringArray = ["layout", "tray_level", "lease_expanded", "site_hours", "menu", "evening_schedule",
 	"daily_special", "signature", "staff", "plates", "reputation", "regulars", "reorder", "deliveries",
 	"demand", "viral", "business_history", "shop_records", "cat", "inspection", "critic", "group_booking",
 	"rush_hour", "aquarium"]
@@ -21,6 +21,7 @@ func _filled() -> StagedSections:
 	shelf.lease_expanded = true
 	shelf.site_hours = {"open_minute": 600, "close_minute": 1200, "open_ticks": 6000}
 	shelf.menu = MenuSettings.new()
+	shelf.evening_schedule = EveningSchedule.new()
 	shelf.daily_special = {"day": 3}
 	shelf.signature = SignatureState.new()
 	shelf.staff = StaffRoster.new()
