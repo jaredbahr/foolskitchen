@@ -172,6 +172,67 @@ func test_walkins_eating_before_hold_and_at_slot_drain_through_real_bussing_then
 		"sales": total_sales, "all_six_paid": _paid_members.size() == 6}))
 
 
+func test_paid_booking_members_can_drop_change_and_the_booking_tip_stays_at_its_base_rate() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var prepared: Dictionary = SOAK.prepare(tree, 316, SLOT_MINUTE)
+	assert_false(prepared.has("error"), String(prepared.get("error", "")))
+	if prepared.has("error"):
+		return
+	_main = prepared["main"]
+	var booking: GroupBooking = prepared["booking"]
+	var sim: RestaurantSim = _main.get("sim") as RestaurantSim
+	var counter: PlacedItem = ShopBuilder.items_with_def(sim.world, &"pass_counter")[0]
+	(_main.get("shop_editor") as ShopEditor).set_owner_level(2)
+	assert_true(_main.call("shop_buy", &"tip_jar", counter.origin))
+	Clock.sim.open_ticks = 1
+	Clock.sim.last_orders_max_ticks = 1
+	assert_true(Clock.sim.start_service())
+	sim.spawner._remaining = 100000
+	var booking_id: int = int(booking.booking["booking_id"])
+	var randoms: Array[RandomNumberGenerator] = []
+	for index: int in Party.MAX_SIZE:
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 61 + index
+		randoms.append(random)
+	var recipe: StringName = sim.menu[0].id
+	var party: Party = sim.add_party(sim.world.grid.entries()[0], randoms, null,
+		RecipeDef.FOOD, booking_id, recipe)
+	assert_not_null(party)
+	if party == null:
+		return
+	var expected_change: int = 0
+	var members: Array[CustomerAgent] = PartySeating.members(party, sim.world)
+	for index: int in members.size():
+		var guest: CustomerAgent = members[index]
+		var control: RandomNumberGenerator = RandomNumberGenerator.new()
+		control.seed = guest.rng.seed
+		control.state = guest.rng.state
+		if control.randf() < RestaurantSim.TIP_JAR_TUNING.drop_chance:
+			expected_change += RestaurantSim.TIP_JAR_TUNING.drop_amount
+		var order: Order = Order.new()
+		order.recipe_id = recipe
+		order.price = 10 if index == 0 else 12
+		sim.pay(guest, order)
+		assert_eq(guest.rng.state, control.state, "each booked payer uses their own stream")
+	assert_eq(sim.tip_jar_total(), expected_change)
+	assert_eq(_main.get("_booking_paid_total"), 70)
+	# Supply the review result so the fixture targets the payment paths.
+	_main.call("_settle_booking", booking_id, {"good_service": true, "stars": 5})
+	assert_false(booking.has_active_booking())
+	_main.call("_settle_booking", booking_id, {"good_service": true, "stars": 5})
+	var day: int = Clock.sim.day
+	assert_eq(Economy.ledger.day_totals(day).get(Ledger.TIP), 11)
+	_main.call("run_ticks", 5)
+	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
+	var report: DayReport = _main.get("shown_report") as DayReport
+	assert_not_null(report)
+	if report == null:
+		return
+	assert_eq(report.income.get(Ledger.TIP), 11 + expected_change)
+	assert_eq(report.tip_jar_bonus, expected_change if expected_change > 0 else -1)
+
+
 func _advance_to(minute: int) -> void:
 	var target_tick: int = ceili(float(minute - Clock.sim.display_open_minute) \
 		/ float(Clock.sim.display_close_minute - Clock.sim.display_open_minute) * Clock.sim.open_ticks)
