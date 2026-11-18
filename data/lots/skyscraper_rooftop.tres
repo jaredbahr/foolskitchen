@@ -24,4 +24,5 @@ guest_mix = Dictionary[StringName, float]({
 &"student": 0.1
 })
 upstairs_allowed = false
+street_preset = "res://data/streets/rooftop.tres"
 tags = Array[StringName]([&"rooftop"])

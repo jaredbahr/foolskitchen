@@ -196,6 +196,9 @@ var _built_rect: Rect2i = Rect2i()
 var _walk_y: float = 0.055
 ## Each neighbour's own bulbs (#600), by id, for the ones that have any.
 var _neighbour_lamps: Dictionary[StringName, MeshInstance3D] = {}
+## The city rooftop (#614), when the street's preset names one: its root and builder.
+var _rooftop_root: Node3D
+var _rooftop: NeighbourhoodRooftop
 
 
 func _init() -> void:
@@ -223,6 +226,11 @@ func has_promenade() -> bool:
 ## True when the street's preset is a woodland clearing with a forest track (#607).
 func has_forest() -> bool:
 	return preset != null and preset.forest != null
+
+
+## True when the street's preset is a city rooftop (#614).
+func has_rooftop() -> bool:
+	return preset != null and preset.rooftop != null
 
 
 ## The lot's current lease and first lease (#611), for a woodland's land stands. Takes
@@ -265,6 +273,8 @@ func rebuild() -> void:
 	if has_forest():
 		key.append(preset.forest.signature())
 		key.append([_lease, _first_lease])
+	if has_rooftop():
+		key.append(preset.rooftop.signature())
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -315,12 +325,15 @@ func rebuild() -> void:
 		far_count += 1
 	far_count = maxi(far_count, count)
 	_visual_half = float(far_count) * road_box.size.x * 0.5
-	_traffic = not has_promenade() and not has_forest()
+	_traffic = not has_promenade() and not has_forest() and not has_rooftop()
 	_promenade = NeighbourhoodPromenade.new(preset.promenade, street_set) if has_promenade() else null
 	_walk_y = _paving_top
 	if has_forest():
 		# A woodland clearing (#607): no road, pavement, kerbs or neighbours; a dirt track.
 		_walk_y = NeighbourhoodForest.WALK_Y
+		_clear_street_ground()
+	elif has_rooftop():
+		# A city rooftop (#614): no road, pavement, kerbs or neighbours at roof level.
 		_clear_street_ground()
 	elif _traffic:
 		_build_road(road_prop, road_box, count)
@@ -330,7 +343,7 @@ func rebuild() -> void:
 		# A promenade: one sweep of paving from the shop fronts to the far edge, no road.
 		_build_paving(paving, paving_box, PAVING_START, FAR_START + FAR_DEPTH - PAVING_START, "NearPavement", true)
 		_far_pavement = _near_pavement
-	if not has_forest():
+	if not has_forest() and not has_rooftop():
 		_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
 	_build_planks()
 	_build_promenade_pattern()
@@ -342,6 +355,8 @@ func rebuild() -> void:
 	paving.free()
 	if has_forest():
 		_build_forest()
+	elif has_rooftop():
+		_build_rooftop()
 	else:
 		_build_kerbs(road_box.size.x, count)
 		_build_buildings()
@@ -349,7 +364,7 @@ func rebuild() -> void:
 		_build_ground()
 	_ensure_actors()
 	_build_routes()
-	if not has_forest():
+	if not has_forest() and not has_rooftop():
 		_build_lamps()
 		_build_furniture()
 		_build_life()
@@ -364,6 +379,7 @@ func rebuild() -> void:
 	_life_root.visible = _configured
 	_shore_root.visible = _configured
 	_forest_root.visible = _configured
+	_rooftop_root.visible = _configured
 	_apply_night()
 	_apply_time(_effective_time())
 
@@ -400,6 +416,9 @@ func _ensure_roots() -> void:
 	_forest_root = Node3D.new()
 	_forest_root.name = "Forest"
 	add_child(_forest_root)
+	_rooftop_root = Node3D.new()
+	_rooftop_root.name = "Rooftop"
+	add_child(_rooftop_root)
 
 
 func _clear_static() -> void:
@@ -420,6 +439,10 @@ func _clear_static() -> void:
 		_forest_root.remove_child(child)
 		child.free()
 	_forest = null
+	for child: Node in _rooftop_root.get_children():
+		_rooftop_root.remove_child(child)
+		child.free()
+	_rooftop = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -467,6 +490,7 @@ func _hide_actors() -> void:
 	_life_root.hide()
 	_shore_root.hide()
 	_forest_root.hide()
+	_rooftop_root.hide()
 	if car != null:
 		car.hide()
 
@@ -1225,6 +1249,7 @@ static func clear_mesh_cache() -> void:
 	_mesh_cache.clear()
 	_window_cache.clear()
 	NeighbourhoodForest.clear_cache()
+	NeighbourhoodRooftop.clear_cache()
 
 
 ## The key light's ground run per metre of height, in the street's local (u, z).
@@ -1356,6 +1381,9 @@ func _plan_walkers() -> void:
 	_walk_speeds.clear()
 	_walk_strides.clear()
 	_walk_phases.clear()
+	if has_rooftop():
+		# Nobody strolls past at roof level: guests come up in the lift (#614).
+		return
 	if _traffic:
 		for index: int in 3:
 			_walk_kinds.append(&"stroll")
@@ -1734,6 +1762,8 @@ func _apply_night() -> void:
 		_shore.set_night(_night, _late)
 	if _forest != null:
 		_forest.set_night(_night, _late)
+	if _rooftop != null:
+		_rooftop.set_night(_night, _late)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
@@ -1918,6 +1948,8 @@ func _apply_time(seconds: float) -> void:
 		_shore.apply(seconds)
 	if _forest != null:
 		_forest.apply(seconds)
+	if _rooftop != null:
+		_rooftop.apply(seconds)
 	var walkers: int = _walk_kinds.size()
 	if walkers == 0 or pedestrians.size() != walkers or _routes.size() != walkers or car == null:
 		return
@@ -2118,6 +2150,29 @@ func stand_bounds(id: StringName) -> AABB:
 		return AABB()
 	var area: Rect2 = entry.crowns
 	return _frame * AABB(Vector3(area.position.x, 0.0, area.position.y), Vector3(area.size.x, 4.0, area.size.y))
+
+
+# --- the city rooftop (#614) ---------------------------------------------------
+
+## The roof, its lobby, terrace and plant, and the city below, built on the street frame.
+func _build_rooftop() -> void:
+	_rooftop_root.transform = _frame
+	_rooftop = NeighbourhoodRooftop.new()
+	_rooftop.skin = preset.rooftop
+	_rooftop.salt = street_set.seed_salt
+	_rooftop.local_reserve = _local_reserve
+	_rooftop.shift = _shift
+	_rooftop.light_shift = _compute_light_shift()
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_rooftop.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	_rooftop.building = _local_cells(_built_rect)
+	_rooftop.build(_rooftop_root)
+
+
+func rooftop() -> NeighbourhoodRooftop:
+	return _rooftop
 
 
 ## Where the street's walkers are now (#596), for tests and tools: their kind, position

@@ -20,6 +20,8 @@ extends "res://src/world/main.gd"
 ## buying it would but without the deposit, so a woodland's land stands show felled.
 ## SEASIDE_STREET_WALLS=up shows the shop's walls at full height (a woodland's log
 ## cabin, #611) instead of the cutaway.
+## SEASIDE_STREET_LOT=<lot id> reviews another lot instead of the seaside cliff (for
+## example skyscraper_rooftop, the city rooftop, #614).
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
@@ -40,17 +42,20 @@ func _ready() -> void:
 	super._ready()
 	if OS.get_environment("SEASIDE_STREET_REVIEW_HOME") == "1":
 		return
-	var lot: LotDef = _lot_def(SEASIDE)
+	var site: StringName = SEASIDE
+	if not OS.get_environment("SEASIDE_STREET_LOT").is_empty():
+		site = StringName(OS.get_environment("SEASIDE_STREET_LOT"))
+	var lot: LotDef = _lot_def(site)
 	var street_override: String = OS.get_environment("SEASIDE_STREET_PRESET")
 	if lot != null and not street_override.is_empty():
 		# This process only: the review saves nothing, so the loaded lot may change.
 		lot.street_preset = street_override
 	var sections: Dictionary = _new_site_sections(lot) if lot != null else {}
-	if sections.is_empty() or not site_book.add_site(SEASIDE, SEASIDE, lot.display_name, Clock.sim.day, sections):
+	if sections.is_empty() or not site_book.add_site(site, site, lot.display_name, Clock.sim.day, sections):
 		push_error("Seaside street review could not add the seaside site")
 		return
-	if not switch_site(SEASIDE):
-		push_error("Seaside street review could not switch to the seaside site: " + site_switch_refusal(SEASIDE))
+	if not switch_site(site):
+		push_error("Seaside street review could not switch to the seaside site: " + site_switch_refusal(site))
 		return
 	# The street is the subject: take the panels off the picture.
 	for panel: String in ["HUD", "Overlay", "Hints"]:
