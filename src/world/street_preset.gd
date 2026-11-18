@@ -20,6 +20,9 @@ const STARTER: String = "res://data/streets/starter.tres"
 ## A woodland clearing on a forest track instead of a street (#607): no road, cars,
 ## pavements or neighbouring buildings. None keeps the street.
 @export var forest: ForestSkin
+## An old watermill on a country lane instead of a street (#613): no road, town
+## traffic, pavements or neighbouring shops. None keeps the street.
+@export var country: CountrySkin
 ## A city rooftop instead of a street (#614): the shop on the roof of a tower, a lift
 ## lobby, a terrace and the city far below. No road, cars, pavements or neighbours.
 ## None keeps the street.
@@ -34,9 +37,10 @@ static func starter() -> StreetPreset:
 	return load(STARTER) as StreetPreset
 
 
-## True when cars drive past: every street but a promenade, a forest track or a rooftop.
+## True when cars drive past: every street but a promenade, a forest track, a
+## country lane (its tractor is no town traffic) or a rooftop.
 func has_traffic() -> bool:
-	return promenade == null and forest == null and rooftop == null
+	return promenade == null and forest == null and country == null and rooftop == null
 
 
 ## The preset at `path`, or the starter street when `path` is empty, missing or
@@ -114,6 +118,8 @@ func errors() -> PackedStringArray:
 		problems.append_array(shore.errors())
 	if forest != null:
 		problems.append_array(forest.errors())
+	if country != null:
+		problems.append_array(country.errors())
 	if rooftop != null:
 		problems.append_array(rooftop.errors())
 	for spec: StreetPropSpec in buildings.furniture:

@@ -312,6 +312,47 @@ nothing adds a light.
 | Cleared ground with young grass, tufts and a log stack | the meadow's patches (#421) | flat, plus the stack |
 | Hiker's backpack with a rolled mat | the promenade's pram and bike (#596) | about 60 |
 
+
+## Old Mill Street's country lane (#613)
+
+Code-built like the woodland (#607): chunky, flat-shaded, vertex-coloured meshes from
+boxes, drums, low-poly lumps and thin blades, with no textures, imported models or
+lights. Not files under `assets/made/`. Built in `src/world/neighbourhood_country.gd`;
+colours come from the country preset's `CountrySkin` in `data/streets/country.tres`,
+drawn from the shared swatches (Leaf, Moss, Forest, Sage, Oat, Sand, Birch, Honey,
+Butter, Sunflower, Walnut, Charcoal, Pewter, Milk, Cream, Peach, Tomato, Tangerine,
+Sky, Lilac, Teal, Terracotta, Navy, Wine) plus a few field greens, wheat golds and
+stone greys between them. People are unchanged Mini Characters; the bike is the
+promenade's (#596). The lanterns, the stand's lamp, the tractor's headlamps and the
+cottages' windows glow (the glowing-part exception); nothing adds a light. The Stone
+and timber wall finish is a pattern in `wall_finish.gdshader` (and `WallThumbnail`),
+not a model.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Lane (worn tarmac, crumbling edge, grass strip, patches) | the woodland's dirt track (#607) | flat |
+| Hedgerow length (one or two lumpy bushes, hawthorn blossom now and then) | the street's hedges (#421) | 12 to 30 |
+| Dry-stone wall length (battered sides in two courses, coping on edge) | the kit's soft box edges, the beach's rocks (#588) | about 22 |
+| Far boundary (one low box, hedge or wall) | the far street's simplified fronts (#424) | 10 |
+| Field (headland, crop fill and drill rows) or pasture (tussocks) | the meadow's patches (#421) | flat |
+| Meadow (long grass tufts, wild flowers, seed heads) | the woodland's tufts and flowers (#607) | 4 a tuft, 5 a flower |
+| Wheat row (ridged rows with ears along the top) | the dunes' blades (#588), as a crop | about 10 a 0.4 m piece |
+| Hay rows and round bales; stubble and straw bales; ploughed furrows; striped lawn | the woodland's log and cleared ground (#607) | flat; about 40 a bale |
+| Mill stream, mill pond, banks, reeds and stones | the woodland's stream and its shader (#607) | flat |
+| Waterwheel (two rims on spokes, sixteen paddles, hub) and its axle | the kit's wheel proportions, at mill size | about 360 |
+| Wheel pit (stone wall, timber trestle, pier, bearing) and launder trough on legs | the bridge parapets below, the woodland's footbridge (#607) | about 300 |
+| Weir (a lip of squared stones, stone wings, white water) | the beach's rocks (#588) | about 120 |
+| Stone bridge (coped parapets with a hump, end stones) | the dry-stone wall above | about 300 |
+| Farm gate (two posts, five bars, a brace and a latch) | the street's fences (#421) | about 140 |
+| Produce stand (table, pent roof with shingles, crates of produce, chalkboard A-board, honesty box, lantern) | the kit `table` proportions, the promenade's ice-cream cart (#596) | about 1,500 |
+| Lantern (iron frame, glowing glass) on a post | `lampWall`'s lantern (#423) | about 60 |
+| Millstone, bench, half-barrel flower tub, hand cart with flour sacks | the kit `bench`, the street's planters (#423) | 60 to 200 |
+| Oak (stout trunk, five lumpy balls) and weeping willow | the woodland's birch (#607), broader | about 180 |
+| Far cottage (whitewashed walls, thatch or slate roof, chimney, door, glowing windows, garden wall) | the street's houses (#421), single storey | about 200 |
+| Sheep (woolly body, dark legs and face that lowers to graze; one lamb) | the woodland's deer (#607), at sheep size | about 80 |
+| Swallow (body, beating wings) | the street's birds (#423) | about 16 |
+| Tractor with a trailer of hay bales (cab frame, exhaust, headlamps, turning wheels) | the street's car proportions (#423), at farm size | about 950 |
+
 ## City rooftop (#614)
 
 Code-built like the woodland (#607): chunky, flat-shaded, vertex-coloured meshes from

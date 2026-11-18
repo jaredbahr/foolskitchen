@@ -71,7 +71,8 @@ func test_every_lot_stands_on_a_valid_street() -> void:
 			assert_true(preset == load(lot.street_preset), "%s gets the preset it names" % lot.id)
 		else:
 			assert_true(preset == StreetPreset.starter(), "%s has none yet: the starter street" % lot.id)
-	assert_eq(load(LOTS + "town_fixer_upper.tres").street_preset, StreetPreset.STARTER, "a town lot names the starter street")
+	assert_eq(load(LOTS + "town_fixer_upper.tres").street_preset, "res://data/streets/country.tres",
+		"Old Mill Street names its country lane (#613)")
 
 
 func test_the_home_lot_and_a_missing_preset_fall_back_to_the_starter_street() -> void:
