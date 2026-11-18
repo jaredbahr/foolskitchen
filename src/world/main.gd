@@ -126,7 +126,10 @@ var build_mode: BuildMode = BuildMode.new()
 ## Player library is independent of the per-shop snapshot (FK-045).
 var blueprint_library: BlueprintLibrary = BlueprintLibrary.new()
 var _blueprint_load_notes: Array[String] = []
+const DAY_PARTS_TUNING: DayPartsTuning = preload("res://data/balance/day_parts.tres")
+
 var menu_presets: MenuPresetLibrary = MenuPresetLibrary.new()
+var evening_schedule: EveningSchedule = EveningSchedule.new()
 ## Cookable dishes/prices belong to this shop, never to shared recipe resources.
 var menu_settings: MenuSettings
 var daily_special: DailySpecial = DailySpecial.new()
@@ -503,6 +506,7 @@ func _bind_world_presentation() -> void:
 		preset_controls.load_requested.connect(_on_menu_preset_load_requested)
 		preset_controls.rename_requested.connect(_on_menu_preset_rename_requested)
 		preset_controls.delete_requested.connect(_on_menu_preset_delete_requested)
+		preset_controls.schedule_requested.connect(_on_evening_schedule_requested)
 	_menu_panel.set_special(daily_special.recipe_id())
 	if not _menu_panel.special_requested.is_connected(_on_special_requested):
 		_menu_panel.special_requested.connect(_on_special_requested)
@@ -925,6 +929,7 @@ func _connect_session() -> void:
 	sim.health_inspector_arrived.connect(_on_health_inspector_arrived)
 	sim.review_recorded.connect(_on_review_recorded)
 	sim.service_closed.connect(_on_service_closed)
+	sim.evening_service_started.connect(_on_evening_service_started)
 	if not world.board.task_completed.is_connected(_on_staff_task_completed):
 		world.board.task_completed.connect(_on_staff_task_completed)
 	if sim.kitchen != null:
@@ -989,6 +994,8 @@ func _exit_tree() -> void:
 		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim != null and sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
+	if sim != null and sim.evening_service_started.is_connected(_on_evening_service_started):
+		sim.evening_service_started.disconnect(_on_evening_service_started)
 	if EventBus.booking_accept_requested.is_connected(_on_booking_accept_requested):
 		EventBus.booking_accept_requested.disconnect(_on_booking_accept_requested)
 	if EventBus.booking_decline_requested.is_connected(_on_booking_decline_requested):
@@ -2990,6 +2997,7 @@ func _new_game() -> void:
 	$HUD.set_menu_notice("")
 	_blueprint_load_notes.clear()
 	menu_presets = MenuPresetLibrary.new()
+	evening_schedule = EveningSchedule.new()
 	# A fresh clock and seed too, so a half-loaded save can't leave its day
 	# or random state behind.
 	Clock.sim = SimClock.new()
@@ -3296,6 +3304,7 @@ func _install_staged_sections(staged: StagedSite, with_globals: bool) -> void:
 	if not staged.hours_note.is_empty():
 		world.log_event(staged.hours_note)
 	menu_settings = staged.choices
+	evening_schedule = _staged.evening_schedule if _staged.evening_schedule != null else EveningSchedule.new()
 	daily_special = staged.special
 	_staged.daily_special = null
 	signature_state = staged.signature
@@ -3513,6 +3522,8 @@ func _disconnect_session() -> void:
 		sim.review_recorded.disconnect(_on_review_recorded)
 	if sim.service_closed.is_connected(_on_service_closed):
 		sim.service_closed.disconnect(_on_service_closed)
+	if sim.evening_service_started.is_connected(_on_evening_service_started):
+		sim.evening_service_started.disconnect(_on_evening_service_started)
 	if sim.kitchen != null and sim.kitchen.plates_changed.is_connected(_on_plates_changed):
 		sim.kitchen.plates_changed.disconnect(_on_plates_changed)
 	if sim.dock != null and sim.dock.stored.is_connected(_on_dock_stored):
@@ -4642,7 +4653,13 @@ func _restore_menu_presets(data: Dictionary) -> bool:
 
 
 func _capture_menu() -> Dictionary:
-	return menu_settings.to_dict() if menu_settings != null else {}
+	if menu_settings == null:
+		return {}
+	var data: Dictionary = menu_settings.to_dict()
+	var schedule: Dictionary = evening_schedule.to_save()
+	if not schedule.is_empty():
+		data["evening_schedule"] = schedule
+	return data
 
 
 func _capture_daily_special() -> Dictionary:
@@ -4658,7 +4675,17 @@ func _restore_daily_special(data: Dictionary) -> bool:
 func _restore_menu(data: Dictionary) -> bool:
 	var layout: ShopLayout = _staged.layout if _staged.layout != null else ORIGINAL_LAYOUT
 	var choices: MenuSettings = MenuSettings.new(_cookable_recipes(layout), owner_progress.effective_level())
-	if not choices.from_dict(data):
+	var menu_data: Dictionary = data
+	if data.has("evening_schedule"):
+		if not data["evening_schedule"] is Dictionary:
+			return false
+		var schedule: EveningSchedule = EveningSchedule.new()
+		if not schedule.restore(data["evening_schedule"]):
+			return false
+		_staged.evening_schedule = schedule
+		menu_data = data.duplicate()
+		menu_data.erase("evening_schedule")
+	if not choices.from_dict(menu_data):
 		return false
 	_staged.menu = choices
 	return true
@@ -5238,8 +5265,8 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 	sim.rush_hour.fit_to_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute)
 	if _menu_panel != null:
 		_menu_panel.set_rush_notice(sim.rush_hour.morning_notice())
-	if _menu_panel != null:
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
+		_refresh_evening_schedule_controls()
 	$HUD.refresh()
 	_staff_panel.set_wage_factor(OpeningHours.wage_factor(Clock.sim, HOURS_TUNING))
 	refresh_presentation()
@@ -5248,6 +5275,50 @@ func set_opening_hours(open_minute: int, close_minute: int) -> bool:
 
 func _on_hours_requested(open_minute: int, close_minute: int) -> void:
 	set_opening_hours(open_minute, close_minute)
+
+
+func set_evening_schedule(enabled: bool, minute: int, day: String, evening: String) -> bool:
+	if not can_edit_menu():
+		return false
+	if not enabled:
+		evening_schedule.enabled = false
+		return true
+	if not EveningSchedule.allowed_minute(minute, Clock.sim.display_open_minute,
+			Clock.sim.display_close_minute, HOURS_TUNING) or not DAY_PARTS_TUNING.is_valid():
+		return false
+	if not _schedule_preset_available(day) or not _schedule_preset_available(evening):
+		return false
+	evening_schedule.enabled = true
+	evening_schedule.minute = minute
+	evening_schedule.day_preset = day
+	evening_schedule.evening_preset = evening
+	var result: Dictionary = _apply_menu_preset(menu_presets.index_of_name(day))
+	_apply_menu_edit(bool(result["enabled_changed"]))
+	return true
+
+
+func _schedule_preset_available(preset_name: String) -> bool:
+	var preset: Dictionary = menu_presets.get_preset(menu_presets.index_of_name(preset_name))
+	for id: StringName in preset.get("enabled", []):
+		var dish: RecipeDef = menu_settings.recipe(id)
+		if dish != null and dish.unlock_level <= menu_settings.owner_level():
+			return true
+	return false
+
+
+func _evening_tick() -> int:
+	if not evening_schedule.enabled or not _schedule_preset_available(evening_schedule.day_preset) \
+			or not _schedule_preset_available(evening_schedule.evening_preset):
+		return 0
+	return evening_schedule.changeover_tick(Clock.sim, HOURS_TUNING)
+
+
+func _on_evening_service_started() -> void:
+	var result: Dictionary = _apply_menu_preset(menu_presets.index_of_name(evening_schedule.evening_preset))
+	_apply_menu_edit(bool(result.get("enabled_changed", false)))
+	$HUD.queue_toast("Evening service: dinner menu on")
+	# The walk-up hatch feature (#590) can close its hatches on
+	# RestaurantSim.evening_service_started, before this tick's orders.
 
 
 func _apply_menu(restaurant: RestaurantSim, choices: MenuSettings) -> void:
@@ -5362,16 +5433,22 @@ func menu_set_price(recipe_id: StringName, price: int) -> bool:
 func menu_load_preset(index: int) -> Dictionary:
 	if not can_edit_menu():
 		return {}
+	var result: Dictionary = _apply_menu_preset(index)
+	if result.is_empty():
+		return result
+	_apply_menu_edit(bool(result["enabled_changed"]))
+	if result["prices_changed"]:
+		_observe_opening(OpeningGoal.Condition.PRICE_CHANGED, 1.0)
+	return result
+
+
+func _apply_menu_preset(index: int) -> Dictionary:
 	var preset: Dictionary = menu_presets.get_preset(index)
 	if preset.is_empty():
 		return {}
 	var enabled: Array[StringName] = preset["enabled"]
 	var prices: Dictionary[StringName, int] = preset["prices"]
-	var result: Dictionary = menu_settings.apply_preset(enabled, prices)
-	_apply_menu_edit(bool(result["enabled_changed"]))
-	if result["prices_changed"]:
-		_observe_opening(OpeningGoal.Condition.PRICE_CHANGED, 1.0)
-	return result
+	return menu_settings.apply_preset(enabled, prices)
 
 
 func menu_reset_prices() -> bool:
@@ -5412,6 +5489,7 @@ func set_menu_visible(value: bool) -> bool:
 		_refresh_menu_details()
 		_menu_panel.set_drink_hints(drink_station_hints())
 		_menu_panel.preset_controls().set_names(menu_presets.names())
+		_refresh_evening_schedule_controls()
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 		_menu_panel.set_property_available(PropertyMarket.shown(owner_progress.career_tier))
 	_menu_panel.set_phase(Clock.sim.phase)
@@ -6094,6 +6172,7 @@ func _on_menu_preset_save_requested(preset_name: String) -> void:
 		return
 	var names: Array[String] = menu_presets.names()
 	controls.set_names(names, names.size() - 1)
+	_refresh_evening_schedule_controls()
 	controls.set_feedback("Menu preset saved.")
 
 
@@ -6122,19 +6201,61 @@ func _on_menu_preset_rename_requested(index: int, preset_name: String) -> void:
 	if not can_edit_menu():
 		return
 	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if _preset_used_by_enabled_schedule(index):
+		controls.set_feedback("Change the evening schedule before renaming this preset.")
+		return
 	if not menu_presets.rename(index, preset_name):
 		controls.set_feedback("This preset could not be renamed.")
 		return
 	controls.set_names(menu_presets.names(), index)
+	_refresh_evening_schedule_controls()
 	controls.set_feedback("Menu preset renamed.")
 
 
 func _on_menu_preset_delete_requested(index: int) -> void:
-	if not can_edit_menu() or not menu_presets.remove(index):
+	if not can_edit_menu():
 		return
 	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if _preset_used_by_enabled_schedule(index):
+		controls.set_feedback("Change the evening schedule before deleting this preset.")
+		return
+	if not menu_presets.remove(index):
+		return
 	controls.set_names(menu_presets.names(), index)
+	_refresh_evening_schedule_controls()
 	controls.set_feedback("Menu preset deleted.")
+
+
+func _preset_used_by_enabled_schedule(index: int) -> bool:
+	var preset: Dictionary = menu_presets.get_preset(index)
+	if preset.is_empty():
+		return false
+	var preset_name: String = preset["name"]
+	if evening_schedule.uses_preset(preset_name):
+		return true
+	for site: StringName in site_book.site_ids():
+		if site == site_book.active_id:
+			continue
+		var menu: Dictionary = site_book.frozen_sections(site).get("menu", {})
+		var saved: Variant = menu.get("evening_schedule")
+		var schedule: EveningSchedule = EveningSchedule.new()
+		if saved is Dictionary and schedule.restore(saved) and schedule.uses_preset(preset_name):
+			return true
+	return false
+
+
+func _on_evening_schedule_requested(enabled: bool, minute: int, day: String, evening: String) -> void:
+	var controls: MenuPresetControls = _menu_panel.preset_controls()
+	if not set_evening_schedule(enabled, minute, day, evening):
+		controls.set_feedback("Choose a time during service and two menus you can serve.")
+		return
+	_refresh_evening_schedule_controls()
+	controls.set_feedback("Evening schedule set." if enabled else "Evening schedule off.")
+
+
+func _refresh_evening_schedule_controls() -> void:
+	_menu_panel.preset_controls().set_schedule(evening_schedule, Clock.sim.display_open_minute,
+		Clock.sim.display_close_minute, HOURS_TUNING.step_minutes)
 
 
 func _on_menu_reset_prices_requested() -> void:
@@ -6408,6 +6529,12 @@ func _begin_morning() -> void:
 		$HUD.queue_toast(line)
 	_held_opening_toasts.clear()
 	daily_special.begin_morning(Clock.sim.day)
+	sim.schedule_evening(0, null)
+	# Restore the day menu whenever it can serve, even if the changeover time is invalid today.
+	if evening_schedule.enabled and _schedule_preset_available(evening_schedule.day_preset):
+		# The overnight mode change governs which saved prices can be applied.
+		menu_settings.set_automatic_prices(not GameMode.is_creative() and difficulty.auto(&"prices"))
+		_apply_menu_preset(menu_presets.index_of_name(evening_schedule.day_preset))
 	_apply_menu(sim, menu_settings)
 	day_notes.clear_records_and_goals()
 	# Repeated setup of the SAME morning cannot create another attempt.
@@ -8171,6 +8298,12 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 	if phase == SimClock.Phase.MORNING:
 		_begin_morning()
 	elif phase == SimClock.Phase.OPEN:
+		var changeover: int = _evening_tick()
+		if changeover > 0:
+			# The morning already restored the day menu; keep the player's morning edits.
+			sim.schedule_evening(changeover, DAY_PARTS_TUNING)
+		elif evening_schedule.enabled:
+			$HUD.queue_toast("Evening schedule paused. Check the changeover time and saved menus.")
 		$HUD.set_menu_notice(menu_open_note())
 		_restock_station_supplies()
 		# Morning orders arrive at once; this only lands overdue orders from older saves.

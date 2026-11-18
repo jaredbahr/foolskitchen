@@ -45,6 +45,14 @@ func get_preset(index: int) -> Dictionary:
 	return _presets[index].duplicate(true)
 
 
+func index_of_name(name: String) -> int:
+	var folded_name: String = name.to_lower()
+	for index: int in _presets.size():
+		if String(_presets[index]["name"]).to_lower() == folded_name:
+			return index
+	return -1
+
+
 func rename(index: int, name: String) -> bool:
 	var normalized: String = MenuSettings.normalized_restaurant_name(name)
 	if index < 0 or index >= _presets.size() or normalized.is_empty() \

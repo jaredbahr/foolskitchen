@@ -8,7 +8,7 @@ extends RefCounted
 ## strength (FK-083). Types that like it weigh more; others are unchanged.
 static func choose(catalogue: CustomerTypeCatalogue, owner_level: int,
 		stars: float, rng: RandomNumberGenerator, theme: StringName = &"",
-		strength: float = 0.0) -> CustomerType:
+		strength: float = 0.0, evening: DayPartsTuning = null) -> CustomerType:
 	if catalogue == null or rng == null or owner_level < 1 \
 			or not catalogue.is_valid() or not is_finite(stars):
 		return null
@@ -17,6 +17,8 @@ static func choose(catalogue: CustomerTypeCatalogue, owner_level: int,
 	var total: float = 0.0
 	for kind: CustomerType in catalogue.types:
 		var weight: float = _arrival_weight(kind, owner_level, stars, theme, strength)
+		if evening != null:
+			weight *= evening.evening_guest_multipliers.get(kind.id, 1.0)
 		if weight <= 0.0:
 			continue
 		available.append(kind)
