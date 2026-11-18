@@ -75,6 +75,9 @@ This file is read by every coding agent (Codex, Claude and Claude's subagents). 
 - Visual changes: attach screenshots from `bash tools/screenshot.sh` (needs `xvfb` and Mesa; if your environment lacks them, say so).
 - A new capture or review fixture is a scene (`tools/<name>_review.tscn`, run with `--scene=res://tools/<name>_review.tscn`) that parses its own options. Never add a flag to `tools/screenshot.gd`: its list is frozen and `tests/tools/test_screenshot_flags_frozen.gd` fails on a new one (#526).
 
+## Music
+- **No ambient sound in Suno music prompts** (Jared, 2026-11-18). Don't ask Suno for wind, waves, birds, rain, crowd chatter, background voices or any other sound of a place. It does them badly and it makes the track harder to work with. Describe the instruments and the mood.
+
 ## Art assets
 - `.glb` only, 1 unit = 1 m, Y-up, origin at the base centre, facing -Z. See `docs/TECH.md` section 3.
 - Use the Kenney kits in `assets/kenney/` (never edit them). New models or icons may be made **only** under `docs/ART_STYLE.md` §8 (Kenney style, in `assets/made/`), and only when the issue names the item.
