@@ -98,6 +98,50 @@ vec3 logs(vec2 p, vec3 base, vec3 chink, float fw) {
 	return mix(colour, chink, line_cover(seam, 0.006, fw) * fade);
 }
 
+// 6: a country mill's wall (#613): rubble stone to 0.78 m in courses of mixed
+// heights, each stone its own tone with pale mortar round it; an oak sill beam;
+// then upright timber boards (the accent) to the top, each with a lit edge.
+vec3 mill(vec2 p, vec3 base, vec3 timber, float fw) {
+	float stone_top = 0.78;
+	float beam_top = 0.86;
+	if (p.y < stone_top) {
+		// Courses: three heights in turn, so the stone reads as laid by hand.
+		float course = floor(p.y / 0.13);
+		float lift = fract(p.y / 0.13);
+		float tall = 0.13;
+		float row_seed = fract(sin(course * 17.31) * 4375.85);
+		float length = 0.17 + 0.13 * row_seed;
+		float u = p.x / length + row_seed * 3.7;
+		float stone = floor(u);
+		float h = fract(sin(stone * 12.9898 + course * 78.233) * 43758.5453);
+		// A short stone now and then: a vertical joint mid-stone.
+		float f = fract(u);
+		vec2 d = vec2(min(f, 1.0 - f) * length, min(lift, 1.0 - lift) * tall);
+		if (h > 0.72) {
+			d.x = min(d.x, abs(f - 0.5) * length);
+		}
+		vec3 tone = base * (0.86 + 0.2 * h);
+		// The lit top edge and the shaded foot of each stone.
+		tone *= lift > 0.78 ? 1.07 : (lift < 0.18 ? 0.9 : 1.0);
+		float fade = detail(0.1, fw);
+		vec3 mortar = min(base * 1.22, vec3(1.0));
+		float cover = max(line_cover(d.x, 0.009, fw), line_cover(d.y, 0.009, fw));
+		return mix(mix(base, tone, fade), mortar, cover * fade);
+	}
+	if (p.y < beam_top) {
+		float t = (p.y - stone_top) / (beam_top - stone_top);
+		vec3 beam = timber * (t > 0.7 ? 1.12 : (t < 0.25 ? 0.72 : 0.92));
+		return beam;
+	}
+	// Boards 0.11 m wide, a lit left edge and a dark gap.
+	float board = fract(p.x / 0.11);
+	float fade = detail(0.11, fw);
+	float n = floor(p.x / 0.11);
+	vec3 colour = timber * (0.94 + 0.1 * fract(sin(n * 91.7) * 4375.85));
+	colour = mix(colour, timber * 1.16, (1.0 - step(0.12, board)) * fade);
+	return mix(colour, timber * 0.55, line_cover(min(board, 1.0 - board) * 0.11, 0.005, fw) * fade);
+}
+
 void fragment() {
 	vec3 base = main_color.rgb;
 	vec3 accent = accent_color.rgb;
@@ -116,6 +160,8 @@ void fragment() {
 		colour = bond(p + vec2(0.0, 0.02), vec2(0.22, 0.075), 0.007, base, accent, fw);
 	} else if (pattern == 5) {
 		colour = logs(p, base, accent, fw);
+	} else if (pattern == 6) {
+		colour = mill(p, base, accent, fw);
 	}
 	if (preview) {
 		vec2 q = UV2;

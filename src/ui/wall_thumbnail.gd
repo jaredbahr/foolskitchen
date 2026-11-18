@@ -68,7 +68,39 @@ static func colour(pattern: int, p: Vector2, main: Color, accent: Color) -> Colo
 			elif t < 0.24:
 				tone *= 0.8
 			return _shade(main, tone)
+		WallStyleDef.Pattern.MILL:
+			return _mill(p, main, accent)
 	return main
+
+
+## A country mill's wall (#613), as in the shader: rubble stone with pale mortar to
+## 0.78 m, an oak sill beam, then upright timber boards in the accent colour.
+static func _mill(p: Vector2, main: Color, timber: Color) -> Color:
+	if p.y < 0.78:
+		var course: float = floorf(p.y / 0.13)
+		var lift: float = fposmod(p.y / 0.13, 1.0)
+		var row_seed: float = fposmod(sin(course * 17.31) * 4375.85, 1.0)
+		var length: float = 0.17 + 0.13 * row_seed
+		var u: float = p.x / length + row_seed * 3.7
+		var stone: float = floorf(u)
+		var h: float = fposmod(sin(stone * 12.9898 + course * 78.233) * 43758.5453, 1.0)
+		var f: float = fposmod(u, 1.0)
+		var dx: float = minf(f, 1.0 - f) * length
+		if h > 0.72:
+			dx = minf(dx, absf(f - 0.5) * length)
+		if dx < 0.009 or minf(lift, 1.0 - lift) * 0.13 < 0.009:
+			return Color(minf(main.r * 1.22, 1.0), minf(main.g * 1.22, 1.0), minf(main.b * 1.22, 1.0))
+		var tone: float = (0.86 + 0.2 * h) * (1.07 if lift > 0.78 else (0.9 if lift < 0.18 else 1.0))
+		return _shade(main, tone)
+	if p.y < 0.86:
+		var t: float = (p.y - 0.78) / 0.08
+		return _shade(timber, 1.12 if t > 0.7 else (0.72 if t < 0.25 else 0.92))
+	var board: float = fposmod(p.x / 0.11, 1.0)
+	if minf(board, 1.0 - board) * 0.11 < 0.005:
+		return _shade(timber, 0.55)
+	if board < 0.12:
+		return _shade(timber, 1.16)
+	return _shade(timber, 0.94 + 0.1 * fposmod(sin(floorf(p.x / 0.11) * 91.7) * 4375.85, 1.0))
 
 
 static func _bond(p: Vector2, size: Vector2, joint: float, main: Color, seam: Color) -> Color:

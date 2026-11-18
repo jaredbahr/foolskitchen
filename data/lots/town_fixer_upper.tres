@@ -7,7 +7,7 @@
 script = ExtResource("1_lot")
 id = &"town_fixer_upper"
 display_name = "Old Mill Street"
-blurb = "A big old bakery in the middle of town. Cheap, but it needs work before it can open."
+blurb = "An old watermill bakery on the lane out of town, its wheel still turning in the stream. Cheap, but it needs work before it can open."
 base_layout = ExtResource("2_layout")
 fixer_price = 6000
 renovation_bill = 2500
@@ -26,4 +26,4 @@ guest_mix = Dictionary[StringName, float]({
 })
 upstairs_allowed = true
 tags = Array[StringName]([])
-street_preset = "res://data/streets/starter.tres"
+street_preset = "res://data/streets/country.tres"
