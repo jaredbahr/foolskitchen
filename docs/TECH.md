@@ -1765,6 +1765,17 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   already in that colour into the default; the history's PAINT entry keeps
   the stored wall faces, or floor cells for floor paint, and puts them back
   on undo, so an unwind is exact).
+- **A lot's default wall finish (#611).** A street preset may name one
+  (`StreetPreset.wall_style`; the woodland's is `logs`, the Log finish,
+  pattern 5, $4, level 2 elsewhere). Main passes it to `ShopEditor.new(...,
+  wall_style_id)` (`ShopEditor.default_wall_style`, never saved: the lot gives
+  it on every load) as `WallFinishes.default_style`, so faces are stored only
+  where they differ from the lot's default and Build can still finish any
+  face otherwise, plain paint included. Replacing a default face refunds
+  nothing. `WallFinishView` draws every face (the facade's outside too) when
+  the default is not plain paint, in the finish's own colour until the shop
+  is painted; `ShopView` lays the same pattern round the shell's outside
+  (`wall_finish.gdshader` with `world_space`).
 - **Finish edits.** `ShopEditor.wall_lay_changes`/`wall_recolour_changes`
   build proposals on faces only; `check_wall_finishes`/`apply_wall_finishes`
   price them like floors: a new finish costs its price per face and refunds

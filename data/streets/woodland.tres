@@ -1,0 +1,164 @@
+[gd_resource type="Resource" script_class="StreetPreset" format=3]
+
+[ext_resource type="Script" path="res://src/world/street_prop_spec.gd" id="1_3yb7t"]
+[ext_resource type="Script" path="res://src/world/street_set.gd" id="2_fybrc"]
+[ext_resource type="Script" path="res://src/world/shop_style.gd" id="3_re4ll"]
+[ext_resource type="Script" path="res://src/world/forest_skin.gd" id="4_31dag"]
+[ext_resource type="Script" path="res://src/world/ground_skin.gd" id="5_wmsmf"]
+[ext_resource type="Script" path="res://src/world/street_preset.gd" id="6_frtll"]
+
+[sub_resource type="Resource" id="Resource_lsgme"]
+script = ExtResource("3_re4ll")
+id = &"bakery"
+wall = Color(0.9019608, 0.7843137, 0.4627451, 1)
+awning_a = Color(0.7803922, 0.4823529, 0.3568627, 1)
+awning_b = Color(0.9137255, 0.8627451, 0.7647059, 1)
+sign_board = Color(0.8470588, 0.772549, 0.6431373, 1)
+door = Color(0.7803922, 0.4823529, 0.3568627, 1)
+
+[sub_resource type="Resource" id="Resource_oefd1"]
+script = ExtResource("3_re4ll")
+id = &"florist"
+wall = Color(0.7098039, 0.8392157, 0.7490196, 1)
+awning_a = Color(0.4670588, 0.5447058, 0.44588232, 1)
+awning_b = Color(0.9137255, 0.8627451, 0.7647059, 1)
+sign_board = Color(0.9058824, 0.7019608, 0.6823529, 1)
+door = Color(0.2470588, 0.5882353, 0.5647059, 1)
+accent = 1
+
+[sub_resource type="Resource" id="Resource_7512t"]
+script = ExtResource("3_re4ll")
+id = &"toy_shop"
+wall = Color(0.6862745, 0.7764706, 0.8392157, 1)
+awning_a = Color(0.8901961, 0.5803922, 0.2666667, 1)
+awning_b = Color(0.9019608, 0.7843137, 0.4627451, 1)
+sign_board = Color(0.9137255, 0.8627451, 0.7647059, 1)
+door = Color(0.8447059, 0.4236862, 0.33741173, 1)
+accent = 5
+
+[sub_resource type="Resource" id="Resource_6eelq"]
+script = ExtResource("3_re4ll")
+id = &"pet_shop"
+wall = Color(0.8419607, 0.7935294, 0.87764704, 1)
+awning_a = Color(0.2470588, 0.5882353, 0.5647059, 1)
+awning_b = Color(0.9137255, 0.8627451, 0.7647059, 1)
+sign_board = Color(0.8470588, 0.772549, 0.6431373, 1)
+door = Color(0.8784314, 0.4980392, 0.4078431, 1)
+accent = 6
+
+[sub_resource type="Resource" id="Resource_hi8jo"]
+script = ExtResource("3_re4ll")
+id = &"sweet_shop"
+wall = Color(0.9058824, 0.7019608, 0.6823529, 1)
+awning_a = Color(0.7882353, 0.5843137, 0.5686275, 1)
+awning_b = Color(0.9137255, 0.8627451, 0.7647059, 1)
+sign_board = Color(0.9019608, 0.7843137, 0.4627451, 1)
+door = Color(0.50431377, 0.4007843, 0.4980392, 1)
+accent = 3
+
+[sub_resource type="Resource" id="Resource_mq6mb"]
+script = ExtResource("3_re4ll")
+id = &"tea_room"
+wall = Color(0.9137255, 0.8627451, 0.7647059, 1)
+awning_a = Color(0.42058825, 0.4705882, 0.56764704, 1)
+awning_b = Color(0.9490196, 0.9215686, 0.8666667, 1)
+sign_board = Color(0.7686275, 0.6627451, 0.5215686, 1)
+door = Color(0.8784314, 0.4980392, 0.4078431, 1)
+accent = 4
+
+[sub_resource type="Resource" id="Resource_j1pk1"]
+script = ExtResource("2_fybrc")
+seed_salt = 23
+wall_colors = Array[Color]([Color(0.9137255, 0.8627451, 0.7647059, 1), Color(0.9019608, 0.7843137, 0.4627451, 1), Color(0.9294118, 0.745098, 0.6117647, 1), Color(0.9058824, 0.7019608, 0.6823529, 1), Color(0.7098039, 0.8392157, 0.7490196, 1), Color(0.6862745, 0.7764706, 0.8392157, 1), Color(0.7686275, 0.6627451, 0.5215686, 1), Color(0.8470588, 0.772549, 0.6431373, 1), Color(0.8411765, 0.6882353, 0.67647064, 1)])
+roof_colors = Array[Color]([Color(0.82431376, 0.5858823, 0.48549014, 1), Color(0.77568626, 0.67450976, 0.39796078, 1), Color(0.62, 0.7, 0.6166667, 1), Color(0.5482353, 0.7529412, 0.73882353, 1), Color(0.66603917, 0.60047054, 0.71435297, 1), Color(0.6607058, 0.6025882, 0.50164706, 1), Color(0.80941176, 0.6258823, 0.6117647, 1), Color(0.7435295, 0.5960784, 0.4894118, 1)])
+door_colors = Array[Color]([Color(0.7803922, 0.4823529, 0.3568627, 1), Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.7882353, 0.6039216, 0.3333333, 1), Color(0.4352941, 0.5490196, 0.5764706, 1), Color(0.8784314, 0.4980392, 0.4078431, 1), Color(0.47333336, 0.36333334, 0.46666664, 1), Color(0.4078431, 0.4941176, 0.3843137, 1)])
+hedge_colors = Array[Color]([Color(0.45521566, 0.53458816, 0.4335686, 1), Color(0.4901961, 0.6666667, 0.3843137, 1), Color(0.49764708, 0.5823529, 0.49411762, 1), Color(0.3294118, 0.43882355, 0.3611765, 1)])
+bloom_colors = Array[Color]([Color(0.9019608, 0.7843137, 0.4627451, 1), Color(0.7882353, 0.5843137, 0.5686275, 1), Color(0.9137255, 0.8627451, 0.7647059, 1), Color(0.8784314, 0.4980392, 0.4078431, 1), Color(0.7882353, 0.6039216, 0.3333333, 1), Color(0.6862745, 0.7764706, 0.8392157, 1)])
+trim = Color(0.9490196, 0.9215686, 0.8666667, 1)
+glass = Color(0.5231372, 0.6286274, 0.6684314, 1)
+stone = Color(0.4980392, 0.4627451, 0.4313725, 1)
+path = Color(0.8266667, 0.7427451, 0.6188235, 1)
+wood = Color(0.53411764, 0.40643138, 0.3270588, 1)
+soil = Color(0.36705878, 0.25388235, 0.18352939, 1)
+laundry_colors = Array[Color]([Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.9058824, 0.7019608, 0.6823529, 1), Color(0.9019608, 0.7843137, 0.4627451, 1), Color(0.6862745, 0.7764706, 0.8392157, 1), Color(0.7098039, 0.8392157, 0.7490196, 1), Color(0.9027451, 0.59843135, 0.5262745, 1)])
+play_colors = Array[Color]([Color(0.8411765, 0.4105882, 0.32235292, 1), Color(0.8901961, 0.5803922, 0.2666667, 1), Color(0.9019608, 0.7843137, 0.4627451, 1), Color(0.32235292, 0.6294118, 0.6082353, 1), Color(0.61764705, 0.6988235, 0.7552941, 1), Color(0.8784314, 0.4980392, 0.4078431, 1)])
+window_glows = Array[Color]([Color(1, 0.82, 0.46, 1), Color(1, 0.74, 0.38, 1), Color(1, 0.88, 0.58, 1)])
+house_roofs = Array[int]([0, 1, 2, 3])
+shop_roofs = Array[int]([1, 4, 5, 6])
+house_heights = Array[float]([1.45, 1.65, 1.85])
+shop_heights = Array[float]([1.7, 1.95, 2.2])
+fences = Array[int]([0, 1, 2, 3])
+shops = Array[ExtResource("3_re4ll")]([SubResource("Resource_lsgme"), SubResource("Resource_oefd1"), SubResource("Resource_7512t"), SubResource("Resource_6eelq"), SubResource("Resource_hi8jo"), SubResource("Resource_mq6mb")])
+metal = Color(0.6117647, 0.6117647, 0.5882353, 1)
+signal_red = Color(0.8235294, 0.345098, 0.2470588, 1)
+bin_colors = Array[Color]([Color(0.2223529, 0.5294118, 0.5082353, 1), Color(0.4078431, 0.4941176, 0.3843137, 1), Color(0.4352941, 0.5490196, 0.5764706, 1)])
+birds = 0
+bird_colors = Array[Color]([Color(0.57647055, 0.46039218, 0.38823527, 1), Color(0.60470587, 0.6843137, 0.7035294, 1), Color(0.74333334, 0.4911765, 0.25568628, 1)])
+leaves = 0
+leaf_colors = Array[Color]([Color(0.7882353, 0.6039216, 0.3333333, 1), Color(0.8901961, 0.5803922, 0.2666667, 1), Color(0.4901961, 0.6666667, 0.3843137, 1), Color(0.8905882, 0.5482353, 0.4670588, 1)])
+
+[sub_resource type="Resource" id="Resource_jo87j"]
+script = ExtResource("4_31dag")
+forest_floor = Color(0.34, 0.39, 0.23, 1)
+floor_dark = Color(0.36, 0.33, 0.22, 1)
+moss = Color(0.37, 0.46, 0.25, 1)
+sun_fleck = Color(0.6, 0.66, 0.35, 1)
+grass = Color(0.55, 0.69, 0.36, 1)
+grass_light = Color(0.62, 0.74, 0.39, 1)
+grass_dark = Color(0.46, 0.6, 0.32, 1)
+track = Color(0.7384314, 0.5915686, 0.48274508, 1)
+track_edge = Color(0.54180396, 0.47623533, 0.42447057, 1)
+pebble = Color(0.8470588, 0.772549, 0.6431373, 1)
+pine_colors = Array[Color]([Color(0.25, 0.42, 0.29, 1), Color(0.3, 0.47, 0.32, 1), Color(0.27, 0.45, 0.3, 1), Color(0.35, 0.52, 0.33, 1), Color(0.4, 0.55, 0.33, 1), Color(0.22, 0.38, 0.28, 1)])
+trunk = Color(0.4705882, 0.3254902, 0.2352941, 1)
+leaf_colors = Array[Color]([Color(0.4901961, 0.6666667, 0.3843137, 1), Color(0.56, 0.7, 0.37, 1), Color(0.45, 0.62, 0.35, 1)])
+birch_bark = Color(0.9137255, 0.8627451, 0.7647059, 1)
+fern_colors = Array[Color]([Color(0.4, 0.58, 0.3, 1), Color(0.47, 0.64, 0.33, 1), Color(0.36, 0.52, 0.29, 1)])
+bush_colors = Array[Color]([Color(0.4078431, 0.4941176, 0.3843137, 1), Color(0.36, 0.5, 0.31, 1), Color(0.45, 0.58, 0.34, 1)])
+mushroom_caps = Array[Color]([Color(0.8235294, 0.345098, 0.2470588, 1), Color(0.7058824, 0.4431373, 0.2901961, 1), Color(0.7882353, 0.6039216, 0.3333333, 1), Color(0.8235294, 0.345098, 0.2470588, 1)])
+mushroom_stem = Color(0.9490196, 0.9215686, 0.8666667, 1)
+flower_colors = Array[Color]([Color(0.9019608, 0.7843137, 0.4627451, 1), Color(0.9490196, 0.9215686, 0.8666667, 1), Color(0.7568627, 0.6823529, 0.8117647, 1), Color(0.9058824, 0.7019608, 0.6823529, 1)])
+stone = Color(0.6117647, 0.6117647, 0.5882353, 1)
+stone_dark = Color(0.4980392, 0.4627451, 0.4313725, 1)
+water_deep = Color(0.2470588, 0.5, 0.52, 1)
+water_shallow = Color(0.45, 0.68, 0.64, 1)
+ripple = Color(0.86, 0.93, 0.9, 1)
+bank = Color(0.52862746, 0.41176474, 0.33411762, 1)
+timber = Color(0.7882353, 0.6039216, 0.3333333, 1)
+timber_dark = Color(0.4705882, 0.3254902, 0.2352941, 1)
+log_end = Color(0.8627451, 0.7411765, 0.5568627, 1)
+flame = Color(0.8901961, 0.5803922, 0.2666667, 1)
+flame_tip = Color(1, 0.86, 0.46, 1)
+ash = Color(0.3843137, 0.3529412, 0.3215686, 1)
+lamp_glow = Color(1, 0.8156863, 0.4588235, 1)
+firefly = Color(0.86, 0.95, 0.45, 1)
+blanket = Color(0.8235294, 0.345098, 0.2470588, 1)
+sign_paint = Color(0.9137255, 0.8627451, 0.7647059, 1)
+deer_coat = Color(0.6, 0.42, 0.28, 1)
+deer_pale = Color(0.9137255, 0.8627451, 0.7647059, 1)
+rabbit_coat = Color(0.6156863, 0.5411765, 0.4823529, 1)
+walkers = Array[StringName]([&"hike", &"cycle", &"hike", &"stroll", &"hike"])
+pack_colors = Array[Color]([Color(0.8235294, 0.345098, 0.2470588, 1), Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.9098039, 0.7372549, 0.2705882, 1), Color(0.227451, 0.2941176, 0.4235294, 1), Color(0.8901961, 0.5803922, 0.2666667, 1)])
+bike_colors = Array[Color]([Color(0.2470588, 0.5882353, 0.5647059, 1), Color(0.8235294, 0.345098, 0.2470588, 1)])
+
+[sub_resource type="Resource" id="Resource_vxod5"]
+script = ExtResource("5_wmsmf")
+grass = Color(0.6674978, 0.8041235, 0.42618543, 1)
+patch_light = Color(0.7190797, 0.79976535, 0.43422857, 1)
+patch_dark = Color(0.56363595, 0.6801211, 0.40943673, 1)
+lawn = Color(0.7089078, 0.80793196, 0.46025407, 1)
+forest = Color(0.38714877, 0.46639168, 0.24718757, 1)
+lane = Color(0.8466667, 0.74196076, 0.60990196, 1)
+lane_edge = Color(0.71120006, 0.6232471, 0.51231766, 1)
+trunk = Color(0.4705882, 0.3254902, 0.2352941, 1)
+leaf_dark = Color(0.5052894, 0.6089653, 0.3337704, 1)
+leaf_light = Color(0.6807979, 0.81195855, 0.44913802, 1)
+flowers = Array[Color]([Color(0.9019608, 0.7843137, 0.4627451, 1), Color(0.7882353, 0.5843137, 0.5686275, 1), Color(0.9137255, 0.8627451, 0.7647059, 1), Color(0.7827451, 0.5129411, 0.42039213, 1), Color(0.7882353, 0.6039216, 0.3333333, 1)])
+
+[resource]
+script = ExtResource("6_frtll")
+id = &"woodland"
+ground = SubResource("Resource_vxod5")
+buildings = SubResource("Resource_j1pk1")
+forest = SubResource("Resource_jo87j")
+wall_style = &"logs"

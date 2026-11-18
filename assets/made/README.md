@@ -274,3 +274,162 @@ screens join the street's lit-window glow; nothing adds a light.
 | Beach hut: boards, double doors, gable window, deck and a striped deckchair | `neighbourhood_terrace.gd` | the houses' front gable and the shop door (#422) |
 | Arcade front: open front with glowing cabinets, bulb-ringed parapet sign, rocket ride | `neighbourhood_terrace.gd` | the false-front roof (#422), the shop's awning, the street lamp's glow |
 | Closed and for sale: rolled-up awning, whitewashed window or roller shutter, agent's board on a post | `neighbourhood_terrace.gd` | the hatch shutter (#589), the shop sign board |
+
+## Woodland clearing (#607)
+
+Code-built like the beach (#588) and the promenade (#596): chunky, flat-shaded,
+vertex-coloured meshes from boxes, six- and seven-sided drums and cones, low-poly
+lumps and thin blades, with no textures, imported models or lights. Not files under
+`assets/made/`. Built in `src/world/neighbourhood_forest.gd`; colours come from the
+woodland preset's `ForestSkin` in `data/streets/woodland.tres`, drawn from the shared
+swatches (Forest, Leaf, Moss, Clay, Sand, Mushroom, Oat, Walnut, Honey, Birch, Cream,
+Milk, Pewter, Pebble, Charcoal, Tomato, Copper, Tangerine, Sunflower, Teal, Navy, Lilac,
+Butter, Blush) plus a few forest greens between them. People are unchanged Mini
+Characters. The bulbs, lantern, fire and fireflies glow (the glowing-part exception);
+nothing adds a light.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Pine (trunk and three or four stacked cones) | the street's pine trees (#424), taller | 26 to 40 |
+| Birch (pale trunk, two lumpy crowns) | the street's round trees (#424) | about 80 |
+| Fern, grass tuft, reed | the hedges' and dunes' thin blades (#588) | 12 to 18, 4 |
+| Toadstool cluster (stems and round caps) | the street furniture's lumps, at toy size | about 60 |
+| Mossy rock, fallen log with toadstools | the ground's lumps (#421), the log below | 24, about 60 |
+| Dirt track, side trail and stepping stones | the back lane (#421) | flat |
+| Stream (banks, stones, reeds) and its water | the sea's shader (#588), as a narrow strip | flat |
+| Plank footbridge (arched deck, stringers, posts and rails) | the beach's plank path (#588) | about 230 |
+| Finger post | the shop sign board, `lampRoundFloor` post | about 40 |
+| Timber deck (planks, fascia, step, posts, rails, crate table, mug, lantern) | the beach hut's deck (#596), `lampWall` lantern glow | about 500 |
+| Rocking chair (rockers, slatted back, arms; one with a folded blanket) | the kit `chair` proportions at seat height 0.27 | about 170 |
+| Woodpile on stakes and a pallet, chopping block with an axe, split pieces | the log below, the street's bench timber | about 900 |
+| Log (six bark sides, pale cut ends) | the kit's six-sided posts | 24 |
+| Fire pit (stone ring, ash bed, crossed logs, three log benches) and its flames | the beach's rocks (#588), kit lamp glow | about 450 |
+| String lights on four poles (sagging wire, bulbs and glow) | `string_lights_*.glb` (#240) | about 300 |
+| Firefly and bulb glow (camera-facing sprites, one mesh each) | the street lamps' halos (#423) | 2 each |
+| Deer (body, legs, scut; neck and head that lower to graze; a stag's antlers) | the promenade's dog (#596), at deer size | about 140 |
+| Rabbit (body, head, ears, white scut) | the street's birds (#423) | about 60 |
+| Stump, felled log, churned earth and sawdust (a stand felled) | the log above | 21 a stump |
+| Cleared ground with young grass, tufts and a log stack | the meadow's patches (#421) | flat, plus the stack |
+| Hiker's backpack with a rolled mat | the promenade's pram and bike (#596) | about 60 |
+
+
+## Old Mill Street's country lane (#613)
+
+Code-built like the woodland (#607): chunky, flat-shaded, vertex-coloured meshes from
+boxes, drums, low-poly lumps and thin blades, with no textures, imported models or
+lights. Not files under `assets/made/`. Built in `src/world/neighbourhood_country.gd`;
+colours come from the country preset's `CountrySkin` in `data/streets/country.tres`,
+drawn from the shared swatches (Leaf, Moss, Forest, Sage, Oat, Sand, Birch, Honey,
+Butter, Sunflower, Walnut, Charcoal, Pewter, Milk, Cream, Peach, Tomato, Tangerine,
+Sky, Lilac, Teal, Terracotta, Navy, Wine) plus a few field greens, wheat golds and
+stone greys between them. People are unchanged Mini Characters; the bike is the
+promenade's (#596). The lanterns, the stand's lamp, the tractor's headlamps and the
+cottages' windows glow (the glowing-part exception); nothing adds a light. The Stone
+and timber wall finish is a pattern in `wall_finish.gdshader` (and `WallThumbnail`),
+not a model.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Lane (worn tarmac, crumbling edge, grass strip, patches) | the woodland's dirt track (#607) | flat |
+| Hedgerow length (one or two lumpy bushes, hawthorn blossom now and then) | the street's hedges (#421) | 12 to 30 |
+| Dry-stone wall length (battered sides in two courses, coping on edge) | the kit's soft box edges, the beach's rocks (#588) | about 22 |
+| Far boundary (one low box, hedge or wall) | the far street's simplified fronts (#424) | 10 |
+| Field (headland, crop fill and drill rows) or pasture (tussocks) | the meadow's patches (#421) | flat |
+| Meadow (long grass tufts, wild flowers, seed heads) | the woodland's tufts and flowers (#607) | 4 a tuft, 5 a flower |
+| Wheat row (ridged rows with ears along the top) | the dunes' blades (#588), as a crop | about 10 a 0.4 m piece |
+| Hay rows and round bales; stubble and straw bales; ploughed furrows; striped lawn | the woodland's log and cleared ground (#607) | flat; about 40 a bale |
+| Mill stream, mill pond, banks, reeds and stones | the woodland's stream and its shader (#607) | flat |
+| Waterwheel (two rims on spokes, sixteen paddles, hub) and its axle | the kit's wheel proportions, at mill size | about 360 |
+| Wheel pit (stone wall, timber trestle, pier, bearing) and launder trough on legs | the bridge parapets below, the woodland's footbridge (#607) | about 300 |
+| Weir (a lip of squared stones, stone wings, white water) | the beach's rocks (#588) | about 120 |
+| Stone bridge (coped parapets with a hump, end stones) | the dry-stone wall above | about 300 |
+| Farm gate (two posts, five bars, a brace and a latch) | the street's fences (#421) | about 140 |
+| Produce stand (table, pent roof with shingles, crates of produce, chalkboard A-board, honesty box, lantern) | the kit `table` proportions, the promenade's ice-cream cart (#596) | about 1,500 |
+| Lantern (iron frame, glowing glass) on a post | `lampWall`'s lantern (#423) | about 60 |
+| Millstone, bench, half-barrel flower tub, hand cart with flour sacks | the kit `bench`, the street's planters (#423) | 60 to 200 |
+| Oak (stout trunk, five lumpy balls) and weeping willow | the woodland's birch (#607), broader | about 180 |
+| Far cottage (whitewashed walls, thatch or slate roof, chimney, door, glowing windows, garden wall) | the street's houses (#421), single storey | about 200 |
+| Sheep (woolly body, dark legs and face that lowers to graze; one lamb) | the woodland's deer (#607), at sheep size | about 80 |
+| Swallow (body, beating wings) | the street's birds (#423) | about 16 |
+| Tractor with a trailer of hay bales (cab frame, exhaust, headlamps, turning wheels) | the street's car proportions (#423), at farm size | about 950 |
+
+## City rooftop (#614)
+
+Code-built like the woodland (#607): chunky, flat-shaded, vertex-coloured meshes from
+boxes, eight- to fourteen-sided drums and cones, low-poly lumps and thin blades, with no
+textures, imported models or lights. Not files under `assets/made/`. Built in
+`src/world/neighbourhood_rooftop.gd`; colours come from the rooftop preset's
+`RooftopSkin` in `data/streets/rooftop.tres`, drawn from the shared swatches (Pewter,
+Pebble, Charcoal, Milk, Cream, Oat, Sand, Clay, Brick, Walnut, Cherry, Leaf, Sage,
+Moss, Forest, Blush, Butter, Lilac, Coral, Terracotta, Teal, Tomato, Navy, Slate blue,
+Powder blue, Sunflower) plus a few concrete greys and glass blues between them. The city's
+windows and haze are drawn by `src/world/city.gdshader` on plain boxes (no geometry per
+window). The bulbs, lobby board and glass, aircraft lights, street lights and car lights
+glow (the glowing-part exception); nothing adds a light.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Roof membrane (metre squares, seams), gravel border with drains, slab path | the street's paving (#421) | flat, about 1,100 |
+| Parapet with coping, posts and rail | the promenade's bollards and rail (#596) | about 700 |
+| Lift and stair lobby (cladding joints, glass band, lift doors and sidelights, stair door, canopy, lit board, overrun with louvres, roof vent) | the shop's own walls and door (`doorway`), the beach hut (#596) | about 450 |
+| Terrace deck (planks on a dark frame) | the woodland porch deck (#607) | flat, about 200 a deck |
+| Corten planter run with grasses, shrubs and flowers | the street's planters (#423) | about 250 a box |
+| Potted tree (round pot, slim trunk, four crown lumps) | the street's round trees (#424), `pottedPlant` | about 70 |
+| Bench (concrete blocks, slats, two cushions) | the street bench (#423) | about 90 |
+| Parasol (pole, base, eight striped panels with a valance) | the beach parasols (#588) | about 50 |
+| String lights on four posts (sagging wire, bulbs and glow) | the woodland's string lights (#607) | about 300 a deck |
+| Water tower (steel stand and braces, staved tank with hoops, conical roof, ladder) | the woodland's drums and cones (#607) | about 450 |
+| Air handler (louvred box, two fan housings with turning fans, duct into the roof) | the kit `kitchenFridge` proportions, laid on its side | about 250 |
+| Mushroom vent, vent stack with rain cap, gooseneck, satellite dish, skylight, pipe run | the woodland's toadstools and drums (#607) | 30 to 80 each |
+| Mast with red bands and aircraft light | the street lamp post (#423) | about 80 |
+| City block (a box with drawn windows; setbacks; a rim, stair housing and plant on near and mid roofs) | the street's houses (#421), as plain boxes | 10 a bare box |
+| Helipad (pad, ring, H, edge lights), roof garden (lawn, path, shrubs, trees), roof plant and water tanks | the pieces above at city scale | about 60 to 300 |
+| Office tower with a setback crown and a spire | the city block | about 40 |
+| Cloud (eight-sided puffs: shaded belly, lit dome), drifting in `city_cloud.gdshader` | the trees' lumps (#424), rounded | about 400 |
+| Pigeon (body, tail, feet, head that pecks and turns) | the street's birds (#423), at 1.6x life so it reads | about 60 |
+| Wheeling bird (body and two flapping wings), small plane with navigation lights | the street's birds (#423) | 12, about 70 |
+| Window, street-light, car and aircraft glow (camera-facing sprites, one mesh each) | the woodland's bulb glow (#607) | 2 each |
+
+## Seaside Cliff (#380)
+
+Code-built like the rooftop (#614): chunky, flat-shaded, vertex-coloured meshes from
+boxes, drums, low-poly lumps and thin blades, with no textures, imported models or
+lights. Not files under `assets/made/`. Built in `src/world/neighbourhood_cliff.gd`;
+colours come from the cliff preset's `CliffSkin` in `data/streets/cliff.tres`, drawn from
+the shared swatches and the existing street palettes (the beach's sea, sand and gulls,
+the country lane's stone, timber, grass and sheep). The sea is the beach's
+`src/world/sea.gdshader`. The lanterns, festoon bulbs, lighthouse lamp, boat lamp, car
+park lamp and cottage windows glow (the glowing-part exception); nothing adds a light.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Cliff face (strata stepping out in ledges and in under overhangs, turf lip, grassy ledges with sea pinks) | the woodland's banks (#607), the rooftop's haze (#614) | about 20,000 along the whole coast |
+| Boulders at the foot, the cove's beach | the beach's rocks (#588) | about 30 each |
+| Sea stacks (seven-sided strata columns with a turf cap, nesting gulls, sea pinks) | the cliff face | about 250 each |
+| Timber rail on white posts | the promenade's rail (#596), the rooftop's parapet rail (#614) | about 40 a post |
+| Dry-stone walls, stile, finger post | the country lane's walls and farm gate (#613) | about 60 a wall piece |
+| Lantern posts, festoon lights | the country lane's lanterns, the woodland's string lights (#607) | about 90, about 300 a run |
+| Bench, lifebuoy | the street bench (#423), the beach's ball (#588) | about 90, about 70 |
+| Wind-bent grass tufts, sea pinks (thrift), gorse, windswept thorn | the country lane's tufts and hedges (#613), the street's trees (#424) | 4, about 60, about 70, about 150 |
+| Lighthouse and keeper's cottage | the beach's lighthouse (#588), the street's houses (#421) | about 600 |
+| Fishing boat with wheelhouse, mast lamp and wake | the beach's sailboats (#588) | about 120 |
+| Gulls gliding level with the top | the beach's gulls (#588) | about 60 |
+| Car park (gravel, sleepers, parked cars, bus stop, lamp) | `compact_car.glb` proportions (#242), the street lamp (#423) | about 80 a car |
+
+## Pergola rain cover (#380)
+
+Two looks of the terrace's rain cover (D-decision 2 in #380), art only: the buildable
+item that wraps them is a later issue. Rebuild both with
+`blender --background --factory-startup --python tools/build_pergola.py` (or any Python
+with the `bpy` module), which also writes `pergola/pergola.metrics.json` (triangles,
+world sizes, materials and node names). Unchanged Furniture Kit material colours copied
+by name from the kit files; no textures, lights or emission. Each covers a 2 x 2 m patch
+(4 x 4 cells), origin at the base centre, front -Z, authored at world size divided by
+`ArtScale.FURNITURE_SCALE` so the wrapper's uniform scale gives it back. A table with its
+chairs and a standing person fit under either. Review: `SEASIDE_STREET_PERGOLA=1` in
+`tools/seaside_street_review.tscn` stands both over kit tables in front of the cliff café.
+
+| Asset | Nodes | Based on | Triangles | World size (w x h x d) |
+|---|---|---|---:|---|
+| `pergola/pergola_timber.glb` | `PergolaFrame` (posts on `metalDark` shoes, knee braces, beams, rafters in `woodDark`/`wood`), `PergolaCanvas` (`carpetWhite`) | `table` and `kitchenCabinet` wood, `benchCushion` cloth | 744 | 2.16 x 1.81 x 2.26 |
+| `pergola/pergola_awning.glb` | `AwningFrame` (`metal` poles on `metalDark` feet, rails, ridge), `AwningCanopy` (`carpetBlue`/`carpetWhite` stripes, scalloped valances, gable ends) | the #240 street awnings and #589 seaside hatch stripes, `lampRoundFloor` poles | 788 | 2.17 x 2.0 x 2.21 |

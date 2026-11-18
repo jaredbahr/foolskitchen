@@ -1,0 +1,65 @@
+{
+  "issue": 380,
+  "furniture_scale": 1.1,
+  "assets": {
+    "pergola_timber": {
+      "triangles": 744,
+      "budget": 1500,
+      "world_dimensions": [
+        2.16,
+        1.81,
+        2.256
+      ],
+      "materials": [
+        "carpetWhite",
+        "metalDark",
+        "wood",
+        "woodDark"
+      ],
+      "nodes": [
+        "PergolaCanvas",
+        "PergolaFrame"
+      ],
+      "nearest_kit": [
+        "table.glb",
+        "kitchenCabinet.glb (wood)",
+        "benchCushion.glb"
+      ],
+      "cover": [
+        2.0,
+        2.0
+      ],
+      "eaves": 1.55,
+      "top": 1.822
+    },
+    "pergola_awning": {
+      "triangles": 788,
+      "budget": 1500,
+      "world_dimensions": [
+        2.172,
+        2.0,
+        2.212
+      ],
+      "materials": [
+        "carpetBlue",
+        "carpetWhite",
+        "metal",
+        "metalDark"
+      ],
+      "nodes": [
+        "AwningCanopy",
+        "AwningFrame"
+      ],
+      "nearest_kit": [
+        "chairModernCushion.glb (carpetBlue)",
+        "lampRoundFloor.glb"
+      ],
+      "cover": [
+        2.0,
+        2.0
+      ],
+      "eaves": 1.36,
+      "top": 2.0
+    }
+  }
+}

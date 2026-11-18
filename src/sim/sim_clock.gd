@@ -70,12 +70,16 @@ func next_day() -> bool:
 func display_minutes() -> int:
 	match phase:
 		Phase.OPEN:
-			var progress: float = clampf(float(phase_tick) / float(maxi(open_ticks, 1)), 0.0, 1.0)
-			return display_open_minute + floori(progress * (display_close_minute - display_open_minute))
+			return open_display_minutes_at(phase_tick)
 		Phase.LAST_ORDERS, Phase.CLOSED:
 			return display_close_minute
 		_:
 			return display_open_minute
+
+
+func open_display_minutes_at(open_tick: int) -> int:
+	var progress: float = clampf(float(open_tick) / float(maxi(open_ticks, 1)), 0.0, 1.0)
+	return display_open_minute + floori(progress * (display_close_minute - display_open_minute))
 
 
 ## Includes configuration so loading a run preserves its day length.

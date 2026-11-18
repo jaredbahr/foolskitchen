@@ -404,13 +404,34 @@ func drawn_finish(face: Vector3i) -> FloorFinishes.Finish:
 	if _preview.has(face):
 		return _preview[face]
 	if _finishes != null:
-		return _finishes.finish(face)
+		var look: FloorFinishes.Finish = _finishes.finish(face)
+		return default_look(look) if _finishes.is_default(face) else look
 	return FloorFinishes.Finish.new(WallStyleDef.DEFAULT_ID, _shop_swatch, &"")
 
 
-## Faces drawn with a facing (stored or previewed), sorted.
+## A lot's default finish other than plain paint (#611, log walls) in a shop that was
+## never painted shows in the finish's own colour, not the authored cream.
+func default_look(look: FloorFinishes.Finish) -> FloorFinishes.Finish:
+	if look.style == WallStyleDef.DEFAULT_ID or not look.swatch.is_empty() or _content == null:
+		return look
+	var style: WallStyleDef = _content.wall_style(look.style)
+	if style == null or style.default_swatch.is_empty():
+		return look
+	return FloorFinishes.Finish.new(look.style, style.default_swatch, style.default_accent)
+
+
+## True when the lot's default finish is drawn (#611): it is not plain paint.
+func patterned_default() -> bool:
+	return _finishes != null and _finishes.default_style != WallStyleDef.DEFAULT_ID
+
+
+## Faces drawn with a facing (stored or previewed; every face, outside ones
+## included, when the lot's default is a pattern), sorted.
 func finished_faces() -> Array[Vector3i]:
 	var wanted: Dictionary[Vector3i, bool] = {}
+	if patterned_default():
+		for face: Vector3i in WallFaces.all(_grid, true):
+			wanted[face] = true
 	if _finishes != null:
 		for face: Vector3i in _finishes.faces():
 			wanted[face] = true

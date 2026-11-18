@@ -51,9 +51,15 @@ const PLANK_LIFT: float = 0.004
 const PROMENADE_LANES: Array[float] = [2.72, 3.58, 5.62, 6.5, 7.36]
 const PROMENADE_HALF: float = 0.38
 ## How fast each kind of promenade walker goes (m/s) and how fast their legs move.
-const WALKER_SPEEDS: Dictionary[StringName, float] = {&"stroll": 0.65, &"dog": 0.6, &"pram": 0.5, &"jog": 1.35, &"cycle": 1.9}
-const WALKER_STRIDES: Dictionary[StringName, float] = {&"stroll": 1.0, &"dog": 1.0, &"pram": 0.85, &"jog": 1.9, &"cycle": 1.0}
+const WALKER_SPEEDS: Dictionary[StringName, float] = {&"stroll": 0.65, &"dog": 0.6, &"pram": 0.5, &"jog": 1.35, &"cycle": 1.9, &"hike": 0.55}
+const WALKER_STRIDES: Dictionary[StringName, float] = {&"stroll": 1.0, &"dog": 1.0, &"pram": 0.85, &"jog": 1.9, &"cycle": 1.0, &"hike": 0.9}
+## The woodland track's walkers (#607): their guest looks, and a cyclist's pace on dirt.
+const FOREST_GUESTS: Array[int] = [2, 5, 8, 3, 10]
+const FOREST_CYCLE_SPEED: float = 1.5
 const PROMENADE_GUESTS: Array[int] = [1, 3, 6, 4, 7]
+## The country lane's walkers (#613): their guest looks, and a cyclist's pace on a lane.
+const COUNTRY_GUESTS: Array[int] = [9, 4, 11, 6]
+const COUNTRY_CYCLE_SPEED: float = 1.7
 ## The cyclist's seat height, how far ahead the dog trots (path metres) and its leash.
 const BIKE_SEAT: float = 0.3
 const DOG_LEAD: float = 0.75
@@ -108,6 +114,9 @@ var _frame: Transform3D = Transform3D.IDENTITY
 var _outward: Vector3 = Vector3.FORWARD
 var _tangent: Vector3 = Vector3.RIGHT
 var _reserve: AABB
+## The terrace's paved block beside and behind the lot (#600), street-local (u, z); empty
+## on a street without a terrace.
+var _paved: Rect2 = Rect2()
 var _local_reserve: AABB
 var _near_pavement: AABB
 var _road: AABB
@@ -174,6 +183,35 @@ var _promenade: NeighbourhoodPromenade
 var _neighbours: Dictionary[StringName, Node3D] = {}
 var _neighbour_plans: Dictionary[StringName, NeighbourhoodBuildings.Plan] = {}
 var _neighbour_states: Dictionary[StringName, int] = {}
+## The woodland clearing (#607), when the street's preset names a forest: its root,
+## its builder and the state each named stand of trees shows (kept across rebuilds).
+var _forest_root: Node3D
+var _forest: NeighbourhoodForest
+var _stand_states: Dictionary[StringName, int] = {}
+## The country lane (#613), when the street's preset names one: its root, its builder
+## and the state each named land plot shows (kept across rebuilds).
+var _country_root: Node3D
+var _country: NeighbourhoodCountry
+var _plot_states: Dictionary[StringName, int] = {}
+## The lot's current lease and its first, unexpanded one (#611), in grid cells: a
+## woodland grows land stands on the maximum lot's land outside the first lease, and
+## fells them once the current lease covers it. Empty: no land stands.
+var _lease: Rect2i = Rect2i()
+var _first_lease: Rect2i = Rect2i()
+## The shop's built cells' bounding rect (walls, floor and entrance), for the porch.
+var _built_rect: Rect2i = Rect2i()
+## The shop's built cells themselves (#619): the country's wheel house meets the wall they make.
+var _built_cells: Array[Vector2i] = []
+## Where the street's people walk (their feet): the paving, or a forest track.
+var _walk_y: float = 0.055
+## Each neighbour's own bulbs (#600), by id, for the ones that have any.
+var _neighbour_lamps: Dictionary[StringName, MeshInstance3D] = {}
+## The city rooftop (#614), when the street's preset names one: its root and builder.
+var _rooftop_root: Node3D
+var _rooftop: NeighbourhoodRooftop
+## The cliff top (#380), when the street's preset names one: its root and builder.
+var _cliff_root: Node3D
+var _cliff: NeighbourhoodCliff
 
 
 func _init() -> void:
@@ -196,6 +234,35 @@ func use_preset(value: StreetPreset) -> void:
 ## True when the street's preset is a car-free promenade (#596).
 func has_promenade() -> bool:
 	return preset != null and preset.promenade != null
+
+
+## True when the street's preset is a woodland clearing with a forest track (#607).
+func has_forest() -> bool:
+	return preset != null and preset.forest != null
+
+
+## True when the street's preset is an old watermill on a country lane (#613).
+func has_country() -> bool:
+	return preset != null and preset.country != null
+
+
+## True for open land with no street: a woodland clearing or a country lane. Neither has
+## a road, pavements, kerbs, neighbouring buildings, street lamps or street furniture.
+func _open_land() -> bool:
+	return has_forest() or has_country()
+## True when the street's preset is a city rooftop (#614).
+func has_rooftop() -> bool:
+	return preset != null and preset.rooftop != null
+## True when the street's preset is a cliff top over the sea (#380).
+func has_cliff() -> bool:
+	return preset != null and preset.cliff != null
+
+
+## The lot's current lease and first lease (#611), for a woodland's land stands. Takes
+## effect at the next `configure` or `rebuild`; other streets ignore it.
+func set_lease(current: Rect2i, first: Rect2i) -> void:
+	_lease = current
+	_first_lease = first
 
 
 func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictionary],
@@ -228,6 +295,16 @@ func rebuild() -> void:
 		street_set.signature(), preset.shore.signature() if has_shore() else ""]
 	if has_promenade():
 		key.append(preset.promenade.signature())
+	if has_forest():
+		key.append(preset.forest.signature())
+		key.append([_lease, _first_lease])
+	if has_country():
+		key.append(preset.country.signature())
+		key.append([_lease, _first_lease])
+	if has_rooftop():
+		key.append(preset.rooftop.signature())
+	if has_cliff():
+		key.append(preset.cliff.signature())
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -243,8 +320,11 @@ func rebuild() -> void:
 		_hide_actors()
 		return
 	var area: Rect2i = _maximum_lot
+	_built_rect = Rect2i()
+	_built_cells = built
 	for cell: Vector2i in built:
 		area = area.merge(Rect2i(cell, Vector2i.ONE)) if area.has_area() else Rect2i(cell, Vector2i.ONE)
+		_built_rect = _built_rect.merge(Rect2i(cell, Vector2i.ONE)) if _built_rect.has_area() else Rect2i(cell, Vector2i.ONE)
 	_reserve = AABB(Vector3(area.position.x * GridMath.CELL_SIZE, 0.0, area.position.y * GridMath.CELL_SIZE),
 		Vector3(area.size.x * GridMath.CELL_SIZE, ArtScale.WALL_HEIGHT, area.size.y * GridMath.CELL_SIZE))
 	_local_reserve = _frame.affine_inverse() * _reserve
@@ -276,9 +356,18 @@ func rebuild() -> void:
 		far_count += 1
 	far_count = maxi(far_count, count)
 	_visual_half = float(far_count) * road_box.size.x * 0.5
-	_traffic = not has_promenade()
+	_traffic = not has_promenade() and not _open_land() and not has_rooftop() and not has_cliff()
 	_promenade = NeighbourhoodPromenade.new(preset.promenade, street_set) if has_promenade() else null
-	if _traffic:
+	_walk_y = _paving_top
+	if _open_land():
+		# A woodland clearing (#607) or a country lane (#613): no road, pavement, kerbs or
+		# neighbours; a dirt track or a narrow lane.
+		_walk_y = NeighbourhoodForest.WALK_Y if has_forest() else NeighbourhoodCountry.WALK_Y
+		_clear_street_ground()
+	elif has_rooftop() or has_cliff():
+		# A city rooftop (#614) or a cliff top (#380): no road, pavement, kerbs or neighbours.
+		_clear_street_ground()
+	elif _traffic:
 		_build_road(road_prop, road_box, count)
 		_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
 		_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
@@ -286,7 +375,8 @@ func rebuild() -> void:
 		# A promenade: one sweep of paving from the shop fronts to the far edge, no road.
 		_build_paving(paving, paving_box, PAVING_START, FAR_START + FAR_DEPTH - PAVING_START, "NearPavement", true)
 		_far_pavement = _near_pavement
-	_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
+	if not _open_land() and not has_rooftop() and not has_cliff():
+		_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
 	_build_planks()
 	_build_promenade_pattern()
 	road_prop.free()
@@ -295,14 +385,25 @@ func rebuild() -> void:
 		_build_patio_paving(paving, paving_box, patio)
 	paving.clear_body_tint()
 	paving.free()
-	_build_kerbs(road_box.size.x, count)
-	_build_buildings()
-	_build_ground()
+	if has_forest():
+		_build_forest()
+	elif has_country():
+		_build_country()
+	elif has_rooftop():
+		_build_rooftop()
+	elif has_cliff():
+		_build_cliff()
+	else:
+		_build_kerbs(road_box.size.x, count)
+		_build_buildings()
+		_build_yard_fronts(built)
+		_build_ground()
 	_ensure_actors()
 	_build_routes()
-	_build_lamps()
-	_build_furniture()
-	_build_life()
+	if not _open_land() and not has_rooftop() and not has_cliff():
+		_build_lamps()
+		_build_furniture()
+		_build_life()
 	_build_shore()
 	_initialize_players()
 	_configured = build_error.is_empty()
@@ -313,6 +414,10 @@ func rebuild() -> void:
 	_traffic_root.visible = _configured and _traffic
 	_life_root.visible = _configured
 	_shore_root.visible = _configured
+	_forest_root.visible = _configured
+	_country_root.visible = _configured
+	_rooftop_root.visible = _configured
+	_cliff_root.visible = _configured
 	_apply_night()
 	_apply_time(_effective_time())
 
@@ -346,6 +451,18 @@ func _ensure_roots() -> void:
 	_shore_root = Node3D.new()
 	_shore_root.name = "Shore"
 	add_child(_shore_root)
+	_forest_root = Node3D.new()
+	_forest_root.name = "Forest"
+	add_child(_forest_root)
+	_country_root = Node3D.new()
+	_country_root.name = "Country"
+	add_child(_country_root)
+	_rooftop_root = Node3D.new()
+	_rooftop_root.name = "Rooftop"
+	add_child(_rooftop_root)
+	_cliff_root = Node3D.new()
+	_cliff_root.name = "Cliff"
+	add_child(_cliff_root)
 
 
 func _clear_static() -> void:
@@ -362,6 +479,22 @@ func _clear_static() -> void:
 		_shore_root.remove_child(child)
 		child.free()
 	_shore = null
+	for child: Node in _forest_root.get_children():
+		_forest_root.remove_child(child)
+		child.free()
+	_forest = null
+	for child: Node in _country_root.get_children():
+		_country_root.remove_child(child)
+		child.free()
+	_country = null
+	for child: Node in _rooftop_root.get_children():
+		_rooftop_root.remove_child(child)
+		child.free()
+	_rooftop = null
+	for child: Node in _cliff_root.get_children():
+		_cliff_root.remove_child(child)
+		child.free()
+	_cliff = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -373,6 +506,7 @@ func _clear_static() -> void:
 	_furniture.clear()
 	_neighbours.clear()
 	_neighbour_plans.clear()
+	_neighbour_lamps.clear()
 	_crowns.clear()
 	_building_signs.clear()
 	_shop_doors.clear()
@@ -388,6 +522,7 @@ func _clear_static() -> void:
 	_outward = Vector3.FORWARD
 	_tangent = Vector3.RIGHT
 	_reserve = AABB()
+	_paved = Rect2()
 	_local_reserve = AABB()
 	_near_pavement = AABB()
 	_road = AABB()
@@ -406,6 +541,10 @@ func _hide_actors() -> void:
 	_traffic_root.hide()
 	_life_root.hide()
 	_shore_root.hide()
+	_forest_root.hide()
+	_country_root.hide()
+	_rooftop_root.hide()
+	_cliff_root.hide()
 	if car != null:
 		car.hide()
 
@@ -781,6 +920,7 @@ func _build_buildings() -> void:
 	builder.lawn_shadow = (ground_skin.lawn if ground_skin != null else GroundSkin.standard().lawn).darkened(0.3)
 	builder.plan()
 	_building_boxes = builder.footprints()
+	_paved = NeighbourhoodTerrace.paved_block(builder)
 	_lot_boxes = builder.lots()
 	_building_casters = builder.casters()
 	_building_signs = builder.signs()
@@ -802,7 +942,11 @@ func _build_buildings() -> void:
 		if not _window_cache.has(key):
 			# The window meshes were dropped on their own: regenerate them without the buildings.
 			for plan: NeighbourhoodBuildings.Plan in builder.plans:
-				builder.build_mesh(plan).free()
+				if String(plan.neighbour_id).is_empty():
+					builder.build_mesh(plan).free()
+				else:
+					for part: MeshInstance3D in builder.build_parts(plan):
+						part.free()
 			_store_windows(builder, key)
 		_add_windows(_window_cache[key])
 		_collect_neighbours(builder)
@@ -821,6 +965,80 @@ func _build_buildings() -> void:
 	_store_windows(builder, key)
 	_add_windows(_window_cache[key])
 	_collect_neighbours(builder)
+
+
+## On a terrace (#600): where the lot's side strips meet the street, a wall and gate just
+## outside the lot, across every front cell nobody has built on yet, so the row of
+## frontages runs on from the shop to next door. A strip the player builds over loses
+## its wall (the street rebuilds when the built cells change).
+func _build_yard_fronts(built: Array[Vector2i]) -> void:
+	if not street_set.has_terrace() or not build_error.is_empty():
+		return
+	var inverse: Transform3D = _frame.affine_inverse()
+	var half: float = GridMath.CELL_SIZE * 0.5
+	var taken: Array[Vector2] = []
+	for cell: Vector2i in built:
+		var centre: Vector3 = inverse * GridMath.cell_to_world(cell)
+		# The front two rows: the shop's own frontage and the cells just inside it.
+		if centre.z > _shift - GridMath.CELL_SIZE * 2.0:
+			taken.append(Vector2(centre.x - half, centre.x + half))
+	taken.sort_custom(func(a: Vector2, c: Vector2) -> bool: return a.x < c.x)
+	var free: Array[Vector2] = []
+	var cursor: float = _local_reserve.position.x
+	for span: Vector2 in taken:
+		if span.x > cursor + 0.01:
+			free.append(Vector2(cursor, span.x))
+		cursor = maxf(cursor, span.y)
+	if _local_reserve.end.x > cursor + 0.01:
+		free.append(Vector2(cursor, _local_reserve.end.x))
+	var pen: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	var render: Color = street_set.stone.lerp(street_set.trim, 0.55)
+	var t: float = NeighbourhoodTerrace.FRONT_WALL_T
+	for span: Vector2 in free:
+		var width: float = span.y - span.x
+		if width < GridMath.CELL_SIZE - 0.01:
+			continue
+		var box: AABB = _frame * AABB(Vector3(span.x, 0.0, _shift), Vector3(width, NeighbourhoodTerrace.FRONT_WALL_H, t))
+		if not _clear_front(box):
+			continue
+		# A single gate into a narrow passage, a double gate into a wider yard.
+		var gate: float = minf(width - 0.3, 0.5 if width < 2.0 else 1.0)
+		NeighbourhoodTerrace.wall_run(pen, street_set, span.x, span.y, _shift, t, NeighbourhoodTerrace.FRONT_WALL_H,
+			(span.x + span.y) * 0.5, gate, render)
+	if pen.soup.is_empty():
+		return
+	var mesh: MeshInstance3D = MeshInstance3D.new()
+	mesh.name = "YardFronts"
+	mesh.mesh = pen.soup.to_mesh()
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	material.disable_receive_shadows = true
+	mesh.material_override = material
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.transform = _frame
+	_groups["Buildings"].add_child(mesh)
+	_static_meshes.append(mesh)
+
+
+## The terrace's shared yard paving (#600): the street's stone, lifted toward its pavement,
+## so the yards read as the buildings' own ground and not the promenade.
+func _paved_colour() -> Color:
+	var pavement: Color = ground_skin.pavement if ground_skin != null and ground_skin.pavement.a > 0.0 else street_set.path
+	return street_set.stone.lerp(pavement, 0.62)
+
+
+## A front wall stays off the shop's door approaches and its own paving.
+func _clear_front(bounds: AABB) -> bool:
+	for excluded: AABB in _native_pavement:
+		if NeighbourhoodMeshBatch.xz_intersects(bounds, excluded):
+			return false
+	for excluded: AABB in _door_approaches:
+		if NeighbourhoodMeshBatch.xz_intersects(bounds, excluded):
+			return false
+	return true
 
 
 ## Gathers each named terrace neighbour's parts under its own node (#596):
@@ -846,6 +1064,15 @@ func _collect_neighbours(builder: NeighbourhoodBuildings) -> void:
 				mesh = Node3D.new()
 			mesh.name = String(part[1])
 			node.add_child(mesh)
+		# Its bulbs and lit screens (#600) light with the night and go dark when it closes.
+		var lamps: MeshInstance3D = buildings.get_node_or_null(NodePath(plan.id + "_Lamps")) as MeshInstance3D
+		if lamps != null:
+			buildings.remove_child(lamps)
+			lamps.transform = inverse
+			lamps.name = "Lamps"
+			lamps.material_override = _lit_material()
+			node.add_child(lamps)
+			_neighbour_lamps[plan.neighbour_id] = lamps
 		var board: Dictionary = NeighbourhoodTerrace.sign_board(plan)
 		if not board.is_empty():
 			var ink: Color = plan.style.sign_ink
@@ -935,6 +1162,29 @@ func _show_neighbour(id: StringName) -> void:
 	var for_sale: bool = neighbour_state(id) == NeighbourState.FOR_SALE
 	(node.get_node(^"Trade") as Node3D).visible = not for_sale
 	(node.get_node(^"ForSale") as Node3D).visible = for_sale
+	# A closed arcade's bulb sign goes dark (#600): no bulbs, and its name is only paint.
+	var sign: Label3D = node.get_node_or_null(^"Sign") as Label3D
+	if sign != null:
+		sign.shaded = for_sale or _neighbour_plans[id].form != ShopStyle.Form.ARCADE
+	_light_neighbour(id)
+
+
+## A neighbour's bulbs follow the night while it trades and stay dark while it is closed.
+func _light_neighbour(id: StringName) -> void:
+	var lamps: MeshInstance3D = _neighbour_lamps.get(id, null)
+	if lamps == null:
+		return
+	var level: float = 0.0 if neighbour_state(id) == NeighbourState.FOR_SALE else _night
+	lamps.visible = level > 0.01
+	var material: StandardMaterial3D = lamps.material_override as StandardMaterial3D
+	material.albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
+	material.emission_energy_multiplier = level * WINDOW_ENERGY
+
+
+## Whether a neighbour's bulbs are lit now (false when it has none), for tests and tools.
+func neighbour_lit(id: StringName) -> bool:
+	var lamps: MeshInstance3D = _neighbour_lamps.get(id, null)
+	return lamps != null and lamps.visible and (lamps.material_override as StandardMaterial3D).emission_energy_multiplier > 0.0
 
 
 func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
@@ -948,6 +1198,19 @@ func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
 	_window_cache[key] = glows
 
 
+## A fresh unlit, emissive material for lit windows and bulbs, dark until the night lights it.
+static func _lit_material() -> StandardMaterial3D:
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = WINDOW_DAY
+	material.emission_enabled = true
+	material.emission = WINDOW_NIGHT
+	material.emission_energy_multiplier = 0.0
+	material.disable_receive_shadows = true
+	return material
+
+
 ## The warm window quads, one emissive unlit mesh per light tier (#440). Their materials belong
 ## to this dressing so the night level never leaks into another street; the meshes are shared.
 func _add_windows(entries: Array) -> void:
@@ -957,14 +1220,7 @@ func _add_windows(entries: Array) -> void:
 		var mesh: ArrayMesh = entry[1] as ArrayMesh
 		if mesh == null:
 			continue
-		var material: StandardMaterial3D = StandardMaterial3D.new()
-		material.vertex_color_use_as_albedo = true
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = WINDOW_DAY
-		material.emission_enabled = true
-		material.emission = WINDOW_NIGHT
-		material.emission_energy_multiplier = 0.0
-		material.disable_receive_shadows = true
+		var material: StandardMaterial3D = _lit_material()
 		var node: MeshInstance3D = MeshInstance3D.new()
 		node.name = String(entry[0])
 		node.mesh = mesh
@@ -1008,6 +1264,9 @@ func _build_ground() -> void:
 	_light_shift = _compute_light_shift()
 	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _lot_boxes, _shadow_casters, _light_shift,
 			ground_skin.signature() if ground_skin != null else "standard", has_shore()]
+	if _paved.has_area():
+		key.append(_paved)
+		key.append(_paved_colour())
 	if key == _ground_key and ground_root.get_child_count() > 0:
 		ground_root.transform = _frame
 		return
@@ -1028,6 +1287,8 @@ func _build_ground() -> void:
 	builder.shadow_casters = _shadow_casters
 	builder.light_shift = _light_shift
 	builder.shore = has_shore()
+	builder.paved = _paved
+	builder.paved_colour = _paved_colour()
 	var rect: Rect2 = world_rect()
 	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
 	builder.world_centre = Vector2(centre.x, centre.z)
@@ -1041,6 +1302,10 @@ func _build_ground() -> void:
 static func clear_mesh_cache() -> void:
 	_mesh_cache.clear()
 	_window_cache.clear()
+	NeighbourhoodForest.clear_cache()
+	NeighbourhoodCountry.clear_cache()
+	NeighbourhoodRooftop.clear_cache()
+	NeighbourhoodCliff.clear_cache()
 
 
 ## The key light's ground run per metre of height, in the street's local (u, z).
@@ -1139,7 +1404,7 @@ func _ensure_actors() -> void:
 		_actors_root.remove_child(spare)
 		spare.free()
 		_directions.pop_back()
-	var guests: Array[int] = GUEST_IDS if _traffic else PROMENADE_GUESTS
+	var guests: Array[int] = GUEST_IDS if _traffic else (FOREST_GUESTS if has_forest() else (COUNTRY_GUESTS if has_country() else PROMENADE_GUESTS))
 	for index: int in _walk_kinds.size():
 		if index >= pedestrians.size():
 			var person: PersonView = PERSON.instantiate() as PersonView
@@ -1172,6 +1437,10 @@ func _plan_walkers() -> void:
 	_walk_speeds.clear()
 	_walk_strides.clear()
 	_walk_phases.clear()
+	if has_rooftop() or has_cliff():
+		# Nobody strolls past at roof level: guests come up in the lift (#614). On a cliff
+		# top (#380) the path winds off to the car park; no street runs past.
+		return
 	if _traffic:
 		for index: int in 3:
 			_walk_kinds.append(&"stroll")
@@ -1179,6 +1448,24 @@ func _plan_walkers() -> void:
 			_walk_speeds.append(WALK_SPEED)
 			_walk_strides.append(1.0)
 			_walk_phases.append(PHASES[index])
+		return
+	if has_forest():
+		for index: int in mini(preset.forest.walkers.size(), NeighbourhoodForest.LANES.size()):
+			var kind: StringName = preset.forest.walkers[index]
+			_walk_kinds.append(kind)
+			_walk_lanes.append(NeighbourhoodForest.TRACK_V + NeighbourhoodForest.LANES[index])
+			_walk_speeds.append(FOREST_CYCLE_SPEED if kind == &"cycle" else WALKER_SPEEDS.get(kind, WALK_SPEED))
+			_walk_strides.append(WALKER_STRIDES.get(kind, 1.0))
+			_walk_phases.append(NeighbourhoodGround.hash01(index, 6, street_set.seed_salt))
+		return
+	if has_country():
+		for index: int in mini(preset.country.walkers.size(), NeighbourhoodCountry.LANES.size()):
+			var kind: StringName = preset.country.walkers[index]
+			_walk_kinds.append(kind)
+			_walk_lanes.append(NeighbourhoodCountry.LANE_V + NeighbourhoodCountry.LANES[index])
+			_walk_speeds.append(COUNTRY_CYCLE_SPEED if kind == &"cycle" else WALKER_SPEEDS.get(kind, WALK_SPEED))
+			_walk_strides.append(WALKER_STRIDES.get(kind, 1.0))
+			_walk_phases.append(NeighbourhoodGround.hash01(index, 7, street_set.seed_salt))
 		return
 	for index: int in mini(preset.promenade.walkers.size(), PROMENADE_LANES.size()):
 		var kind: StringName = preset.promenade.walkers[index]
@@ -1206,6 +1493,12 @@ func _build_walk_props() -> void:
 	material.metallic_specular = 0.0
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 	material.disable_receive_shadows = true
+	if has_forest():
+		_build_forest_walk_props(material)
+		return
+	if has_country():
+		_build_country_walk_props(material)
+		return
 	for index: int in _walk_kinds.size():
 		var kind: StringName = _walk_kinds[index]
 		var prop: Node3D = null
@@ -1289,6 +1582,14 @@ func _build_routes() -> void:
 	var half_z: float = WALK_HALF if _traffic else PROMENADE_HALF
 	for lane: float in _walk_lanes:
 		var route: Vector2 = _safe_route(_shift + lane, WALK_HALF, half_z)
+		if has_forest() and route.y > route.x:
+			# The track runs on into the trees: walk well out of the clearing before turning.
+			var middle: float = _local_reserve.get_center().x
+			route = Vector2(minf(route.x, middle - NeighbourhoodForest.WALK_REACH), maxf(route.y, middle + NeighbourhoodForest.WALK_REACH))
+		elif has_country() and route.y > route.x:
+			# The lane runs on between the fields: walk well out of sight before turning.
+			var middle: float = _local_reserve.get_center().x
+			route = Vector2(minf(route.x, middle - NeighbourhoodCountry.WALK_REACH), maxf(route.y, middle + NeighbourhoodCountry.WALK_REACH))
 		_routes.append(route)
 		var box: AABB = AABB(Vector3(route.x - WALK_HALF, _paving_top + WALK_BOTTOM, _shift + lane - half_z),
 			Vector3(maxf(route.y - route.x, 0.0) + WALK_HALF * 2.0, WALK_TOP - WALK_BOTTOM, half_z * 2.0))
@@ -1532,11 +1833,21 @@ func _window_level(tier: int) -> float:
 func _apply_night() -> void:
 	if _shore != null:
 		_shore.set_night(_night, _late)
+	if _forest != null:
+		_forest.set_night(_night, _late)
+	if _country != null:
+		_country.set_night(_night, _late)
+	if _rooftop != null:
+		_rooftop.set_night(_night, _late)
+	if _cliff != null:
+		_cliff.set_night(_night, _late)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
 		_window_materials[index].albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
 		_window_materials[index].emission_energy_multiplier = level * WINDOW_ENERGY
+	for id: StringName in _neighbour_lamps:
+		_light_neighbour(id)
 	if _bulb_material != null:
 		_bulb_material.emission_energy_multiplier = _night * LAMP_BULB_ENERGY
 		_bulb_material.albedo_color = LAMP_DAY.lerp(LAMP_NIGHT, _night)
@@ -1712,6 +2023,14 @@ func _apply_time(seconds: float) -> void:
 		_life.apply(seconds)
 	if _shore != null:
 		_shore.apply(seconds)
+	if _forest != null:
+		_forest.apply(seconds)
+	if _country != null:
+		_country.apply(seconds)
+	if _rooftop != null:
+		_rooftop.apply(seconds)
+	if _cliff != null:
+		_cliff.apply(seconds)
 	var walkers: int = _walk_kinds.size()
 	if walkers == 0 or pedestrians.size() != walkers or _routes.size() != walkers or car == null:
 		return
@@ -1727,8 +2046,20 @@ func _apply_time(seconds: float) -> void:
 		var forward: bool = progress <= length
 		var u: float = route.x + progress if forward else route.y - (progress - length)
 		var person: PersonView = pedestrians[index]
-		person.position = _frame * Vector3(u, _paving_top, _shift + _walk_lanes[index])
+		person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index])
 		_directions[index] = _tangent if forward else -_tangent
+		if _forest != null:
+			# The track winds: follow its bends and face along them.
+			var bend: float = _forest.track_z(u) - _shift - NeighbourhoodForest.TRACK_V
+			person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index] + bend)
+			var along: Vector3 = (_tangent + _outward * _forest.track_slope(u)).normalized()
+			_directions[index] = along if forward else -along
+		elif _country != null:
+			# The lane bends gently away from the mill: follow it.
+			var bend: float = _country.lane_z(u) - _shift - NeighbourhoodCountry.LANE_V
+			person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index] + bend)
+			var along: Vector3 = (_tangent + _outward * _country.lane_slope(u)).normalized()
+			_directions[index] = along if forward else -along
 		person.face_direction(_directions[index])
 		person.show()
 		if _players.size() == walkers:
@@ -1758,6 +2089,8 @@ func _place_walk_prop(index: int, seconds: float, route: Vector2, progress: floa
 			prop.transform = Transform3D(facing, person.position + _directions[index] * 0.06)
 		&"pram":
 			prop.transform = Transform3D(facing, person.position + _directions[index] * 0.12)
+		&"hike":
+			prop.transform = Transform3D(facing, person.position)
 		&"dog":
 			var length: float = route.y - route.x
 			var lead: float = fposmod(progress + DOG_LEAD, length * 2.0)
@@ -1779,6 +2112,180 @@ func _place_walk_prop(index: int, seconds: float, route: Vector2, progress: floa
 			if span.length() > 0.05:
 				var look: Basis = Basis.looking_at(span.normalized(), Vector3.UP)
 				leash.transform = Transform3D(look * Basis.from_scale(Vector3(1.0, 1.0, span.length())), (hand + collar) * 0.5)
+
+
+# --- the woodland clearing (#607) and its stands of trees (for #597) -----------
+
+## The street's own ground, tree line and far road belong to a street, not a clearing:
+## a woodland preset drops them (their caches stay for the next street that needs them).
+func _clear_street_ground() -> void:
+	for root: Node3D in [ground_root, far_root]:
+		for child: Node in root.get_children():
+			root.remove_child(child)
+			child.free()
+	_ground_key = []
+	_far_key = []
+	_near_pavement = AABB()
+	_far_pavement = AABB()
+
+
+## The clearing, the track, the stream and the stands, built on the street frame.
+func _build_forest() -> void:
+	_forest_root.transform = _frame
+	_forest = NeighbourhoodForest.new()
+	_forest.skin = preset.forest
+	_forest.salt = street_set.seed_salt
+	_forest.local_reserve = _local_reserve
+	_forest.shift = _shift
+	_forest.light_shift = _compute_light_shift()
+	_forest.compass = _frame.basis
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_forest.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_forest.world_centre = Vector2(centre.x, centre.z)
+	_forest.lease = _local_cells(_lease)
+	_forest.first_lease = _local_cells(_first_lease)
+	_forest.building = _local_cells(_built_rect)
+	_forest.build(_forest_root)
+	for id: StringName in _forest.stand_ids():
+		_forest.show_stand(id, stand_state(id))
+
+
+## A rect of grid cells in the street frame's local (u, z); empty stays empty.
+func _local_cells(cells: Rect2i) -> Rect2:
+	if not cells.has_area():
+		return Rect2()
+	var box: AABB = _frame.affine_inverse() * AABB(Vector3(cells.position.x * GridMath.CELL_SIZE, 0.0, cells.position.y * GridMath.CELL_SIZE),
+		Vector3(cells.size.x * GridMath.CELL_SIZE, 1.0, cells.size.y * GridMath.CELL_SIZE))
+	return Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
+
+
+## A hiker's backpack or a cyclist's bike for each walker on the forest track.
+func _build_forest_walk_props(material: StandardMaterial3D) -> void:
+	var kit: NeighbourhoodPromenade = NeighbourhoodPromenade.new(null, street_set)
+	var forest: NeighbourhoodForest = NeighbourhoodForest.new()
+	forest.skin = preset.forest
+	for index: int in _walk_kinds.size():
+		var kind: StringName = _walk_kinds[index]
+		var prop: Node3D = null
+		if kind == &"cycle" or kind == &"hike":
+			prop = Node3D.new()
+			prop.name = "%s%d" % [String(kind).capitalize(), index]
+			var body: MeshInstance3D = MeshInstance3D.new()
+			body.name = "Body"
+			body.material_override = material
+			body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if kind == &"cycle":
+				body.mesh = kit.bike(preset.forest.bike_colors[index % preset.forest.bike_colors.size()])
+			else:
+				body.mesh = forest.backpack(preset.forest.pack_colors[index % preset.forest.pack_colors.size()])
+			prop.add_child(body)
+			_actors_root.add_child(prop)
+		_walk_props.append(prop)
+
+
+func forest() -> NeighbourhoodForest:
+	return _forest
+
+
+## The ids of the named stands of trees round the lot (#597): the two sides and the
+## back, named by compass (`west`, `east`, `north`, `south`: east is world +x, north
+## -z), then the land stands on the lot's land outside its first lease (#611), named
+## the same way with `_land` (`east_land`). Empty on a street without a forest.
+func stand_ids() -> Array[StringName]:
+	return _forest.stand_ids() if _forest != null else [] as Array[StringName]
+
+
+## What a stand shows. A land stand the current lease covers is the player's land:
+## felled to stumps unless it was cleared, never trees.
+func stand_state(id: StringName) -> NeighbourhoodForest.StandState:
+	var state: NeighbourhoodForest.StandState = _stand_states.get(id, NeighbourhoodForest.StandState.FOREST) as NeighbourhoodForest.StandState
+	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
+	if entry != null and entry.leased and state == NeighbourhoodForest.StandState.FOREST:
+		return NeighbourhoodForest.StandState.STUMPS
+	return state
+
+
+## True for a land stand (#611) that the current lease covers.
+func stand_leased(id: StringName) -> bool:
+	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
+	return entry != null and entry.leased
+
+
+## Shows a stand as forest (the default), felled to stumps, or cleared ground. The state
+## is kept across rebuilds. False when the street has no such stand, or for trees on
+## land the lease covers (#611).
+func set_stand_state(id: StringName, state: NeighbourhoodForest.StandState) -> bool:
+	if _forest == null or not _forest.stand_ids().has(id):
+		return false
+	if stand_leased(id) and state == NeighbourhoodForest.StandState.FOREST:
+		return false
+	_stand_states[id] = state
+	_forest.show_stand(id, state)
+	return true
+
+
+## Everything a stand's trees cover, crowns included, in the dressing's space (an empty
+## box when there is no such stand). A stand round the lot never overlaps the lot's
+## maximum footprint; a land stand never overlaps its first lease (#611).
+func stand_bounds(id: StringName) -> AABB:
+	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
+	if entry == null:
+		return AABB()
+	var area: Rect2 = entry.crowns
+	return _frame * AABB(Vector3(area.position.x, 0.0, area.position.y), Vector3(area.size.x, 4.0, area.size.y))
+
+
+# --- the city rooftop (#614) ---------------------------------------------------
+
+## The roof, its lobby, terrace and plant, and the city below, built on the street frame.
+func _build_rooftop() -> void:
+	_rooftop_root.transform = _frame
+	_rooftop = NeighbourhoodRooftop.new()
+	_rooftop.skin = preset.rooftop
+	_rooftop.salt = street_set.seed_salt
+	_rooftop.local_reserve = _local_reserve
+	_rooftop.shift = _shift
+	_rooftop.light_shift = _compute_light_shift()
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_rooftop.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	_rooftop.building = _local_cells(_built_rect)
+	_rooftop.build(_rooftop_root)
+
+
+func rooftop() -> NeighbourhoodRooftop:
+	return _rooftop
+
+
+# --- the cliff top (#380) ------------------------------------------------------
+
+## The cliff top, the drop, the sea below and the cliff path, built on the street frame.
+func _build_cliff() -> void:
+	_cliff_root.transform = _frame
+	_cliff = NeighbourhoodCliff.new()
+	_cliff.skin = preset.cliff
+	_cliff.salt = street_set.seed_salt
+	_cliff.local_reserve = _local_reserve
+	_cliff.shift = _shift
+	_cliff.light_shift = _compute_light_shift()
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_cliff.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_cliff.world_centre = Vector2(centre.x, centre.z)
+	_cliff.building = _local_cells(_built_rect)
+	_cliff.build(_cliff_root)
+
+
+func cliff() -> NeighbourhoodCliff:
+	return _cliff
 
 
 ## Where the street's walkers are now (#596), for tests and tools: their kind, position
@@ -1834,3 +2341,108 @@ static func _boxes_state(values: Array[AABB]) -> Array[Dictionary]:
 	for value: AABB in values:
 		result.append(_box_state(value))
 	return result
+
+
+# --- the country lane (#613) and its land plots ----------------------------------
+
+## The lane, the mill stream, the fields and the plots, built on the street frame.
+func _build_country() -> void:
+	_country_root.transform = _frame
+	_country = NeighbourhoodCountry.new()
+	_country.skin = preset.country
+	_country.salt = street_set.seed_salt
+	_country.local_reserve = _local_reserve
+	_country.shift = _shift
+	_country.light_shift = _compute_light_shift()
+	_country.compass = _frame.basis
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_country.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_country.world_centre = Vector2(centre.x, centre.z)
+	_country.lease = _local_cells(_lease)
+	_country.first_lease = _local_cells(_first_lease)
+	_country.building = _local_cells(_built_rect)
+	for cell: Vector2i in _built_cells:
+		_country.built.append(_local_cells(Rect2i(cell, Vector2i.ONE)))
+	_country.build(_country_root)
+	for id: StringName in _country.plot_ids():
+		_country.show_plot(id, plot_state(id))
+
+
+## A bike for each cyclist on the country lane; walkers go on foot.
+func _build_country_walk_props(material: StandardMaterial3D) -> void:
+	var kit: NeighbourhoodPromenade = NeighbourhoodPromenade.new(null, street_set)
+	for index: int in _walk_kinds.size():
+		var prop: Node3D = null
+		if _walk_kinds[index] == &"cycle":
+			prop = Node3D.new()
+			prop.name = "Cycle%d" % index
+			var body: MeshInstance3D = MeshInstance3D.new()
+			body.name = "Body"
+			body.material_override = material
+			body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			body.mesh = kit.bike(preset.country.bike_colors[index % preset.country.bike_colors.size()])
+			prop.add_child(body)
+			_actors_root.add_child(prop)
+		_walk_props.append(prop)
+
+
+func country() -> NeighbourhoodCountry:
+	return _country
+
+
+## The ids of the named land plots round the lot (#613, for #597): the meadow beside it
+## and the cornfield behind it, named by compass (`east`, `north`, ...: east is world
+## +x, north -z), then the land plots on the lot's land outside its first lease, named
+## the same way with `_land` (`east_land`). Empty on a street without a country lane.
+func plot_ids() -> Array[StringName]:
+	return _country.plot_ids() if _country != null else [] as Array[StringName]
+
+
+## What a plot grows: &"meadow" or &"corn" (&"" when there is no such plot).
+func plot_crop(id: StringName) -> StringName:
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	return entry.crop if entry != null else &""
+
+
+## What a plot shows. A land plot the current lease covers is the player's land: mown
+## flat unless it was cleared, never its standing crop.
+func plot_state(id: StringName) -> NeighbourhoodCountry.PlotState:
+	var state: NeighbourhoodCountry.PlotState = _plot_states.get(id, NeighbourhoodCountry.PlotState.GROWN) as NeighbourhoodCountry.PlotState
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	if entry != null and entry.leased and state == NeighbourhoodCountry.PlotState.GROWN:
+		return NeighbourhoodCountry.PlotState.MOWN
+	return state
+
+
+## True for a land plot that the current lease covers.
+func plot_leased(id: StringName) -> bool:
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	return entry != null and entry.leased
+
+
+## Shows a plot grown (the default), mown or cleared. The state is kept across
+## rebuilds. False when the street has no such plot, or for a standing crop on land the
+## lease covers.
+func set_plot_state(id: StringName, state: NeighbourhoodCountry.PlotState) -> bool:
+	if _country == null or not _country.plot_ids().has(id):
+		return false
+	if plot_leased(id) and state == NeighbourhoodCountry.PlotState.GROWN:
+		return false
+	_plot_states[id] = state
+	_country.show_plot(id, state)
+	return true
+
+
+## The ground a plot covers, in the dressing's space (an empty box when there is no
+## such plot). A plot round the lot never overlaps the lot's maximum footprint; a land
+## plot never overlaps its first lease.
+func plot_bounds(id: StringName) -> AABB:
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	if entry == null:
+		return AABB()
+	var area: Rect2 = entry.rect
+	return _frame * AABB(Vector3(area.position.x, 0.0, area.position.y), Vector3(area.size.x, 1.0, area.size.y))

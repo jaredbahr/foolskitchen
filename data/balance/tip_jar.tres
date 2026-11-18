@@ -4,5 +4,6 @@
 
 [resource]
 script = ExtResource("1_tuning")
-tip_jar_multiplier = 1.10
+drop_chance = 0.18
+drop_amount = 1
 range_cells = 3
