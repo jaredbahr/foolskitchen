@@ -21,6 +21,9 @@ extends RefCounted
 ##   fills in as WALL, so no void is left inside the wall mass.
 ## - Cells outside the lot (the street, the sidewalk, the door) never change,
 ##   because the lot never grows towards the street.
+## - A starting shell need not be a rectangle (an L, #596): an OUTSIDE cell
+##   inside its bounding rect (a notch) is lot land like any other, so floor
+##   bought there or beside it gets its wall, and the notch can be built on.
 
 const NO_LOT: String = "This shop has no room to grow"
 const OUTSIDE_LOT: String = "That is outside your lot"
@@ -50,15 +53,20 @@ var _interior: Dictionary[Vector2i, bool] = {}
 var _floor: Dictionary[Vector2i, bool] = {}
 ## Authored shell cells that may open, row-major (not a divider's end).
 var _shell: Array[Vector2i] = []
+## OUTSIDE cells inside `building` (the notch of an L-shaped shell): lot land.
+var _notch: Dictionary[Vector2i, bool] = {}
 
 
 static func from_layout(layout: ShopLayout) -> ShopFootprint:
 	var footprint: ShopFootprint = ShopFootprint.new()
 	footprint._base = SimGrid.from_ascii(layout.rows if layout != null else PackedStringArray())
 	var first: bool = true
+	var notch_candidates: Array[Vector2i] = []
 	for cell: Vector2i in footprint._base.cells():
 		var t: SimGrid.Terrain = footprint._base.terrain(cell)
 		if t != SimGrid.Terrain.FLOOR and t != SimGrid.Terrain.WALL:
+			if t == SimGrid.Terrain.OUTSIDE:
+				notch_candidates.append(cell)
 			continue
 		footprint.building = Rect2i(cell, Vector2i.ONE) if first else footprint.building.merge(Rect2i(cell, Vector2i.ONE))
 		first = false
@@ -79,6 +87,9 @@ static func from_layout(layout: ShopLayout) -> ShopFootprint:
 		if not carries:
 			kept.append(cell)
 	footprint._shell = kept
+	for cell: Vector2i in notch_candidates:
+		if footprint.building.has_point(cell):
+			footprint._notch[cell] = true
 	footprint.lot = footprint.building
 	if layout != null and not first:
 		var west: int = maxi(layout.lot_west, 0)
@@ -99,6 +110,12 @@ func interior_wall_cells() -> Array[Vector2i]:
 	return sorted(cells)
 
 
+## True for a cell of the authored starting shell (its floor and walls), never
+## for a notch in an L-shaped shell's bounding rect.
+func is_starting_shell(cell: Vector2i) -> bool:
+	return building.has_point(cell) and not _notch.has(cell)
+
+
 func has_lot() -> bool:
 	return lot != building and building.size != Vector2i.ZERO
 
@@ -106,7 +123,7 @@ func has_lot() -> bool:
 ## A cell the player may buy: inside the lot (not on its edge, which is kept
 ## for the wall) and not part of the starting building.
 func can_hold(cell: Vector2i) -> bool:
-	return lot.grow(-1).has_point(cell) and not building.has_point(cell)
+	return lot.grow(-1).has_point(cell) and not is_starting_shell(cell)
 
 
 ## Where new floor may go: the lot without its outer ring (kept for walls).
@@ -126,7 +143,7 @@ func lot_cells(rect: Rect2i) -> Array[Vector2i]:
 	for y: int in range(rect.position.y, rect.end.y):
 		for x: int in range(rect.position.x, rect.end.x):
 			var cell: Vector2i = Vector2i(x, y)
-			if lot.has_point(cell) and not building.has_point(cell):
+			if lot.has_point(cell) and not is_starting_shell(cell):
 				out.append(cell)
 	return out
 
@@ -142,7 +159,7 @@ func terrain_for(bought: Dictionary[Vector2i, bool]) -> Dictionary[Vector2i, int
 			var cell: Vector2i = Vector2i(x, y)
 			if inside.has(cell) and not _interior.has(cell):
 				result[cell] = SimGrid.Terrain.FLOOR
-			elif lot.has_point(cell) and not building.has_point(cell):
+			elif lot.has_point(cell) and not is_starting_shell(cell):
 				result[cell] = SimGrid.Terrain.WALL if _touches(cell, inside) else SimGrid.Terrain.OUTSIDE
 			else:
 				result[cell] = _base.terrain(cell)
@@ -173,7 +190,7 @@ func _fill_enclosed(result: Dictionary[Vector2i, int], area: Rect2i) -> void:
 		frontier = next
 	for cell: Vector2i in result:
 		if result[cell] == SimGrid.Terrain.OUTSIDE and not open.has(cell) \
-				and lot.has_point(cell) and not building.has_point(cell):
+				and lot.has_point(cell) and not is_starting_shell(cell):
 			result[cell] = SimGrid.Terrain.WALL
 
 
@@ -231,7 +248,7 @@ func problem(bought: Dictionary[Vector2i, bool], adding: bool = true) -> String:
 		for x: int in range(area.position.x, area.end.x):
 			var cell: Vector2i = Vector2i(x, y)
 			# Authored walls left standing (a divider's end) are walls, not gaps.
-			if not inside.has(cell) and not open.has(cell) and not building.has_point(cell):
+			if not inside.has(cell) and not open.has(cell) and not is_starting_shell(cell):
 				return LEAVES_GAP
 	return ""
 

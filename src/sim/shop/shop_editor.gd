@@ -890,7 +890,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 				authored[cell] = wanted[cell]
 		start.set_rooms(authored)
 		var inferred: Dictionary[Vector2i, int] = authored.duplicate()
-		inferred.merge(RoomRules.opened_kitchen(start, preview, footprint.building))
+		inferred.merge(RoomRules.opened_kitchen(start, preview, footprint))
 		var filtered: Dictionary[Vector2i, int] = {}
 		for cell: Vector2i in inferred:
 			if preview.terrain(cell) == SimGrid.Terrain.FLOOR:
@@ -1964,7 +1964,7 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	var on_ring: bool = false
 	for cell: Vector2i in cells:
 		if adding:
-			if _footprint.building.has_point(cell) or _bought.has(cell):
+			if _footprint.is_starting_shell(cell) or _bought.has(cell):
 				continue
 			if not _footprint.lot.has_point(cell):
 				return EditCheck.new(false, ShopFootprint.OUTSIDE_LOT)
@@ -2015,7 +2015,7 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 		refund += floori(old_def.price / 2.0) if old_def != null else 0
 	preview.set_segments(removals)
 	# The back-wall rule: an opened shell cell beside the kitchen is kitchen.
-	var kitchen: Dictionary[Vector2i, int] = RoomRules.opened_kitchen(live, preview, _footprint.building)
+	var kitchen: Dictionary[Vector2i, int] = RoomRules.opened_kitchen(live, preview, _footprint)
 	preview.set_rooms(kitchen)
 	for edge: Vector3i in _sorted_edges(restore):
 		var restored: String = WallRules.edge_problem(preview, edge, restore[edge] as SimGrid.Segment)

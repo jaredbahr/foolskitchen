@@ -143,10 +143,19 @@ func test_buying_the_fixer_upper_pays_and_adds_a_renovating_site_from_its_layout
 	assert_eq(_book().frozen_day(FIXER), day)
 	assert_eq(_book().renovation_days_left(FIXER), 3)
 	var shop: Dictionary = _book().frozen_sections(FIXER)["shop"]
-	assert_eq(shop["layout_id"], "lot_town_fixer_upper", "built from the lot's own layout")
+	assert_eq(shop["layout_id"], "lot_town_fixer_upper_mill_hall", "built from the lot's own layout")
 	assert_false(shop["lease_expanded"])
 	var lot: LotDef = (_main.get("content") as ContentDB).lot(FIXER)
 	assert_true(_main.call("_base_for_saved_shop", shop) == lot.base_layout, "the lot layout resolves")
+	assert_true(_main.call("_base_for_saved_shop", {"layout_id": "lot_town_fixer_upper"}) == lot.legacy_layouts[0],
+		"a site saved on the lot's first rectangle keeps it (#596)")
+	assert_eq((_main.call("_lease_for", lot.legacy_layouts[0]) as LeaseUpgrade).deposit, lot.expansion_price,
+		"and its own lot's lease")
+	var cliff: LotDef = (_main.get("content") as ContentDB).lot(&"seaside_cliff")
+	var old_cliff: ShopLayout = _main.call("_base_for_saved_shop", {"layout_id": "lot_seaside_cliff"})
+	assert_eq((_main.call("_lease_for", old_cliff) as LeaseUpgrade).extra_east, 4,
+		"an old cliff site keeps the lease it was saved with")
+	assert_eq((_main.call("_lease_for", cliff.base_layout) as LeaseUpgrade).extra_east, 0)
 	# The screen now shows it owned.
 	buy = _buy_button(FIXER)
 	assert_true(buy.disabled)
@@ -232,7 +241,7 @@ func test_a_fixer_upper_can_be_designed_counts_down_and_opens_once_ready_and_sta
 	assert_eq(_row_text(FIXER, "Status"), "Renovating: 2 days")
 	_pick(FIXER).pressed.emit()
 	assert_eq(_book().active_id, FIXER, "switched there to design")
-	assert_eq((_main.get("_base_layout") as ShopLayout).save_layout_id, &"lot_town_fixer_upper")
+	assert_eq((_main.get("_base_layout") as ShopLayout).save_layout_id, &"lot_town_fixer_upper_mill_hall")
 	assert_eq((_main.get("staff_roster") as StaffRoster).members().size(), 0, "a new site starts with nobody")
 	# It cannot open, but Build works and the day can be closed.
 	assert_eq(_main.call("site_opening_refusal"), "Still renovating: 2 days left")
@@ -577,7 +586,7 @@ func test_switching_to_a_new_site_and_back_keeps_each_sites_own_staff_and_shop()
 		"and the home shop")
 	var frozen: Dictionary = _book().frozen_sections(FIXER)
 	assert_eq((frozen["staff"]["members"] as Array).size(), 0, "the new site's empty roster stays its own")
-	assert_eq(frozen["shop"]["layout_id"], "lot_town_fixer_upper")
+	assert_eq(frozen["shop"]["layout_id"], "lot_town_fixer_upper_mill_hall")
 	assert_eq(_main.call("site_opening_refusal"), "", "home opens as usual")
 
 
@@ -756,6 +765,8 @@ func test_boardwalk_purchase_connects_the_rear_patio_and_unlocks_treats() -> voi
 	var rear: Vector2i = Vector2i(15, -3)
 	assert_true(world.grid.is_outdoor_floor(rear), "the purchased site starts with the rear patio")
 	assert_true(world.grid.is_guest_reachable(world.grid.entries()[0], rear), "guests can reach the patio through the back door")
+	assert_true((_main.get("menu_settings") as MenuSettings).is_enabled(&"soft_drink"),
+		"the kiosk's drinks fridge puts cold drinks on its first menu")
 	assert_true(_has_stock_row(&"fruit_syrup"), "the active seaside market sells fruit syrup")
 	assert_true(_main.call("stock_cart_set", &"fruit_syrup", 1))
 	assert_true(_main.call("stock_place_order"))
@@ -766,11 +777,11 @@ func test_boardwalk_purchase_connects_the_rear_patio_and_unlocks_treats() -> voi
 	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings
 	for machine: StringName in machines:
 		assert_null(menu.recipe(machines[machine]))
-	var bought_soft_serve: bool = _main.call("shop_buy", &"soft_serve_machine", Vector2i(2, 3))
+	var bought_soft_serve: bool = _main.call("shop_buy", &"soft_serve_machine", Vector2i(10, 6))
 	assert_true(bought_soft_serve, "buy the soft-serve machine: " + editor.last_check.why)
 	assert_not_null(menu.recipe(&"soft_serve"), "the soft-serve machine makes its recipe available")
 	assert_null(menu.recipe(&"shaved_ice"))
-	var bought_shaved_ice: bool = _main.call("shop_buy", &"shaved_ice_cart", Vector2i(3, 3))
+	var bought_shaved_ice: bool = _main.call("shop_buy", &"shaved_ice_cart", Vector2i(13, 6))
 	assert_true(bought_shaved_ice, "buy the shaved-ice cart: " + editor.last_check.why)
 	assert_not_null(menu.recipe(&"shaved_ice"), "the shaved-ice cart makes its recipe available")
 	assert_null(menu.recipe(&"cone_fries"), "the cone still requires a fryer")

@@ -3819,8 +3819,8 @@ func _lease_layout() -> ShopLayout:
 func _lease_for(base: ShopLayout) -> LeaseUpgrade:
 	if base != null and content != null:
 		for lot: LotDef in content.lots():
-			if lot.base_layout == base:
-				return lot.lease_upgrade()
+			if lot.owns_layout(base):
+				return lot.lease_upgrade_for(base)
 	return LEASE
 
 
@@ -4593,8 +4593,9 @@ func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
 	if StringName(identity) == LAYOUT.save_layout_id:
 		return LAYOUT
 	# A bought lot's own shell (FK-087, #464): its authored id, lot_<id>.
+	# A site saved on an earlier shell of its lot keeps that shell (legacy_layouts).
 	var lot: LotDef = content.lot_for_layout(StringName(identity)) if content != null else null
-	return lot.base_layout if lot != null else null
+	return lot.layout_for_id(StringName(identity)) if lot != null else null
 
 
 ## Restore callbacks only stage decoded data. Live replacement waits for OK.
@@ -5738,6 +5739,15 @@ func _new_site_sections(lot: LotDef) -> Dictionary:
 		if copy.has("name") and not lot_name.is_empty():
 			copy["name"] = lot_name
 		var check: MenuSettings = MenuSettings.new(cookable, owner_progress.effective_level())
+		# A drink the lot's own starter stations pour that this menu never had
+		# (the boardwalk kiosk's drinks fridge, #596) starts on, as a drink does
+		# when its station is bought (MenuSettings.set_catalogue).
+		for recipe: RecipeDef in cookable:
+			var id: String = String(recipe.id)
+			if recipe.is_drink() and not saved_prices.has(id) and not enabled.has(id) \
+					and recipe.unlock_level <= owner_progress.effective_level() and enabled.size() < check.menu_limit():
+				enabled.append(id)
+				prices[id] = str(recipe.standard_price)
 		if not enabled.is_empty() and check.from_dict(copy):
 			sections["menu"] = copy
 	return sections
