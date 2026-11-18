@@ -20,6 +20,9 @@ const STARTER: String = "res://data/streets/starter.tres"
 ## A woodland clearing on a forest track instead of a street (#607): no road, cars,
 ## pavements or neighbouring buildings. None keeps the street.
 @export var forest: ForestSkin
+## An old watermill on a country lane instead of a street (#613): no road, town
+## traffic, pavements or neighbouring shops. None keeps the street.
+@export var country: CountrySkin
 ## The shop's default wall finish on this street (#611, a WallStyleDef id): every
 ## wall face starts in it and Build can still change any face. Empty is plain paint.
 @export var wall_style: StringName = &""
@@ -30,9 +33,10 @@ static func starter() -> StreetPreset:
 	return load(STARTER) as StreetPreset
 
 
-## True when cars drive past: every street but a promenade or a forest track.
+## True when cars drive past: every street but a promenade, a forest track or a
+## country lane (its tractor is no town traffic).
 func has_traffic() -> bool:
-	return promenade == null and forest == null
+	return promenade == null and forest == null and country == null
 
 
 ## The preset at `path`, or the starter street when `path` is empty, missing or
@@ -110,6 +114,8 @@ func errors() -> PackedStringArray:
 		problems.append_array(shore.errors())
 	if forest != null:
 		problems.append_array(forest.errors())
+	if country != null:
+		problems.append_array(country.errors())
 	for spec: StreetPropSpec in buildings.furniture:
 		if spec == null:
 			problems.append("an empty street furniture entry")

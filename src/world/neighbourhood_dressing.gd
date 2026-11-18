@@ -57,6 +57,9 @@ const WALKER_STRIDES: Dictionary[StringName, float] = {&"stroll": 1.0, &"dog": 1
 const FOREST_GUESTS: Array[int] = [2, 5, 8, 3, 10]
 const FOREST_CYCLE_SPEED: float = 1.5
 const PROMENADE_GUESTS: Array[int] = [1, 3, 6, 4, 7]
+## The country lane's walkers (#613): their guest looks, and a cyclist's pace on a lane.
+const COUNTRY_GUESTS: Array[int] = [9, 4, 11, 6]
+const COUNTRY_CYCLE_SPEED: float = 1.7
 ## The cyclist's seat height, how far ahead the dog trots (path metres) and its leash.
 const BIKE_SEAT: float = 0.3
 const DOG_LEAD: float = 0.75
@@ -185,6 +188,11 @@ var _neighbour_states: Dictionary[StringName, int] = {}
 var _forest_root: Node3D
 var _forest: NeighbourhoodForest
 var _stand_states: Dictionary[StringName, int] = {}
+## The country lane (#613), when the street's preset names one: its root, its builder
+## and the state each named land plot shows (kept across rebuilds).
+var _country_root: Node3D
+var _country: NeighbourhoodCountry
+var _plot_states: Dictionary[StringName, int] = {}
 ## The lot's current lease and its first, unexpanded one (#611), in grid cells: a
 ## woodland grows land stands on the maximum lot's land outside the first lease, and
 ## fells them once the current lease covers it. Empty: no land stands.
@@ -223,6 +231,17 @@ func has_promenade() -> bool:
 ## True when the street's preset is a woodland clearing with a forest track (#607).
 func has_forest() -> bool:
 	return preset != null and preset.forest != null
+
+
+## True when the street's preset is an old watermill on a country lane (#613).
+func has_country() -> bool:
+	return preset != null and preset.country != null
+
+
+## True for open land with no street: a woodland clearing or a country lane. Neither has
+## a road, pavements, kerbs, neighbouring buildings, street lamps or street furniture.
+func _open_land() -> bool:
+	return has_forest() or has_country()
 
 
 ## The lot's current lease and first lease (#611), for a woodland's land stands. Takes
@@ -264,6 +283,9 @@ func rebuild() -> void:
 		key.append(preset.promenade.signature())
 	if has_forest():
 		key.append(preset.forest.signature())
+		key.append([_lease, _first_lease])
+	if has_country():
+		key.append(preset.country.signature())
 		key.append([_lease, _first_lease])
 	if not patio.is_empty():
 		key.append(patio)
@@ -315,12 +337,13 @@ func rebuild() -> void:
 		far_count += 1
 	far_count = maxi(far_count, count)
 	_visual_half = float(far_count) * road_box.size.x * 0.5
-	_traffic = not has_promenade() and not has_forest()
+	_traffic = not has_promenade() and not _open_land()
 	_promenade = NeighbourhoodPromenade.new(preset.promenade, street_set) if has_promenade() else null
 	_walk_y = _paving_top
-	if has_forest():
-		# A woodland clearing (#607): no road, pavement, kerbs or neighbours; a dirt track.
-		_walk_y = NeighbourhoodForest.WALK_Y
+	if _open_land():
+		# A woodland clearing (#607) or a country lane (#613): no road, pavement, kerbs or
+		# neighbours; a dirt track or a narrow lane.
+		_walk_y = NeighbourhoodForest.WALK_Y if has_forest() else NeighbourhoodCountry.WALK_Y
 		_clear_street_ground()
 	elif _traffic:
 		_build_road(road_prop, road_box, count)
@@ -330,7 +353,7 @@ func rebuild() -> void:
 		# A promenade: one sweep of paving from the shop fronts to the far edge, no road.
 		_build_paving(paving, paving_box, PAVING_START, FAR_START + FAR_DEPTH - PAVING_START, "NearPavement", true)
 		_far_pavement = _near_pavement
-	if not has_forest():
+	if not _open_land():
 		_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
 	_build_planks()
 	_build_promenade_pattern()
@@ -342,6 +365,8 @@ func rebuild() -> void:
 	paving.free()
 	if has_forest():
 		_build_forest()
+	elif has_country():
+		_build_country()
 	else:
 		_build_kerbs(road_box.size.x, count)
 		_build_buildings()
@@ -349,7 +374,7 @@ func rebuild() -> void:
 		_build_ground()
 	_ensure_actors()
 	_build_routes()
-	if not has_forest():
+	if not _open_land():
 		_build_lamps()
 		_build_furniture()
 		_build_life()
@@ -364,6 +389,7 @@ func rebuild() -> void:
 	_life_root.visible = _configured
 	_shore_root.visible = _configured
 	_forest_root.visible = _configured
+	_country_root.visible = _configured
 	_apply_night()
 	_apply_time(_effective_time())
 
@@ -400,6 +426,9 @@ func _ensure_roots() -> void:
 	_forest_root = Node3D.new()
 	_forest_root.name = "Forest"
 	add_child(_forest_root)
+	_country_root = Node3D.new()
+	_country_root.name = "Country"
+	add_child(_country_root)
 
 
 func _clear_static() -> void:
@@ -420,6 +449,10 @@ func _clear_static() -> void:
 		_forest_root.remove_child(child)
 		child.free()
 	_forest = null
+	for child: Node in _country_root.get_children():
+		_country_root.remove_child(child)
+		child.free()
+	_country = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -467,6 +500,7 @@ func _hide_actors() -> void:
 	_life_root.hide()
 	_shore_root.hide()
 	_forest_root.hide()
+	_country_root.hide()
 	if car != null:
 		car.hide()
 
@@ -1225,6 +1259,7 @@ static func clear_mesh_cache() -> void:
 	_mesh_cache.clear()
 	_window_cache.clear()
 	NeighbourhoodForest.clear_cache()
+	NeighbourhoodCountry.clear_cache()
 
 
 ## The key light's ground run per metre of height, in the street's local (u, z).
@@ -1323,7 +1358,7 @@ func _ensure_actors() -> void:
 		_actors_root.remove_child(spare)
 		spare.free()
 		_directions.pop_back()
-	var guests: Array[int] = GUEST_IDS if _traffic else (FOREST_GUESTS if has_forest() else PROMENADE_GUESTS)
+	var guests: Array[int] = GUEST_IDS if _traffic else (FOREST_GUESTS if has_forest() else (COUNTRY_GUESTS if has_country() else PROMENADE_GUESTS))
 	for index: int in _walk_kinds.size():
 		if index >= pedestrians.size():
 			var person: PersonView = PERSON.instantiate() as PersonView
@@ -1373,6 +1408,15 @@ func _plan_walkers() -> void:
 			_walk_strides.append(WALKER_STRIDES.get(kind, 1.0))
 			_walk_phases.append(NeighbourhoodGround.hash01(index, 6, street_set.seed_salt))
 		return
+	if has_country():
+		for index: int in mini(preset.country.walkers.size(), NeighbourhoodCountry.LANES.size()):
+			var kind: StringName = preset.country.walkers[index]
+			_walk_kinds.append(kind)
+			_walk_lanes.append(NeighbourhoodCountry.LANE_V + NeighbourhoodCountry.LANES[index])
+			_walk_speeds.append(COUNTRY_CYCLE_SPEED if kind == &"cycle" else WALKER_SPEEDS.get(kind, WALK_SPEED))
+			_walk_strides.append(WALKER_STRIDES.get(kind, 1.0))
+			_walk_phases.append(NeighbourhoodGround.hash01(index, 7, street_set.seed_salt))
+		return
 	for index: int in mini(preset.promenade.walkers.size(), PROMENADE_LANES.size()):
 		var kind: StringName = preset.promenade.walkers[index]
 		_walk_kinds.append(kind)
@@ -1401,6 +1445,9 @@ func _build_walk_props() -> void:
 	material.disable_receive_shadows = true
 	if has_forest():
 		_build_forest_walk_props(material)
+		return
+	if has_country():
+		_build_country_walk_props(material)
 		return
 	for index: int in _walk_kinds.size():
 		var kind: StringName = _walk_kinds[index]
@@ -1489,6 +1536,10 @@ func _build_routes() -> void:
 			# The track runs on into the trees: walk well out of the clearing before turning.
 			var middle: float = _local_reserve.get_center().x
 			route = Vector2(minf(route.x, middle - NeighbourhoodForest.WALK_REACH), maxf(route.y, middle + NeighbourhoodForest.WALK_REACH))
+		elif has_country() and route.y > route.x:
+			# The lane runs on between the fields: walk well out of sight before turning.
+			var middle: float = _local_reserve.get_center().x
+			route = Vector2(minf(route.x, middle - NeighbourhoodCountry.WALK_REACH), maxf(route.y, middle + NeighbourhoodCountry.WALK_REACH))
 		_routes.append(route)
 		var box: AABB = AABB(Vector3(route.x - WALK_HALF, _paving_top + WALK_BOTTOM, _shift + lane - half_z),
 			Vector3(maxf(route.y - route.x, 0.0) + WALK_HALF * 2.0, WALK_TOP - WALK_BOTTOM, half_z * 2.0))
@@ -1734,6 +1785,8 @@ func _apply_night() -> void:
 		_shore.set_night(_night, _late)
 	if _forest != null:
 		_forest.set_night(_night, _late)
+	if _country != null:
+		_country.set_night(_night, _late)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
@@ -1918,6 +1971,8 @@ func _apply_time(seconds: float) -> void:
 		_shore.apply(seconds)
 	if _forest != null:
 		_forest.apply(seconds)
+	if _country != null:
+		_country.apply(seconds)
 	var walkers: int = _walk_kinds.size()
 	if walkers == 0 or pedestrians.size() != walkers or _routes.size() != walkers or car == null:
 		return
@@ -1940,6 +1995,12 @@ func _apply_time(seconds: float) -> void:
 			var bend: float = _forest.track_z(u) - _shift - NeighbourhoodForest.TRACK_V
 			person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index] + bend)
 			var along: Vector3 = (_tangent + _outward * _forest.track_slope(u)).normalized()
+			_directions[index] = along if forward else -along
+		elif _country != null:
+			# The lane bends gently away from the mill: follow it.
+			var bend: float = _country.lane_z(u) - _shift - NeighbourhoodCountry.LANE_V
+			person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index] + bend)
+			var along: Vector3 = (_tangent + _outward * _country.lane_slope(u)).normalized()
 			_directions[index] = along if forward else -along
 		person.face_direction(_directions[index])
 		person.show()
@@ -2173,3 +2234,106 @@ static func _boxes_state(values: Array[AABB]) -> Array[Dictionary]:
 	for value: AABB in values:
 		result.append(_box_state(value))
 	return result
+
+
+# --- the country lane (#613) and its land plots ----------------------------------
+
+## The lane, the mill stream, the fields and the plots, built on the street frame.
+func _build_country() -> void:
+	_country_root.transform = _frame
+	_country = NeighbourhoodCountry.new()
+	_country.skin = preset.country
+	_country.salt = street_set.seed_salt
+	_country.local_reserve = _local_reserve
+	_country.shift = _shift
+	_country.light_shift = _compute_light_shift()
+	_country.compass = _frame.basis
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_country.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_country.world_centre = Vector2(centre.x, centre.z)
+	_country.lease = _local_cells(_lease)
+	_country.first_lease = _local_cells(_first_lease)
+	_country.building = _local_cells(_built_rect)
+	_country.build(_country_root)
+	for id: StringName in _country.plot_ids():
+		_country.show_plot(id, plot_state(id))
+
+
+## A bike for each cyclist on the country lane; walkers go on foot.
+func _build_country_walk_props(material: StandardMaterial3D) -> void:
+	var kit: NeighbourhoodPromenade = NeighbourhoodPromenade.new(null, street_set)
+	for index: int in _walk_kinds.size():
+		var prop: Node3D = null
+		if _walk_kinds[index] == &"cycle":
+			prop = Node3D.new()
+			prop.name = "Cycle%d" % index
+			var body: MeshInstance3D = MeshInstance3D.new()
+			body.name = "Body"
+			body.material_override = material
+			body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			body.mesh = kit.bike(preset.country.bike_colors[index % preset.country.bike_colors.size()])
+			prop.add_child(body)
+			_actors_root.add_child(prop)
+		_walk_props.append(prop)
+
+
+func country() -> NeighbourhoodCountry:
+	return _country
+
+
+## The ids of the named land plots round the lot (#613, for #597): the meadow beside it
+## and the cornfield behind it, named by compass (`east`, `north`, ...: east is world
+## +x, north -z), then the land plots on the lot's land outside its first lease, named
+## the same way with `_land` (`east_land`). Empty on a street without a country lane.
+func plot_ids() -> Array[StringName]:
+	return _country.plot_ids() if _country != null else [] as Array[StringName]
+
+
+## What a plot grows: &"meadow" or &"corn" (&"" when there is no such plot).
+func plot_crop(id: StringName) -> StringName:
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	return entry.crop if entry != null else &""
+
+
+## What a plot shows. A land plot the current lease covers is the player's land: mown
+## flat unless it was cleared, never its standing crop.
+func plot_state(id: StringName) -> NeighbourhoodCountry.PlotState:
+	var state: NeighbourhoodCountry.PlotState = _plot_states.get(id, NeighbourhoodCountry.PlotState.GROWN) as NeighbourhoodCountry.PlotState
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	if entry != null and entry.leased and state == NeighbourhoodCountry.PlotState.GROWN:
+		return NeighbourhoodCountry.PlotState.MOWN
+	return state
+
+
+## True for a land plot that the current lease covers.
+func plot_leased(id: StringName) -> bool:
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	return entry != null and entry.leased
+
+
+## Shows a plot grown (the default), mown or cleared. The state is kept across
+## rebuilds. False when the street has no such plot, or for a standing crop on land the
+## lease covers.
+func set_plot_state(id: StringName, state: NeighbourhoodCountry.PlotState) -> bool:
+	if _country == null or not _country.plot_ids().has(id):
+		return false
+	if plot_leased(id) and state == NeighbourhoodCountry.PlotState.GROWN:
+		return false
+	_plot_states[id] = state
+	_country.show_plot(id, state)
+	return true
+
+
+## The ground a plot covers, in the dressing's space (an empty box when there is no
+## such plot). A plot round the lot never overlaps the lot's maximum footprint; a land
+## plot never overlaps its first lease.
+func plot_bounds(id: StringName) -> AABB:
+	var entry: NeighbourhoodCountry.Plot = _country.plot(id) if _country != null else null
+	if entry == null:
+		return AABB()
+	var area: Rect2 = entry.rect
+	return _frame * AABB(Vector3(area.position.x, 0.0, area.position.y), Vector3(area.size.x, 1.0, area.size.y))

@@ -20,6 +20,11 @@ extends "res://src/world/main.gd"
 ## buying it would but without the deposit, so a woodland's land stands show felled.
 ## SEASIDE_STREET_WALLS=up shows the shop's walls at full height (a woodland's log
 ## cabin, #611) instead of the cutaway.
+## SEASIDE_STREET_LOT=<lot id> reviews another lot instead of the seaside cliff (for
+## example town_fixer_upper, Old Mill Street's watermill on its country lane, #613).
+## SEASIDE_STREET_PLOTS=mown|cleared shows a country street's land plots (#613,
+## data/streets/country.tres) mown or cleared; <state>:<id> (for example mown:east)
+## shows just that plot.
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
@@ -40,17 +45,20 @@ func _ready() -> void:
 	super._ready()
 	if OS.get_environment("SEASIDE_STREET_REVIEW_HOME") == "1":
 		return
-	var lot: LotDef = _lot_def(SEASIDE)
+	var site: StringName = SEASIDE
+	if not OS.get_environment("SEASIDE_STREET_LOT").is_empty():
+		site = StringName(OS.get_environment("SEASIDE_STREET_LOT"))
+	var lot: LotDef = _lot_def(site)
 	var street_override: String = OS.get_environment("SEASIDE_STREET_PRESET")
 	if lot != null and not street_override.is_empty():
 		# This process only: the review saves nothing, so the loaded lot may change.
 		lot.street_preset = street_override
 	var sections: Dictionary = _new_site_sections(lot) if lot != null else {}
-	if sections.is_empty() or not site_book.add_site(SEASIDE, SEASIDE, lot.display_name, Clock.sim.day, sections):
-		push_error("Seaside street review could not add the seaside site")
+	if sections.is_empty() or not site_book.add_site(site, site, lot.display_name, Clock.sim.day, sections):
+		push_error("Seaside street review could not add the site %s" % site)
 		return
-	if not switch_site(SEASIDE):
-		push_error("Seaside street review could not switch to the seaside site: " + site_switch_refusal(SEASIDE))
+	if not switch_site(site):
+		push_error("Seaside street review could not switch to the site: " + site_switch_refusal(site))
 		return
 	# The street is the subject: take the panels off the picture.
 	for panel: String in ["HUD", "Overlay", "Hints"]:
@@ -61,6 +69,7 @@ func _ready() -> void:
 	if OS.get_environment("SEASIDE_STREET_EXPANDED") == "1":
 		_expand_lease()
 	_show_stands(OS.get_environment("SEASIDE_STREET_STANDS"))
+	_show_plots(OS.get_environment("SEASIDE_STREET_PLOTS"))
 	if OS.get_environment("SEASIDE_STREET_WALLS") == "up":
 		_walls_up()
 	_close_up()
@@ -118,6 +127,22 @@ func _show_stands(which: String) -> void:
 		if parts.size() < 2 or parts[1] == String(id):
 			dressing.set_stand_state(id, states[parts[0]])
 	print("STANDS ", dressing.stand_ids())
+
+
+func _show_plots(which: String) -> void:
+	if which.is_empty():
+		return
+	var parts: PackedStringArray = which.split(":")
+	var states: Dictionary[String, NeighbourhoodCountry.PlotState] = {"grown": NeighbourhoodCountry.PlotState.GROWN,
+		"mown": NeighbourhoodCountry.PlotState.MOWN, "cleared": NeighbourhoodCountry.PlotState.CLEARED}
+	if not states.has(parts[0]):
+		push_error("Unknown SEASIDE_STREET_PLOTS: " + which)
+		return
+	var dressing: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
+	for id: StringName in dressing.plot_ids():
+		if parts.size() < 2 or parts[1] == String(id):
+			dressing.set_plot_state(id, states[parts[0]])
+	print("PLOTS ", dressing.plot_ids())
 
 
 ## Sets the clock's phase for display only (dusk mid-evening service, night after
