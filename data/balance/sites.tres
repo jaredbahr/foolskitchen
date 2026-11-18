@@ -4,4 +4,4 @@
 
 [resource]
 script = ExtResource("1_tuning")
-sites_by_tier = Array[int]([1, 2, 2, 2, 3, 0])
+sites_by_tier = Array[int]([1, 1, 2, 2, 3, 0])

@@ -309,7 +309,7 @@ func lot_for_layout(layout_id: StringName) -> LotDef:
 	if layout_id.is_empty():
 		return null
 	for definition: LotDef in _lots.values():
-		if definition.base_layout.save_layout_id == layout_id:
+		if definition.base_layout != null and definition.base_layout.save_layout_id == layout_id:
 			return definition
 	return null
 

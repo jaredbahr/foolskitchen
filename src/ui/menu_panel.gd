@@ -10,7 +10,7 @@ signal special_requested(recipe_id: StringName)
 signal signature_requested(recipe_id: StringName)
 signal settings_requested()
 signal goals_requested()
-## The browse-only property market (FK-087 part 2), offered from Tier 2.
+## The browse-only property market (FK-087 part 2), offered from Tier 3.
 signal property_requested()
 signal lease_requested()
 ## The one-time morning cat adoption (#119); the session checks and charges it.
@@ -646,7 +646,7 @@ func _on_goals_pressed() -> void:
 	goals_requested.emit()
 
 
-## Main decides (PropertyMarket.shown); hidden below Tier 2.
+## Main decides (PropertyMarket.shown); hidden below Tier 3.
 func set_property_available(available: bool) -> void:
 	_bind_nodes()
 	_property_button.visible = available

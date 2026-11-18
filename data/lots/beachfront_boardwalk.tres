@@ -17,7 +17,7 @@ expanded_daily_rent = 125
 expansion_west = 3
 expansion_east = 3
 expansion_north = 0
-min_tier = 2
+min_tier = 3
 min_reputation = 3.8
 guest_mix = Dictionary[StringName, float]({
 &"family": 0.65,

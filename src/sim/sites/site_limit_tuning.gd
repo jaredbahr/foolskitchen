@@ -1,7 +1,7 @@
 class_name SiteLimitTuning
 extends Resource
 ## How many restaurants the owner may run at each career tier (FK-087, D28),
-## authored in data/balance/sites.tres: 2 at Tier 2, 3 at Tier 5 and
+## authored in data/balance/sites.tres: 2 at Tier 3, 3 at Tier 5 and
 ## unlimited at Tier 6 (the chain). The home site counts as one.
 
 ## Means "no limit" in `sites_by_tier`.
@@ -9,7 +9,7 @@ const UNLIMITED: int = 0
 
 ## One entry per career tier, Tier 1 first: the most sites owned at once.
 ## UNLIMITED may only appear from some tier on, never before a number.
-@export var sites_by_tier: Array[int] = [1, 2, 2, 2, 3, UNLIMITED]
+@export var sites_by_tier: Array[int] = [1, 1, 2, 2, 3, UNLIMITED]
 
 
 func is_valid() -> bool:

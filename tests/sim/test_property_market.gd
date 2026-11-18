@@ -240,9 +240,9 @@ func test_listing_is_cheapest_to_open_first() -> void:
 	assert_eq(order, [&"c_tie", &"a_ready", &"b_fixer"], "cost, then name; nulls dropped")
 
 
-func test_market_shows_from_tier_two() -> void:
+func test_market_shows_from_tier_three() -> void:
 	assert_false(PropertyMarket.shown(1))
-	assert_true(PropertyMarket.shown(2))
+	assert_false(PropertyMarket.shown(2))
 	assert_true(PropertyMarket.shown(3))
 	assert_true(PropertyMarket.shown(6))
 

@@ -8,8 +8,8 @@ extends RefCounted
 ## Why a lot cannot be bought now; NONE when it can. PropertyText words them.
 enum Refusal { NONE, OWNED, LOCKED, LIMIT, LOAN, CASH }
 
-## The Beachfront Boardwalk is the first additional lot, at Tier 2.
-const MARKET_TIER: int = 2
+## D28: from Tier 3 every lot is visible on the market.
+const MARKET_TIER: int = 3
 
 
 ## Whether the morning Menu offers the Property screen at this career tier.

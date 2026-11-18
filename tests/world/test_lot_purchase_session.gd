@@ -738,7 +738,7 @@ func test_boardwalk_purchase_connects_the_rear_patio_and_unlocks_treats() -> voi
 
 	_play_to_close()
 	_next_morning()
-	_owner().career_tier = 2
+	_owner().career_tier = 3
 	var reviews: ReputationBook = _main.get("reputation") as ReputationBook
 	for index: int in range(ReputationBook.WINDOW):
 		reviews.record_event_review(4)
