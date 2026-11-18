@@ -9,7 +9,7 @@ extends Resource
 
 ## The shader's pattern numbers. Never renumber: 0 is the plain paint every
 ## older shop is drawn with.
-enum Pattern { PAINT, WAINSCOT, STRIPES, SUBWAY_TILE, BRICK, LOGS, MILL }
+enum Pattern { PAINT, WAINSCOT, STRIPES, SUBWAY_TILE, BRICK, LOGS, MILL, CONCRETE }
 
 ## The free finish every wall face starts with: plain paint in the shop's
 ## own wall colour.

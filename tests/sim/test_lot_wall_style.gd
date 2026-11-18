@@ -50,6 +50,27 @@ func test_the_log_wall_finish_and_the_woodland_default() -> void:
 		assert_eq((load(path) as StreetPreset).wall_style, &"", "%s keeps plain paint" % path)
 
 
+func test_the_concrete_panel_finish_and_the_rooftop_default() -> void:
+	var concrete: WallStyleDef = _content.wall_style(&"concrete")
+	assert_not_null(concrete, "a concrete panel wall finish exists (#618)")
+	assert_eq(int(concrete.pattern), WallStyleDef.Pattern.CONCRETE)
+	assert_eq(int(WallStyleDef.Pattern.CONCRETE), 7, "appended, never renumbered")
+	assert_true(concrete.price > 0, "a priced finish on other lots")
+	assert_true(concrete.unlock_level > 1, "bought later, like the log and mill finishes")
+	assert_not_null(_content.swatch(concrete.default_swatch), "in a palette colour")
+	var rooftop: StreetPreset = load("res://data/streets/rooftop.tres") as StreetPreset
+	assert_eq(rooftop.wall_style, &"concrete", "the rooftop shop has concrete panel walls")
+	# Its catalogue card draws panels: a dark reveal and a paler face than the paint.
+	var main: Color = _content.swatch(concrete.default_swatch).color
+	var accent: Color = WallFinishView.auto_accent(int(concrete.pattern), main, main)
+	var card: Image = WallThumbnail.image(int(concrete.pattern), main, accent)
+	var plain: Image = WallThumbnail.image(int(WallStyleDef.Pattern.PAINT), main, accent)
+	assert_ne(card.get_data(), plain.get_data(), "the card is not plain paint")
+	var reveal: Color = WallThumbnail.colour(int(concrete.pattern), Vector2(0.5, 0.3), main, accent)
+	var face: Color = WallThumbnail.colour(int(concrete.pattern), Vector2(0.3, 0.3), main, accent)
+	assert_true(reveal.get_luminance() < face.get_luminance(), "a dark reveal between panels")
+
+
 func test_every_face_starts_as_the_lots_finish_with_nothing_stored() -> void:
 	var editor: ShopEditor = _editor(&"logs")
 	assert_eq(editor.default_wall_style, &"logs")

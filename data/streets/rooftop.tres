@@ -154,6 +154,7 @@ pigeon_neck = Color(0.38, 0.55, 0.52, 1)
 bird = Color(0.22, 0.22, 0.25, 1)
 cloud = Color(1, 1, 1, 1)
 cloud_shade = Color(0.82, 0.86, 0.92, 1)
+clouds = 14
 plane = Color(0.9490196, 0.9215686, 0.8666667, 1)
 plane_tail = Color(0.8235294, 0.345098, 0.2470588, 1)
 
@@ -178,3 +179,4 @@ id = &"rooftop"
 ground = SubResource("Resource_vxod5")
 buildings = SubResource("Resource_j1pk1")
 rooftop = SubResource("Resource_roof")
+wall_style = &"concrete"

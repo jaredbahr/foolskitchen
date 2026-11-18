@@ -70,6 +70,8 @@ static func colour(pattern: int, p: Vector2, main: Color, accent: Color) -> Colo
 			return _shade(main, tone)
 		WallStyleDef.Pattern.MILL:
 			return _mill(p, main, accent)
+		WallStyleDef.Pattern.CONCRETE:
+			return _concrete(p, main, accent)
 	return main
 
 
@@ -101,6 +103,26 @@ static func _mill(p: Vector2, main: Color, timber: Color) -> Color:
 	if board < 0.12:
 		return _shade(timber, 1.16)
 	return _shade(timber, 0.94 + 0.1 * fposmod(sin(floorf(p.x / 0.11) * 91.7) * 4375.85, 1.0))
+
+
+## Architectural concrete panels (#618), as in the shader: 0.5 x 0.7 m panels in a
+## dark reveal (the accent), lit chamfers top and left, shaded bottom and right, and
+## four form-tie holes each.
+static func _concrete(p: Vector2, main: Color, reveal: Color) -> Color:
+	var size: Vector2 = Vector2(0.5, 0.7)
+	var cell: Vector2 = Vector2(floorf(p.x / size.x), floorf(p.y / size.y))
+	var f: Vector2 = Vector2(fposmod(p.x, size.x), fposmod(p.y, size.y))
+	if minf(f.x, size.x - f.x) < 0.009 or minf(f.y, size.y - f.y) < 0.009:
+		return _shade(reveal, 0.85)
+	var tie: Vector2 = Vector2(0.125 if f.x < size.x * 0.5 else size.x - 0.125, 0.175 if f.y < size.y * 0.5 else size.y - 0.175)
+	if f.distance_to(tie) < 0.014:
+		return _shade(reveal, 0.92)
+	if f.x < 0.022 or size.y - f.y < 0.022:
+		return _shade(main, 1.42)
+	if size.x - f.x < 0.022 or f.y < 0.022:
+		return _shade(main, 1.06)
+	var h: float = fposmod(sin(cell.x * 12.9898 + cell.y * 78.233) * 43758.5453, 1.0)
+	return _shade(main, 1.26 + 0.06 * h)
 
 
 static func _bond(p: Vector2, size: Vector2, joint: float, main: Color, seam: Color) -> Color:

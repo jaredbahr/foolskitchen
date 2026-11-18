@@ -77,7 +77,7 @@ extends Resource
 @export var haze_dusk: Color = Color.WHITE
 @export var haze_night: Color = Color.WHITE
 ## Life: pigeons (body and neck sheen), the birds wheeling over the city, the clouds
-## drifting past below the roof (lit top and shaded underside), and a distant plane.
+## drifting far off below the roof (lit top and shaded underside), and a distant plane.
 @export var pigeon: Color = Color.WHITE
 @export var pigeon_neck: Color = Color.WHITE
 @export var bird: Color = Color.WHITE

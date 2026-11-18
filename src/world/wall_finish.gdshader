@@ -142,6 +142,33 @@ vec3 mill(vec2 p, vec3 base, vec3 timber, float fw) {
 	return mix(colour, timber * 0.55, line_cover(min(board, 1.0 - board) * 0.11, 0.005, fw) * fade);
 }
 
+// 7: architectural concrete panels (#618): stack-bonded 0.5 x 0.7 m panels (two
+// courses to the top of a wall), each a touch its own tone and paler than the main
+// colour, with a dark recessed reveal (the accent) round it, a lit chamfer on its top
+// and left edges and a shaded one on its bottom and right (light from the upper
+// left), and four form-tie holes.
+vec3 concrete(vec2 p, vec3 base, vec3 reveal, float fw) {
+	vec2 size = vec2(0.5, 0.7);
+	vec2 cell = floor(p / size);
+	vec2 f = fract(p / size) * size;
+	float h = fract(sin(cell.x * 12.9898 + cell.y * 78.233) * 43758.5453);
+	// Cast concrete reads pale: the face sits a step above the main colour.
+	vec3 colour = base * (1.26 + 0.06 * h);
+	float fade = detail(0.1, fw);
+	// The chamfers: 0.022 m bands just inside the reveal, lit on the left and top.
+	float lit = max(1.0 - step(0.022, f.x), 1.0 - step(0.022, size.y - f.y));
+	float shade = max(1.0 - step(0.022, size.x - f.x), 1.0 - step(0.022, f.y));
+	colour = mix(colour, base * 1.42, lit * fade);
+	colour = mix(colour, base * 1.06, shade * (1.0 - lit) * fade);
+	// Four tie holes, 0.125 m in from the sides and 0.175 m from top and bottom.
+	vec2 tie = vec2(f.x < size.x * 0.5 ? 0.125 : size.x - 0.125, f.y < size.y * 0.5 ? 0.175 : size.y - 0.175);
+	float hole = length(f - tie);
+	colour = mix(colour, reveal * 0.92, line_cover(hole, 0.011, fw) * detail(0.06, fw));
+	vec2 d = min(f, size - f);
+	float seam = max(line_cover(d.x, 0.007, fw), line_cover(d.y, 0.007, fw));
+	return mix(colour, reveal * 0.85, seam * detail(0.05, fw));
+}
+
 void fragment() {
 	vec3 base = main_color.rgb;
 	vec3 accent = accent_color.rgb;
@@ -162,6 +189,8 @@ void fragment() {
 		colour = logs(p, base, accent, fw);
 	} else if (pattern == 6) {
 		colour = mill(p, base, accent, fw);
+	} else if (pattern == 7) {
+		colour = concrete(p, base, accent, fw);
 	}
 	if (preview) {
 		vec2 q = UV2;
