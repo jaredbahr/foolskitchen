@@ -65,6 +65,10 @@ const WET_WIDTH: float = 0.9
 const SEA_SCALE: float = 1.7
 ## How much of the air's colour lies over the rock at the foot of the cliff.
 const HAZE: float = 0.55
+## The rock's faces are shaded as if tipped this far toward the sky, so a sheer face
+## takes the daylight (pale chalk reads white, not grey) while the faces turned from
+## the light stay darker than the faces turned to it.
+const FACE_TILT: float = 2.0
 ## The cove's beach: its widest (metres from the cliff foot to the waterline).
 const BEACH: float = 2.6
 ## Gulls are drawn this much larger than life, so they read from the camera.
@@ -202,6 +206,7 @@ var _lights: Array[Vector3] = []
 var _light_sizes: Array[float] = []
 var _blocked: Array[Rect2] = []
 var _material: StandardMaterial3D
+var _rock_material: StandardMaterial3D
 var _shadow_material: StandardMaterial3D
 var _glass_material: StandardMaterial3D
 var _beam_material: StandardMaterial3D
@@ -315,16 +320,16 @@ func _plan_coast() -> void:
 		_feet.append(foot)
 		water.append(foot + _coast_normals[index] * _beach(top[index]))
 	waterline = Line.new(water, BUCKET, 4)
-	# Sea stacks off the cove's mouth: (u, z, radius, top below the cliff top).
+	# Sea stacks off the cove's mouth: (u, z, radius, top below the cliff top as a share of the drop).
 	stacks.clear()
-	for spec: Vector4 in [Vector4(ue + 1.9, f + 8.6, 1.15, 2.7), Vector4(ue + 4.1, f + 11.6, 0.85, 5.2),
-			Vector4(ue + 0.9, f + 12.2, 0.5, 8.6)]:
+	for spec: Vector4 in [Vector4(ue + 1.9, f + 8.6, 1.15, 0.22), Vector4(ue + 4.1, f + 11.6, 0.85, 0.42),
+			Vector4(ue + 0.9, f + 12.2, 0.5, 0.69)]:
 		var at: Vector2 = Vector2(spec.x, spec.y)
 		for step: int in 12:
 			if waterline.signed(at) > spec.z + 0.9:
 				break
 			at += Vector2(0.45, 0.0)
-		stacks.append(Vector4(at.x, at.y, spec.z, spec.w))
+		stacks.append(Vector4(at.x, at.y, spec.z, spec.w * skin.drop))
 	lighthouse = Vector2(cu - 27.0, zb - 23.8)
 	_lamp = Vector3(lighthouse.x, TOWER_H + 0.42, lighthouse.y)
 	_lamp_on_sea = lighthouse + Vector2(6.0, 4.0)
@@ -367,11 +372,11 @@ func _band_offsets() -> Array[Vector2]:
 		if band == 2:
 			step = 0.06
 		elif roll < 0.42:
-			step = 0.22 + 0.25 * _r(band, 22)
+			step = (0.22 + 0.25 * _r(band, 22)) * skin.relief
 		elif roll < 0.66:
-			step = -0.14 - 0.14 * _r(band, 23)
+			step = (-0.14 - 0.14 * _r(band, 23)) * skin.relief
 		var top: float = bottom + step
-		bottom = top + 0.06 + 0.16 * _r(band, 24)
+		bottom = top + (0.06 + 0.16 * _r(band, 24)) * skin.relief
 		result.append(Vector2(top, bottom))
 	return result
 
@@ -554,7 +559,7 @@ func build(parent: Node3D) -> void:
 			_cache.clear()
 		_cache[key] = meshes
 	_add(_instance("Ground", meshes["ground"], _material))
-	_add(_instance("Cliff", meshes["cliff"], _material))
+	_add(_instance("Cliff", meshes["cliff"], _rock_material))
 	_add(_instance("Props", meshes["props"], _material))
 	_add(_instance("Shadows", meshes["shadows"], _shadow_material))
 	_add(_instance("SeaShadows", meshes["sea_shadows"], _shadow_material))
@@ -581,6 +586,7 @@ func _materials() -> void:
 	_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 	_material.disable_receive_shadows = true
 	_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_rock_material = _material.duplicate() as StandardMaterial3D
 	_shadow_material = StandardMaterial3D.new()
 	_shadow_material.vertex_color_use_as_albedo = true
 	_shadow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -663,6 +669,7 @@ func _build_static() -> Dictionary:
 	_cliff_face(cliff)
 	_foot(cliff)
 	_stacks(cliff, sea_shadows)
+	_tip_to_sky(cliff.soup)
 	_cliff_shadow(sea_shadows)
 	_rail(props, shadows)
 	_walls(props, shadows)
@@ -834,6 +841,8 @@ func _cliff_face(pen: NeighbourhoodBuildings.Pen) -> void:
 			var vd: Vector3 = Vector3(b0.x, y0b, b0.y)
 			pen.tri(va, vb, vc, out, shade)
 			pen.tri(va, vc, vd, out, Color(shade.r * 0.97, shade.g * 0.97, shade.b * 0.97))
+			if band >= 2 and skin.flint.a > 0.0:
+				_flints(pen, index, band, va, vb, vc, vd, out)
 			if band + 1 >= bands:
 				continue
 			# The step to the next stratum: a ledge where it stands out, an overhang where it is set in.
@@ -853,6 +862,33 @@ func _cliff_face(pen: NeighbourhoodBuildings.Pen) -> void:
 			lip = _hazed(lip, y0b)
 			pen.quad(Vector3(b0.x, y0b, b0.y), Vector3(b1.x, y1b, b1.y), Vector3(c1.x, y1b, c1.y), Vector3(c0.x, y0b, c0.y),
 				Vector3.UP if ledge else Vector3.DOWN, lip)
+
+
+## Shades the rock's steep faces as if tipped FACE_TILT toward the sky (ledges, which
+## face up, and overhangs, which face down, keep their own normals).
+static func _tip_to_sky(soup: NeighbourhoodGround.Soup) -> void:
+	for index: int in soup.normals.size():
+		var normal: Vector3 = soup.normals[index]
+		if absf(normal.y) < 0.5:
+			soup.normals[index] = (Vector3(normal.x, 0.0, normal.z).normalized() + Vector3.UP * FACE_TILT).normalized()
+
+
+## Flint in a chalk face: one or two thin dark lines across each stratum, at the same
+## height along the whole coast (as the beds run), broken into nodules here and there.
+## The facet `va vb` (top) to `vd vc` (bottom) is one stretch of stratum `band`.
+func _flints(pen: NeighbourhoodBuildings.Pen, index: int, band: int, va: Vector3, vb: Vector3, vc: Vector3, vd: Vector3, out: Vector3) -> void:
+	var lift: Vector3 = out * 0.015
+	var lines: int = 1 + int(_r(band, 301) < 0.45)
+	for line: int in lines:
+		if _r(index * 13 + band, 302 + line) < 0.22:
+			continue
+		var at: float = (float(line) + 0.25 + 0.5 * _r(band, 303 + line)) / float(lines)
+		var half: float = 0.022 + 0.012 * _r(index * 5 + band, 305 + line)
+		var height: float = maxf(va.y - vd.y, 0.3)
+		var f0: float = clampf(at - half / height, 0.0, 1.0)
+		var f1: float = clampf(at + half / height, 0.0, 1.0)
+		var colour: Color = _hazed(skin.flint, va.lerp(vd, at).y)
+		pen.quad(va.lerp(vd, f0) + lift, vb.lerp(vc, f0) + lift, vb.lerp(vc, f1) + lift, va.lerp(vd, f1) + lift, out, colour)
 
 
 ## Boulders along the foot where the surf breaks (fewer on the cove's beach), and the beach.
@@ -1895,6 +1931,7 @@ func _apply_night() -> void:
 	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
 	_pools.visible = _night > 0.05
 	_glass_material.albedo_color = Color.WHITE
+	_rock_material.albedo_color = Color.WHITE.lerp(skin.moonlit, _night)
 	_beam_material.albedo_color = Color(skin.lamp_glow, 0.2 * _night)
 	beam.visible = _night > 0.01
 	_boat_lamp.visible = _night > 0.01

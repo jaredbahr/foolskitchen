@@ -25,6 +25,11 @@ extends Resource
 @export var strata: Array[Color] = []
 @export var rock_dark: Color = Color.WHITE
 @export var haze: Color = Color.WHITE
+## What the night does to the rock's colour (it multiplies it, so white leaves the rock as
+## the night light makes it; a pale rock can catch the moon with a cool tint over 1).
+@export var moonlit: Color = Color.WHITE
+## Thin dark lines of flint nodules along the strata (chalk); fully transparent for none.
+@export var flint: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## The sea far below (sea.gdshader's colours), its foam, and the cove's sand and the
 ## sand the surf has just left.
 @export var sea_shallow: Color = Color.WHITE
@@ -76,8 +81,10 @@ extends Resource
 ## Glowing parts: the lighthouse's lamp and beam, the boat's and the car park's lamps and
 ## lit windows (a dedicated emissive colour, ART_STYLE.md 3).
 @export var lamp_glow: Color = Color.WHITE
-## How far down the sea is (metres below the cliff top), and how much life.
+## How far down the sea is (metres below the cliff top), how far the strata step out and
+## in from each other (1 for ledged sandstone, less for a sheer chalk face), and how much life.
 @export_range(10.0, 30.0) var drop: float = 16.0
+@export_range(0.0, 1.0) var relief: float = 1.0
 @export_range(0, 10) var gulls: int = 6
 @export_range(0, 8) var sheep: int = 5
 @export_range(0, 6) var cars: int = 3
@@ -96,8 +103,8 @@ func errors() -> PackedStringArray:
 
 ## A string that changes whenever any colour or count does; used in cache keys.
 func signature() -> String:
-	return var_to_str([grass, grass_light, grass_dark, turf, soil, gravel, gravel_dark, strata, rock_dark, haze,
+	return var_to_str([grass, grass_light, grass_dark, turf, soil, gravel, gravel_dark, strata, rock_dark, haze, moonlit, flint,
 		sea_shallow, sea_mid, sea_deep, foam, sand, sand_wet, rail_post, rail, timber, timber_dark, stone, stone_dark,
 		stone_light, tuft_colors, thrift, thrift_leaf, gorse, gorse_bloom, thorn_leaf, trunk, lighthouse, lighthouse_band,
 		slate, window, hull, wheelhouse, boat_trim, gull_body, gull_wing, gull_tip, fleece, sheep_face, tarmac, car_colors,
-		bus_sign, buoy_a, buoy_b, lamp_glow, drop, gulls, sheep, cars])
+		bus_sign, buoy_a, buoy_b, lamp_glow, drop, relief, gulls, sheep, cars])

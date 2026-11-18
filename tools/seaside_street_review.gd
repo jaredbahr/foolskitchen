@@ -28,6 +28,9 @@ extends "res://src/world/main.gd"
 ## for scale (review only: nothing joins the sim or the save).
 ## SEASIDE_STREET_LIGHTHOUSE=<zoom> frames a cliff top's lighthouse across the bay (#380,
 ## data/streets/cliff.tres) at that zoom.
+## SEASIDE_STREET_PAN=<u>,<v> zooms the player's view all the way out and pans it as far
+## as the real pan limits allow along the street frame's tangent (u) and normal (v), for
+## example 0,-1 to the end of a cliff top's or beach's pan out over the sea (#380).
 ## SEASIDE_STREET_PLOTS=mown|cleared shows a country street's land plots (#613,
 ## data/streets/country.tres) mown or cleared; <state>:<id> (for example mown:east)
 ## shows just that plot.
@@ -43,6 +46,8 @@ var _timed_frames: int = 0
 var _frame_count: int = 0
 var _last_usec: int = 0
 var _frame_ms: Array[float] = []
+## Frames left before SEASIDE_STREET_PAN pans (after the capture's own camera setup).
+var _pan_wait: int = 20
 
 
 func _ready() -> void:
@@ -256,6 +261,24 @@ func _frame_lighthouse() -> void:
 	($CameraRig as CameraRig).frame_area(Vector2(target.x, target.z), Vector2(14.0, 14.0), float(zoom_text), true)
 
 
+func _pan_to_limit() -> void:
+	var text: String = OS.get_environment("SEASIDE_STREET_PAN")
+	if text.is_empty():
+		return
+	var parts: PackedStringArray = text.split(",")
+	var frame: Dictionary = $ShopView.neighbourhood_dressing.capture_state().get("frame", {})
+	if parts.size() != 2 or not frame.has("normal"):
+		push_error("SEASIDE_STREET_PAN needs <u>,<v> and a street frame")
+		return
+	var push: Vector3 = _vector(frame["tangent"]) * float(parts[0]) + _vector(frame["normal"]) * float(parts[1])
+	var rig: CameraRig = $CameraRig as CameraRig
+	rig.zoom_steps(1000.0)
+	# Far past any limit: the rig's own clamp stops it where a player's pan would.
+	rig.position += push * 1000.0
+	rig.step_view(0.001, Vector2.ZERO)
+	print("SEASIDE_STREET_PAN ", rig.position)
+
+
 static func _vector(value: Variant) -> Vector3:
 	if value is Vector3:
 		return value
@@ -266,6 +289,10 @@ static func _vector(value: Variant) -> Vector3:
 @warning_ignore("integer_division")
 func _process(delta: float) -> void:
 	super._process(delta)
+	if _pan_wait > 0:
+		_pan_wait -= 1
+		if _pan_wait == 0:
+			_pan_to_limit()
 	if _timed_frames <= 0 or _frame_ms.size() >= _timed_frames:
 		return
 	_frame_count += 1
