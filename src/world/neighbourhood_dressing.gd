@@ -51,8 +51,11 @@ const PLANK_LIFT: float = 0.004
 const PROMENADE_LANES: Array[float] = [2.72, 3.58, 5.62, 6.5, 7.36]
 const PROMENADE_HALF: float = 0.38
 ## How fast each kind of promenade walker goes (m/s) and how fast their legs move.
-const WALKER_SPEEDS: Dictionary[StringName, float] = {&"stroll": 0.65, &"dog": 0.6, &"pram": 0.5, &"jog": 1.35, &"cycle": 1.9}
-const WALKER_STRIDES: Dictionary[StringName, float] = {&"stroll": 1.0, &"dog": 1.0, &"pram": 0.85, &"jog": 1.9, &"cycle": 1.0}
+const WALKER_SPEEDS: Dictionary[StringName, float] = {&"stroll": 0.65, &"dog": 0.6, &"pram": 0.5, &"jog": 1.35, &"cycle": 1.9, &"hike": 0.55}
+const WALKER_STRIDES: Dictionary[StringName, float] = {&"stroll": 1.0, &"dog": 1.0, &"pram": 0.85, &"jog": 1.9, &"cycle": 1.0, &"hike": 0.9}
+## The woodland track's walkers (#607): their guest looks, and a cyclist's pace on dirt.
+const FOREST_GUESTS: Array[int] = [2, 5, 8, 3, 10]
+const FOREST_CYCLE_SPEED: float = 1.5
 const PROMENADE_GUESTS: Array[int] = [1, 3, 6, 4, 7]
 ## The cyclist's seat height, how far ahead the dog trots (path metres) and its leash.
 const BIKE_SEAT: float = 0.3
@@ -177,6 +180,13 @@ var _promenade: NeighbourhoodPromenade
 var _neighbours: Dictionary[StringName, Node3D] = {}
 var _neighbour_plans: Dictionary[StringName, NeighbourhoodBuildings.Plan] = {}
 var _neighbour_states: Dictionary[StringName, int] = {}
+## The woodland clearing (#607), when the street's preset names a forest: its root,
+## its builder and the state each named stand of trees shows (kept across rebuilds).
+var _forest_root: Node3D
+var _forest: NeighbourhoodForest
+var _stand_states: Dictionary[StringName, int] = {}
+## Where the street's people walk (their feet): the paving, or a forest track.
+var _walk_y: float = 0.055
 ## Each neighbour's own bulbs (#600), by id, for the ones that have any.
 var _neighbour_lamps: Dictionary[StringName, MeshInstance3D] = {}
 
@@ -201,6 +211,11 @@ func use_preset(value: StreetPreset) -> void:
 ## True when the street's preset is a car-free promenade (#596).
 func has_promenade() -> bool:
 	return preset != null and preset.promenade != null
+
+
+## True when the street's preset is a woodland clearing with a forest track (#607).
+func has_forest() -> bool:
+	return preset != null and preset.forest != null
 
 
 func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictionary],
@@ -233,6 +248,8 @@ func rebuild() -> void:
 		street_set.signature(), preset.shore.signature() if has_shore() else ""]
 	if has_promenade():
 		key.append(preset.promenade.signature())
+	if has_forest():
+		key.append(preset.forest.signature())
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -281,9 +298,14 @@ func rebuild() -> void:
 		far_count += 1
 	far_count = maxi(far_count, count)
 	_visual_half = float(far_count) * road_box.size.x * 0.5
-	_traffic = not has_promenade()
+	_traffic = not has_promenade() and not has_forest()
 	_promenade = NeighbourhoodPromenade.new(preset.promenade, street_set) if has_promenade() else null
-	if _traffic:
+	_walk_y = _paving_top
+	if has_forest():
+		# A woodland clearing (#607): no road, pavement, kerbs or neighbours; a dirt track.
+		_walk_y = NeighbourhoodForest.WALK_Y
+		_clear_street_ground()
+	elif _traffic:
 		_build_road(road_prop, road_box, count)
 		_build_paving(paving, paving_box, PAVING_START, PAVING_DEPTH, "NearPavement")
 		_build_paving(paving, paving_box, FAR_START, FAR_DEPTH, "FarPavement")
@@ -291,7 +313,8 @@ func rebuild() -> void:
 		# A promenade: one sweep of paving from the shop fronts to the far edge, no road.
 		_build_paving(paving, paving_box, PAVING_START, FAR_START + FAR_DEPTH - PAVING_START, "NearPavement", true)
 		_far_pavement = _near_pavement
-	_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
+	if not has_forest():
+		_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
 	_build_planks()
 	_build_promenade_pattern()
 	road_prop.free()
@@ -300,15 +323,19 @@ func rebuild() -> void:
 		_build_patio_paving(paving, paving_box, patio)
 	paving.clear_body_tint()
 	paving.free()
-	_build_kerbs(road_box.size.x, count)
-	_build_buildings()
-	_build_yard_fronts(built)
-	_build_ground()
+	if has_forest():
+		_build_forest()
+	else:
+		_build_kerbs(road_box.size.x, count)
+		_build_buildings()
+		_build_yard_fronts(built)
+		_build_ground()
 	_ensure_actors()
 	_build_routes()
-	_build_lamps()
-	_build_furniture()
-	_build_life()
+	if not has_forest():
+		_build_lamps()
+		_build_furniture()
+		_build_life()
 	_build_shore()
 	_initialize_players()
 	_configured = build_error.is_empty()
@@ -319,6 +346,7 @@ func rebuild() -> void:
 	_traffic_root.visible = _configured and _traffic
 	_life_root.visible = _configured
 	_shore_root.visible = _configured
+	_forest_root.visible = _configured
 	_apply_night()
 	_apply_time(_effective_time())
 
@@ -352,6 +380,9 @@ func _ensure_roots() -> void:
 	_shore_root = Node3D.new()
 	_shore_root.name = "Shore"
 	add_child(_shore_root)
+	_forest_root = Node3D.new()
+	_forest_root.name = "Forest"
+	add_child(_forest_root)
 
 
 func _clear_static() -> void:
@@ -368,6 +399,10 @@ func _clear_static() -> void:
 		_shore_root.remove_child(child)
 		child.free()
 	_shore = null
+	for child: Node in _forest_root.get_children():
+		_forest_root.remove_child(child)
+		child.free()
+	_forest = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -414,6 +449,7 @@ func _hide_actors() -> void:
 	_traffic_root.hide()
 	_life_root.hide()
 	_shore_root.hide()
+	_forest_root.hide()
 	if car != null:
 		car.hide()
 
@@ -1171,6 +1207,7 @@ func _build_ground() -> void:
 static func clear_mesh_cache() -> void:
 	_mesh_cache.clear()
 	_window_cache.clear()
+	NeighbourhoodForest.clear_cache()
 
 
 ## The key light's ground run per metre of height, in the street's local (u, z).
@@ -1269,7 +1306,7 @@ func _ensure_actors() -> void:
 		_actors_root.remove_child(spare)
 		spare.free()
 		_directions.pop_back()
-	var guests: Array[int] = GUEST_IDS if _traffic else PROMENADE_GUESTS
+	var guests: Array[int] = GUEST_IDS if _traffic else (FOREST_GUESTS if has_forest() else PROMENADE_GUESTS)
 	for index: int in _walk_kinds.size():
 		if index >= pedestrians.size():
 			var person: PersonView = PERSON.instantiate() as PersonView
@@ -1310,6 +1347,15 @@ func _plan_walkers() -> void:
 			_walk_strides.append(1.0)
 			_walk_phases.append(PHASES[index])
 		return
+	if has_forest():
+		for index: int in mini(preset.forest.walkers.size(), NeighbourhoodForest.LANES.size()):
+			var kind: StringName = preset.forest.walkers[index]
+			_walk_kinds.append(kind)
+			_walk_lanes.append(NeighbourhoodForest.TRACK_V + NeighbourhoodForest.LANES[index])
+			_walk_speeds.append(FOREST_CYCLE_SPEED if kind == &"cycle" else WALKER_SPEEDS.get(kind, WALK_SPEED))
+			_walk_strides.append(WALKER_STRIDES.get(kind, 1.0))
+			_walk_phases.append(NeighbourhoodGround.hash01(index, 6, street_set.seed_salt))
+		return
 	for index: int in mini(preset.promenade.walkers.size(), PROMENADE_LANES.size()):
 		var kind: StringName = preset.promenade.walkers[index]
 		_walk_kinds.append(kind)
@@ -1336,6 +1382,9 @@ func _build_walk_props() -> void:
 	material.metallic_specular = 0.0
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 	material.disable_receive_shadows = true
+	if has_forest():
+		_build_forest_walk_props(material)
+		return
 	for index: int in _walk_kinds.size():
 		var kind: StringName = _walk_kinds[index]
 		var prop: Node3D = null
@@ -1419,6 +1468,10 @@ func _build_routes() -> void:
 	var half_z: float = WALK_HALF if _traffic else PROMENADE_HALF
 	for lane: float in _walk_lanes:
 		var route: Vector2 = _safe_route(_shift + lane, WALK_HALF, half_z)
+		if has_forest() and route.y > route.x:
+			# The track runs on into the trees: walk well out of the clearing before turning.
+			var middle: float = _local_reserve.get_center().x
+			route = Vector2(minf(route.x, middle - NeighbourhoodForest.WALK_REACH), maxf(route.y, middle + NeighbourhoodForest.WALK_REACH))
 		_routes.append(route)
 		var box: AABB = AABB(Vector3(route.x - WALK_HALF, _paving_top + WALK_BOTTOM, _shift + lane - half_z),
 			Vector3(maxf(route.y - route.x, 0.0) + WALK_HALF * 2.0, WALK_TOP - WALK_BOTTOM, half_z * 2.0))
@@ -1662,6 +1715,8 @@ func _window_level(tier: int) -> float:
 func _apply_night() -> void:
 	if _shore != null:
 		_shore.set_night(_night, _late)
+	if _forest != null:
+		_forest.set_night(_night, _late)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
@@ -1844,6 +1899,8 @@ func _apply_time(seconds: float) -> void:
 		_life.apply(seconds)
 	if _shore != null:
 		_shore.apply(seconds)
+	if _forest != null:
+		_forest.apply(seconds)
 	var walkers: int = _walk_kinds.size()
 	if walkers == 0 or pedestrians.size() != walkers or _routes.size() != walkers or car == null:
 		return
@@ -1859,8 +1916,14 @@ func _apply_time(seconds: float) -> void:
 		var forward: bool = progress <= length
 		var u: float = route.x + progress if forward else route.y - (progress - length)
 		var person: PersonView = pedestrians[index]
-		person.position = _frame * Vector3(u, _paving_top, _shift + _walk_lanes[index])
+		person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index])
 		_directions[index] = _tangent if forward else -_tangent
+		if _forest != null:
+			# The track winds: follow its bends and face along them.
+			var bend: float = _forest.track_z(u) - _shift - NeighbourhoodForest.TRACK_V
+			person.position = _frame * Vector3(u, _walk_y, _shift + _walk_lanes[index] + bend)
+			var along: Vector3 = (_tangent + _outward * _forest.track_slope(u)).normalized()
+			_directions[index] = along if forward else -along
 		person.face_direction(_directions[index])
 		person.show()
 		if _players.size() == walkers:
@@ -1890,6 +1953,8 @@ func _place_walk_prop(index: int, seconds: float, route: Vector2, progress: floa
 			prop.transform = Transform3D(facing, person.position + _directions[index] * 0.06)
 		&"pram":
 			prop.transform = Transform3D(facing, person.position + _directions[index] * 0.12)
+		&"hike":
+			prop.transform = Transform3D(facing, person.position)
 		&"dog":
 			var length: float = route.y - route.x
 			var lead: float = fposmod(progress + DOG_LEAD, length * 2.0)
@@ -1911,6 +1976,102 @@ func _place_walk_prop(index: int, seconds: float, route: Vector2, progress: floa
 			if span.length() > 0.05:
 				var look: Basis = Basis.looking_at(span.normalized(), Vector3.UP)
 				leash.transform = Transform3D(look * Basis.from_scale(Vector3(1.0, 1.0, span.length())), (hand + collar) * 0.5)
+
+
+# --- the woodland clearing (#607) and its stands of trees (for #597) -----------
+
+## The street's own ground, tree line and far road belong to a street, not a clearing:
+## a woodland preset drops them (their caches stay for the next street that needs them).
+func _clear_street_ground() -> void:
+	for root: Node3D in [ground_root, far_root]:
+		for child: Node in root.get_children():
+			root.remove_child(child)
+			child.free()
+	_ground_key = []
+	_far_key = []
+	_near_pavement = AABB()
+	_far_pavement = AABB()
+
+
+## The clearing, the track, the stream and the stands, built on the street frame.
+func _build_forest() -> void:
+	_forest_root.transform = _frame
+	_forest = NeighbourhoodForest.new()
+	_forest.skin = preset.forest
+	_forest.salt = street_set.seed_salt
+	_forest.local_reserve = _local_reserve
+	_forest.shift = _shift
+	_forest.light_shift = _compute_light_shift()
+	_forest.compass = _frame.basis
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_forest.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_forest.world_centre = Vector2(centre.x, centre.z)
+	_forest.build(_forest_root)
+	for id: StringName in _forest.stand_ids():
+		_forest.show_stand(id, stand_state(id))
+
+
+## A hiker's backpack or a cyclist's bike for each walker on the forest track.
+func _build_forest_walk_props(material: StandardMaterial3D) -> void:
+	var kit: NeighbourhoodPromenade = NeighbourhoodPromenade.new(null, street_set)
+	var forest: NeighbourhoodForest = NeighbourhoodForest.new()
+	forest.skin = preset.forest
+	for index: int in _walk_kinds.size():
+		var kind: StringName = _walk_kinds[index]
+		var prop: Node3D = null
+		if kind == &"cycle" or kind == &"hike":
+			prop = Node3D.new()
+			prop.name = "%s%d" % [String(kind).capitalize(), index]
+			var body: MeshInstance3D = MeshInstance3D.new()
+			body.name = "Body"
+			body.material_override = material
+			body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if kind == &"cycle":
+				body.mesh = kit.bike(preset.forest.bike_colors[index % preset.forest.bike_colors.size()])
+			else:
+				body.mesh = forest.backpack(preset.forest.pack_colors[index % preset.forest.pack_colors.size()])
+			prop.add_child(body)
+			_actors_root.add_child(prop)
+		_walk_props.append(prop)
+
+
+func forest() -> NeighbourhoodForest:
+	return _forest
+
+
+## The ids of the named stands of trees round the lot (#597): the two sides and the
+## back, named by compass (`west`, `east`, `north`, `south`: east is world +x, north
+## -z). Empty on a street without a forest.
+func stand_ids() -> Array[StringName]:
+	return _forest.stand_ids() if _forest != null else [] as Array[StringName]
+
+
+func stand_state(id: StringName) -> NeighbourhoodForest.StandState:
+	return _stand_states.get(id, NeighbourhoodForest.StandState.FOREST) as NeighbourhoodForest.StandState
+
+
+## Shows a stand as forest (the default), felled to stumps, or cleared ground. The state
+## is kept across rebuilds. False when the street has no such stand.
+func set_stand_state(id: StringName, state: NeighbourhoodForest.StandState) -> bool:
+	if _forest == null or not _forest.stand_ids().has(id):
+		return false
+	_stand_states[id] = state
+	_forest.show_stand(id, state)
+	return true
+
+
+## Everything a stand's trees cover, crowns included, in the dressing's space (an empty
+## box when there is no such stand). Never overlaps the lot's maximum footprint.
+func stand_bounds(id: StringName) -> AABB:
+	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
+	if entry == null:
+		return AABB()
+	var area: Rect2 = entry.crowns
+	return _frame * AABB(Vector3(area.position.x, 0.0, area.position.y), Vector3(area.size.x, 4.0, area.size.y))
 
 
 ## Where the street's walkers are now (#596), for tests and tools: their kind, position

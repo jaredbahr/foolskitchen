@@ -17,6 +17,9 @@ const STARTER: String = "res://data/streets/starter.tres"
 @export var shore: ShoreSkin
 ## A car-free promenade instead of the road (#596); none keeps the road and its traffic.
 @export var promenade: PromenadeSkin
+## A woodland clearing on a forest track instead of a street (#607): no road, cars,
+## pavements or neighbouring buildings. None keeps the street.
+@export var forest: ForestSkin
 
 
 ## The starter street, the one every site had before presets (#422, #423).
@@ -24,9 +27,9 @@ static func starter() -> StreetPreset:
 	return load(STARTER) as StreetPreset
 
 
-## True when cars drive past: every street but a promenade.
+## True when cars drive past: every street but a promenade or a forest track.
 func has_traffic() -> bool:
-	return promenade == null
+	return promenade == null and forest == null
 
 
 ## The preset at `path`, or the starter street when `path` is empty, missing or
@@ -102,6 +105,8 @@ func errors() -> PackedStringArray:
 		problems.append_array(promenade.errors())
 	if shore != null:
 		problems.append_array(shore.errors())
+	if forest != null:
+		problems.append_array(forest.errors())
 	for spec: StreetPropSpec in buildings.furniture:
 		if spec == null:
 			problems.append("an empty street furniture entry")

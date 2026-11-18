@@ -274,3 +274,41 @@ screens join the street's lit-window glow; nothing adds a light.
 | Beach hut: boards, double doors, gable window, deck and a striped deckchair | `neighbourhood_terrace.gd` | the houses' front gable and the shop door (#422) |
 | Arcade front: open front with glowing cabinets, bulb-ringed parapet sign, rocket ride | `neighbourhood_terrace.gd` | the false-front roof (#422), the shop's awning, the street lamp's glow |
 | Closed and for sale: rolled-up awning, whitewashed window or roller shutter, agent's board on a post | `neighbourhood_terrace.gd` | the hatch shutter (#589), the shop sign board |
+
+## Woodland clearing (#607)
+
+Code-built like the beach (#588) and the promenade (#596): chunky, flat-shaded,
+vertex-coloured meshes from boxes, six- and seven-sided drums and cones, low-poly
+lumps and thin blades, with no textures, imported models or lights. Not files under
+`assets/made/`. Built in `src/world/neighbourhood_forest.gd`; colours come from the
+woodland preset's `ForestSkin` in `data/streets/woodland.tres`, drawn from the shared
+swatches (Forest, Leaf, Moss, Clay, Sand, Mushroom, Oat, Walnut, Honey, Birch, Cream,
+Milk, Pewter, Pebble, Charcoal, Tomato, Copper, Tangerine, Sunflower, Teal, Navy, Lilac,
+Butter, Blush) plus a few forest greens between them. People are unchanged Mini
+Characters. The bulbs, lantern, fire and fireflies glow (the glowing-part exception);
+nothing adds a light.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Pine (trunk and three or four stacked cones) | the street's pine trees (#424), taller | 26 to 40 |
+| Birch (pale trunk, two lumpy crowns) | the street's round trees (#424) | about 80 |
+| Fern, grass tuft, reed | the hedges' and dunes' thin blades (#588) | 12 to 18, 4 |
+| Toadstool cluster (stems and round caps) | the street furniture's lumps, at toy size | about 60 |
+| Mossy rock, fallen log with toadstools | the ground's lumps (#421), the log below | 24, about 60 |
+| Dirt track, side trail and stepping stones | the back lane (#421) | flat |
+| Stream (banks, stones, reeds) and its water | the sea's shader (#588), as a narrow strip | flat |
+| Plank footbridge (arched deck, stringers, posts and rails) | the beach's plank path (#588) | about 230 |
+| Finger post | the shop sign board, `lampRoundFloor` post | about 40 |
+| Timber deck (planks, fascia, step, posts, rails, crate table, mug, lantern) | the beach hut's deck (#596), `lampWall` lantern glow | about 500 |
+| Rocking chair (rockers, slatted back, arms; one with a folded blanket) | the kit `chair` proportions at seat height 0.27 | about 170 |
+| Woodpile on stakes and a pallet, chopping block with an axe, split pieces | the log below, the street's bench timber | about 900 |
+| Log (six bark sides, pale cut ends) | the kit's six-sided posts | 24 |
+| Fire pit (stone ring, ash bed, crossed logs, three log benches) and its flames | the beach's rocks (#588), kit lamp glow | about 450 |
+| String lights on four poles (sagging wire, bulbs and glow) | `string_lights_*.glb` (#240) | about 300 |
+| Firefly and bulb glow (camera-facing sprites, one mesh each) | the street lamps' halos (#423) | 2 each |
+| Deer (body, legs, scut; neck and head that lower to graze; a stag's antlers) | the promenade's dog (#596), at deer size | about 140 |
+| Rabbit (body, head, ears, white scut) | the street's birds (#423) | about 60 |
+| Stump, felled log, churned earth and sawdust (a stand felled) | the log above | 21 a stump |
+| Cleared ground with young grass, tufts and a log stack | the meadow's patches (#421) | flat, plus the stack |
+| Hiker's backpack with a rolled mat | the promenade's pram and bike (#596) | about 60 |
+
