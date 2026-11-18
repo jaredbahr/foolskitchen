@@ -16,7 +16,13 @@ shader_type spatial;
 //   the canyons glows warm with the street lights.
 render_mode vertex_lighting, shadows_disabled, specular_disabled, cull_back;
 
+// Where the evening is: 0 by day, 0.5 at the golden dusk, 1 by night (the haze runs
+// day, dusk, night along it).
 uniform float level = 0.0;
+// How lit the windows are (0..1; below 0 they follow `level`), and the share of the
+// night's lit rooms that are on (a scattering at dusk, all of them by night).
+uniform float window_level = -1.0;
+uniform float window_share = 1.0;
 uniform float late = 0.0;
 uniform float city_time = 0.0;
 uniform float street_depth = 46.0;
@@ -53,6 +59,9 @@ void fragment() {
 	float style = floor(info.y + 0.5);
 	float glow = 0.0;
 	vec3 glow_colour = window_warm;
+	// How much the glass mirrors the sunset sky: most at the golden dusk, none by day or night.
+	float sunset = 1.0 - clamp(abs(level - 0.5) * 2.0, 0.0, 1.0);
+	float mirror = 0.0;
 	if (style > 0.5 && abs(local_nrm.y) < 0.5) {
 		float along = abs(local_nrm.x) > 0.5 ? local_pos.z : local_pos.x;
 		float storey = style > 2.5 ? 1.15 : 1.4;
@@ -81,16 +90,18 @@ void fragment() {
 		float room = floor(cell.x / width);
 		float beat = floor(city_time / 53.0 + hash(vec3(room, cell.y, seed)));
 		float pick = hash(vec3(room * 1.7 + 3.1, cell.y * 0.9 + seed, beat * 7.3 + 1.0));
-		float share = mix(0.3, 0.17, late) * (0.6 + 0.8 * fract(seed * 0.61));
+		float share = mix(0.3, 0.17, late) * (0.6 + 0.8 * fract(seed * 0.61)) * window_share;
 		float on = mix(step(pick, share), share, blur);
 		// Offices burn cool white, homes warm; a few rooms the other way.
 		float cool = step(0.6, fract(seed * 0.173)) * step(1.5, style) * step(style, 2.5);
 		float swap = step(0.82, hash(vec3(room + 9.0, cell.y, seed + 2.0)));
 		glow_colour = mix(window_warm, window_cool, abs(cool - swap));
 		vec3 day_glass = window_day * (0.88 + 0.24 * f.y);
-		vec3 pane = mix(day_glass, window_dark, smoothstep(0.0, 0.6, level));
+		// Glass stays glass through the dusk (it takes the warm low sun) and darkens with the night.
+		vec3 pane = mix(day_glass, window_dark, smoothstep(0.3, 1.0, level));
 		base = mix(base, pane, mask);
-		glow = mask * on * level;
+		glow = mask * on * (window_level < 0.0 ? level : window_level);
+		mirror = mask * (1.0 - on) * sunset * (0.75 + 0.25 * f.y);
 	}
 	float depth = clamp(-local_pos.y / street_depth, 0.0, 1.0);
 	float far = smoothstep(30.0, 115.0, length(local_pos.xz - centre));
@@ -101,5 +112,5 @@ void fragment() {
 	tint = mix(tint, street_glow * 0.55, smoothstep(0.5, 1.0, level) * depth * depth * 0.6);
 	ALBEDO = base * (1.0 - haze);
 	ROUGHNESS = 1.0;
-	EMISSION = tint * haze + glow_colour * glow * window_energy * (1.0 - haze * 0.55);
+	EMISSION = tint * haze + glow_colour * glow * window_energy * (1.0 - haze * 0.55) + haze_dusk * mirror * 0.32 * (1.0 - haze);
 }

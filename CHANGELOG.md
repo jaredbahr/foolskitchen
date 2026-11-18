@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Dusk on the Skyline Rooftop and the Seaside Cliff is a real sunset now instead of an early night. On the rooftop the city lies under a warm sunset haze, its glass catches the sky, only a scattering of windows has lit up and the red lights blink; the windows fill in as night falls. On the cliff the sea turns orange and pink with the low sun glittering on it, the festoons and path lanterns are just on, and the lighthouse lamp is lit with only a faint beam until it gets dark. Nights look the same as before. (#631)
 - Evenings look like evenings now: at dusk the street glows in warm orange-pink sunset light with long shadows while the lamps come on, clearly brighter than night (night is unchanged). At Old Mill Street the far fields are a soft patchwork of different crops (pale barley, young green shoots, wheat, ploughed earth) with a fine grain and faint, wavy rows instead of hard stripes. And wall tops now match their walls: grey on the Skyline Rooftop's concrete panels, wood on the woodland cabin's logs and white on the cliff cottage's whitewash, instead of tan. (#630)
 - From Tier 3, buy the Beachfront Boardwalk shop with a beach-facing patio. Seaside kitchens can add soft serve, shaved ice and cones of fries to the Menu. (#601)
 - The Seaside Cliff is now bright white chalk, with faint grey bands and dark flint lines under a green turf cap, pale boulders and white sea stacks. It's a little lower too, so you can see more of the sea below. At night the chalk catches the moonlight. (#628)

@@ -138,12 +138,23 @@ func test_the_rooftop_preset_is_valid_and_has_no_traffic() -> void:
 			towers += 1
 	assert_true(towers >= 2, "a few towers carry aircraft lights")
 	assert_eq(roof.terraces.size(), 2, "a terrace either side of the path")
-	# The windows, bulbs and red lights come on from dusk; pigeons roost at night.
+	# The bulbs and red lights come on from dusk, under a sunset haze with only a scattering of
+	# windows lit; the city fills in and the pigeons roost once it is dark.
 	dressing.set_night(0.0)
 	assert_false(roof.is_lit())
 	assert_true(roof.pigeons.size() > 0 and roof.pigeons[0].visible, "pigeons sit on the parapet by day")
+	dressing.set_night(1.0, 0.0, 0.0)
+	var dusk: Dictionary = roof.capture_state()
+	assert_true(roof.is_lit(), "the bulbs are on at dusk")
+	assert_almost_eq(float(dusk["evening"]), 0.5, 0.0001, "the haze is the sunset's, not the night's")
+	assert_true(float(dusk["window_share"]) < 0.5, "only a scattering of windows lit")
+	assert_true(float(dusk["beacons"]) > 0.9, "the red lights blink from dusk")
+	assert_true(roof.pigeons[0].visible, "the pigeons are still out at sunset")
 	dressing.set_night(1.0)
+	var night: Dictionary = roof.capture_state()
 	assert_true(roof.is_lit(), "the city lights up at night")
+	assert_almost_eq(float(night["evening"]), 1.0, 0.0001, "full night")
+	assert_almost_eq(float(night["window_share"]), 1.0, 0.0001, "every window that lights at night")
 	assert_false(roof.pigeons[0].visible, "the pigeons have gone to roost")
 	_free(dressing)
 

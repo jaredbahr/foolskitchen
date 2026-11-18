@@ -24,6 +24,11 @@ uniform vec3 dusk_color : source_color = vec3(1.0, 0.62, 0.38);
 // 0 until the shop closes, 1 late at night: a faint cool moonlit sheen keeps the sea readable.
 uniform float moon = 0.0;
 uniform vec3 moon_color : source_color = vec3(0.45, 0.55, 0.75);
+// 0 but at a golden dusk (the cliff top): the water takes the sunset itself, orange near
+// the shore and pink far out, and the low sun glitters on it in warm dashes.
+uniform float sunset = 0.0;
+uniform vec3 sunset_near : source_color = vec3(1.0, 0.66, 0.42);
+uniform vec3 sunset_far : source_color = vec3(0.98, 0.62, 0.72);
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -78,6 +83,17 @@ void fragment() {
 		// Sunset: the open water takes the warm sky, brightest far out, and the crests catch it.
 		glow += dusk_color * dusk * (0.24 * smoothstep(1.0, 20.0, d) + crest * 0.3 + glint * 0.7 + edge * 0.15);
 		glow += moon_color * moon * (0.05 + crest * 0.12 + glint * 0.35 + edge * 0.1);
+		if (sunset > 0.0) {
+			vec3 sky = mix(sunset_near * 0.9, sunset_far, smoothstep(2.0, 26.0, d));
+			// Keep the water's own bands under the sky's colour, so the sea still reads.
+			float shade = 0.8 + 0.35 * (dot(colour, vec3(0.3, 0.5, 0.2)) - 0.45);
+			colour = mix(colour, sky * shade, sunset * 0.7 * (1.0 - max(edge, fizz * 0.8)));
+			// The sun's glitter: short warm dashes, thicker far out, each on its own beat.
+			vec2 spark_cell = floor(vec2(u * 2.6, d * 6.0));
+			float hs = hash(spark_cell + 17.0);
+			float spark = step(0.985 - 0.012 * smoothstep(4.0, 24.0, d), hs) * step(0.2, sin(t * 2.1 + hs * 60.0)) * step(1.5, d);
+			glow += sky * sunset * 0.42 + vec3(1.0, 0.8, 0.52) * sunset * spark * 0.8;
+		}
 		// Lights on the water: a soft pool and broken shimmering streaks.
 		for (int i = 0; i < 4; i++) {
 			vec4 l = lights[i];
