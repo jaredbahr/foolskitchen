@@ -2150,9 +2150,10 @@ func weather() -> int:
 	return _weather
 
 
-## The wet sheen's light (the sky's light now) and the camera's forward on the ground.
-func set_weather_light(sheen_color: Color, view_dir: Vector2) -> void:
-	_wet.set_light(sheen_color, view_dir)
+## The wet sheen's light (the sky's light now), the camera's forward on the ground and how
+## much darker the wet ground gets.
+func set_weather_light(sheen_color: Color, view_dir: Vector2, darken: float = WeatherWet.DARKEN) -> void:
+	_wet.set_light(sheen_color, view_dir, darken)
 
 
 ## The materials the rain put on the street (for tests): empty on a dry day.

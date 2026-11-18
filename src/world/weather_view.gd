@@ -35,6 +35,8 @@ const SPLASH_SIZE: float = 0.16
 const LAMP_LIMIT: int = 6
 const REFLECTION_LENGTH: float = 2.2
 const REFLECTION_WIDTH: float = 0.38
+## How much darker soaked ground gets by night (it is dark already).
+const NIGHT_DARKEN: float = 0.12
 ## The wet sheen's colour by night: the street's warm lamplight.
 const NIGHT_SHEEN: Color = Color(0.62, 0.5, 0.36)
 
@@ -223,7 +225,7 @@ func set_light(look: DayLight.Look, night: float) -> void:
 			_view_dir = flat.normalized()
 	var dressing: NeighbourhoodDressing = _view.neighbourhood_dressing
 	if dressing != null and is_instance_valid(dressing):
-		dressing.set_weather_light(sky, _view_dir)
+		dressing.set_weather_light(sky, _view_dir, lerpf(WeatherWet.DARKEN, NIGHT_DARKEN, _night))
 	if _kind != WeatherState.Kind.RAIN or _puddle_material == null:
 		return
 	_puddle_material.set_shader_parameter(&"sky", sky)

@@ -12,6 +12,8 @@ const WET_SHADER: Shader = preload("res://src/world/wet_ground.gdshader")
 const MIN_SPAN: float = 1.5
 ## Plain-coloured street meshes (road, paving, kerbs) take the rain only under these names.
 const PAVED_GROUPS: Array[StringName] = [&"Road", &"Pavement", &"Kerbs", &"FarStreet"]
+## How much darker soaked ground gets by day (wet_ground.gdshader's default).
+const DARKEN: float = 0.27
 const RENDER_MODE_LINE: String = "render_mode vertex_lighting, specular_disabled, shadows_disabled;"
 
 ## What a swap replaced: the node, the surface (-1 for material_override) and the old value.
@@ -24,6 +26,7 @@ var _faded: Dictionary[Material, Material] = {}
 var _sheen_color: Color = Color(0.6, 0.66, 0.75)
 var _view_dir: Vector2 = Vector2(0.57, -0.82)
 var _wetness: float = 1.0
+var _darken: float = DARKEN
 
 
 func kind() -> int:
@@ -59,15 +62,18 @@ func restore() -> void:
 	_swaps.clear()
 
 
-## The wet sheen's colour (the sky's light now) and the camera's forward on the ground.
-func set_light(sheen_color: Color, view_dir: Vector2) -> void:
-	if sheen_color.is_equal_approx(_sheen_color) and view_dir.is_equal_approx(_view_dir):
+## The wet sheen's colour (the sky's light now), the camera's forward on the ground and how
+## much darker soaked ground gets (less by night, so the dark street still reads).
+func set_light(sheen_color: Color, view_dir: Vector2, darken: float = DARKEN) -> void:
+	if sheen_color.is_equal_approx(_sheen_color) and view_dir.is_equal_approx(_view_dir) and is_equal_approx(darken, _darken):
 		return
 	_sheen_color = sheen_color
 	_view_dir = view_dir
+	_darken = darken
 	for material: ShaderMaterial in _wet.values():
 		material.set_shader_parameter(&"sheen_color", _sheen_color)
 		material.set_shader_parameter(&"view_dir", _view_dir)
+		material.set_shader_parameter(&"darken", _darken)
 
 
 func wet_materials() -> Array[ShaderMaterial]:
@@ -147,6 +153,7 @@ func _wet_material(source: StandardMaterial3D, flat_colour: bool) -> ShaderMater
 	material.set_shader_parameter(&"wet", _wetness)
 	material.set_shader_parameter(&"sheen_color", _sheen_color)
 	material.set_shader_parameter(&"view_dir", _view_dir)
+	material.set_shader_parameter(&"darken", _darken)
 	if flat_colour:
 		material.set_shader_parameter(&"base_color", source.albedo_color)
 	_wet[key] = material
