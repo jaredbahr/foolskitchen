@@ -21,7 +21,8 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_WALLS=up shows the shop's walls at full height (a woodland's log
 ## cabin, #611) instead of the cutaway.
 ## SEASIDE_STREET_LOT=<lot id> reviews another lot instead of the seaside cliff (for
-## example town_fixer_upper, Old Mill Street's watermill on its country lane, #613).
+## example skyscraper_rooftop, the city rooftop, #614; or town_fixer_upper, Old Mill Street's
+## watermill on its country lane, #613).
 ## SEASIDE_STREET_PLOTS=mown|cleared shows a country street's land plots (#613,
 ## data/streets/country.tres) mown or cleared; <state>:<id> (for example mown:east)
 ## shows just that plot.

@@ -352,3 +352,40 @@ not a model.
 | Sheep (woolly body, dark legs and face that lowers to graze; one lamb) | the woodland's deer (#607), at sheep size | about 80 |
 | Swallow (body, beating wings) | the street's birds (#423) | about 16 |
 | Tractor with a trailer of hay bales (cab frame, exhaust, headlamps, turning wheels) | the street's car proportions (#423), at farm size | about 950 |
+
+## City rooftop (#614)
+
+Code-built like the woodland (#607): chunky, flat-shaded, vertex-coloured meshes from
+boxes, eight- to fourteen-sided drums and cones, low-poly lumps and thin blades, with no
+textures, imported models or lights. Not files under `assets/made/`. Built in
+`src/world/neighbourhood_rooftop.gd`; colours come from the rooftop preset's
+`RooftopSkin` in `data/streets/rooftop.tres`, drawn from the shared swatches (Pewter,
+Pebble, Charcoal, Milk, Cream, Oat, Sand, Clay, Brick, Walnut, Cherry, Leaf, Sage,
+Moss, Forest, Blush, Butter, Lilac, Coral, Terracotta, Teal, Tomato, Navy, Slate blue,
+Powder blue, Sunflower) plus a few concrete greys and glass blues between them. The city's
+windows and haze are drawn by `src/world/city.gdshader` on plain boxes (no geometry per
+window). The bulbs, lobby board and glass, aircraft lights, street lights and car lights
+glow (the glowing-part exception); nothing adds a light.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Roof membrane (metre squares, seams), gravel border with drains, slab path | the street's paving (#421) | flat, about 1,100 |
+| Parapet with coping, posts and rail | the promenade's bollards and rail (#596) | about 700 |
+| Lift and stair lobby (cladding joints, glass band, lift doors and sidelights, stair door, canopy, lit board, overrun with louvres, roof vent) | the shop's own walls and door (`doorway`), the beach hut (#596) | about 450 |
+| Terrace deck (planks on a dark frame) | the woodland porch deck (#607) | flat, about 200 a deck |
+| Corten planter run with grasses, shrubs and flowers | the street's planters (#423) | about 250 a box |
+| Potted tree (round pot, slim trunk, four crown lumps) | the street's round trees (#424), `pottedPlant` | about 70 |
+| Bench (concrete blocks, slats, two cushions) | the street bench (#423) | about 90 |
+| Parasol (pole, base, eight striped panels with a valance) | the beach parasols (#588) | about 50 |
+| String lights on four posts (sagging wire, bulbs and glow) | the woodland's string lights (#607) | about 300 a deck |
+| Water tower (steel stand and braces, staved tank with hoops, conical roof, ladder) | the woodland's drums and cones (#607) | about 450 |
+| Air handler (louvred box, two fan housings with turning fans, duct into the roof) | the kit `kitchenFridge` proportions, laid on its side | about 250 |
+| Mushroom vent, vent stack with rain cap, gooseneck, satellite dish, skylight, pipe run | the woodland's toadstools and drums (#607) | 30 to 80 each |
+| Mast with red bands and aircraft light | the street lamp post (#423) | about 80 |
+| City block (a box with drawn windows; setbacks; a rim, stair housing and plant on near and mid roofs) | the street's houses (#421), as plain boxes | 10 a bare box |
+| Helipad (pad, ring, H, edge lights), roof garden (lawn, path, shrubs, trees), roof plant and water tanks | the pieces above at city scale | about 60 to 300 |
+| Office tower with a setback crown and a spire | the city block | about 40 |
+| Cloud (eight-sided puffs: shaded belly, lit dome), drifting in `city_cloud.gdshader` | the trees' lumps (#424), rounded | about 400 |
+| Pigeon (body, tail, feet, head that pecks and turns) | the street's birds (#423), at 1.6x life so it reads | about 60 |
+| Wheeling bird (body and two flapping wings), small plane with navigation lights | the street's birds (#423) | 12, about 70 |
+| Window, street-light, car and aircraft glow (camera-facing sprites, one mesh each) | the woodland's bulb glow (#607) | 2 each |
