@@ -209,6 +209,9 @@ var _neighbour_lamps: Dictionary[StringName, MeshInstance3D] = {}
 ## The city rooftop (#614), when the street's preset names one: its root and builder.
 var _rooftop_root: Node3D
 var _rooftop: NeighbourhoodRooftop
+## The cliff top (#380), when the street's preset names one: its root and builder.
+var _cliff_root: Node3D
+var _cliff: NeighbourhoodCliff
 
 
 func _init() -> void:
@@ -250,6 +253,9 @@ func _open_land() -> bool:
 ## True when the street's preset is a city rooftop (#614).
 func has_rooftop() -> bool:
 	return preset != null and preset.rooftop != null
+## True when the street's preset is a cliff top over the sea (#380).
+func has_cliff() -> bool:
+	return preset != null and preset.cliff != null
 
 
 ## The lot's current lease and first lease (#611), for a woodland's land stands. Takes
@@ -297,6 +303,8 @@ func rebuild() -> void:
 		key.append([_lease, _first_lease])
 	if has_rooftop():
 		key.append(preset.rooftop.signature())
+	if has_cliff():
+		key.append(preset.cliff.signature())
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -348,7 +356,7 @@ func rebuild() -> void:
 		far_count += 1
 	far_count = maxi(far_count, count)
 	_visual_half = float(far_count) * road_box.size.x * 0.5
-	_traffic = not has_promenade() and not _open_land() and not has_rooftop()
+	_traffic = not has_promenade() and not _open_land() and not has_rooftop() and not has_cliff()
 	_promenade = NeighbourhoodPromenade.new(preset.promenade, street_set) if has_promenade() else null
 	_walk_y = _paving_top
 	if _open_land():
@@ -356,8 +364,8 @@ func rebuild() -> void:
 		# neighbours; a dirt track or a narrow lane.
 		_walk_y = NeighbourhoodForest.WALK_Y if has_forest() else NeighbourhoodCountry.WALK_Y
 		_clear_street_ground()
-	elif has_rooftop():
-		# A city rooftop (#614): no road, pavement, kerbs or neighbours at roof level.
+	elif has_rooftop() or has_cliff():
+		# A city rooftop (#614) or a cliff top (#380): no road, pavement, kerbs or neighbours.
 		_clear_street_ground()
 	elif _traffic:
 		_build_road(road_prop, road_box, count)
@@ -367,7 +375,7 @@ func rebuild() -> void:
 		# A promenade: one sweep of paving from the shop fronts to the far edge, no road.
 		_build_paving(paving, paving_box, PAVING_START, FAR_START + FAR_DEPTH - PAVING_START, "NearPavement", true)
 		_far_pavement = _near_pavement
-	if not _open_land() and not has_rooftop():
+	if not _open_land() and not has_rooftop() and not has_cliff():
 		_build_far_street(road_prop, road_box, paving, paving_box, count, far_count)
 	_build_planks()
 	_build_promenade_pattern()
@@ -383,6 +391,8 @@ func rebuild() -> void:
 		_build_country()
 	elif has_rooftop():
 		_build_rooftop()
+	elif has_cliff():
+		_build_cliff()
 	else:
 		_build_kerbs(road_box.size.x, count)
 		_build_buildings()
@@ -390,7 +400,7 @@ func rebuild() -> void:
 		_build_ground()
 	_ensure_actors()
 	_build_routes()
-	if not _open_land() and not has_rooftop():
+	if not _open_land() and not has_rooftop() and not has_cliff():
 		_build_lamps()
 		_build_furniture()
 		_build_life()
@@ -407,6 +417,7 @@ func rebuild() -> void:
 	_forest_root.visible = _configured
 	_country_root.visible = _configured
 	_rooftop_root.visible = _configured
+	_cliff_root.visible = _configured
 	_apply_night()
 	_apply_time(_effective_time())
 
@@ -449,6 +460,9 @@ func _ensure_roots() -> void:
 	_rooftop_root = Node3D.new()
 	_rooftop_root.name = "Rooftop"
 	add_child(_rooftop_root)
+	_cliff_root = Node3D.new()
+	_cliff_root.name = "Cliff"
+	add_child(_cliff_root)
 
 
 func _clear_static() -> void:
@@ -477,6 +491,10 @@ func _clear_static() -> void:
 		_rooftop_root.remove_child(child)
 		child.free()
 	_rooftop = null
+	for child: Node in _cliff_root.get_children():
+		_cliff_root.remove_child(child)
+		child.free()
+	_cliff = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -526,6 +544,7 @@ func _hide_actors() -> void:
 	_forest_root.hide()
 	_country_root.hide()
 	_rooftop_root.hide()
+	_cliff_root.hide()
 	if car != null:
 		car.hide()
 
@@ -1286,6 +1305,7 @@ static func clear_mesh_cache() -> void:
 	NeighbourhoodForest.clear_cache()
 	NeighbourhoodCountry.clear_cache()
 	NeighbourhoodRooftop.clear_cache()
+	NeighbourhoodCliff.clear_cache()
 
 
 ## The key light's ground run per metre of height, in the street's local (u, z).
@@ -1417,8 +1437,9 @@ func _plan_walkers() -> void:
 	_walk_speeds.clear()
 	_walk_strides.clear()
 	_walk_phases.clear()
-	if has_rooftop():
-		# Nobody strolls past at roof level: guests come up in the lift (#614).
+	if has_rooftop() or has_cliff():
+		# Nobody strolls past at roof level: guests come up in the lift (#614). On a cliff
+		# top (#380) the path winds off to the car park; no street runs past.
 		return
 	if _traffic:
 		for index: int in 3:
@@ -1818,6 +1839,8 @@ func _apply_night() -> void:
 		_country.set_night(_night, _late)
 	if _rooftop != null:
 		_rooftop.set_night(_night, _late)
+	if _cliff != null:
+		_cliff.set_night(_night, _late)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
@@ -2006,6 +2029,8 @@ func _apply_time(seconds: float) -> void:
 		_country.apply(seconds)
 	if _rooftop != null:
 		_rooftop.apply(seconds)
+	if _cliff != null:
+		_cliff.apply(seconds)
 	var walkers: int = _walk_kinds.size()
 	if walkers == 0 or pedestrians.size() != walkers or _routes.size() != walkers or car == null:
 		return
@@ -2235,6 +2260,32 @@ func _build_rooftop() -> void:
 
 func rooftop() -> NeighbourhoodRooftop:
 	return _rooftop
+
+
+# --- the cliff top (#380) ------------------------------------------------------
+
+## The cliff top, the drop, the sea below and the cliff path, built on the street frame.
+func _build_cliff() -> void:
+	_cliff_root.transform = _frame
+	_cliff = NeighbourhoodCliff.new()
+	_cliff.skin = preset.cliff
+	_cliff.salt = street_set.seed_salt
+	_cliff.local_reserve = _local_reserve
+	_cliff.shift = _shift
+	_cliff.light_shift = _compute_light_shift()
+	var inverse: Transform3D = _frame.affine_inverse()
+	for box: AABB in _door_approaches + _native_pavement:
+		var local: AABB = inverse * box
+		_cliff.keep_clear.append(Rect2(local.position.x, local.position.z, local.size.x, local.size.z))
+	var rect: Rect2 = world_rect()
+	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
+	_cliff.world_centre = Vector2(centre.x, centre.z)
+	_cliff.building = _local_cells(_built_rect)
+	_cliff.build(_cliff_root)
+
+
+func cliff() -> NeighbourhoodCliff:
+	return _cliff
 
 
 ## Where the street's walkers are now (#596), for tests and tools: their kind, position

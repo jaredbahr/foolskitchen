@@ -23,6 +23,11 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_LOT=<lot id> reviews another lot instead of the seaside cliff (for
 ## example skyscraper_rooftop, the city rooftop, #614; or town_fixer_upper, Old Mill Street's
 ## watermill on its country lane, #613).
+## SEASIDE_STREET_PERGOLA=1 stands the two made rain-cover pergolas (#380,
+## assets/made/pergola/) over kit tables and chairs in front of the shop, with a guest
+## for scale (review only: nothing joins the sim or the save).
+## SEASIDE_STREET_LIGHTHOUSE=<zoom> frames a cliff top's lighthouse across the bay (#380,
+## data/streets/cliff.tres) at that zoom.
 ## SEASIDE_STREET_PLOTS=mown|cleared shows a country street's land plots (#613,
 ## data/streets/country.tres) mown or cleared; <state>:<id> (for example mown:east)
 ## shows just that plot.
@@ -71,10 +76,13 @@ func _ready() -> void:
 		_expand_lease()
 	_show_stands(OS.get_environment("SEASIDE_STREET_STANDS"))
 	_show_plots(OS.get_environment("SEASIDE_STREET_PLOTS"))
+	if OS.get_environment("SEASIDE_STREET_PERGOLA") == "1":
+		_show_pergolas()
 	if OS.get_environment("SEASIDE_STREET_WALLS") == "up":
 		_walls_up()
 	_close_up()
 	_frame_beach()
+	_frame_lighthouse()
 	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
 	if _timed_frames > 0:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -146,6 +154,46 @@ func _show_plots(which: String) -> void:
 	print("PLOTS ", dressing.plot_ids())
 
 
+## The pergolas (#380) side by side in front of the shop, each over a table and chairs.
+func _show_pergolas() -> void:
+	var dressing: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
+	var frame: Transform3D = dressing.local_frame()
+	var cliff: NeighbourhoodCliff = dressing.cliff()
+	var door_u: float = cliff.door.get_center().x if cliff != null else 0.0
+	var z: float = float(dressing.capture_state()["frame"]["reserve_shift"]) + 1.9
+	var holder: Node3D = Node3D.new()
+	holder.name = "PergolaReview"
+	add_child(holder)
+	var scale: float = ArtScale.FURNITURE_SCALE
+	for index: int in 2:
+		var at: Vector3 = frame * Vector3(door_u + 2.6 + 2.45 * float(index), 0.0, z)
+		var cover: Node3D = (load("res://assets/made/pergola/%s.glb" % ["pergola_timber", "pergola_awning"][index]) as PackedScene).instantiate() as Node3D
+		holder.add_child(cover)
+		cover.transform = Transform3D(frame.basis.scaled(Vector3.ONE * scale), at)
+		_centred(holder, "res://assets/kenney/furniture/table.glb", at, frame.basis)
+		for side: float in [-1.0, 1.0]:
+			var seat: Vector3 = at + frame.basis * Vector3(side * 0.62, 0.0, 0.0)
+			_centred(holder, "res://assets/kenney/furniture/chair.glb", seat, frame.basis * Basis(Vector3.UP, side * PI * 0.5))
+	var guest: PersonView = (load("res://assets/people/person.tscn") as PackedScene).instantiate() as PersonView
+	guest.role = &"guest"
+	guest.guest_id = 4
+	holder.add_child(guest)
+	guest.transform = Transform3D(frame.basis, frame * Vector3(door_u + 1.15, 0.0, z + 0.3))
+
+
+## A kit model, centred on `at` (kit models stand on a back corner), at the furniture scale.
+func _centred(holder: Node3D, path: String, at: Vector3, basis: Basis) -> void:
+	var model: Node3D = (load(path) as PackedScene).instantiate() as Node3D
+	holder.add_child(model)
+	var box: AABB = AABB()
+	for node: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		var part: AABB = (model.global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
+		box = part if box.size == Vector3.ZERO else box.merge(part)
+	var middle: Vector3 = Vector3(box.get_center().x, 0.0, box.get_center().z) * ArtScale.FURNITURE_SCALE
+	model.transform = Transform3D(basis.scaled(Vector3.ONE * ArtScale.FURNITURE_SCALE), at - basis * middle)
+
+
 ## Sets the clock's phase for display only (dusk mid-evening service, night after
 ## close); nothing ticks, as the review runs at speed 0. Day leaves the morning.
 func _set_stage(stage: String) -> bool:
@@ -196,6 +244,15 @@ func _frame_beach() -> void:
 		return
 	var frame: Transform3D = $ShopView.neighbourhood_dressing.local_frame()
 	var target: Vector3 = frame * Vector3(shore.path_u, 0.0, shore.lane_v - 2.0)
+	($CameraRig as CameraRig).frame_area(Vector2(target.x, target.z), Vector2(14.0, 14.0), float(zoom_text), true)
+
+
+func _frame_lighthouse() -> void:
+	var zoom_text: String = OS.get_environment("SEASIDE_STREET_LIGHTHOUSE")
+	var cliff: NeighbourhoodCliff = $ShopView.neighbourhood_dressing.cliff()
+	if zoom_text.is_empty() or cliff == null:
+		return
+	var target: Vector3 = $ShopView.neighbourhood_dressing.local_frame() * Vector3(cliff.lighthouse.x, 0.0, cliff.lighthouse.y + 2.0)
 	($CameraRig as CameraRig).frame_area(Vector2(target.x, target.z), Vector2(14.0, 14.0), float(zoom_text), true)
 
 

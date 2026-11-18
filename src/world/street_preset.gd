@@ -27,6 +27,10 @@ const STARTER: String = "res://data/streets/starter.tres"
 ## lobby, a terrace and the city far below. No road, cars, pavements or neighbours.
 ## None keeps the street.
 @export var rooftop: RooftopSkin
+## A cliff top instead of a street (#380): a white cottage café high above the sea, with
+## the cliff path, the rail along the edge and the sea far below. No road, cars,
+## pavements or neighbours. None keeps the street.
+@export var cliff: CliffSkin
 ## The shop's default wall finish on this street (#611, a WallStyleDef id): every
 ## wall face starts in it and Build can still change any face. Empty is plain paint.
 @export var wall_style: StringName = &""
@@ -38,9 +42,9 @@ static func starter() -> StreetPreset:
 
 
 ## True when cars drive past: every street but a promenade, a forest track, a
-## country lane (its tractor is no town traffic) or a rooftop.
+## country lane (its tractor is no town traffic), a rooftop or a cliff top.
 func has_traffic() -> bool:
-	return promenade == null and forest == null and country == null and rooftop == null
+	return promenade == null and forest == null and country == null and rooftop == null and cliff == null
 
 
 ## The preset at `path`, or the starter street when `path` is empty, missing or
@@ -122,6 +126,8 @@ func errors() -> PackedStringArray:
 		problems.append_array(country.errors())
 	if rooftop != null:
 		problems.append_array(rooftop.errors())
+	if cliff != null:
+		problems.append_array(cliff.errors())
 	for spec: StreetPropSpec in buildings.furniture:
 		if spec == null:
 			problems.append("an empty street furniture entry")
