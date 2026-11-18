@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_script")
 id = &"logs"
-display_name = "Log wall"
+display_name = "Log"
 order = 6
 price = 4
 pattern = 5

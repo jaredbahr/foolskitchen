@@ -1766,7 +1766,7 @@ tables and buys two normal chairs for $20, without changing menu/staff/tuning.
   the stored wall faces, or floor cells for floor paint, and puts them back
   on undo, so an unwind is exact).
 - **A lot's default wall finish (#611).** A street preset may name one
-  (`StreetPreset.wall_style`; the woodland's is `logs`, the Log wall finish,
+  (`StreetPreset.wall_style`; the woodland's is `logs`, the Log finish,
   pattern 5, $4, level 2 elsewhere). Main passes it to `ShopEditor.new(...,
   wall_style_id)` (`ShopEditor.default_wall_style`, never saved: the lot gives
   it on every load) as `WallFinishes.default_style`, so faces are stored only
