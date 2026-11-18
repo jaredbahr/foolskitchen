@@ -8,7 +8,7 @@ static func names() -> Array[String]:
 	return ["default", "extra_cook", "extra_server", "owner_kitchen", "owner_floor",
 		"trays_2", "trays_4", "extra_cleaner", "expanded_tables", "coffee_shop", "bar", "fryer_coffee", "joined_tables",
 		"grown", "neglected", "curb_appeal", "expanded_staffed", "coffee_counter", "patio", "opening_week",
-		"service_events", "week_two"]
+		"service_events", "week_two", "tip_jar"]
 
 
 static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
@@ -40,6 +40,8 @@ static func apply(name: String, main: Node, extra_cook_skill: int = 3) -> bool:
 			return _expand_with_tables(main)
 		"joined_tables":
 			return _joined_tables(main)
+		"tip_jar":
+			return _joined_tables(main) and _tip_jar_morning(main)
 		"coffee_shop":
 			return _coffee_shop(main)
 		"coffee_counter":
@@ -86,9 +88,25 @@ static func morning(name: String, main: Node) -> bool:
 			return _enable(main, [&"beer", &"wine", &"soft_drink", &"burger", &"grilled_cheese"])
 		"opening_week":
 			return _opening_week(main)
+		"tip_jar":
+			return _tip_jar_morning(main)
 		"week_two":
 			return _opening_week(main) and _week_two(main)
 	return true
+
+
+## Give bookings a usable joined table, take actual offers and buy the jar
+## at the pass once the player has earned its unlock during the probe.
+static func _tip_jar_morning(main: Node) -> bool:
+	var booking: GroupBooking = main.get("group_booking") as GroupBooking
+	if not booking.offer.is_empty() and not booking.has_active_booking():
+		main.call("_on_booking_accept_requested")
+	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
+	var sim: RestaurantSim = main.get("sim") as RestaurantSim
+	if progress.effective_level() < 2 or not ShopBuilder.items_with_def(sim.world, &"tip_jar").is_empty():
+		return true
+	var counters: Array[PlacedItem] = ShopBuilder.items_with_def(sim.world, &"pass_counter")
+	return not counters.is_empty() and main.call("shop_buy", &"tip_jar", counters[0].origin)
 
 
 ## #494: a player following the opening-week goals through real, paid

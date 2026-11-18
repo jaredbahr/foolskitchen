@@ -167,6 +167,8 @@ var sold_out_today: Dictionary[StringName, bool] = {}
 ## current sold-out set, a later delivery never clears this service history.
 var service_stockouts_today: Dictionary[StringName, bool] = {}
 ## Detached menu/price facts captured once after opening deliveries land.
+## Spare change from today's paid visits, including before a jar was sold.
+var _tip_jar_total: int = 0
 var _service_menu_count: int = -1
 var _service_menu_snapshot: Array[Dictionary] = []
 ## Ingredients that sold dishes out today, in the order it happened:
@@ -338,6 +340,7 @@ func start_day(career_tier: int = 1) -> void:
 	critic.plan_day(world.clock.day, career_tier, critic_rng_provider)
 	sold_out_today.clear()
 	service_stockouts_today.clear()
+	_tip_jar_total = 0
 	_service_menu_count = -1
 	_service_menu_snapshot.clear()
 	stock_outs_today.clear()
@@ -1265,15 +1268,16 @@ func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> 
 	return visit
 
 
-func tip_jar_multiplier() -> float:
-	return TIP_JAR_TUNING.multiplier(world.grid if world != null else null)
+## Pending until the world posts one ledger entry at service close.
+func tip_jar_total() -> int:
+	return _tip_jar_total
 
 
 func regular_tip(customer: CustomerAgent, order: Order) -> int:
 	if regulars == null or customer == null or customer.regular_profile == null or order == null:
 		return 0
 	var amount: float = order.price * regulars.tip_rate(customer.regular_profile,
-		customer.regular_favourite_available) * tip_jar_multiplier()
+		customer.regular_favourite_available)
 	# Cash is whole units. Rounding the favourite bonus up keeps a modest
 	# drink's extra tip visible instead of rounding it away on every visit.
 	return maxi(0, ceili(amount) if customer.regular_favourite_available else roundi(amount))
@@ -1465,6 +1469,9 @@ func pay(customer: CustomerAgent, order: Order) -> void:
 	if customer.paid:
 		return
 	customer.paid = true
+	# One roll on this guest's private stream, even for a meal and a drink.
+	if TIP_JAR_TUNING.has_eligible_jar(world.grid) and customer.rng.randf() < TIP_JAR_TUNING.drop_chance:
+		_tip_jar_total += TIP_JAR_TUNING.drop_amount
 	served_today += 1
 	if customer.takeaway:
 		takeaways_today += 1
