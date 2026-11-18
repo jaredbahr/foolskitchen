@@ -88,8 +88,13 @@ const PLANE_SPEED: float = 11.0
 const PLANE_PERIOD: float = 75.0
 ## Pigeons are drawn this much larger than life, so they read from the camera.
 const PIGEON_SCALE: float = 1.6
-## Pigeons roost and birds go home after dark.
-const NIGHT_HIDE: float = 0.5
+## Pigeons roost and birds go home after dark: past this far into the evening (0.5 is
+## the golden dusk, when they are still out).
+const NIGHT_HIDE: float = 0.75
+## At the golden dusk only this share of the night's lit windows is on, and the streets
+## far below are this far lit; both fill in as the dark comes.
+const DUSK_WINDOW_SHARE: float = 0.25
+const DUSK_STREET_SHARE: float = 0.5
 
 ## One building of the city: its footprint (local u, z), roof height and look.
 class Lot extends RefCounted:
@@ -152,6 +157,8 @@ var _traffic: MeshInstance3D
 var _pools: MeshInstance3D
 var _night: float = 0.0
 var _late: float = 0.0
+## 0 through the golden dusk, 1 once the sun has gone (set_night).
+var _dark: float = 1.0
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
 var _blocked: Array[Rect2] = []
@@ -1738,18 +1745,31 @@ func _build_plane() -> void:
 
 # --- motion and time of day -------------------------------------------------
 
-## 0 by day, 1 from dusk; `late` rises after the shop closes. Windows light up across
-## the city, the bulbs and beacons glow, and the pigeons and birds go home.
-func set_night(level: float, late: float) -> void:
+## 0 by day, 1 from dusk; `late` rises after the shop closes; `dark` is 0 through the
+## golden dusk and 1 once the sun has gone (DayNightView.street_dark). At dusk the city
+## lies under a sunset haze in the warm low sun, with only a scattering of windows lit
+## and the red lights blinking; as the dark comes the haze turns to night and the
+## windows fill in. The bulbs and beacons glow from dusk; the pigeons and birds go home.
+func set_night(level: float, late: float, dark: float = 1.0) -> void:
 	_night = level
 	_late = late
+	_dark = dark
 	_apply_night()
+
+
+## Where the evening is: 0 by day, 0.5 at the golden dusk, 1 by night (the city's haze
+## and the clouds run day, dusk, night along it).
+func evening() -> float:
+	return 0.5 * _night * (1.0 + _dark)
 
 
 func _apply_night() -> void:
 	if root == null:
 		return
-	_city_material.set_shader_parameter(&"level", _night)
+	var evening_level: float = evening()
+	_city_material.set_shader_parameter(&"level", evening_level)
+	_city_material.set_shader_parameter(&"window_level", _night)
+	_city_material.set_shader_parameter(&"window_share", lerpf(DUSK_WINDOW_SHARE, 1.0, _dark))
 	_city_material.set_shader_parameter(&"late", _late)
 	_glass_material.emission_energy_multiplier = _night * 1.3
 	_glass_material.albedo_color = skin.lamp_glow.lerp(Color.WHITE, 1.0 - _night)
@@ -1757,16 +1777,16 @@ func _apply_night() -> void:
 	_pools.visible = _night > 0.05
 	_bulb_material.set_shader_parameter(&"level", _night)
 	_beacon_material.set_shader_parameter(&"level", smoothstep(0.2, 0.7, _night))
-	_street_material.set_shader_parameter(&"level", smoothstep(0.1, 0.6, _night))
+	_street_material.set_shader_parameter(&"level", smoothstep(0.1, 0.6, _night) * lerpf(DUSK_STREET_SHARE, 1.0, _dark))
 	_traffic_material.set_shader_parameter(&"level", smoothstep(0.2, 0.7, _night))
 	_plane_light_material.set_shader_parameter(&"level", maxf(_night, 0.35))
 	var dusk: Color = skin.cloud.lerp(skin.haze_dusk, 0.55)
-	var tint: Color = skin.cloud.lerp(dusk, clampf(_night * 2.0, 0.0, 1.0)) if _night < 0.5 else dusk.lerp(skin.haze_night.lightened(0.25), _night * 2.0 - 1.0)
+	var tint: Color = skin.cloud.lerp(dusk, clampf(evening_level * 2.0, 0.0, 1.0)) if evening_level < 0.5 else dusk.lerp(skin.haze_night.lightened(0.25), evening_level * 2.0 - 1.0)
 	_cloud_material.set_shader_parameter(&"tint", tint)
-	var haze: Color = skin.haze_day.lerp(skin.haze_dusk, _night * 2.0) if _night < 0.5 else skin.haze_dusk.lerp(skin.haze_night, _night * 2.0 - 1.0)
+	var haze: Color = skin.haze_day.lerp(skin.haze_dusk, evening_level * 2.0) if evening_level < 0.5 else skin.haze_dusk.lerp(skin.haze_night, evening_level * 2.0 - 1.0)
 	_cloud_material.set_shader_parameter(&"haze", haze)
 	_cloud_material.set_shader_parameter(&"haze_mix", CLOUD_HAZE)
-	_cloud_material.set_shader_parameter(&"opacity", lerpf(0.82, 0.2, _night))
+	_cloud_material.set_shader_parameter(&"opacity", lerpf(0.82, 0.2, evening_level))
 	# Unlit glows still cost a blended pass: hide them by day.
 	var lit: bool = _night > 0.05
 	_bulb_glow.visible = lit
@@ -1774,9 +1794,9 @@ func _apply_night() -> void:
 	_street_lights.visible = lit
 	_traffic.visible = lit
 	for pigeon: Node3D in pigeons:
-		pigeon.visible = _night < NIGHT_HIDE
+		pigeon.visible = evening_level < NIGHT_HIDE
 	for bird_node: Node3D in birds:
-		bird_node.visible = _night < NIGHT_HIDE
+		bird_node.visible = evening_level < NIGHT_HIDE
 	_applied_at = -1.0
 	apply(_seconds)
 
@@ -1864,4 +1884,6 @@ func plane_flying(seconds: float) -> bool:
 func capture_state() -> Dictionary:
 	return {"roof": roof, "lobby": lobby, "walkway": walkway, "terraces": terraces, "water_tower": water_tower,
 		"mast": mast, "lots": lots.size(), "night": _night, "late": _late, "lit": is_lit(), "pigeons": pigeons.size(),
-		"birds": birds.size(), "fans": fans.size(), "plane": plane_flying(_seconds)}
+		"birds": birds.size(), "fans": fans.size(), "plane": plane_flying(_seconds), "dark": _dark, "evening": evening(),
+		"window_share": float(_city_material.get_shader_parameter(&"window_share")) if _city_material != null else 1.0,
+		"beacons": float(_beacon_material.get_shader_parameter(&"level")) if _beacon_material != null else 0.0}

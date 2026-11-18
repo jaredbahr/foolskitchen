@@ -132,3 +132,17 @@ func test_dusk_is_a_warm_evening_well_above_night() -> void:
 		assert_true(absf(look.key_energy - last.key_energy) < 0.01, "no pop in the sun at minute %d" % minute)
 		assert_true(absf(look.ambient_energy - last.ambient_energy) < 0.01, "no pop in the ambient at minute %d" % minute)
 		last = look
+
+
+## The sky's dark (DayNightView.street_dark) keeps the golden dusk apart from the night:
+## 0 by day and at dusk, 1 by night, rising smoothly over last orders.
+func test_the_dark_comes_after_dusk() -> void:
+	assert_almost_eq(DayNightView.street_dark(DayLight.sample(780.0, TUNING)), 0.0, 0.0001, "noon")
+	assert_almost_eq(DayNightView.street_dark(DayLight.sample(1230.0, TUNING)), 0.0, 0.0001, "the golden dusk")
+	assert_almost_eq(DayNightView.street_dark(DayLight.sample(1410.0, TUNING)), 1.0, 0.0001, "night")
+	assert_eq(DayNightView.street_night(DayLight.sample(1230.0, TUNING)), 1.0, "the lamps are on at dusk all the same")
+	var last: float = DayNightView.street_dark(DayLight.sample(900.0, TUNING))
+	for minute: int in range(901, 1440):
+		var dark: float = DayNightView.street_dark(DayLight.sample(float(minute), TUNING))
+		assert_true(absf(dark - last) < 0.05, "no pop in the dark at minute %d" % minute)
+		last = dark

@@ -166,6 +166,8 @@ var _halo_material: StandardMaterial3D
 var _night: float = 0.0
 ## 0 until the late hours, 1 when the last windows have gone dark (#440).
 var _late: float = 0.0
+## How dark the sky is (set_night): 0 through the golden dusk, 1 by night.
+var _dark: float = 1.0
 var _window_nodes: Array[MeshInstance3D] = []
 var _window_materials: Array[StandardMaterial3D] = []
 ## True when cars drive past; a promenade (#596) has none.
@@ -1808,13 +1810,18 @@ func _glow_disc(soup: NeighbourhoodGround.Soup, centre: Vector2, y: float) -> vo
 
 ## 0 by day, 1 at night: the street lamps' bulbs light and their pools of light fade in.
 ## Main sets it from the day's light (DayNightView.street_night), never the other way round.
-func set_night(level: float, late: float = 0.0) -> void:
+## `dark` (DayNightView.street_dark) is 0 through the golden dusk and 1 once the sun has
+## gone; the rooftop and the cliff keep a sunset look until it rises. It defaults to 1, the
+## full night, so a caller that names only the level gets the night as before.
+func set_night(level: float, late: float = 0.0, dark: float = 1.0) -> void:
 	var clamped: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
 	var late_clamped: float = clampf(late, 0.0, 1.0) if is_finite(late) else 0.0
-	if is_equal_approx(clamped, _night) and is_equal_approx(late_clamped, _late):
+	var dark_clamped: float = clampf(dark, 0.0, 1.0) if is_finite(dark) else 1.0
+	if is_equal_approx(clamped, _night) and is_equal_approx(late_clamped, _late) and is_equal_approx(dark_clamped, _dark):
 		return
 	_night = clamped
 	_late = late_clamped
+	_dark = dark_clamped
 	_apply_night()
 
 
@@ -1838,9 +1845,9 @@ func _apply_night() -> void:
 	if _country != null:
 		_country.set_night(_night, _late)
 	if _rooftop != null:
-		_rooftop.set_night(_night, _late)
+		_rooftop.set_night(_night, _late, _dark)
 	if _cliff != null:
-		_cliff.set_night(_night, _late)
+		_cliff.set_night(_night, _late, _dark)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
 		_window_nodes[index].visible = level > 0.01
