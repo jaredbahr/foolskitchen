@@ -143,10 +143,14 @@ func test_buying_the_fixer_upper_pays_and_adds_a_renovating_site_from_its_layout
 	assert_eq(_book().frozen_day(FIXER), day)
 	assert_eq(_book().renovation_days_left(FIXER), 3)
 	var shop: Dictionary = _book().frozen_sections(FIXER)["shop"]
-	assert_eq(shop["layout_id"], "lot_town_fixer_upper", "built from the lot's own layout")
+	assert_eq(shop["layout_id"], "lot_town_fixer_upper_mill_hall", "built from the lot's own layout")
 	assert_false(shop["lease_expanded"])
 	var lot: LotDef = (_main.get("content") as ContentDB).lot(FIXER)
 	assert_true(_main.call("_base_for_saved_shop", shop) == lot.base_layout, "the lot layout resolves")
+	assert_true(_main.call("_base_for_saved_shop", {"layout_id": "lot_town_fixer_upper"}) == lot.legacy_layouts[0],
+		"a site saved on the lot's first rectangle keeps it (#596)")
+	assert_eq((_main.call("_lease_for", lot.legacy_layouts[0]) as LeaseUpgrade).deposit, lot.expansion_price,
+		"and its own lot's lease")
 	# The screen now shows it owned.
 	buy = _buy_button(FIXER)
 	assert_true(buy.disabled)
@@ -232,7 +236,7 @@ func test_a_fixer_upper_can_be_designed_counts_down_and_opens_once_ready_and_sta
 	assert_eq(_row_text(FIXER, "Status"), "Renovating: 2 days")
 	_pick(FIXER).pressed.emit()
 	assert_eq(_book().active_id, FIXER, "switched there to design")
-	assert_eq((_main.get("_base_layout") as ShopLayout).save_layout_id, &"lot_town_fixer_upper")
+	assert_eq((_main.get("_base_layout") as ShopLayout).save_layout_id, &"lot_town_fixer_upper_mill_hall")
 	assert_eq((_main.get("staff_roster") as StaffRoster).members().size(), 0, "a new site starts with nobody")
 	# It cannot open, but Build works and the day can be closed.
 	assert_eq(_main.call("site_opening_refusal"), "Still renovating: 2 days left")
@@ -577,7 +581,7 @@ func test_switching_to_a_new_site_and_back_keeps_each_sites_own_staff_and_shop()
 		"and the home shop")
 	var frozen: Dictionary = _book().frozen_sections(FIXER)
 	assert_eq((frozen["staff"]["members"] as Array).size(), 0, "the new site's empty roster stays its own")
-	assert_eq(frozen["shop"]["layout_id"], "lot_town_fixer_upper")
+	assert_eq(frozen["shop"]["layout_id"], "lot_town_fixer_upper_mill_hall")
 	assert_eq(_main.call("site_opening_refusal"), "", "home opens as usual")
 
 

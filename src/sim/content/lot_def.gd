@@ -20,6 +20,10 @@ const MAX_EXPANSION_CELLS: int = LeaseUpgrade.MAX_EXTRA_CELLS
 ## The lot's own shop: its shell, starting kitchen, lot margins (which bound
 ## its maximum footprint) and floor price.
 @export var base_layout: ShopLayout
+## Earlier starting shells of this lot, each under its own save_layout_id. A
+## site saved on one keeps loading on it (its items and walls were saved
+## against those cells); only new purchases get `base_layout`.
+@export var legacy_layouts: Array[ShopLayout] = []
 ## Move-in ready price; 0 for a fixer-upper.
 @export var price: int = 0
 ## Fixer-upper price; 0 for a move-in ready lot.
@@ -58,6 +62,22 @@ func is_fixer_upper() -> bool:
 ## renovation bill. The market lists lots by this, cheapest first.
 func cost_to_open() -> int:
 	return fixer_price + renovation_bill if is_fixer_upper() else price
+
+
+## The authored layout a site save names by its save_layout_id: the current
+## base or one of the legacy shells, else null.
+func layout_for_id(layout_id: StringName) -> ShopLayout:
+	if layout_id.is_empty():
+		return null
+	for layout: ShopLayout in [base_layout] + legacy_layouts:
+		if layout != null and layout.save_layout_id == layout_id:
+			return layout
+	return null
+
+
+## True when `layout` is this lot's base or one of its legacy shells.
+func owns_layout(layout: ShopLayout) -> bool:
+	return layout != null and (layout == base_layout or legacy_layouts.has(layout))
 
 
 ## Floor cells of the starting shell ('.' in the layout's rows).

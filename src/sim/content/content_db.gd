@@ -309,7 +309,7 @@ func lot_for_layout(layout_id: StringName) -> LotDef:
 	if layout_id.is_empty():
 		return null
 	for definition: LotDef in _lots.values():
-		if definition.base_layout != null and definition.base_layout.save_layout_id == layout_id:
+		if definition.layout_for_id(layout_id) != null:
 			return definition
 	return null
 
@@ -425,6 +425,16 @@ static func _lot_layout_errors(definition: LotDef, who: String, item_ids: Dictio
 			break
 	if layout.lot_west < 0 or layout.lot_east < 0 or layout.lot_north < 0:
 		errors.append("%s: base_layout lot margins must be >= 0" % who)
+	# Older shells stay loadable for sites saved on them, each under its own id.
+	var layout_ids: Dictionary[StringName, bool] = {layout.save_layout_id: true}
+	if layout.save_layout_id.is_empty():
+		errors.append("%s: base_layout needs a save_layout_id" % who)
+	for legacy: ShopLayout in definition.legacy_layouts:
+		if legacy == null or legacy.rows.is_empty() or legacy.save_layout_id.is_empty() \
+				or layout_ids.has(legacy.save_layout_id):
+			errors.append("%s: each legacy layout needs rows and its own save_layout_id" % who)
+			continue
+		layout_ids[legacy.save_layout_id] = true
 	return errors
 
 

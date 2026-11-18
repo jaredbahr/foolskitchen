@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" path="res://src/sim/content/lot_def.gd" id="1_lot"]
 [ext_resource type="Resource" path="res://data/layouts/lot_seaside_cliff.tres" id="2_layout"]
+[ext_resource type="Resource" path="res://data/layouts/legacy/lot_seaside_cliff_v1.tres" id="3_legacy"]
+[ext_resource type="Script" path="res://src/sim/shop/shop_layout.gd" id="4_layout_script"]
 
 [resource]
 script = ExtResource("1_lot")
@@ -9,13 +11,14 @@ id = &"seaside_cliff"
 display_name = "Seaside Cliff"
 blurb = "A white cottage at the top of the cliff path, every seat out on the terrace over the sea. Walkers come up from the car park, and the catch comes in fresh each morning."
 base_layout = ExtResource("2_layout")
+legacy_layouts = Array[ExtResource("4_layout_script")]([ExtResource("3_legacy")])
 street_preset = "res://data/streets/cliff.tres"
 price = 18000
 daily_rent = 140
 expansion_price = 9000
 expanded_daily_rent = 190
-expansion_west = 0
-expansion_east = 4
+expansion_west = 4
+expansion_east = 0
 expansion_north = 2
 min_tier = 3
 min_reputation = 4.2

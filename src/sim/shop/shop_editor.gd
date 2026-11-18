@@ -1964,7 +1964,7 @@ func check_floor(cells: Array[Vector2i], adding: bool, exact: Exact = null,
 	var on_ring: bool = false
 	for cell: Vector2i in cells:
 		if adding:
-			if _footprint.building.has_point(cell) or _bought.has(cell):
+			if _footprint.is_starting_shell(cell) or _bought.has(cell):
 				continue
 			if not _footprint.lot.has_point(cell):
 				return EditCheck.new(false, ShopFootprint.OUTSIDE_LOT)

@@ -3818,7 +3818,7 @@ func _lease_layout() -> ShopLayout:
 func _lease_for(base: ShopLayout) -> LeaseUpgrade:
 	if base != null and content != null:
 		for lot: LotDef in content.lots():
-			if lot.base_layout == base:
+			if lot.owns_layout(base):
 				return lot.lease_upgrade()
 	return LEASE
 
@@ -4592,8 +4592,9 @@ func _base_for_saved_shop(data: Dictionary) -> ShopLayout:
 	if StringName(identity) == LAYOUT.save_layout_id:
 		return LAYOUT
 	# A bought lot's own shell (FK-087, #464): its authored id, lot_<id>.
+	# A site saved on an earlier shell of its lot keeps that shell (legacy_layouts).
 	var lot: LotDef = content.lot_for_layout(StringName(identity)) if content != null else null
-	return lot.base_layout if lot != null else null
+	return lot.layout_for_id(StringName(identity)) if lot != null else null
 
 
 ## Restore callbacks only stage decoded data. Live replacement waits for OK.

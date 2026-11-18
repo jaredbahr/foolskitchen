@@ -1,0 +1,81 @@
+[gd_resource type="Resource" script_class="ShopLayout" format=3]
+
+[ext_resource type="Script" path="res://src/sim/shop/shop_placement.gd" id="1_place"]
+[ext_resource type="Script" path="res://src/sim/shop/shop_layout.gd" id="2_layout"]
+
+[sub_resource type="Resource" id="Resource_p0"]
+script = ExtResource("1_place")
+item_id = &"fridge"
+origin = Vector2i(1, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_p1"]
+script = ExtResource("1_place")
+item_id = &"prep_counter"
+origin = Vector2i(4, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_p2"]
+script = ExtResource("1_place")
+item_id = &"stove"
+origin = Vector2i(7, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_p3"]
+script = ExtResource("1_place")
+item_id = &"sink"
+origin = Vector2i(10, 1)
+quarter_turns = 2
+
+[sub_resource type="Resource" id="Resource_p4"]
+script = ExtResource("1_place")
+item_id = &"pass_counter"
+origin = Vector2i(6, 4)
+
+[sub_resource type="Resource" id="Resource_p5"]
+script = ExtResource("1_place")
+item_id = &"table_2"
+origin = Vector2i(3, 7)
+quarter_turns = 1
+
+[sub_resource type="Resource" id="Resource_p6"]
+script = ExtResource("1_place")
+item_id = &"table_2"
+origin = Vector2i(7, 7)
+quarter_turns = 1
+
+[sub_resource type="Resource" id="Resource_p7"]
+script = ExtResource("1_place")
+item_id = &"potted_plant"
+origin = Vector2i(12, 6)
+
+[resource]
+script = ExtResource("2_layout")
+id = &"lot_skyscraper_rooftop"
+save_layout_id = &"lot_skyscraper_rooftop"
+display_name = "Skyline rooftop"
+rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "######..######", "      EE      ")
+placements = Array[ExtResource("1_place")]([SubResource("Resource_p0"), SubResource("Resource_p1"), SubResource("Resource_p2"), SubResource("Resource_p3"), SubResource("Resource_p4"), SubResource("Resource_p5"), SubResource("Resource_p6"), SubResource("Resource_p7")])
+room_rows = PackedStringArray("", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK")
+staff_spawns = Dictionary[StringName, Vector2i]({
+&"cook": Vector2i(6, 2),
+&"owner": Vector2i(9, 3),
+&"server": Vector2i(10, 6),
+&"cleaner": Vector2i(10, 8)
+})
+lot_west = 1
+lot_east = 1
+lot_north = 2
+floor_cell_price = 15
+patio_depth = 4
+patio_cell_price = 15
+pantry_units = 80
+wall_segments = Dictionary[Vector3i, StringName]({
+Vector3i(1, 5, 1): &"wall",
+Vector3i(2, 5, 1): &"wall",
+Vector3i(8, 5, 1): &"wall",
+Vector3i(9, 5, 1): &"wall",
+Vector3i(10, 5, 1): &"wall",
+Vector3i(11, 5, 1): &"wall",
+Vector3i(12, 5, 1): &"wall"
+})
