@@ -25,6 +25,7 @@ var lease_expanded: bool = false
 ## The saved "site_hours" section (FK-087); empty when the save has none.
 var site_hours: Dictionary = {}
 var menu: MenuSettings = null
+var evening_schedule: EveningSchedule = null
 ## The saved daily special as a Dictionary, or null.
 var daily_special: Variant = null
 var signature: SignatureState = null
@@ -95,6 +96,7 @@ func clear_site() -> void:
 	lease_expanded = false
 	site_hours = {}
 	menu = null
+	evening_schedule = null
 	daily_special = null
 	signature = null
 	staff = null

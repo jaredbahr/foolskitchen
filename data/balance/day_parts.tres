@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="DayPartsTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/restaurant/day_parts_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+evening_guest_multipliers = Dictionary[StringName, float]({
+&"foodie": 2.0,
+&"upscale": 2.0
+})

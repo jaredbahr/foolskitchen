@@ -136,9 +136,11 @@ func agent(agent_id: int) -> SimAgent:
 
 
 ## Runs one tick: the clock, the board backstops, then every agent in id order.
-func advance() -> void:
+func advance(before_agents: Callable = Callable()) -> void:
 	now += 1
 	clock.advance()
+	if before_agents.is_valid():
+		before_agents.call()
 	movement.begin_tick(self)
 	_admit_waiting()
 	_heal_board()

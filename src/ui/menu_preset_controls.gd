@@ -6,6 +6,7 @@ signal save_requested(preset_name: String)
 signal load_requested(index: int)
 signal rename_requested(index: int, preset_name: String)
 signal delete_requested(index: int)
+signal schedule_requested(enabled: bool, minute: int, day: String, evening: String)
 
 var _names: Array[String] = []
 var _rename_index: int = -1
@@ -18,6 +19,13 @@ var _name_edit: LineEdit
 var _submit: Button
 var _cancel: Button
 var _feedback: Label
+var _schedule_enabled: CheckButton
+var _schedule_picks: GridContainer
+var _schedule_minute: OptionButton
+var _schedule_day: OptionButton
+var _schedule_evening: OptionButton
+var _apply_schedule: Button
+var _schedule_saved_enabled: bool = false
 
 
 func set_names(names: Array[String], preferred_selection: int = -1) -> void:
@@ -32,6 +40,59 @@ func set_names(names: Array[String], preferred_selection: int = -1) -> void:
 			_picker.add_item(preset_name)
 		_picker.select(clampi(selection, 0, _names.size() - 1))
 	_clear_editor()
+
+
+func set_schedule(schedule: EveningSchedule, open_minute: int, close_minute: int, step: int) -> void:
+	_bind_controls()
+	_schedule_saved_enabled = schedule.enabled
+	_schedule_enabled.set_pressed_no_signal(schedule.enabled)
+	_schedule_minute.clear()
+	for minute: int in range(open_minute + step, close_minute, step):
+		_schedule_minute.add_item(Fmt.clock(minute), minute)
+	_schedule_minute.select(_schedule_minute.get_item_index(schedule.minute) if schedule.minute > 0 else 0)
+	_fill_schedule_preset(_schedule_day, schedule.day_preset)
+	_fill_schedule_preset(_schedule_evening, schedule.evening_preset)
+	_refresh_schedule()
+
+
+func _fill_schedule_preset(picker: OptionButton, selected_name: String) -> void:
+	picker.clear()
+	var selected: int = 0 if selected_name.is_empty() and not _names.is_empty() else -1
+	for preset_name: String in _names:
+		picker.add_item(preset_name)
+		if preset_name.nocasecmp_to(selected_name) == 0:
+			selected = picker.item_count - 1
+	picker.select(selected)
+
+
+func _refresh_schedule() -> void:
+	var enabled: bool = _schedule_enabled.button_pressed
+	_schedule_picks.visible = enabled
+	_schedule_enabled.disabled = not _editable
+	_schedule_minute.disabled = not _editable
+	_schedule_day.disabled = not _editable or _names.is_empty()
+	_schedule_evening.disabled = _schedule_day.disabled
+	var complete: bool = _schedule_minute.selected >= 0 and _schedule_day.selected >= 0 \
+		and _schedule_evening.selected >= 0
+	_apply_schedule.visible = enabled or _schedule_saved_enabled
+	_apply_schedule.disabled = not _editable or (enabled and not complete)
+	_apply_schedule.tooltip_text = "Choose a time and both menus. Save a menu preset to make it available here." \
+		if enabled and not complete else ""
+
+
+func _on_schedule_changed(_value: Variant) -> void:
+	_refresh_schedule()
+
+
+func _on_schedule_apply() -> void:
+	if _apply_schedule.disabled:
+		return
+	if not _schedule_enabled.button_pressed:
+		schedule_requested.emit(false, 0, "", "")
+		return
+	schedule_requested.emit(true, _schedule_minute.get_selected_id(),
+		_schedule_day.get_item_text(_schedule_day.selected),
+		_schedule_evening.get_item_text(_schedule_evening.selected))
 
 
 func set_editable(editable: bool) -> void:
@@ -65,6 +126,17 @@ func _bind_controls() -> void:
 	_submit = %SavePreset
 	_cancel = %CancelRename
 	_feedback = %PresetFeedback
+	_schedule_enabled = %ScheduleEnabled
+	_schedule_picks = %SchedulePicks
+	_schedule_minute = %ScheduleMinute
+	_schedule_day = %ScheduleDay
+	_schedule_evening = %ScheduleEvening
+	_apply_schedule = %ApplySchedule
+	_schedule_enabled.toggled.connect(_on_schedule_changed)
+	_schedule_minute.item_selected.connect(_on_schedule_changed)
+	_schedule_day.item_selected.connect(_on_schedule_changed)
+	_schedule_evening.item_selected.connect(_on_schedule_changed)
+	_apply_schedule.pressed.connect(_on_schedule_apply)
 	_picker.item_selected.connect(_on_preset_selected)
 	_load_button.pressed.connect(_on_load_pressed)
 	_rename_button.pressed.connect(_on_rename_pressed)
@@ -90,6 +162,7 @@ func _refresh_actions() -> void:
 	var preset_name: String = MenuSettings.normalized_restaurant_name(_name_edit.text)
 	var duplicate: bool = _name_in_use(preset_name)
 	_submit.disabled = not _name_edit.editable or preset_name.is_empty() or duplicate
+	_refresh_schedule()
 	_submit.tooltip_text = ""
 	if not can_add and not renaming:
 		_submit.tooltip_text = "Delete a preset to make room for a new one."
