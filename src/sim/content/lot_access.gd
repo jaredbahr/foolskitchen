@@ -9,6 +9,8 @@ static func allowed(definition: Resource, site_tags: Array[StringName]) -> bool:
 		tags = (definition as ItemDef).lot_tags
 	elif definition is IngredientDef:
 		tags = (definition as IngredientDef).lot_tags
+	elif definition is RecipeDef:
+		tags = (definition as RecipeDef).lot_tags
 	else:
 		return false
 	if tags.is_empty():

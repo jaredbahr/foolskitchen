@@ -37,7 +37,7 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
-const SEASIDE: StringName = &"seaside_cliff"
+const SEASIDE: StringName = &"beachfront_boardwalk"
 ## The dusk stage's minute of the day: the sunset key frame (data/look/day_light.tres).
 const DUSK_MINUTE: float = 1230.0
 const WARM_UP_FRAMES: int = 60

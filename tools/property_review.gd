@@ -3,9 +3,9 @@ extends RefCounted
 ## `tools/screenshot.sh --property-review --speed=0 --frames=12`. The seed-1
 ## first morning with the career tier raised to 3 and enough cash for the
 ## fixer-upper put on the live owner (nothing saved), then the Menu's own
-## Property button opens the market: three lots cheapest first, the
-## fixer-upper's Buy button enabled with its cost, the seaside lot locked by
-## stars (no closing reputation yet), the rooftop by tier.
+## Property button opens the market: four lots cheapest first, the
+## fixer-upper's Buy button enabled with its cost, both seaside lots locked
+## by stars (no closing reputation yet), the rooftop by tier.
 
 const TIER: int = 3
 ## Enough for the fixer-upper ($8,500 to open), not for the seaside lot.
@@ -57,6 +57,7 @@ static func valid(state: Dictionary) -> bool:
 	return state.get("visible") == true and state.get("menu_visible") == false \
 		and state.get("enabled") == ["town_fixer_upper"] \
 		and str((state.get("buy_labels", {}) as Dictionary).get("town_fixer_upper", "")).begins_with("Buy for") \
-		and state.get("lots") == ["town_fixer_upper", "seaside_cliff", "skyscraper_rooftop"] \
+		and state.get("lots") == ["town_fixer_upper", "beachfront_boardwalk", "seaside_cliff", "skyscraper_rooftop"] \
 		and (state.get("locked", []) as Array).has("skyscraper_rooftop") \
-		and (state.get("locked", []) as Array).has("seaside_cliff")
+		and (state.get("locked", []) as Array).has("seaside_cliff") \
+		and (state.get("locked", []) as Array).has("beachfront_boardwalk")

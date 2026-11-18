@@ -1,7 +1,6 @@
 class_name PatioArea
 extends RefCounted
-## Purchased pavement beside the authored street door. It never becomes part
-## of the indoor footprint, moves the shell, or creates another guest entry.
+## Patio pavement lies outside the indoor footprint and creates no guest entry.
 
 const OUTSIDE_AREA: String = "Choose pavement beside the street door"
 const INVALID_CELLS: String = "Invalid patio cells"
@@ -11,6 +10,7 @@ var area: Rect2i = Rect2i()
 var cell_price: int = 0
 var _base: SimGrid
 var _outward: Vector2i = Vector2i.DOWN
+var _at_back: bool = false
 var _approaches: Dictionary[int, bool] = {}
 
 
@@ -23,7 +23,10 @@ static func from_layout(layout: ShopLayout) -> PatioArea:
 	var building: Rect2i = ShopFootprint.from_layout(layout).building
 	if layout.patio_depth <= 0 or not building.has_area() or patio._base.entries().is_empty():
 		return patio
+	patio._at_back = layout.patio_at_back
 	patio._outward = WallRules.street_side(patio._base)
+	if patio._at_back:
+		patio._outward = -patio._outward
 	var depth: int = layout.patio_depth
 	match patio._outward:
 		Vector2i.DOWN:
@@ -34,8 +37,9 @@ static func from_layout(layout: ShopLayout) -> PatioArea:
 			patio.area = Rect2i(building.end.x, building.position.y, depth, building.size.y)
 		Vector2i.LEFT:
 			patio.area = Rect2i(building.position.x - depth, building.position.y, depth, building.size.y)
-	for entry: Vector2i in patio._base.entries():
-		patio._approaches[patio._along(entry)] = true
+	if not patio._at_back:
+		for entry: Vector2i in patio._base.entries():
+			patio._approaches[patio._along(entry)] = true
 	return patio
 
 
@@ -63,7 +67,7 @@ func problem(bought: Array[Vector2i]) -> String:
 	var seen: Dictionary[Vector2i, bool] = {}
 	for cell: Vector2i in bought:
 		if not can_hold(cell):
-			return OUTSIDE_AREA
+			return "Choose pavement behind the shop" if _at_back else OUTSIDE_AREA
 		if seen.has(cell):
 			return INVALID_CELLS
 		seen[cell] = true

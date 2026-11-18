@@ -229,11 +229,13 @@ func test_the_view_builds_the_active_sites_street() -> void:
 
 
 func test_the_seaside_lot_stands_on_its_cliff_path() -> void:
-	var lot: LotDef = load(LOTS + "seaside_cliff.tres") as LotDef
-	assert_eq(lot.street_preset, "res://data/streets/cliff.tres", "the seaside lot has its own cliff path (#380)")
-	assert_eq(StreetPreset.for_lot(lot).id, &"cliff")
-	# The promenade (#596) stays, for the Beachfront Boardwalk.
-	var promenade: StreetPreset = load(PROMENADE) as StreetPreset
+	var cliff: LotDef = load(LOTS + "seaside_cliff.tres") as LotDef
+	assert_eq(cliff.street_preset, "res://data/streets/cliff.tres", "the seaside lot has its own cliff path (#380)")
+	assert_eq(StreetPreset.for_lot(cliff).id, &"cliff")
+	# The promenade (#596) is the Beachfront Boardwalk's front.
+	var lot: LotDef = load(LOTS + "beachfront_boardwalk.tres") as LotDef
+	assert_eq(lot.street_preset, PROMENADE)
+	var promenade: StreetPreset = StreetPreset.for_lot(lot)
 	assert_eq(promenade.id, &"promenade")
 	assert_false(promenade.has_traffic(), "a car-free front")
 	assert_not_null(promenade.shore, "the beach stays behind the shop")

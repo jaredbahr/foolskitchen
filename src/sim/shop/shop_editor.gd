@@ -751,6 +751,7 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 	layout.pantry_units = template_layout.pantry_units
 	layout.floor_cells = ShopFootprint.sorted(bought)
 	layout.patio_depth = template_layout.patio_depth
+	layout.patio_at_back = template_layout.patio_at_back
 	layout.patio_cell_price = template_layout.patio_cell_price
 	layout.patio_cells = patio_cells.duplicate()
 	layout.wall_swatch_id = _saved_swatch(data.get("wall_swatch_id", ""), content)
@@ -2376,7 +2377,7 @@ func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> v
 		return
 	check.menu_losses = MenuAccess.lost(_sim.world.grid, preview, _sim.menu, _career_tier)
 	check.menu_warning = MenuAccess.warning(check.menu_losses, preview, _content)
-	var recipes: Array[RecipeDef] = _content.recipes()
+	var recipes: Array[RecipeDef] = _content.recipes_for_lot(_lot_tags)
 	# Refused only when walls or furniture other than seats shut the kitchen
 	# off; seats alone get the path warning (#315, #320).
 	if MenuAccess.cookable(preview, recipes, _owner_level, _career_tier, false).is_empty() \

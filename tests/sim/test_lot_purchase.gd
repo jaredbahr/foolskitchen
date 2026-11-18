@@ -17,6 +17,7 @@ func test_authored_site_limits_follow_the_design() -> void:
 	assert_eq(LIMITS.limit_for(1), 1)
 	assert_eq(LIMITS.limit_for(2), 1)
 	assert_eq(LIMITS.limit_for(3), 2, "a second site at Tier 3")
+	assert_eq(LIMITS.tier_for_more(1), 3)
 	assert_eq(LIMITS.limit_for(4), 2)
 	assert_eq(LIMITS.limit_for(5), 3, "a third at Tier 5")
 	assert_eq(LIMITS.limit_for(6), SiteLimitTuning.UNLIMITED, "a chain at Tier 6")
@@ -37,6 +38,19 @@ func test_bad_site_limits_are_invalid_and_allow_only_home() -> void:
 		assert_false(tuning.is_valid(), "invalid: %s" % str(bad))
 		assert_eq(tuning.limit_for(6), 1)
 		assert_false(tuning.allows_another(6, 1))
+
+
+func test_boardwalk_can_be_the_second_site_at_tier_three() -> void:
+	var lot: LotDef = _db().lot(&"beachfront_boardwalk")
+	assert_eq(lot.min_tier, 3)
+	assert_eq(PropertyMarket.purchase_refusal(lot, 1, 5.0, false, 1, LIMITS, lot.price, 0),
+		PropertyMarket.Refusal.LOCKED)
+	assert_eq(PropertyMarket.purchase_refusal(lot, 3, 3.7, false, 1, LIMITS, lot.price, 0),
+		PropertyMarket.Refusal.LOCKED)
+	assert_eq(PropertyMarket.purchase_refusal(lot, 3, 3.8, false, 1, LIMITS, lot.price, 0),
+		PropertyMarket.Refusal.NONE)
+	assert_eq(PropertyMarket.purchase_refusal(lot, 3, 3.8, false, 2, LIMITS, lot.price, 0),
+		PropertyMarket.Refusal.LIMIT)
 
 
 func test_purchase_refusals_come_in_order() -> void:

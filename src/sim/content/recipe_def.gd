@@ -13,6 +13,8 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 @export var display_name: String = ""
 ## Presentation only: the approved Food Kit model; never read by preparation.
 @export var view_model: PackedScene
+## Alternate serving models use the same recipe, ingredients and price.
+@export var view_variants: Array[PackedScene] = []
 @export var section: Section = Section.MAINS
 ## One unit per entry; repeated references represent multiple units.
 @export var ingredients: Array[IngredientDef] = []
@@ -29,6 +31,9 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 ## Empty means a root. Levels are authoritative; no recipe-point save state.
 @export var unlock_from: StringName = &""
 @export var theme_tags: Array[StringName] = []
+@export var lot_tags: Array[StringName] = []
+## Eligible for the walk-up menu when that shop has a hatch.
+@export var takeaway_ok: bool = false
 ## What kind of visit orders this (FK-083): a meal, a hot drink, or a cold or
 ## alcoholic drink. Drinks are listed under Drinks on the menu, are made by
 ## front-of-house staff at their station and carried straight to the guest.

@@ -24,6 +24,7 @@ morning_stock = Dictionary[StringName, int]({
 })
 station_stock = Dictionary[StringName, int]({
 &"fresh_catch": 0,
+&"fruit_syrup": 0,
 &"coffee_beans": 30,
 &"tea": 12,
 &"soda": 16,
