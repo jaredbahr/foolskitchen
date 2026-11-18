@@ -274,9 +274,104 @@ func test_legacy_layouts_need_their_own_save_ids() -> void:
 	lot.id = &"legacy_test"
 	var clash: ShopLayout = lot.base_layout.duplicate() as ShopLayout
 	lot.legacy_layouts = [clash] as Array[ShopLayout]
+	lot.legacy_expansion = {} as Dictionary[StringName, Vector3i]
 	var types: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 	var type_ids: Array[StringName] = []
 	for kind: CustomerType in types.types:
 		type_ids.append(kind.id)
 	var errors: PackedStringArray = ContentDB.validate_lots([lot] as Array[LotDef], _content.items(), type_ids)
 	assert_true(errors.size() == 1 and errors[0].contains("legacy layout"), str(errors))
+	var stray: LotDef = _content.lot(&"seaside_cliff").duplicate() as LotDef
+	stray.id = &"legacy_terms_test"
+	stray.legacy_expansion = {&"nowhere": Vector3i(0, 4, 2)} as Dictionary[StringName, Vector3i]
+	errors = ContentDB.validate_lots([stray] as Array[LotDef], _content.items(), type_ids)
+	assert_true(errors.size() == 1 and errors[0].contains("legacy_expansion"), str(errors))
+
+
+func test_floor_bought_in_the_mill_notch_stays_dining_beside_a_kitchen() -> void:
+	var layout: ShopLayout = _layout(&"town_fixer_upper")
+	var footprint: ShopFootprint = ShopFootprint.from_layout(layout)
+	# The player bought a notch cell and painted it Kitchen; the next cell
+	# bought beside it is lot floor, not an opened shell wall: it stays Dining.
+	var before: SimGrid = SimGrid.from_ascii(layout.rows)
+	assert_true(footprint.apply(before, {Vector2i(16, 10): true} as Dictionary[Vector2i, bool]))
+	assert_true(before.set_rooms({Vector2i(16, 10): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]))
+	var after: SimGrid = SimGrid.from_ascii(layout.rows)
+	assert_true(footprint.apply(after, {Vector2i(16, 10): true, Vector2i(17, 10): true} as Dictionary[Vector2i, bool]))
+	assert_false(RoomRules.opened_kitchen(before, after, footprint).has(Vector2i(17, 10)))
+	# The back-wall rule still holds for the shell itself: the hall's side wall
+	# opened beside its own Kitchen cell becomes Kitchen.
+	var shell_before: SimGrid = SimGrid.from_ascii(layout.rows)
+	assert_true(shell_before.set_rooms({Vector2i(14, 10): SimGrid.Room.KITCHEN} as Dictionary[Vector2i, int]))
+	var shell_after: SimGrid = SimGrid.from_ascii(layout.rows)
+	assert_true(footprint.apply(shell_after, {Vector2i(16, 10): true} as Dictionary[Vector2i, bool]))
+	var opened: Dictionary[Vector2i, int] = RoomRules.opened_kitchen(shell_before, shell_after, footprint)
+	assert_eq(opened.get(Vector2i(15, 10), -1), SimGrid.Room.KITCHEN)
+	assert_false(opened.has(Vector2i(16, 10)))
+
+
+func test_a_legacy_cliff_site_keeps_its_old_lease_and_east_floor() -> void:
+	var lot: LotDef = _content.lot(&"seaside_cliff")
+	var legacy: ShopLayout = lot.layout_for_id(&"lot_seaside_cliff")
+	var old_lease: LeaseUpgrade = lot.lease_upgrade_for(legacy)
+	assert_eq([old_lease.extra_west, old_lease.extra_east, old_lease.extra_north], [0, 4, 2],
+		"the old rectangle keeps the old expansion")
+	var new_lease: LeaseUpgrade = lot.lease_upgrade_for(lot.base_layout)
+	assert_eq([new_lease.extra_west, new_lease.extra_east, new_lease.extra_north], [4, 0, 2])
+	assert_eq(old_lease.deposit, new_lease.deposit, "price and rent are shared")
+	# An old cliff site on its tier-2 lease with floor bought east of the shell.
+	var template: ShopLayout = old_lease.layout_for(legacy, 2)
+	var shell: Rect2i = ShopFootprint.from_layout(legacy).building
+	var footprint: ShopFootprint = ShopFootprint.from_layout(template)
+	assert_true(footprint.lot.end.x > shell.end.x + 2, "the expanded lot is reserved on the east")
+	var east: Array[Vector2i] = [Vector2i(shell.end.x, 5), Vector2i(shell.end.x + 1, 5)]
+	assert_eq(footprint.problem(ShopFootprint.to_set(east)), "")
+	var built: ShopLayout = template.duplicate() as ShopLayout
+	built.floor_cells = east
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.new()
+	sim.world = ShopBuilder.build(built, _content, errors)
+	assert_eq(errors, [] as Array[String])
+	var saved: Dictionary = ShopEditor.new(sim, _content, ShopEditBooks.new(), built).to_dict()
+	assert_eq(saved["layout_id"], "lot_seaside_cliff")
+	assert_eq((saved["floor"] as Array).size(), 2)
+	var loaded: ShopLayout = ShopEditor.from_dict(saved, template, _content, errors)
+	assert_eq(errors, [] as Array[String], "it loads on its own lot")
+	assert_not_null(loaded)
+	assert_eq(loaded.floor_cells, east)
+	assert_eq(ShopFootprint.from_layout(loaded).lot, footprint.lot, "with its lot still on the east")
+	errors.clear()
+	assert_null(ShopEditor.from_dict(saved, lot.lease_upgrade().layout_for(legacy, 2), _content, errors),
+		"the new lot's terms would not fit it")
+
+
+func test_the_kiosk_serves_a_drinks_guest_at_its_counter_on_day_one() -> void:
+	var sim: RestaurantSim = _sim(_layout(&"beachfront_boardwalk"))
+	var grid: SimGrid = sim.world.grid
+	assert_eq(_items(grid, &"drinks_fridge").size(), 1, "the kiosk pours cold drinks")
+	sim.world.weather.kind = WeatherState.Kind.SUNNY
+	sim.menu.append(_content.recipe(&"soft_drink"))
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.start_day()
+	sim.customer_paid.connect(_on_paid)
+	sim.customer_left.connect(_on_left)
+	var guests: Array[CustomerAgent] = []
+	for index: int in 3:
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 5970 + index
+		var guest: CustomerAgent = sim.add_visitor(grid.entries()[0], random, null, RecipeDef.DRINKS)
+		guest.food_patience = 5000
+		guest.queue_patience = 5000
+		guests.append(guest)
+	assert_true(sim.world.clock.start_service())
+	var at_counter: Dictionary[int, bool] = {}
+	for tick: int in SERVICE_TICKS:
+		sim.advance()
+		for guest: CustomerAgent in guests:
+			if guest.counter_visit:
+				at_counter[guest.id] = true
+		if sim.customers().is_empty():
+			break
+	assert_eq(_paid, guests.size(), "every drinks guest is served (left: %s)" % _left)
+	assert_eq(at_counter.size(), guests.size(), "each one orders at the kiosk counter")

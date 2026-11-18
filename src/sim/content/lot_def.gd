@@ -24,6 +24,10 @@ const MAX_EXPANSION_CELLS: int = LeaseUpgrade.MAX_EXTRA_CELLS
 ## site saved on one keeps loading on it (its items and walls were saved
 ## against those cells); only new purchases get `base_layout`.
 @export var legacy_layouts: Array[ShopLayout] = []
+## A legacy shell's own expansion margins (west, east, north), keyed by its
+## save_layout_id, when they differ from expansion_west/east/north: a site on
+## that shell keeps the lot it was saved with (#596). Price and rent are shared.
+@export var legacy_expansion: Dictionary[StringName, Vector3i] = {}
 ## Move-in ready price; 0 for a fixer-upper.
 @export var price: int = 0
 ## Fixer-upper price; 0 for a move-in ready lot.
@@ -100,6 +104,19 @@ func lease_upgrade() -> LeaseUpgrade:
 	lease.extra_west = expansion_west
 	lease.extra_east = expansion_east
 	lease.extra_north = expansion_north
+	return lease
+
+
+## The lease terms for a site built on `layout`: a legacy shell keeps its own
+## expansion margins (legacy_expansion), anything else gets lease_upgrade().
+func lease_upgrade_for(layout: ShopLayout) -> LeaseUpgrade:
+	var lease: LeaseUpgrade = lease_upgrade()
+	if layout != null and layout != base_layout and legacy_layouts.has(layout) \
+			and legacy_expansion.has(layout.save_layout_id):
+		var margins: Vector3i = legacy_expansion[layout.save_layout_id]
+		lease.extra_west = margins.x
+		lease.extra_east = margins.y
+		lease.extra_north = margins.z
 	return lease
 
 

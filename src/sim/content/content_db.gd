@@ -435,6 +435,10 @@ static func _lot_layout_errors(definition: LotDef, who: String, item_ids: Dictio
 			errors.append("%s: each legacy layout needs rows and its own save_layout_id" % who)
 			continue
 		layout_ids[legacy.save_layout_id] = true
+	for key: StringName in definition.legacy_expansion:
+		var lease: LeaseUpgrade = definition.lease_upgrade_for(definition.layout_for_id(key))
+		if not layout_ids.has(key) or key == layout.save_layout_id or not lease.is_valid():
+			errors.append("%s: legacy_expansion needs a legacy layout's id and a valid expansion" % who)
 	return errors
 
 
