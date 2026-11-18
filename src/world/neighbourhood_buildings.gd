@@ -90,6 +90,9 @@ class Plan extends RefCounted:
 	var neighbour_id: StringName = &""
 	## ShopStyle.Form: a shop, kiosk, hut or arcade.
 	var form: int = 0
+	## A terrace shop beside the lot (#600): the building-local z of its walled back
+	## yard's back wall (the lot's back line); 0 for no yard.
+	var yard_back: float = 0.0
 
 	func total_height() -> float:
 		return wall_h + roof_h
@@ -111,6 +114,9 @@ var _glow_key: int = 0
 var _glow_count: int = 0
 ## While a terrace neighbour is meshed: the pen its stock goes into, so it can be taken in.
 var _stock: Pen
+## While a terrace neighbour is meshed: its bulbs and lit screens (#600), kept apart from the
+## street's window light so they can go dark when it closes.
+var _lamps: NeighbourhoodGround.Soup
 ## One flat-shaded vertex-colour material shared by every building this builder meshes.
 var _material: StandardMaterial3D
 
@@ -438,13 +444,18 @@ class Pen extends RefCounted:
 func build_parts(p: Plan) -> Array[MeshInstance3D]:
 	_stock = Pen.new()
 	_stock.xf = p.xf
+	var lamps: Pen = Pen.new()
+	_lamps = lamps.soup
 	var shell: MeshInstance3D = build_mesh(p)
 	var trade: MeshInstance3D = _instance(String(p.id) + "_Trade", _stock)
 	_stock = null
+	_lamps = null
 	var sale: Pen = Pen.new()
 	sale.xf = p.xf
 	_terrace_helper().for_sale(sale, p)
 	var parts: Array[MeshInstance3D] = [shell, trade, _instance(String(p.id) + "_ForSale", sale)]
+	if not lamps.soup.is_empty():
+		parts.append(_instance(String(p.id) + "_Lamps", lamps))
 	return parts
 
 
@@ -486,6 +497,8 @@ func build_mesh(p: Plan) -> MeshInstance3D:
 	else:
 		_house_front(pen, p)
 	_side_and_back(pen, p)
+	if p.yard_back < 0.0:
+		_terrace_helper().yard(pen, p)
 	_roof(pen, p)
 	if p.chimney:
 		_chimney(pen, p)
@@ -1061,8 +1074,9 @@ func _glow_lamp(pen: Pen, cx: float, cy: float, half: float, z: float) -> void:
 	var b: Vector3 = pen.xf * Vector3(cx + half, cy - half, z)
 	var c: Vector3 = pen.xf * Vector3(cx + half, cy + half, z)
 	var d: Vector3 = pen.xf * Vector3(cx - half, cy + half, z)
-	_glow_soups[0].tri(a, b, c, hint, tint.lightened(0.2))
-	_glow_soups[0].tri(a, c, d, hint, tint.lightened(0.2))
+	var soup: NeighbourhoodGround.Soup = _lamps if _lamps != null else _glow_soups[0]
+	soup.tri(a, b, c, hint, tint.lightened(0.2))
+	soup.tri(a, c, d, hint, tint.lightened(0.2))
 
 
 ## The lit-window meshes, one per light tier (null when a tier has no window), in the

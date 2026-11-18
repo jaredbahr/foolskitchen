@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- On the seaside promenade your shop now sits in the terrace like a real row of shops: Surf Hire and Bucket & Spade back right onto your plot, the open lawn around it is a paved yard, the shops next door have walled back yards, and the alleys beside your shop meet the promenade with a wall and gate. When the arcade is up for sale, its bulb sign goes dark at night. (#610)
 - The seaside site has a car-free promenade out front instead of a road: wide paving with a wave inlaid down its middle, double-lantern lamp posts that glow at night, benches, planters, bollards and an ice-cream cart, with people strolling, jogging, cycling, pushing prams and walking dogs. Your shop now stands in a terrace of pastel beach shops with painted signs: Surf Hire on one side and Bucket & Spade on the other, then a fish-and-chip kiosk, beach huts with deckchairs, and an arcade whose sign lights up in bulbs after dark. (#599)
 - In Menu presets, choose the time to switch from a saved lunch menu to a saved dinner menu. Existing orders keep their dishes and prices, and foodies are more likely to visit after the switch. (#593)
 - Paying guests sometimes leave spare change in the tip jar. Collect it at closing. (#582)
