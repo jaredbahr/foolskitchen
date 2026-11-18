@@ -26,6 +26,7 @@ extends RefCounted
 const GLOW_SHADER: Shader = preload("res://src/world/forest_glow.gdshader")
 const STREAM_SHADER: Shader = preload("res://src/world/forest_stream.gdshader")
 const WHEAT_SHADER: Shader = preload("res://src/world/country_wheat.gdshader")
+const FIELD_SHADER: Shader = preload("res://src/world/country_field.gdshader")
 
 enum PlotState { GROWN, MOWN, CLEARED }
 
@@ -91,6 +92,10 @@ const FIELD_W: float = 11.0
 const FIELD_D: float = 9.5
 ## Far crop fields are drawn on a grid this coarse (metres), soft tones blending across it.
 const FIELD_CELL: float = 0.9
+## The far crops by distance from the lot, nearest first, in an order that keeps
+## neighbours apart (skin.field_colors: pale barley beside the golden cornfield, then a
+## young green crop, wheat, ploughed earth, ripe gold and a second green).
+const CROP_ORDER: Array[int] = [1, 4, 0, 3, 2, 5]
 ## Boundaries farther than this from the lot are drawn plain (a low box, no stones).
 const DETAIL_REACH: float = 19.0
 
@@ -152,6 +157,8 @@ var _bird_paths: Array[Vector4] = []
 var _tractor_wheels: Array[Node3D] = []
 var _stream_material: ShaderMaterial
 var _wheat_material: ShaderMaterial
+## The far crop fields: crop texture over their soft colour patches.
+var _field_material: ShaderMaterial
 var _glow_material: ShaderMaterial
 var _glass_material: StandardMaterial3D
 var _pool_material: StandardMaterial3D
@@ -414,7 +421,7 @@ func build(parent: Node3D) -> void:
 		_land_cache[land_key] = land_meshes
 	meshes = meshes.merged(land_meshes)
 	_add(_instance("Ground", meshes["ground"], _material))
-	_add(_instance("Fields", meshes["fields"], _material))
+	_add(_instance("Fields", meshes["fields"], _field_material))
 	_add(_instance("Bounds", meshes["bounds"], _material))
 	_add(_instance("Props", meshes["props"], _material))
 	_add(_instance("AxleHousing", meshes["housing"], _material))
@@ -481,6 +488,8 @@ func _materials() -> void:
 	_wheat_material = ShaderMaterial.new()
 	_wheat_material.shader = WHEAT_SHADER
 	_wheat_material.set_shader_parameter(&"base_y", PLOT_Y)
+	_field_material = ShaderMaterial.new()
+	_field_material.shader = FIELD_SHADER
 	_glow_material = ShaderMaterial.new()
 	_glow_material.shader = GLOW_SHADER
 	_glow_material.set_shader_parameter(&"tint", skin.lamp_glow)
@@ -811,6 +820,7 @@ func _plan_fields() -> void:
 		_fields.append(_field_entry(Rect2(maxf(u - width, left), block.position.y, minf(width, u - left), band_end - block.position.y), 90 + index, [3]))
 		u -= width
 		index += 1
+	_vary_crops()
 	# Far cottages, in pasture or by a field's corner, well out from the lot.
 	var spots: Array[Vector2] = []
 	for entry: Dictionary in _fields:
@@ -832,6 +842,27 @@ func _plan_fields() -> void:
 		_cottage_spots.append(Vector3(corner.x, corner.y, (PI * 0.5 * float(int(_r(seed_value, 308) * 4.0))) + 0.15 * (_r(seed_value, 309) - 0.5)))
 		if _cottage_spots.size() >= skin.cottages:
 			break
+
+
+## The far crops' colours by distance from the lot (CROP_ORDER).
+func _vary_crops() -> void:
+	var crops: Array[Dictionary] = []
+	for entry: Dictionary in _fields:
+		if int(entry["kind"]) != 0:
+			crops.append(entry)
+	var home: Vector2 = Vector2(_centre_u(), shift)
+	crops.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var da: float = (a["rect"] as Rect2).get_center().distance_squared_to(home)
+		var db: float = (b["rect"] as Rect2).get_center().distance_squared_to(home)
+		return da < db if not is_equal_approx(da, db) else int(a["seed"]) < int(b["seed"]))
+	var order: Array[int] = []
+	for index: int in CROP_ORDER:
+		if index < skin.field_colors.size():
+			order.append(index)
+	if order.is_empty():
+		return
+	for index: int in crops.size():
+		crops[index]["colour"] = skin.field_colors[order[index % order.size()]]
 
 
 ## The lot's block: the lot, its plots and the stream beside it, which the patchwork
@@ -910,14 +941,18 @@ func _patchwork(fields: NeighbourhoodBuildings.Pen, bounds: NeighbourhoodBuildin
 
 
 ## A far crop field: one soft sheet in its colour, drifting between a deeper and a paler
-## tone in broad patches (as the near wheat does) with a faint grain along its rows, a
-## touch darker at the headland. Per-vertex colour on a coarse grid, so the light blends
-## the tones and nothing reads as a hard stripe.
+## tone in broad patches (as the near wheat does), a touch darker at the headland:
+## per-vertex colour on a coarse grid, so nothing reads as a hard stripe. The field
+## shader adds the crop's fine texture (flecks and faint drill rows) by its style.
 func _soft_field(soup: NeighbourhoodGround.Soup, inner: Rect2, colour: Color, seed_value: int, across: bool) -> void:
 	var columns: int = maxi(1, ceili(inner.size.x / FIELD_CELL))
 	var rows: int = maxi(1, ceili(inner.size.y / FIELD_CELL))
 	var step: Vector2 = Vector2(inner.size.x / float(columns), inner.size.y / float(rows))
 	var phase: Vector2 = Vector2(_r(seed_value, 324), _r(seed_value, 325)) * TAU
+	# The field shader's code (country_field.gdshader): the crop's style by its colour
+	# (green young crop, brown ploughed earth, else grain) and its rows' direction.
+	var style: int = 2 if colour.g > colour.r else (1 if colour.r < 0.7 else 0)
+	var code: float = (float(style * 2 + (0 if across else 1)) + 0.5) / 8.0
 	var deep: Color = colour.darkened(0.09)
 	var pale: Color = colour.lerp(colour.lightened(0.2), 0.4)
 	var tones: Array[Color] = []
@@ -927,9 +962,6 @@ func _soft_field(soup: NeighbourhoodGround.Soup, inner: Rect2, colour: Color, se
 			var broad: float = 0.5 + 0.32 * sin(at.x * 0.33 + phase.x) * sin(at.y * 0.41 + phase.y) \
 				+ 0.18 * sin((at.x + at.y) * 0.19 + phase.x - phase.y)
 			var tone: Color = deep.lerp(pale, clampf(broad, 0.0, 1.0))
-			# The rows: a faint, wide grain along the drilling, too soft to read as stripes.
-			var along: float = at.x if across else at.y
-			tone = tone.darkened(0.018 * (0.5 + 0.5 * sin(along * 1.9 + phase.x)))
 			# A soft mottle, vertex by vertex, so the sheet has a grain like the near wheat's.
 			var mottle: float = _r(seed_value * 53 + ix * 31, iz * 977 + 326) - 0.5
 			tone = tone.lightened(0.07 * mottle) if mottle > 0.0 else tone.darkened(-0.06 * mottle)
@@ -946,7 +978,7 @@ func _soft_field(soup: NeighbourhoodGround.Soup, inner: Rect2, colour: Color, se
 					soup.positions.append(Vector3(inner.position.x + float(corner % (columns + 1)) * step.x, FIELD_Y,
 						inner.position.y + float(corner / (columns + 1)) * step.y))
 					soup.normals.append(Vector3.UP)
-					soup.colors.append(tones[corner])
+					soup.colors.append(Color(tones[corner], code))
 
 
 ## A field boundary from `a` to `b`, cut where it meets another already drawn, the
