@@ -13,6 +13,9 @@ extends "res://src/world/main.gd"
 ## neighbour's id (surf_hire, beach_goods, ...) shows just that one (#596).
 ## SEASIDE_STREET_PRESET=<path> stands the lot on another street for the capture (for
 ## example res://data/streets/seaside.tres, the seaside road).
+## SEASIDE_STREET_STANDS=stumps|cleared shows a woodland street's stands of trees
+## (#607, data/streets/woodland.tres) felled to stumps or cleared; <state>:<id> (for
+## example stumps:east) shows just that stand.
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
@@ -51,6 +54,7 @@ func _ready() -> void:
 		if node != null:
 			node.set("visible", false)
 	_show_for_sale(OS.get_environment("SEASIDE_STREET_FOR_SALE"))
+	_show_stands(OS.get_environment("SEASIDE_STREET_STANDS"))
 	_close_up()
 	_frame_beach()
 	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
@@ -74,6 +78,22 @@ func _show_for_sale(which: String) -> void:
 	for id: StringName in dressing.neighbour_ids():
 		if which == "1" or which == String(id):
 			dressing.set_neighbour_state(id, NeighbourhoodDressing.NeighbourState.FOR_SALE)
+
+
+func _show_stands(which: String) -> void:
+	if which.is_empty():
+		return
+	var parts: PackedStringArray = which.split(":")
+	var states: Dictionary[String, NeighbourhoodForest.StandState] = {"forest": NeighbourhoodForest.StandState.FOREST,
+		"stumps": NeighbourhoodForest.StandState.STUMPS, "cleared": NeighbourhoodForest.StandState.CLEARED}
+	if not states.has(parts[0]):
+		push_error("Unknown SEASIDE_STREET_STANDS: " + which)
+		return
+	var dressing: NeighbourhoodDressing = ($ShopView as ShopView).neighbourhood_dressing
+	for id: StringName in dressing.stand_ids():
+		if parts.size() < 2 or parts[1] == String(id):
+			dressing.set_stand_state(id, states[parts[0]])
+	print("STANDS ", dressing.stand_ids())
 
 
 ## Sets the clock's phase for display only (dusk mid-evening service, night after
@@ -112,7 +132,9 @@ func _close_up() -> void:
 	var normal: Vector3 = _vector(frame["normal"])
 	var tangent: Vector3 = _vector(frame["tangent"])
 	var slide: float = float(OS.get_environment("SEASIDE_STREET_U"))
-	var target: Vector3 = Vector3(origin.x, 0.0, origin.z) + normal * (float(frame["reserve_shift"]) + 2.6) + tangent * slide
+	# SEASIDE_STREET_V=<metres> moves the close-up out past the street (a woodland glade, #607).
+	var out: float = 2.6 if OS.get_environment("SEASIDE_STREET_V").is_empty() else float(OS.get_environment("SEASIDE_STREET_V"))
+	var target: Vector3 = Vector3(origin.x, 0.0, origin.z) + normal * (float(frame["reserve_shift"]) + out) + tangent * slide
 	var rig: CameraRig = $CameraRig as CameraRig
 	rig.frame_area(Vector2(target.x, target.z), Vector2(14.0, 14.0), float(zoom_text), true)
 

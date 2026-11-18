@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- New scenery for the coming Woodland Cabin: a log-cabin clearing on a forest track instead of a street, with no road, cars or neighbours. Tall pines ring the clearing, hikers and cyclists come along a winding dirt track, and the yard has a deck with rocking chairs, a woodpile and a fire pit with log benches under string lights. Across the track a stream runs through a glade with a footbridge, deer graze and rabbits hop at the trees' edge, and ferns and toadstools fill the undergrowth. At night the fire crackles, the bulbs glow and fireflies come out. The trees beside the cabin can later be felled and cleared as the place grows. No lot uses it yet. (#PR)
 - The seaside site has a car-free promenade out front instead of a road: wide paving with a wave inlaid down its middle, double-lantern lamp posts that glow at night, benches, planters, bollards and an ice-cream cart, with people strolling, jogging, cycling, pushing prams and walking dogs. Your shop now stands in a terrace of pastel beach shops with painted signs: Surf Hire on one side and Bucket & Spade on the other, then a fish-and-chip kiosk, beach huts with deckchairs, and an arcade whose sign lights up in bulbs after dark. (#599)
 - Paying guests sometimes leave spare change in the tip jar. Collect it at closing. (#582)
 - Easy fills missing cook and server jobs, replaces staff who quit, and hires for busy kitchens or dining rooms when cash covers five days of the new wage. Look for the hire in the morning news. (#579)
