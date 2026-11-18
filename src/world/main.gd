@@ -400,6 +400,8 @@ func _bind_world_presentation() -> void:
 		if _staged.layout != null else _base_layout
 	var maximum_lease: ShopLayout = _lease_for(presentation_base).layout_for(presentation_base, 2)
 	var maximum_reserve: Rect2i = ShopFootprint.from_layout(maximum_lease).lot.merge(lot)
+	# A woodland's trees stand on the land the first lease does not reach (#611).
+	view.first_lease = ShopFootprint.from_layout(_lease_for(presentation_base).layout_for(presentation_base, 1)).lot
 	# The street outside is the active site's lot's preset (#425): the home lot and
 	# a lot without one get the starter street.
 	view.street_preset = StreetPreset.for_site(site_book, content)
@@ -889,9 +891,11 @@ func _wire_session() -> bool:
 		return false
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
+	# The lot's street may give its walls a default finish (a woodland's logs, #611).
 	shop_editor = ShopEditor.new(sim, content, ShopEditBooks.new(Economy.can_buy_discretionary,
 		Economy.add_cash, _furniture_purchase_refusal),
-		_staged.layout if _staged.layout != null else _starter_layout())
+		_staged.layout if _staged.layout != null else _starter_layout(),
+		StreetPreset.for_site(site_book, content).wall_style)
 	shop_editor.set_owner_level(owner_progress.effective_level())
 	shop_editor.set_career_tier(owner_progress.effective_tier())
 	shop_editor.storage_need = _storage_need

@@ -16,6 +16,10 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_STANDS=stumps|cleared shows a woodland street's stands of trees
 ## (#607, data/streets/woodland.tres) felled to stumps or cleared; <state>:<id> (for
 ## example stumps:east) shows just that stand.
+## SEASIDE_STREET_EXPANDED=1 grows the lot by its lease expansion first (#611), as
+## buying it would but without the deposit, so a woodland's land stands show felled.
+## SEASIDE_STREET_WALLS=up shows the shop's walls at full height (a woodland's log
+## cabin, #611) instead of the cutaway.
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
@@ -54,7 +58,11 @@ func _ready() -> void:
 		if node != null:
 			node.set("visible", false)
 	_show_for_sale(OS.get_environment("SEASIDE_STREET_FOR_SALE"))
+	if OS.get_environment("SEASIDE_STREET_EXPANDED") == "1":
+		_expand_lease()
 	_show_stands(OS.get_environment("SEASIDE_STREET_STANDS"))
+	if OS.get_environment("SEASIDE_STREET_WALLS") == "up":
+		_walls_up()
 	_close_up()
 	_frame_beach()
 	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
@@ -78,6 +86,22 @@ func _show_for_sale(which: String) -> void:
 	for id: StringName in dressing.neighbour_ids():
 		if which == "1" or which == String(id):
 			dressing.set_neighbour_state(id, NeighbourhoodDressing.NeighbourState.FOR_SALE)
+
+
+## After the first frames, which settle the view's wall mode.
+func _walls_up() -> void:
+	for frame: int in 3:
+		await get_tree().process_frame
+	($ShopView as ShopView).set_wall_mode(ShopView.WallMode.UP)
+
+
+func _expand_lease() -> void:
+	var layout: ShopLayout = _lease_for(_base_layout).layout_for(_base_layout, 2)
+	if not shop_editor.grow_lot(layout):
+		push_error("Seaside street review could not grow the lot")
+		return
+	lease_expanded = true
+	($ShopView as ShopView).set_lot(shop_editor.footprint().lot)
 
 
 func _show_stands(which: String) -> void:

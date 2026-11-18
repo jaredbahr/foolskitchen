@@ -10,7 +10,9 @@ extends RefCounted
 ## fire burns, the bulbs glow and fireflies drift over the glade and the water.
 ##
 ## The trees beside and behind the lot are named stands (#597): each can show the
-## forest, the stumps after felling, or cleared ground, without a rebuild.
+## forest, the stumps after felling, or cleared ground, without a rebuild. The lot's
+## land not leased yet is wooded too (#611): land stands, one per strip of it, stand
+## right up to the leased land and are felled flush once the lease covers them.
 ##
 ## Like the rest of the neighbourhood it is view-only: no colliders, sim agents,
 ## saves, lights or random draws. Everything placed comes from an integer hash, and
@@ -75,6 +77,13 @@ class Stand extends RefCounted:
 	## True for the stand behind the lot (its trees keep clear of the lot along z),
 	## false for the two beside it (along u).
 	var behind: bool = false
+	## A land stand (#611): it grows on the lot's own land outside the first lease
+	## (`land`, local cells), not round the lot.
+	var is_land: bool = false
+	var land: Rect2 = Rect2()
+	## True when the current lease covers its land: the land is the player's to build
+	## on, so it can show only its flush stumps or cleared ground, never trees.
+	var leased: bool = false
 
 ## Inputs, set by the owner before build().
 var skin: ForestSkin
@@ -87,6 +96,14 @@ var salt: int = 0
 var compass: Basis = Basis.IDENTITY
 ## Local (u, z) rects the yard props keep off: the door approaches and entrance pads.
 var keep_clear: Array[Rect2] = []
+## The lot's leases (#611), local (u, z): the first, unexpanded lease and the current
+## one. The maximum lot's land outside the first lease grows land stands; empty rects
+## mean no land stands. The current lease's front is the shop's facade.
+var first_lease: Rect2 = Rect2()
+var lease: Rect2 = Rect2()
+## The shop building's local (u, z) extent, walls included: the porch runs along its
+## front and stops at its corner. Empty: the lot stands in for it.
+var building: Rect2 = Rect2()
 
 var root: Node3D
 var stands: Array[Stand] = []
@@ -125,10 +142,13 @@ var _chunks: Dictionary[Vector2i, NeighbourhoodGround.Soup] = {}
 ## Built static meshes by street key, shared by every forest (a rebuild after a
 ## purchase or a reload reuses them instead of re-planting thousands of trees).
 static var _cache: Dictionary[String, Dictionary] = {}
+## The land stands' meshes by their own key (a few dozen young trees each).
+static var _land_cache: Dictionary[String, Dictionary] = {}
 static var _templates: Dictionary[String, Array] = {}
 
 
 static func clear_cache() -> void:
+	_land_cache.clear()
 	_cache.clear()
 
 
@@ -190,6 +210,11 @@ func _stream_half(u: float) -> float:
 ## The side trail's line (local u) at `z`: off the track, over the footbridge, into the trees.
 func _trail_at(z: float) -> float:
 	return trail_u + 0.35 * sin((z - shift) * 0.55)
+
+
+## The shop's facade (local z): the current lease's front, else the lot's front.
+func _facade() -> float:
+	return minf(lease.end.y, shift) if lease.has_area() else shift
 
 
 func _reserve_rect() -> Rect2:
@@ -271,7 +296,47 @@ static func _compass_name(direction: Vector3) -> StringName:
 	return &"south" if direction.z > 0.0 else &"north"
 
 
-## The ids of the stands, in build order (left side, right side, back).
+## The lot's land outside the first lease (#611), as land stands: a strip down each
+## side the lease does not reach and one across its back, named by compass with
+## `_land` (`east_land`). Their trees fill the strip from the first lease's edge (less
+## the stand gap) out to the stands round the lot, so the forest meets the cabin.
+func _plan_land() -> void:
+	if not first_lease.has_area():
+		return
+	var lot: Rect2 = _reserve_rect()
+	var start: Rect2 = first_lease.intersection(lot)
+	if not start.has_area():
+		return
+	var top: float = lot.position.y - STAND_GAP
+	var front: float = lot.end.y - 0.2
+	var pieces: Array[Rect2] = []
+	var lands: Array[Rect2] = []
+	var outward: Array[Vector3] = []
+	if start.position.x > lot.position.x + 0.01:
+		pieces.append(Rect2(lot.position.x - STAND_GAP, top, start.position.x - lot.position.x, front - top))
+		lands.append(Rect2(lot.position.x, lot.position.y, start.position.x - lot.position.x, start.end.y - lot.position.y))
+		outward.append(Vector3.LEFT)
+	if start.end.x < lot.end.x - 0.01:
+		pieces.append(Rect2(start.end.x + STAND_GAP, top, lot.end.x - start.end.x, front - top))
+		lands.append(Rect2(start.end.x, lot.position.y, lot.end.x - start.end.x, start.end.y - lot.position.y))
+		outward.append(Vector3.RIGHT)
+	if start.position.y > lot.position.y + 0.01:
+		pieces.append(Rect2(start.position.x - STAND_GAP, top, start.size.x + STAND_GAP * 2.0, start.position.y - lot.position.y))
+		lands.append(Rect2(start.position.x, lot.position.y, start.size.x, start.position.y - lot.position.y))
+		outward.append(Vector3.FORWARD)
+	for index: int in pieces.size():
+		var entry: Stand = Stand.new()
+		entry.id = StringName(String(_compass_name(compass * outward[index])) + "_land")
+		entry.rect = pieces[index]
+		entry.behind = outward[index] == Vector3.FORWARD
+		entry.is_land = true
+		entry.land = lands[index]
+		entry.leased = lease.has_area() and lease.grow(0.01).encloses(lands[index])
+		stands.append(entry)
+
+
+## The ids of the stands, in build order (left side, right side, back, then the land
+## stands).
 func stand_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for stand: Stand in stands:
@@ -286,11 +351,13 @@ func stand(id: StringName) -> Stand:
 	return null
 
 
-## Shows a stand as forest, stumps or cleared ground.
+## Shows a stand as forest, stumps or cleared ground. Leased land never shows trees.
 func show_stand(id: StringName, state: int) -> void:
 	var entry: Stand = stand(id)
 	if entry == null or entry.node == null:
 		return
+	if entry.is_land and entry.leased and state == StandState.FOREST:
+		state = StandState.STUMPS
 	(entry.node.get_node(^"Forest") as Node3D).visible = state == StandState.FOREST
 	(entry.node.get_node(^"Stumps") as Node3D).visible = state == StandState.STUMPS
 	(entry.node.get_node(^"Cleared") as Node3D).visible = state == StandState.CLEARED
@@ -304,7 +371,7 @@ func build(parent: Node3D) -> void:
 	_materials()
 	_plan_stands()
 	_plan_yard()
-	var key: String = var_to_str([local_reserve, shift, world_centre, light_shift, salt, compass, keep_clear, skin.signature()])
+	var key: String = var_to_str([local_reserve, shift, world_centre, light_shift, salt, compass, keep_clear, _facade(), building, skin.signature()])
 	var meshes: Dictionary = _cache.get(key, {})
 	if meshes.is_empty():
 		meshes = _build_static()
@@ -315,6 +382,25 @@ func build(parent: Node3D) -> void:
 		# The plan still has to know where the stands' trees stand (crowns, for bounds).
 		for stand_entry: Stand in stands:
 			stand_entry.crowns = meshes["crowns:" + String(stand_entry.id)]
+	# The land stands come after the cached forest (it never covers the lot's land).
+	_plan_land()
+	var land_key: String = var_to_str([key, first_lease])
+	var land_meshes: Dictionary = _land_cache.get(land_key, {})
+	if land_meshes.is_empty():
+		for stand_entry: Stand in stands:
+			if stand_entry.is_land:
+				_build_land(stand_entry, land_meshes)
+				land_meshes["crowns:" + String(stand_entry.id)] = stand_entry.crowns
+				land_meshes["trees:" + String(stand_entry.id)] = stand_entry.trees.duplicate()
+		if _land_cache.size() > 8:
+			_land_cache.clear()
+		_land_cache[land_key] = land_meshes
+	else:
+		for stand_entry: Stand in stands:
+			if stand_entry.is_land:
+				stand_entry.crowns = land_meshes["crowns:" + String(stand_entry.id)]
+				stand_entry.trees.assign(land_meshes["trees:" + String(stand_entry.id)])
+	meshes = meshes.merged(land_meshes)
 	_add(_instance("Ground", meshes["ground"], _material))
 	# The forest comes in square chunks, so the view culls the ones out of sight and
 	# the shop's night light only lights the few near it.
@@ -422,17 +508,22 @@ func _plan_yard() -> void:
 			door = door.merge(rect)
 	# The porch runs along the shop's front on the roomier side of the door; the fire
 	# pit sits out in the yard on the other side, and the woodpile past the porch's end.
-	var left_room: float = door.position.x - lot.position.x
-	var right_room: float = lot.end.x - door.end.x
+	var front: Rect2 = building if building.has_area() else lot
+	var left_room: float = door.position.x - front.position.x + 0.1
+	var right_room: float = front.end.x - door.end.x + 0.1
 	var porch_left: bool = left_room >= right_room
 	var room: float = maxf(left_room, right_room) - 0.25
 	var length: float = clampf(room, 1.6, 4.4)
+	# The deck runs back over the entrance row to the facade (#611), so it reads as the
+	# cabin's own porch; the row stays the grid's (the deck is only drawn).
+	var back: float = _facade()
+	var deep: float = shift + 1.49 - back
 	if porch_left:
-		porch = Rect2(door.position.x - 0.15 - length, shift + 0.04, length, 1.45)
+		porch = Rect2(door.position.x - 0.15 - length, back, length, deep)
 		woodpile = Rect2(porch.position.x - 1.65, shift + 0.12, 1.35, 0.62)
 		fire_pit = Vector2(maxf(door.end.x + 1.9, lot.end.x - 0.6), shift + 1.65)
 	else:
-		porch = Rect2(door.end.x + 0.15, shift + 0.04, length, 1.45)
+		porch = Rect2(door.end.x + 0.15, back, length, deep)
 		woodpile = Rect2(porch.end.x + 0.3, shift + 0.12, 1.35, 0.62)
 		fire_pit = Vector2(minf(door.position.x - 1.9, lot.position.x + 0.6), shift + 1.65)
 	_blocked.append(porch.grow(0.2))
@@ -451,7 +542,7 @@ func _plan_yard() -> void:
 	var spacing: float = minf(0.7, porch.size.x * 0.25)
 	_chair_spots.clear()
 	for side: float in [-1.0, 1.0]:
-		_chair_spots.append(Transform3D(Basis(Vector3.UP, side * 0.18), Vector3(middle + side * spacing, PORCH_TOP, porch.position.y + 0.7)))
+		_chair_spots.append(Transform3D(Basis(Vector3.UP, side * 0.18), Vector3(middle + side * spacing, PORCH_TOP, porch.end.y - 0.75)))
 	var posts: Array[float] = _porch_posts()
 	var lantern_post: float = posts[posts.size() - 1] if porch.end.x < _door_u() else posts[0]
 	_lantern_at = Vector3(lantern_post - 0.1, PORCH_TOP + 0.47, porch.end.y - 0.035)
@@ -933,6 +1024,128 @@ func _build_stand(stand_entry: Stand, meshes: Dictionary) -> void:
 	meshes["%s:Cleared:shade" % stand_entry.id] = cleared_shade.to_mesh()
 
 
+## A land stand's three looks (#611). Forest: young pines on a forest floor that
+## spreads from the first lease's edge out over the fringe to the woods round the lot,
+## its edge ragged with moss, with ferns where a tree would not fit. Stumps (the land
+## once leased): every tree felled flush, its cut face at ground level, in churned
+## earth and sawdust, so nothing stands above the ground where the player builds.
+## Cleared: the lot's grass with a few worn patches. Every crown keeps off the first
+## lease, the door's approach and the yard's pieces.
+func _build_land(stand_entry: Stand, meshes: Dictionary) -> void:
+	var forest: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	var forest_shade: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var stumps: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	var stumps_shade: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var cleared: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	var cleared_shade: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var rect: Rect2 = stand_entry.rect
+	var start: Rect2 = first_lease.intersection(_reserve_rect())
+	var salt_id: int = String(stand_entry.id).hash() & 0xffff
+	# The forest floor, out over the grass fringe to meet the woods round the lot.
+	var fringe: float = 0.85
+	var outward: Rect2 = rect
+	if stand_entry.behind:
+		outward = rect.grow_individual(0.0, fringe, 0.0, 0.0)
+	elif rect.get_center().x < start.get_center().x:
+		outward = rect.grow_individual(fringe, fringe, 0.0, 0.0)
+	else:
+		outward = rect.grow_individual(0.0, fringe, fringe, 0.0)
+	forest.flat(outward.position.x, outward.position.y, outward.end.x, outward.end.y, STAND_Y, skin.forest_floor)
+	# A ragged mossy edge along the sides that face the lease and the yard.
+	var edges: Array[PackedVector2Array] = []
+	if stand_entry.behind:
+		edges.append(PackedVector2Array([Vector2(rect.position.x, rect.end.y), rect.end]))
+	else:
+		var inner: float = rect.end.x if rect.get_center().x < start.get_center().x else rect.position.x
+		edges.append(PackedVector2Array([Vector2(inner, rect.position.y), Vector2(inner, rect.end.y)]))
+		edges.append(PackedVector2Array([Vector2(outward.position.x, rect.end.y), Vector2(outward.end.x, rect.end.y)]))
+	var blob_index: int = 0
+	for edge: PackedVector2Array in edges:
+		var length: float = edge[0].distance_to(edge[1])
+		var count: int = maxi(2, int(length / 0.55))
+		for index: int in count:
+			var at: Vector2 = edge[0].lerp(edge[1], (float(index) + 0.5) / float(count))
+			var seed_value: int = salt_id + blob_index * 17
+			blob_index += 1
+			var size: float = 0.28 + _r(seed_value, 71) * 0.22
+			_blob(forest, at, size, size * 0.8, _r(seed_value, 72) * PI, 7, STAND_Y + 0.001,
+				skin.moss.lerp(skin.grass_dark, 0.5) if index % 2 == 0 else skin.moss)
+	# Needle litter and moss under the trees.
+	var patches: int = int(rect.get_area() / 1.2) + 2
+	for index: int in patches:
+		var at: Vector2 = rect.position + Vector2(_r(salt_id + index, 73), _r(salt_id + index, 74)) * rect.size
+		var size: float = 0.25 + _r(salt_id + index, 75) * 0.4
+		var roll: float = _r(salt_id + index, 76)
+		var colour: Color = skin.floor_dark if roll < 0.45 else (skin.moss if roll < 0.85 else skin.sun_fleck)
+		_blob(forest, at, size, size * 0.7, _r(salt_id + index, 77) * PI, 7, STAND_Y + 0.002, colour)
+	# Young pines, a little taller away from the lease, on a jittered grid.
+	var cell: float = 1.0
+	var columns: int = maxi(1, int(rect.size.x / cell))
+	var rows: int = maxi(1, int(rect.size.y / cell))
+	var crowns: Rect2 = Rect2()
+	stand_entry.trees.clear()
+	for ix: int in columns:
+		for iz: int in rows:
+			var seed_value: int = salt_id * 7 + ix * 131 + iz
+			var at: Vector2 = rect.position + Vector2((float(ix) + 0.25 + _r(seed_value, 81) * 0.5) * rect.size.x / float(columns),
+				(float(iz) + 0.25 + _r(seed_value, 82) * 0.5) * rect.size.y / float(rows))
+			var dx: float = maxf(maxf(start.position.x - at.x, at.x - start.end.x), 0.0)
+			var dz: float = maxf(maxf(start.position.y - at.y, at.y - start.end.y), 0.0)
+			var clear: float = sqrt(dx * dx + dz * dz)
+			var size: float = (0.6 + clampf(clear / 3.0, 0.0, 1.0) * 0.5) * (0.9 + _r(seed_value, 83) * 0.25)
+			# The crown keeps off the lease, and off the yard in front of the lot.
+			var room: float = minf(clear, shift + 0.25 - at.y)
+			if room < size * 0.95 + 0.05:
+				size = (room - 0.05) / 0.95
+			while size >= 0.35 and _is_blocked(at, size * 0.95):
+				size -= 0.1
+			if size < 0.35:
+				if not _is_blocked(at, 0.3) and at.y < shift - 0.3:
+					_fern(forest, Vector3(at.x, FLOOR_Y, at.y), 0.3, skin.fern_colors[seed_value % skin.fern_colors.size()], seed_value)
+				continue
+			var soup: NeighbourhoodGround.Soup = forest.soup
+			_pine(soup, at, size, seed_value, true)
+			stand_entry.trees.append(Vector3(at.x, at.y, size))
+			var crown: Rect2 = Rect2(at - Vector2.ONE * size * 0.95, Vector2.ONE * size * 1.9)
+			crowns = crown if not crowns.has_area() else crowns.merge(crown)
+			_tree_shadow(forest_shade, at, size)
+			if _r(seed_value, 84) < 0.45:
+				var fern_at: Vector2 = at + Vector2(0.38, 0.3)
+				if rect.has_point(fern_at) and not _is_blocked(fern_at, 0.3):
+					_fern(forest, Vector3(fern_at.x, FLOOR_Y, fern_at.y), 0.26 + _r(seed_value, 85) * 0.12,
+						skin.fern_colors[(seed_value + 1) % skin.fern_colors.size()], seed_value + 1)
+			# Felled: a stump cut flush, its face just under the floor line.
+			var radius: float = 0.1 * size + 0.04
+			_drum(stumps, Vector3(at.x, STAND_Y, at.y), radius * 1.12, radius, 0.034, 7, skin.trunk, skin.log_end, _r(seed_value, 86))
+			_disc_top(stumps, Vector3(at.x, STAND_Y + 0.0345, at.y), radius * 0.5, 7, skin.log_end.darkened(0.18))
+			_shade_disc(stumps_shade, at + light_shift * 0.05, radius * 1.25, 0.18)
+	stand_entry.crowns = crowns if crowns.has_area() else rect
+	# Felled ground: churned earth, sawdust and a few wood chips (all flat).
+	for index: int in patches + 4:
+		var at: Vector2 = rect.position + Vector2(_r(salt_id + index, 91), _r(salt_id + index, 92)) * rect.size
+		var size: float = 0.14 + _r(salt_id + index, 93) * 0.26
+		var roll: float = _r(salt_id + index, 94)
+		var colour: Color = skin.bank.lerp(skin.grass_dark, 0.35) if roll < 0.45 else (skin.grass_dark if roll < 0.75 else skin.log_end.lerp(skin.grass, 0.45))
+		_blob(stumps, at, size, size * 0.75, _r(salt_id + index, 95) * PI, 7, STAND_Y + 0.001 + _r(salt_id + index, 96) * 0.002, colour)
+	# Cleared: the grass, worn in a few places.
+	for index: int in maxi(2, int(patches / 3.0)):
+		var at: Vector2 = rect.position + Vector2(_r(salt_id + index, 97), _r(salt_id + index, 98)) * rect.size
+		var size: float = 0.2 + _r(salt_id + index, 99) * 0.3
+		_blob(cleared, at, size, size * 0.7, _r(salt_id + index, 100) * PI, 7, STAND_Y + 0.001,
+			skin.grass_dark if index % 2 == 0 else skin.grass_light)
+	meshes["%s:Forest" % stand_entry.id] = _mesh_of(forest.soup)
+	meshes["%s:Forest:shade" % stand_entry.id] = _mesh_of(forest_shade)
+	meshes["%s:Stumps" % stand_entry.id] = _mesh_of(stumps.soup)
+	meshes["%s:Stumps:shade" % stand_entry.id] = _mesh_of(stumps_shade)
+	meshes["%s:Cleared" % stand_entry.id] = _mesh_of(cleared.soup)
+	meshes["%s:Cleared:shade" % stand_entry.id] = _mesh_of(cleared_shade)
+
+
+## A soup's mesh, or an empty mesh when nothing was drawn.
+static func _mesh_of(soup: NeighbourhoodGround.Soup) -> ArrayMesh:
+	return soup.to_mesh() if soup.positions.size() > 0 else ArrayMesh.new()
+
+
 func _stump(pen: NeighbourhoodBuildings.Pen, at: Vector2, size: float, seed_value: int) -> void:
 	var radius: float = 0.1 * size + 0.03
 	var height: float = 0.12 + _r(seed_value, 48) * 0.1
@@ -1166,7 +1379,7 @@ func _porch(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) 
 	pen.box(Vector3(far_end - 0.03, top + 0.5, r.position.y + 0.05), Vector3(far_end + 0.03, top + 0.56, r.end.y), skin.timber)
 	_shade_rect(shadows, Rect2(r.position.x, r.end.y - 0.02, r.size.x, 0.05), top + 0.2, 0.3)
 	# A crate table between the two rocking chairs (built apart: they rock), with a mug.
-	var table: Vector3 = Vector3(r.get_center().x, top, r.position.y + 0.62)
+	var table: Vector3 = Vector3(r.get_center().x, top, r.end.y - 0.83)
 	pen.box(table + Vector3(-0.13, 0.0, -0.11), table + Vector3(0.13, 0.22, 0.11), skin.timber_dark)
 	pen.box(table + Vector3(-0.14, 0.2, -0.12), table + Vector3(0.14, 0.23, 0.12), skin.timber)
 	# A mug on the crate.

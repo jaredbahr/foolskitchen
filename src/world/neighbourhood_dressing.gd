@@ -185,6 +185,13 @@ var _neighbour_states: Dictionary[StringName, int] = {}
 var _forest_root: Node3D
 var _forest: NeighbourhoodForest
 var _stand_states: Dictionary[StringName, int] = {}
+## The lot's current lease and its first, unexpanded one (#611), in grid cells: a
+## woodland grows land stands on the maximum lot's land outside the first lease, and
+## fells them once the current lease covers it. Empty: no land stands.
+var _lease: Rect2i = Rect2i()
+var _first_lease: Rect2i = Rect2i()
+## The shop's built cells' bounding rect (walls, floor and entrance), for the porch.
+var _built_rect: Rect2i = Rect2i()
 ## Where the street's people walk (their feet): the paving, or a forest track.
 var _walk_y: float = 0.055
 ## Each neighbour's own bulbs (#600), by id, for the ones that have any.
@@ -216,6 +223,13 @@ func has_promenade() -> bool:
 ## True when the street's preset is a woodland clearing with a forest track (#607).
 func has_forest() -> bool:
 	return preset != null and preset.forest != null
+
+
+## The lot's current lease and first lease (#611), for a woodland's land stands. Takes
+## effect at the next `configure` or `rebuild`; other streets ignore it.
+func set_lease(current: Rect2i, first: Rect2i) -> void:
+	_lease = current
+	_first_lease = first
 
 
 func configure(grid: SimGrid, maximum_lot: Rect2i, frontage_runs: Array[Dictionary],
@@ -250,6 +264,7 @@ func rebuild() -> void:
 		key.append(preset.promenade.signature())
 	if has_forest():
 		key.append(preset.forest.signature())
+		key.append([_lease, _first_lease])
 	if not patio.is_empty():
 		key.append(patio)
 	if key == _geometry_key:
@@ -265,8 +280,10 @@ func rebuild() -> void:
 		_hide_actors()
 		return
 	var area: Rect2i = _maximum_lot
+	_built_rect = Rect2i()
 	for cell: Vector2i in built:
 		area = area.merge(Rect2i(cell, Vector2i.ONE)) if area.has_area() else Rect2i(cell, Vector2i.ONE)
+		_built_rect = _built_rect.merge(Rect2i(cell, Vector2i.ONE)) if _built_rect.has_area() else Rect2i(cell, Vector2i.ONE)
 	_reserve = AABB(Vector3(area.position.x * GridMath.CELL_SIZE, 0.0, area.position.y * GridMath.CELL_SIZE),
 		Vector3(area.size.x * GridMath.CELL_SIZE, ArtScale.WALL_HEIGHT, area.size.y * GridMath.CELL_SIZE))
 	_local_reserve = _frame.affine_inverse() * _reserve
@@ -2010,9 +2027,21 @@ func _build_forest() -> void:
 	var rect: Rect2 = world_rect()
 	var centre: Vector3 = inverse * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
 	_forest.world_centre = Vector2(centre.x, centre.z)
+	_forest.lease = _local_cells(_lease)
+	_forest.first_lease = _local_cells(_first_lease)
+	_forest.building = _local_cells(_built_rect)
 	_forest.build(_forest_root)
 	for id: StringName in _forest.stand_ids():
 		_forest.show_stand(id, stand_state(id))
+
+
+## A rect of grid cells in the street frame's local (u, z); empty stays empty.
+func _local_cells(cells: Rect2i) -> Rect2:
+	if not cells.has_area():
+		return Rect2()
+	var box: AABB = _frame.affine_inverse() * AABB(Vector3(cells.position.x * GridMath.CELL_SIZE, 0.0, cells.position.y * GridMath.CELL_SIZE),
+		Vector3(cells.size.x * GridMath.CELL_SIZE, 1.0, cells.size.y * GridMath.CELL_SIZE))
+	return Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
 
 
 ## A hiker's backpack or a cyclist's bike for each walker on the forest track.
@@ -2045,19 +2074,35 @@ func forest() -> NeighbourhoodForest:
 
 ## The ids of the named stands of trees round the lot (#597): the two sides and the
 ## back, named by compass (`west`, `east`, `north`, `south`: east is world +x, north
-## -z). Empty on a street without a forest.
+## -z), then the land stands on the lot's land outside its first lease (#611), named
+## the same way with `_land` (`east_land`). Empty on a street without a forest.
 func stand_ids() -> Array[StringName]:
 	return _forest.stand_ids() if _forest != null else [] as Array[StringName]
 
 
+## What a stand shows. A land stand the current lease covers is the player's land:
+## felled to stumps unless it was cleared, never trees.
 func stand_state(id: StringName) -> NeighbourhoodForest.StandState:
-	return _stand_states.get(id, NeighbourhoodForest.StandState.FOREST) as NeighbourhoodForest.StandState
+	var state: NeighbourhoodForest.StandState = _stand_states.get(id, NeighbourhoodForest.StandState.FOREST) as NeighbourhoodForest.StandState
+	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
+	if entry != null and entry.leased and state == NeighbourhoodForest.StandState.FOREST:
+		return NeighbourhoodForest.StandState.STUMPS
+	return state
+
+
+## True for a land stand (#611) that the current lease covers.
+func stand_leased(id: StringName) -> bool:
+	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
+	return entry != null and entry.leased
 
 
 ## Shows a stand as forest (the default), felled to stumps, or cleared ground. The state
-## is kept across rebuilds. False when the street has no such stand.
+## is kept across rebuilds. False when the street has no such stand, or for trees on
+## land the lease covers (#611).
 func set_stand_state(id: StringName, state: NeighbourhoodForest.StandState) -> bool:
 	if _forest == null or not _forest.stand_ids().has(id):
+		return false
+	if stand_leased(id) and state == NeighbourhoodForest.StandState.FOREST:
 		return false
 	_stand_states[id] = state
 	_forest.show_stand(id, state)
@@ -2065,7 +2110,8 @@ func set_stand_state(id: StringName, state: NeighbourhoodForest.StandState) -> b
 
 
 ## Everything a stand's trees cover, crowns included, in the dressing's space (an empty
-## box when there is no such stand). Never overlaps the lot's maximum footprint.
+## box when there is no such stand). A stand round the lot never overlaps the lot's
+## maximum footprint; a land stand never overlaps its first lease (#611).
 func stand_bounds(id: StringName) -> AABB:
 	var entry: NeighbourhoodForest.Stand = _forest.stand(id) if _forest != null else null
 	if entry == null:
