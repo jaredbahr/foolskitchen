@@ -4,7 +4,8 @@ extends TestCase
 ## lane; the mill stream turns a waterwheel beside the lot. The meadow beside the lot
 ## and the cornfield behind it are named land plots that never overlap the lot, its
 ## first lease or the door's approach, keep their state through a rebuild, and lie flat
-## once the lease covers them. Old Mill Street stands on the lane, and the starter,
+## once the lease covers them. The wheel turns under a wheel house whose axle housing
+## meets the shop's wall (#619). Old Mill Street stands on the lane, and the starter,
 ## seaside, promenade and woodland streets are exactly what they were.
 
 const DRESSING: PackedScene = preload("res://src/world/neighbourhood_dressing.tscn")
@@ -321,6 +322,79 @@ func test_nothing_stands_on_the_lot_the_lease_or_the_door_approach() -> void:
 		var part: MeshInstance3D = child as MeshInstance3D
 		assert_eq(_strays(part.mesh, part.global_transform, [reserve] as Array[AABB], -1.0), 0, "the waterwheel stays off the lot")
 	_free(dressing)
+
+
+## The world-space vertices of a mesh under `frame` (empty for an empty mesh).
+static func _points(mesh: Mesh, frame: Transform3D) -> PackedVector3Array:
+	var points: PackedVector3Array = PackedVector3Array()
+	if mesh == null or mesh.get_surface_count() == 0:
+		return points
+	for point: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array:
+		points.append(frame * point)
+	return points
+
+
+func test_the_wheel_house_meets_the_mill_wall() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _leased(FIRST_LEASE)
+	var country_view: NeighbourhoodCountry = dressing.country()
+	var reserve: AABB = _reserve(dressing)
+	var local: AABB = dressing.local_frame().affine_inverse() * reserve
+	var frame: Transform3D = country_view.root.global_transform
+	var wheel: Vector3 = country_view.wheel_at
+	assert_eq(country_view.stream_side, -1.0, "the stream runs down the lot's west side")
+	# The shop's wall is the building's west face, a metre in from the lot's edge.
+	var building: AABB = dressing.local_frame().affine_inverse() * _cells_box(FIRST_LEASE)
+	assert_almost_eq(country_view.mill_wall, building.position.x, 0.001, "the housing runs to the shop's west wall")
+	# A slate roof stands over the wheel, off the lot.
+	var roofed: int = 0
+	for point: Vector3 in _points((country_view.root.get_node(^"Props") as MeshInstance3D).mesh, Transform3D.IDENTITY):
+		if point.y > NeighbourhoodCountry.HOUSE_LOW and absf(point.z - wheel.z) < NeighbourhoodCountry.HOUSE_HALF \
+				and absf(point.x - wheel.x) < NeighbourhoodCountry.WHEEL_WIDTH:
+			roofed += 1
+	assert_true(roofed > 0, "the wheel turns under the wheel house's roof")
+	# The axle housing crosses the strip to the wall, never onto the shop, the lease or the door's approach.
+	var housing: MeshInstance3D = country_view.root.get_node(^"AxleHousing") as MeshInstance3D
+	var points: PackedVector3Array = _points(housing.mesh, Transform3D.IDENTITY)
+	assert_true(points.size() > 0, "the axle housing crosses the strip")
+	var reach: float = INF
+	for point: Vector3 in points:
+		reach = minf(reach, absf(point.x - country_view.mill_wall))
+		assert_true(point.x >= local.position.x - 0.001 and point.x <= country_view.mill_wall + 0.001,
+			"the housing lies between the lot's edge and the wall (u %.2f)" % point.x)
+		assert_true(absf(point.z - wheel.z) < NeighbourhoodCountry.CASING_HALF + 0.06, "and along the axle's line")
+		assert_true(point.y < NeighbourhoodCountry.CASING_TOP + 0.2, "it stays low")
+	assert_almost_eq(reach, 0.0, 0.001, "it meets the wall")
+	var keep_off: Array[AABB] = [_cells_box(FIRST_LEASE)]
+	keep_off.append_array(_approaches(dressing))
+	assert_eq(_strays(housing.mesh, frame, keep_off, -1.0), 0, "the housing never stands on the shop or the door's approach")
+	# The standing wheat sways on the street's display clock.
+	var wheat: ShaderMaterial = (country_view.plot(&"north").node.get_node(^"Grown/Body") as MeshInstance3D).material_override as ShaderMaterial
+	assert_not_null(wheat, "the standing wheat has its swaying material")
+	dressing.set_review_time(21.5)
+	assert_almost_eq(float(wheat.get_shader_parameter(&"sway_time")), 21.5, 0.001, "the wheat sways with the display clock")
+	_free(dressing)
+	NeighbourhoodDressing.clear_mesh_cache()
+	# Built out to the lot's edge: the housing is gone and the wheel house meets the wall.
+	var built_out: NeighbourhoodDressing = DRESSING.instantiate() as NeighbourhoodDressing
+	_viewport.add_child(built_out)
+	built_out.set_process(false)
+	built_out.use_preset(load(COUNTRY) as StreetPreset)
+	built_out.configure(_grid(), Rect2i(0, -2, 10, 9), [{"cells": _grid().entries().duplicate(), "normal": Vector2i.DOWN}] as Array[Dictionary],
+		[] as Array[AABB])
+	country_view = built_out.country()
+	var edge: float = (built_out.local_frame().affine_inverse() * _reserve(built_out)).position.x
+	assert_almost_eq(country_view.mill_wall, edge, 0.001, "the shop's wall stands on the lot's edge")
+	assert_eq(_points((country_view.root.get_node(^"AxleHousing") as MeshInstance3D).mesh, Transform3D.IDENTITY).size(), 0,
+		"no housing is left over the shop")
+	var meets: int = 0
+	for point: Vector3 in _points((country_view.root.get_node(^"Props") as MeshInstance3D).mesh, Transform3D.IDENTITY):
+		assert_false(point.x > edge + 0.001 and point.x < edge + 1.0 and point.y > 0.02 and absf(point.z - country_view.wheel_at.z) < NeighbourhoodCountry.HOUSE_HALF + 0.2,
+			"nothing of the wheel house stands inside the shop")
+		if absf(point.x - edge) < 0.001 and absf(point.z - country_view.wheel_at.z) < NeighbourhoodCountry.CASING_HALF and point.y > 0.3:
+			meets += 1
+	assert_true(meets > 0, "the axle's casing meets the wall at the lot's edge")
+	_free(built_out)
 
 
 func test_plot_state_survives_a_rebuild() -> void:

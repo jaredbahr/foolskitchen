@@ -200,6 +200,8 @@ var _lease: Rect2i = Rect2i()
 var _first_lease: Rect2i = Rect2i()
 ## The shop's built cells' bounding rect (walls, floor and entrance), for the porch.
 var _built_rect: Rect2i = Rect2i()
+## The shop's built cells themselves (#619): the country's wheel house meets the wall they make.
+var _built_cells: Array[Vector2i] = []
 ## Where the street's people walk (their feet): the paving, or a forest track.
 var _walk_y: float = 0.055
 ## Each neighbour's own bulbs (#600), by id, for the ones that have any.
@@ -303,6 +305,7 @@ func rebuild() -> void:
 		return
 	var area: Rect2i = _maximum_lot
 	_built_rect = Rect2i()
+	_built_cells = built
 	for cell: Vector2i in built:
 		area = area.merge(Rect2i(cell, Vector2i.ONE)) if area.has_area() else Rect2i(cell, Vector2i.ONE)
 		_built_rect = _built_rect.merge(Rect2i(cell, Vector2i.ONE)) if _built_rect.has_area() else Rect2i(cell, Vector2i.ONE)
@@ -2258,6 +2261,8 @@ func _build_country() -> void:
 	_country.lease = _local_cells(_lease)
 	_country.first_lease = _local_cells(_first_lease)
 	_country.building = _local_cells(_built_rect)
+	for cell: Vector2i in _built_cells:
+		_country.built.append(_local_cells(Rect2i(cell, Vector2i.ONE)))
 	_country.build(_country_root)
 	for id: StringName in _country.plot_ids():
 		_country.show_plot(id, plot_state(id))
