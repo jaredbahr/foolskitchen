@@ -25,6 +25,7 @@ extends RefCounted
 
 const GLOW_SHADER: Shader = preload("res://src/world/forest_glow.gdshader")
 const STREAM_SHADER: Shader = preload("res://src/world/forest_stream.gdshader")
+const WHEAT_SHADER: Shader = preload("res://src/world/country_wheat.gdshader")
 
 enum PlotState { GROWN, MOWN, CLEARED }
 
@@ -66,6 +67,20 @@ const PLOT_GAP: float = 0.12
 const WHEEL_RADIUS: float = 0.82
 const WHEEL_WIDTH: float = 0.3
 const WHEEL_SPEED: float = 0.55
+## The wheel house (#619): a slate lean-to over the wheel, off the lot. Half its length
+## along the stream, how far its roof reaches out from the lot's edge, and the roof's
+## height there and at its eaves over the water.
+const HOUSE_HALF: float = 1.02
+const HOUSE_REACH: float = 0.8
+const HOUSE_HIGH: float = 1.66
+const HOUSE_LOW: float = 1.4
+## The axle housing's half width (along z) and its top; it runs from the wheel house
+## across any strip of the lot to the shop's wall.
+const CASING_HALF: float = 0.17
+const CASING_TOP: float = 0.62
+## The wheat's canopy: its cell (metres) and its height over the earth.
+const WHEAT_CELL: float = 0.3
+const WHEAT_HEIGHT: float = 0.43
 ## The tractor's speed (m/s), its rest off-screen between runs (s), and the hour it goes home.
 const TRACTOR_SPEED: float = 1.05
 const TRACTOR_REST: float = 26.0
@@ -109,6 +124,8 @@ var first_lease: Rect2 = Rect2()
 var lease: Rect2 = Rect2()
 ## The shop building's local (u, z) extent, walls included: the wheel turns on its side.
 var building: Rect2 = Rect2()
+## The shop's built cells, local (u, z) (#619): the axle housing runs to the wall they make.
+var built: Array[Rect2] = []
 
 var root: Node3D
 var plots: Array[Plot] = []
@@ -122,6 +139,9 @@ var stream_side: float = -1.0
 ## Where things went (local), for tools and tests.
 var wheel_at: Vector3 = Vector3.ZERO
 var weir_z: float = 0.0
+## The shop's wall face (local u) on the stream's side at the wheel's axle: the axle
+## housing runs from the lot's edge to here, and is gone once the shop is built out to it.
+var mill_wall: float = 0.0
 var bridge_z: float = 0.0
 var stand: Rect2 = Rect2()
 var gate: Rect2 = Rect2()
@@ -130,6 +150,7 @@ var _sheep_spots: Array[Vector4] = []
 var _bird_paths: Array[Vector4] = []
 var _tractor_wheels: Array[Node3D] = []
 var _stream_material: ShaderMaterial
+var _wheat_material: ShaderMaterial
 var _glow_material: ShaderMaterial
 var _glass_material: StandardMaterial3D
 var _pool_material: StandardMaterial3D
@@ -373,7 +394,7 @@ func build(parent: Node3D) -> void:
 	_block_rect = _block()
 	_plan_fields()
 	var key: String = var_to_str([local_reserve, shift, world_centre, light_shift, salt, compass, keep_clear, building,
-		stream_side, skin.signature()])
+		stream_side, mill_wall, skin.signature()])
 	var meshes: Dictionary = _cache.get(key, {})
 	if meshes.is_empty():
 		meshes = _build_static()
@@ -395,6 +416,7 @@ func build(parent: Node3D) -> void:
 	_add(_instance("Fields", meshes["fields"], _material))
 	_add(_instance("Bounds", meshes["bounds"], _material))
 	_add(_instance("Props", meshes["props"], _material))
+	_add(_instance("AxleHousing", meshes["housing"], _material))
 	_add(_instance("Shadows", meshes["shadows"], _shadow_material))
 	_add(_instance("Stream", meshes["stream"], _stream_material))
 	_add(_instance("Windows", meshes["windows"], _glass_material))
@@ -409,7 +431,8 @@ func build(parent: Node3D) -> void:
 			var group: Node3D = Node3D.new()
 			group.name = look
 			entry.node.add_child(group)
-			group.add_child(_instance("Body", meshes["%s:%s" % [entry.id, look]], _material))
+			var standing: bool = entry.crop == &"corn" and look == "Grown"
+			group.add_child(_instance("Body", meshes["%s:%s" % [entry.id, look]], _wheat_material if standing else _material))
 			group.add_child(_instance("Shade", meshes["%s:%s:shade" % [entry.id, look]], _shadow_material))
 		show_plot(entry.id, PlotState.GROWN)
 	_glow = _instance("Glow", meshes["glow"], _glow_material)
@@ -454,6 +477,9 @@ func _materials() -> void:
 	_stream_material.set_shader_parameter(&"deep", skin.water_deep)
 	_stream_material.set_shader_parameter(&"shallow", skin.water_shallow)
 	_stream_material.set_shader_parameter(&"ripple", skin.ripple)
+	_wheat_material = ShaderMaterial.new()
+	_wheat_material.shader = WHEAT_SHADER
+	_wheat_material.set_shader_parameter(&"base_y", PLOT_Y)
 	_glow_material = ShaderMaterial.new()
 	_glow_material.shader = GLOW_SHADER
 	_glow_material.set_shader_parameter(&"tint", skin.lamp_glow)
@@ -500,8 +526,27 @@ func _plan_mill() -> void:
 	# The wheel turns on the building's side, a little forward of its middle.
 	var wheel_z: float = clampf(front.end.y - front.size.y * 0.4, front.position.y + WHEEL_RADIUS + 0.3, front.end.y - WHEEL_RADIUS - 0.2)
 	wheel_at = Vector3(_stream_edge() + stream_side * (0.17 + WHEEL_WIDTH * 0.5), 0.44, wheel_z)
+	mill_wall = _wall_at(wheel_z)
 	weir_z = lot.position.y - 2.2
 	bridge_z = lane_z(stream_u(lane_z(_stream_edge())))
+
+
+## The shop's wall face (local u) on the stream's side across the line at `z`: the outer
+## edge of the built cells the axle housing would meet there, else the building's side,
+## else the lot's edge. Never outside the lot.
+func _wall_at(z: float) -> float:
+	var edge: float = _stream_edge()
+	var face: float = NAN
+	for cell: Rect2 in built:
+		if cell.end.y <= z - CASING_HALF or cell.position.y >= z + CASING_HALF:
+			continue
+		var outer: float = cell.position.x if stream_side < 0.0 else cell.end.x
+		if is_nan(face) or (outer - face) * stream_side > 0.0:
+			face = outer
+	if is_nan(face):
+		face = (building.position.x if stream_side < 0.0 else building.end.x) if building.has_area() else edge
+	# Inside the lot: never past its edge on the stream's side.
+	return maxf(face, edge) if stream_side < 0.0 else minf(face, edge)
 
 
 ## Where the forecourt, its wall, the farm gate and the produce stand go, clear of the door.
@@ -540,6 +585,7 @@ func _build_static() -> Dictionary:
 	var props: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
 	var windows: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
 	var shadows: NeighbourhoodGround.Soup = NeighbourhoodGround.Soup.new()
+	var housing: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
 	_wall_keys.clear()
 	_ground(ground)
 	_lane(ground, props)
@@ -552,6 +598,7 @@ func _build_static() -> Dictionary:
 	_bridge(props, shadows)
 	_weir(props, shadows)
 	_wheel_pit(props, shadows)
+	_wheel_house(props, housing, shadows)
 	_trees(props, shadows)
 	_cottages(props, windows, shadows)
 	meshes["ground"] = _mesh_of(ground.soup)
@@ -559,6 +606,7 @@ func _build_static() -> Dictionary:
 	meshes["bounds"] = _mesh_of(bounds.soup)
 	meshes["props"] = _mesh_of(props.soup)
 	meshes["windows"] = _mesh_of(windows.soup)
+	meshes["housing"] = _mesh_of(housing.soup)
 	meshes["shadows"] = _mesh_of(shadows)
 	meshes["stream"] = _stream_mesh()
 	for entry: Plot in plots:
@@ -1538,10 +1586,6 @@ func _wheel_pit(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.So
 			var part: float = 0.25 + 0.3 * _r(course, 515)
 			pen.quad(Vector3(side_face, y, pit.position.y + part), Vector3(side_face, y, pit.end.y - part * 0.5),
 				Vector3(side_face, y + 0.01, pit.end.y - part * 0.5), Vector3(side_face, y + 0.01, pit.position.y + part), Vector3(signf(side_face - bank) * s * s, 0.0, 0.0), skin.stone_dark)
-	# A timber trestle on the wall carries the axle's inner bearing.
-	for side_z: float in [z - 0.12, z + 0.08]:
-		pen.box(Vector3(minf(bank + s * 0.03, bank + s * 0.12), 0.26, side_z), Vector3(maxf(bank + s * 0.03, bank + s * 0.12), wheel_at.y + 0.02, side_z + 0.04), skin.timber_dark)
-	pen.box(Vector3(minf(bank, bank + s * 0.15), wheel_at.y - 0.06, z - 0.15), Vector3(maxf(bank, bank + s * 0.15), wheel_at.y + 0.06, z + 0.15), skin.timber_dark)
 	# A lantern on a post at the pit's downstream end lights the wheel at night.
 	var post: Vector3 = Vector3(bank + s * 0.075, 0.26, pit.end.y - 0.12)
 	pen.box(post + Vector3(-0.04, 0.0, -0.04), post + Vector3(0.04, 0.55, 0.04), skin.timber_dark)
@@ -1574,6 +1618,104 @@ func _wheel_pit(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.So
 		Vector3(x0 + 0.05, y - 0.22, end + 0.08), Vector3(0.0, 0.3, 1.0), skin.ripple.lerp(skin.water_shallow, 0.3))
 	_shade_rect(shadows, Rect2(x0, start, x1 - x0, end - start), y, 0.22)
 
+
+## A box on the mill's side, `d0`..`d1` metres out from the lot's edge (negative is in
+## over the lot), `y0`..`y1` high and `z0`..`z1` along the stream.
+func _side_box(pen: NeighbourhoodBuildings.Pen, d0: float, d1: float, y0: float, y1: float, z0: float, z1: float, colour: Color) -> void:
+	var a: float = _stream_edge() + stream_side * d0
+	var b: float = _stream_edge() + stream_side * d1
+	pen.box(Vector3(minf(a, b), y0, z0), Vector3(maxf(a, b), y1, z1), colour)
+
+
+## The wheel house roof's height `d` metres out from the lot's edge.
+func _house_roof(d: float) -> float:
+	return lerpf(HOUSE_HIGH, HOUSE_LOW, d / HOUSE_REACH)
+
+
+## The wheel house (#619): a slate lean-to over the wheel on four timber posts, its high
+## side on the pit's wall at the lot's edge and its eaves out over the stream, so the wheel
+## turns under the mill's own roof. A boarded casing carries the axle from the wheel's
+## inner face to the lot's edge, and on (`housing`, its own mesh) across any strip of the
+## lot to the shop's wall; once the shop is built out to the edge, that part is gone and
+## the wheel house meets the wall. Nothing of it stands taller than the casing on the lot.
+func _wheel_house(pen: NeighbourhoodBuildings.Pen, housing: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) -> void:
+	var s: float = stream_side
+	var edge: float = _stream_edge()
+	var z: float = wheel_at.z
+	var z0: float = z - HOUSE_HALF
+	var z1: float = z + HOUSE_HALF
+	var slate: Color = skin.cottage_roofs[1 % skin.cottage_roofs.size()]
+	# Posts: the inner pair on the pit's wall, the outer pair on stone footings in the water.
+	for post_z: float in [z0 + 0.03, z1 - 0.13]:
+		_side_box(pen, 0.03, 0.13, 0.26, _house_roof(0.13) - 0.02, post_z, post_z + 0.1, skin.timber_dark)
+		_side_box(pen, 0.6, 0.78, WATER_Y - 0.02, 0.16, post_z - 0.04, post_z + 0.14, skin.stone)
+		_side_box(pen, 0.6, 0.78, 0.16, 0.19, post_z - 0.04, post_z + 0.14, skin.stone_light)
+		_side_box(pen, 0.64, 0.74, 0.19, _house_roof(0.74) - 0.02, post_z, post_z + 0.1, skin.timber_dark)
+		# A knee brace from each post up to its plate.
+		for d: float in [0.08, 0.69]:
+			var inward: float = 1.0 if post_z < z else -1.0
+			var foot: Vector3 = Vector3(edge + s * d, _house_roof(d) - 0.36, post_z + 0.05 + inward * 0.05)
+			var head: Vector3 = Vector3(edge + s * d, _house_roof(d) - 0.1, post_z + 0.05 + inward * 0.3)
+			var thick: Vector3 = Vector3(0.025, 0.0, 0.0)
+			pen.quad(foot - thick, head - thick, head + thick, foot + thick, Vector3(0.0, 1.0, -inward), skin.timber_dark)
+			pen.quad(foot - thick + Vector3(0.0, 0.05, 0.0), head - thick + Vector3(0.0, 0.05, 0.0), head - thick, foot - thick,
+				Vector3(-1.0, 0.0, 0.0), skin.timber_dark)
+			pen.quad(foot + thick + Vector3(0.0, 0.05, 0.0), head + thick + Vector3(0.0, 0.05, 0.0), head + thick, foot + thick,
+				Vector3(1.0, 0.0, 0.0), skin.timber_dark)
+	# The plates along the top of each pair of posts.
+	_side_box(pen, 0.02, 0.14, _house_roof(0.14) - 0.12, _house_roof(0.14) - 0.02, z0, z1, skin.timber)
+	_side_box(pen, 0.63, 0.75, _house_roof(0.75) - 0.12, _house_roof(0.75) - 0.02, z0, z1, skin.timber)
+	# The roof: courses of slate stepping down to the eaves, a lead flashing at the top.
+	var courses: int = 5
+	var lap: float = 0.035
+	for course: int in courses:
+		var d0: float = HOUSE_REACH * float(course) / float(courses)
+		var d1: float = minf(HOUSE_REACH * float(course + 1) / float(courses) + lap, HOUSE_REACH + 0.02)
+		var y0: float = _house_roof(d0) + 0.012 * float(courses - course)
+		var y1: float = _house_roof(d1) + 0.012 * float(courses - course - 1)
+		var tone: Color = slate.darkened(0.04) if course % 2 == 1 else slate
+		var base: Array[Vector3] = [Vector3(edge + s * d0, y0, z0 - 0.1), Vector3(edge + s * d1, y1, z0 - 0.1),
+			Vector3(edge + s * d1, y1, z1 + 0.1), Vector3(edge + s * d0, y0, z1 + 0.1)]
+		pen.slab(base, Vector3(0.0, 0.035, 0.0), tone)
+	_side_box(pen, 0.0, 0.07, HOUSE_HIGH + 0.06, HOUSE_HIGH + 0.11, z0 - 0.11, z1 + 0.11, skin.iron.lightened(0.15))
+	_shade_rect(shadows, Rect2(minf(edge, edge + s * (HOUSE_REACH + 0.02)), z0 - 0.1, HOUSE_REACH + 0.02, z1 - z0 + 0.2), 1.1, 0.2)
+	# The axle's casing from the wheel's inner face to the lot's edge, on the pit's wall.
+	_casing(pen, 0.0, 0.16, true)
+	# And on across the strip of the lot to the shop's wall, while there is one.
+	var gap: float = (edge - mill_wall) * s
+	if gap > 0.02:
+		_casing(housing, -gap, 0.0, false)
+		_shade_rect(shadows, Rect2(minf(edge, mill_wall), z - CASING_HALF, gap, CASING_HALF * 2.0), 0.4, 0.2)
+
+
+## A stretch of the axle's casing `d0`..`d1` out from the lot's edge: a boarded box with
+## a slate cap on a stone footing, and an end board where it leaves the wheel.
+func _casing(pen: NeighbourhoodBuildings.Pen, d0: float, d1: float, at_wheel: bool) -> void:
+	var z: float = wheel_at.z
+	var slate: Color = skin.cottage_roofs[1 % skin.cottage_roofs.size()]
+	var foot: float = 0.24 if at_wheel else 0.14
+	if not at_wheel:
+		_side_box(pen, d0, d1, PLOT_Y, foot, z - CASING_HALF - 0.03, z + CASING_HALF + 0.03, skin.stone)
+		_side_box(pen, d0, d1, foot - 0.02, foot, z - CASING_HALF - 0.04, z + CASING_HALF + 0.04, skin.stone_light)
+	_side_box(pen, d0, d1, foot, CASING_TOP - 0.04, z - CASING_HALF, z + CASING_HALF, skin.timber_dark)
+	# Boards: a lighter batten every so often along it.
+	var length: float = d1 - d0
+	var battens: int = maxi(1, int(length / 0.32))
+	for index: int in battens:
+		var d: float = d0 + length * (float(index) + 0.5) / float(battens)
+		_side_box(pen, d - 0.02, d + 0.02, foot + 0.02, CASING_TOP - 0.05, z - CASING_HALF - 0.012, z + CASING_HALF + 0.012, skin.timber)
+	# The cap: two slate slopes meeting over the axle.
+	var a: float = _stream_edge() + stream_side * d0
+	var b: float = _stream_edge() + stream_side * d1
+	var lo: float = minf(a, b)
+	var hi: float = maxf(a, b)
+	for side: float in [-1.0, 1.0]:
+		var base: Array[Vector3] = [Vector3(lo, CASING_TOP - 0.05, z + side * (CASING_HALF + 0.05)), Vector3(hi, CASING_TOP - 0.05, z + side * (CASING_HALF + 0.05)),
+			Vector3(hi, CASING_TOP + 0.07, z), Vector3(lo, CASING_TOP + 0.07, z)]
+		pen.slab(base, Vector3(0.0, 0.03, 0.0), slate if side > 0.0 else slate.darkened(0.06))
+	if at_wheel:
+		# The end board round the axle where it leaves the casing for the wheel.
+		_side_box(pen, d1 - 0.02, d1, foot, CASING_TOP - 0.02, z - CASING_HALF - 0.02, z + CASING_HALF + 0.02, skin.timber)
 
 # --- trees and cottages -----------------------------------------------------------
 
@@ -1726,8 +1868,8 @@ func _cottages(pen: NeighbourhoodBuildings.Pen, windows: NeighbourhoodBuildings.
 # --- the plots' looks -----------------------------------------------------------
 
 ## A plot's three looks. Meadow: long grass and wild flowers; mown into rows of hay
-## (with round bales off the lot's own land); cleared to a striped lawn. Corn: rows of
-## ripe wheat on brown earth; cut to stubble (with straw bales off the lot's land);
+## (with round bales off the lot's own land); cleared to a striped lawn. Corn: a soft,
+## swaying canopy of ripe wheat on brown earth; cut to stubble (with straw bales off the lot's land);
 ## cleared to ploughed furrows. A land plot's crop keeps off the first lease and the
 ## door's approach, and its mown and cleared looks lie flat, so nothing stands above
 ## the ground where the player builds.
@@ -1880,50 +2022,130 @@ func _lawn(entry: Plot, salt_id: int, pen: NeighbourhoodBuildings.Pen) -> void:
 		pen.flat(x0, r.position.y + 0.05, x0 + r.size.x / float(count), r.end.y - 0.05, PLOT_TOP, skin.grass_light)
 
 
-## Ripe wheat in rows: each row a run of short ridges with ears along the top, darker
-## at the foot; poppies at the edge.
+## Ripe wheat (#619): one soft canopy over the earth instead of rows, rolling gently in
+## height and drifting between warmer and paler gold in broad patches, with ears pricking
+## up through it and darker stalks at its edges; poppies along the front. The canopy's
+## heights and tones come from the street's own coordinates, so neighbouring plots meet
+## seamlessly. Vertex alpha marks what sways on the display clock (the wheat shader).
 func _corn(entry: Plot, salt_id: int, pen: NeighbourhoodBuildings.Pen, shade: NeighbourhoodGround.Soup) -> void:
 	_plot_ground(entry, pen, skin.soil, salt_id)
-	var r: Rect2 = entry.rect
-	var spacing: float = 0.26
-	var rows: int = maxi(1, int((r.size.y - 0.1) / spacing))
-	var piece: float = 0.42
-	for row: int in rows:
-		var z: float = r.position.y + 0.08 + (float(row) + 0.5) * (r.size.y - 0.16) / float(rows)
-		var u: float = r.position.x + 0.1
-		var index: int = 0
-		var first: bool = true
-		while u < r.end.x - 0.1:
-			var u1: float = minf(u + (piece * (0.3 + 0.7 * _r(row, 847)) if first else piece), r.end.x - 0.1)
-			first = false
-			var seed_value: int = salt_id * 3 + row * 977 + index
-			var mid: Vector2 = Vector2((u + u1) * 0.5, z)
-			if not _plot_free(entry, Vector2(u, z), 0.1) or not _plot_free(entry, Vector2(u1, z), 0.1):
-				u = u1
-				index += 1
+	var r: Rect2 = entry.rect.grow(-0.08)
+	var columns: int = maxi(1, ceili(r.size.x / WHEAT_CELL))
+	var rows: int = maxi(1, ceili(r.size.y / WHEAT_CELL))
+	var step: Vector2 = Vector2(r.size.x / float(columns), r.size.y / float(rows))
+	# Which cells stand: all four corners clear of the yard, the lot or the first lease.
+	var standing: Dictionary[Vector2i, bool] = {}
+	for ix: int in columns:
+		for iz: int in rows:
+			var lo: Vector2 = r.position + Vector2(float(ix) * step.x, float(iz) * step.y)
+			var clear: bool = true
+			for corner: Vector2 in [lo, lo + Vector2(step.x, 0.0), lo + step, lo + Vector2(0.0, step.y)]:
+				if not _plot_free(entry, corner, 0.06):
+					clear = false
+					break
+			if clear:
+				standing[Vector2i(ix, iz)] = true
+	var soup: NeighbourhoodGround.Soup = pen.soup
+	for cell: Vector2i in standing:
+		var lo: Vector2 = r.position + Vector2(float(cell.x) * step.x, float(cell.y) * step.y)
+		var corners: Array[Vector2] = [lo, lo + Vector2(step.x, 0.0), lo + step, lo + Vector2(0.0, step.y)]
+		var tops: Array[Vector3] = []
+		var tones: Array[Color] = []
+		var normals: Array[Vector3] = []
+		for corner: Vector2 in corners:
+			tops.append(Vector3(corner.x, _wheat_height(corner), corner.y))
+			tones.append(_wheat_tone(corner))
+			normals.append(_wheat_normal(corner))
+		for tri: Array in [[0, 1, 2], [0, 2, 3]]:
+			for index: int in tri:
+				soup.positions.append(tops[index])
+				soup.normals.append(normals[index])
+				soup.colors.append(Color(tones[index], 0.0))
+		# The canopy's sides where no wheat stands next to it: stalks, darker at the foot.
+		var neighbours: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+		for side: int in 4:
+			if standing.has(cell + neighbours[side]):
 				continue
-			var height: float = 0.44 + 0.035 * sin(u * 2.3 + float(row) * 1.7) + 0.025 * sin(u * 7.1 + float(row) * 0.6) + 0.02 * _r(seed_value, 841)
-			var half: float = 0.115
-			var colour: Color = skin.wheat if _r(seed_value, 842) < 0.6 else skin.wheat.darkened(0.04)
-			for side: float in [-1.0, 1.0]:
-				pen.quad(Vector3(u, PLOT_Y, z + side * half), Vector3(u1, PLOT_Y, z + side * half), Vector3(u1, height, z + side * half * 0.75),
-					Vector3(u, height, z + side * half * 0.75), Vector3(0.0, 0.25, side), colour.darkened(0.05))
-			pen.quad(Vector3(u, height, z - half * 0.7), Vector3(u1, height, z - half * 0.7), Vector3(u1, height, z + half * 0.7),
-				Vector3(u, height, z + half * 0.7), Vector3.UP, colour.lightened(0.06))
-			# Ears: little spikes along the top.
-			for ear: int in 4:
-				var eu: float = lerpf(u, u1, (float(ear) + 0.2 + 0.6 * _r(seed_value + ear, 843)) / 4.0)
-				var ez: float = z + (_r(seed_value + ear, 844) - 0.5) * half * 1.3
-				var lift: float = height + 0.06 + 0.04 * _r(seed_value + ear, 845)
-				var tone: Color = skin.wheat_ear if ear % 2 == 0 else skin.wheat_ear.darkened(0.08)
-				pen.tri(Vector3(eu - 0.025, height - 0.01, ez - 0.01), Vector3(eu + 0.025, height - 0.01, ez + 0.01), Vector3(eu + 0.012, lift, ez + 0.015),
-					Vector3(0.0, 0.3, 1.0), tone)
-			if row == rows - 1 and _r(seed_value, 846) < 0.2 and not entry.is_land:
-				_flower(pen, Vector3(mid.x, PLOT_Y, z + spacing * 0.6), 0.32, skin.flower_colors[0], seed_value)
-			u = u1
-			index += 1
+			var a: int = side
+			var b: int = (side + 1) % 4
+			var out: Vector3 = Vector3(float(neighbours[side].x), 0.25, float(neighbours[side].y)).normalized()
+			var foot_a: Vector3 = Vector3(tops[a].x, PLOT_Y, tops[a].z)
+			var foot_b: Vector3 = Vector3(tops[b].x, PLOT_Y, tops[b].z)
+			var low: Color = Color(skin.wheat.darkened(0.3), 1.0)
+			for point: Array in [[foot_a, low], [foot_b, low], [tops[b], Color(tones[b].darkened(0.1), 0.0)],
+					[foot_a, low], [tops[b], Color(tones[b].darkened(0.1), 0.0)], [tops[a], Color(tones[a].darkened(0.1), 0.0)]]:
+				soup.positions.append(point[0])
+				soup.normals.append(out)
+				soup.colors.append(point[1])
+			# A bristly fringe: stalks standing just proud of the side, their ears over the top.
+			var along: Vector3 = (tops[b] - tops[a]).normalized() * 0.014
+			var push: Vector3 = Vector3(float(neighbours[side].x), 0.0, float(neighbours[side].y)) * 0.015
+			for stalk: int in 3:
+				var t: float = (float(stalk) + 0.2 + 0.6 * _r(int(floorf(lo.x * 13.0)) + side * 31 + stalk, int(floorf(lo.y * 13.0)) + 848)) / 3.0
+				var top: Vector3 = tops[a].lerp(tops[b], t) + push
+				var tall: float = 0.06 + 0.06 * _r(int(floorf(top.x * 17.0)) + stalk, int(floorf(top.z * 17.0)) + 849)
+				var base: Vector3 = Vector3(top.x, PLOT_Y + 0.08, top.z)
+				soup.tri(base - along, base + along, top + Vector3.UP * tall * 0.4, out, Color(skin.wheat.darkened(0.18), 0.5))
+				var tip: Vector3 = top + Vector3(0.0, tall, 0.0) + push
+				for face: Array in [[top - along * 1.6, skin.wheat_ear.lightened(0.18)], [top + along * 1.6, skin.wheat_ear.lightened(0.06)]]:
+					for point: Vector3 in [face[0], top + Vector3.UP * tall * 0.45 + push * 0.5, tip]:
+						soup.positions.append(point)
+						soup.normals.append((out + Vector3.UP * 2.0).normalized())
+						soup.colors.append(Color(face[1] as Color, 0.0))
+		# Ears pricking up through the canopy, leaning a little with the wind.
+		var seed_value: int = salt_id * 7 + int(floorf(lo.x * 3.3)) * 7919 + int(floorf(lo.y * 3.3)) * 131
+		for ear: int in 4:
+			var at: Vector2 = lo + Vector2((float(ear % 2) + 0.15 + 0.7 * _r(seed_value + ear, 841)) * 0.5,
+				(float(ear / 2) + 0.15 + 0.7 * _r(seed_value + ear, 842)) * 0.5) * step
+			var base: float = _wheat_height(at) - 0.04
+			var lift: float = 0.1 + 0.07 * _r(seed_value + ear, 843)
+			var spin: float = _r(seed_value + ear, 844) * PI
+			var across: Vector3 = Vector3(cos(spin), 0.0, sin(spin)) * 0.04
+			var foot: Vector3 = Vector3(at.x, base, at.y)
+			var tip: Vector3 = foot + Vector3(0.025, lift, 0.01)
+			var middle: Vector3 = foot + Vector3(0.012, lift * 0.45, 0.0) + Vector3(-across.z, 0.0, across.x) * 0.6
+			var tone: Color = skin.wheat_ear.lightened(0.1).lerp(skin.wheat_ear.lightened(0.28), _r(seed_value + ear, 845))
+			# A lit face and a softer shaded one, lit as the canopy is (mostly from above), so
+			# the ears catch the light like a fine grain instead of reading as dark specks.
+			for face: Array in [[foot - across, Vector3(-0.35, 1.0, 0.25), tone], [foot + across, Vector3(0.3, 1.0, -0.2), tone.darkened(0.06)]]:
+				for point: Vector3 in [face[0], middle, tip]:
+					soup.positions.append(point)
+					soup.normals.append((face[1] as Vector3).normalized())
+					soup.colors.append(Color(face[2] as Color, 0.0))
 	if not entry.is_land:
+		var front: float = entry.rect.end.y
+		for index: int in int(r.size.x / 0.6):
+			var seed_value: int = salt_id * 3 + index
+			if _r(seed_value, 846) > 0.3:
+				continue
+			var u: float = r.position.x + (float(index) + _r(seed_value, 847)) * 0.6
+			if _plot_free(entry, Vector2(u, front - 0.02), 0.1):
+				_flower(pen, Vector3(u, PLOT_Y, front - 0.02), 0.32, skin.flower_colors[0], seed_value)
 		_shade_line(shade, Vector2(r.position.x, r.end.y), Vector2(r.end.x, r.end.y), 0.02, 0.45, 0.2)
+
+
+## The canopy's top (local y) at a point: gentle swells and a fine tousle, the same at
+## any plot so neighbouring plots join.
+func _wheat_height(at: Vector2) -> float:
+	return PLOT_Y + WHEAT_HEIGHT + 0.03 * sin(at.x * 0.9 + at.y * 0.35 + 0.4) + 0.02 * sin(at.y * 1.7 - at.x * 0.6 + 1.1) \
+		+ 0.016 * sin(at.x * 7.3 + at.y * 5.1) * sin(at.y * 6.7 - at.x * 2.9)
+
+
+## The canopy's slope-lit normal at a point.
+func _wheat_normal(at: Vector2) -> Vector3:
+	var e: float = 0.05
+	var dx: float = (_wheat_height(at + Vector2(e, 0.0)) - _wheat_height(at - Vector2(e, 0.0))) / (2.0 * e)
+	var dz: float = (_wheat_height(at + Vector2(0.0, e)) - _wheat_height(at - Vector2(0.0, e))) / (2.0 * e)
+	return Vector3(-dx * 2.5, 1.0, -dz * 2.5).normalized()
+
+
+## The wheat's colour at a point: broad soft patches between the skin's wheat, a warmer
+## deeper gold and its paler ears, and a faint fine grain.
+func _wheat_tone(at: Vector2) -> Color:
+	var broad: float = 0.5 + 0.3 * sin(at.x * 0.37 + 0.8) * sin(at.y * 0.53 + 2.0) + 0.2 * sin((at.x - at.y) * 0.21 + 0.3)
+	var fine: float = 0.5 + 0.5 * sin(at.x * 3.7 + at.y * 2.9) * sin(at.y * 4.3 - at.x * 1.3)
+	var tone: Color = skin.wheat.darkened(0.07).lerp(skin.wheat.lerp(skin.wheat_ear, 0.4), clampf(broad, 0.0, 1.0))
+	return tone.lerp(skin.wheat.darkened(0.04), 0.3 * fine)
 
 
 ## The wheat cut: stubble lines on the earth; off the lot's land, small straw bales.
@@ -2377,6 +2599,7 @@ func apply(seconds: float) -> void:
 	_stream_material.set_shader_parameter(&"stream_time", seconds)
 	if wheel != null:
 		wheel.basis = Basis(Vector3.RIGHT, wheel_angle(seconds))
+	_wheat_material.set_shader_parameter(&"sway_time", seconds)
 	if tractor != null:
 		var run: Vector3 = tractor_run(seconds)
 		tractor.visible = run.z > 0.5 and _late < NIGHT_HIDE
@@ -2398,6 +2621,6 @@ func apply(seconds: float) -> void:
 ## What the country shows now, for tests and captures.
 func capture_state() -> Dictionary:
 	return {"plots": plot_ids(), "lit": is_lit(), "night": _night, "late": _late, "sheep": sheep.size(),
-		"birds": birds.size(), "cottages": _cottage_spots.size(), "stream_side": stream_side, "wheel": wheel_at,
+		"birds": birds.size(), "cottages": _cottage_spots.size(), "stream_side": stream_side, "wheel": wheel_at, "mill_wall": mill_wall,
 		"weir": weir_z, "bridge": bridge_z, "stand": stand, "gate": gate, "forecourt": forecourt,
 		"tractor": tractor.visible if tractor != null else false}

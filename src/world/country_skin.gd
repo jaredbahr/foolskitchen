@@ -59,7 +59,8 @@ extends Resource
 @export var crate: Color = Color.WHITE
 @export var chalkboard: Color = Color.WHITE
 @export var sign_paint: Color = Color.WHITE
-## Far cottages: walls, roofs (thatch or slate), doors.
+## Far cottages: walls, roofs (thatch or slate), doors. The second roof (slate) also
+## roofs the mill's wheel house and caps its axle housing (#619).
 @export var cottage_walls: Array[Color] = []
 @export var cottage_roofs: Array[Color] = []
 @export var door_colors: Array[Color] = []
