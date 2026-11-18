@@ -127,6 +127,7 @@ var _fireflies: MeshInstance3D
 var _material: StandardMaterial3D
 var _shadow_material: StandardMaterial3D
 var _night: float = 0.0
+var _weather: int = WeatherState.Kind.SUNNY
 var _late: float = 0.0
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
@@ -1840,6 +1841,14 @@ func backpack(colour: Color) -> ArrayMesh:
 
 ## 0 by day, 1 from dusk; `late` rises after the shop closes. The fire burns and the
 ## bulbs glow from dusk, fireflies come out, the rabbits go home and the deer by late night.
+## The day's weather (WeatherState.Kind): wind in the rain sways the crops and trees more.
+func set_weather(kind: int) -> void:
+	if kind == _weather:
+		return
+	_weather = kind
+	_apply_night()
+
+
 func set_night(level: float, late: float) -> void:
 	_night = level
 	_late = late

@@ -91,6 +91,10 @@ const PIGEON_SCALE: float = 1.6
 ## Pigeons roost and birds go home after dark: past this far into the evening (0.5 is
 ## the golden dusk, when they are still out).
 const NIGHT_HIDE: float = 0.75
+## By weather (sunny, cloudy, rain): how much of the clouds below the roof show, and how
+## thick the grey murk lies over the city (city.gdshader).
+const CLOUD_SHARE: Array[float] = [1.0, 0.75, 0.35]
+const MURK: Array[float] = [0.0, 0.4, 1.0]
 ## At the golden dusk only this share of the night's lit windows is on, and the streets
 ## far below are this far lit; both fill in as the dark comes.
 const DUSK_WINDOW_SHARE: float = 0.25
@@ -157,6 +161,7 @@ var _traffic: MeshInstance3D
 var _pools: MeshInstance3D
 var _night: float = 0.0
 var _late: float = 0.0
+var _weather: int = WeatherState.Kind.SUNNY
 ## 0 through the golden dusk, 1 once the sun has gone (set_night).
 var _dark: float = 1.0
 var _seconds: float = 0.0
@@ -258,6 +263,7 @@ func build(parent: Node3D) -> void:
 		_cache[key] = meshes
 	else:
 		_plan_city()
+		_lamp_spots.assign(meshes.get("lamp_spots", []))
 	_add(_instance("Roof", meshes["roof"], _material))
 	_add(_instance("Props", meshes["props"], _material))
 	_add(_instance("Shadows", meshes["shadows"], _shadow_material))
@@ -384,6 +390,7 @@ func _build_static() -> Dictionary:
 	var bulb_sizes: Array[float] = []
 	_fan_spots.clear()
 	_pad_lights.clear()
+	_lamp_spots.clear()
 	_roof_surface(ground)
 	_parapet(props, shadows)
 	_lobby(props, glass, shadows, pools)
@@ -398,6 +405,7 @@ func _build_static() -> Dictionary:
 	meshes["glass"] = glass.soup.to_mesh()
 	meshes["shadows"] = shadows.to_mesh()
 	meshes["pools"] = pools.to_mesh()
+	meshes["lamp_spots"] = _lamp_spots.duplicate()
 	meshes["bulbs"] = _sprites(bulbs, bulb_sizes, [] as Array[Color], [] as Array[float])
 	_plan_city()
 	var tower: CitySoup = CitySoup.new()
@@ -1304,6 +1312,13 @@ func _helipad(soup: CitySoup, lot: Lot) -> void:
 
 
 var _pad_lights: Array[Vector4] = []
+## The pools of lamplight on the roof and decks (street-local, y on the ground under them).
+var _lamp_spots: Array[Vector3] = []
+
+
+## The roof's lamps (street-local, y on the ground they light): they shine on it when wet.
+func lamp_spots() -> Array[Vector3]:
+	return _lamp_spots.duplicate()
 
 
 func _garden(soup: CitySoup, lot: Lot, s: int) -> void:
@@ -1570,6 +1585,7 @@ func _shade_rect(shadows: NeighbourhoodGround.Soup, rect: Rect2, height: float, 
 
 ## A soft additive pool of light on the floor, brightest in the middle (night only).
 func _pool(soup: NeighbourhoodGround.Soup, at: Vector2, half: Vector2, colour: Color, strength: float, y: float = POOL_Y) -> void:
+	_lamp_spots.append(Vector3(at.x, y, at.y))
 	var rings: int = 5
 	var sides: int = 14
 	for index: int in sides:
@@ -1750,6 +1766,28 @@ func _build_plane() -> void:
 ## lies under a sunset haze in the warm low sun, with only a scattering of windows lit
 ## and the red lights blinking; as the dark comes the haze turns to night and the
 ## windows fill in. The bulbs and beacons glow from dusk; the pigeons and birds go home.
+## The day's weather (WeatherState.Kind): the city's haze thickens toward a grey murk and
+## fewer clouds show below the roof (cloudy a little, rain more); pigeons shelter in the rain.
+func set_weather(kind: int) -> void:
+	if kind == _weather:
+		return
+	_weather = kind
+	_apply_night()
+
+
+## A place for a puddle on the roof's membrane round `u` (`across` 0..1 picks how far
+## back), clear of the shop, its doors, the lobby, the walkway and the terraces; NaN when
+## there is no room there.
+func wet_spot(across: float, u: float, radius: float) -> Vector2:
+	var inner: float = PARAPET_T + radius + 0.25
+	if u < roof.position.x + inner or u > roof.end.x - inner:
+		return Vector2(NAN, NAN)
+	var point: Vector2 = Vector2(u, lerpf(roof.position.y + inner, roof.end.y - inner, across))
+	if _is_blocked(point, radius + 0.1):
+		return Vector2(NAN, NAN)
+	return point
+
+
 func set_night(level: float, late: float, dark: float = 1.0) -> void:
 	_night = level
 	_late = late
@@ -1786,7 +1824,8 @@ func _apply_night() -> void:
 	var haze: Color = skin.haze_day.lerp(skin.haze_dusk, evening_level * 2.0) if evening_level < 0.5 else skin.haze_dusk.lerp(skin.haze_night, evening_level * 2.0 - 1.0)
 	_cloud_material.set_shader_parameter(&"haze", haze)
 	_cloud_material.set_shader_parameter(&"haze_mix", CLOUD_HAZE)
-	_cloud_material.set_shader_parameter(&"opacity", lerpf(0.82, 0.2, evening_level))
+	_cloud_material.set_shader_parameter(&"opacity", lerpf(0.82, 0.2, evening_level) * CLOUD_SHARE[clampi(_weather, 0, 2)])
+	_city_material.set_shader_parameter(&"murk", MURK[clampi(_weather, 0, 2)])
 	# Unlit glows still cost a blended pass: hide them by day.
 	var lit: bool = _night > 0.05
 	_bulb_glow.visible = lit
@@ -1794,7 +1833,7 @@ func _apply_night() -> void:
 	_street_lights.visible = lit
 	_traffic.visible = lit
 	for pigeon: Node3D in pigeons:
-		pigeon.visible = evening_level < NIGHT_HIDE
+		pigeon.visible = evening_level < NIGHT_HIDE and _weather != WeatherState.Kind.RAIN
 	for bird_node: Node3D in birds:
 		bird_node.visible = evening_level < NIGHT_HIDE
 	_applied_at = -1.0

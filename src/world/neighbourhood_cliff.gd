@@ -77,6 +77,8 @@ const GULL_SCALE: float = 1.35
 const TOWER_H: float = 3.6
 const BEAM_LENGTH: float = 18.0
 const BEAM_TURN: float = 0.45
+## In the rain only one gull in this many stays out.
+const RAIN_GULL_SHARE: int = 3
 ## Gulls roost after dark.
 const NIGHT_HIDE: float = 0.5
 ## At the golden dusk the lamps are this share of their night strength, and the
@@ -221,6 +223,7 @@ var _pools: MeshInstance3D
 var _pool_material: StandardMaterial3D
 var _pool_soup: NeighbourhoodGround.Soup
 var _night: float = 0.0
+var _weather: int = WeatherState.Kind.SUNNY
 var _late: float = 0.0
 ## 0 through the golden dusk, 1 once the sun has gone (set_night).
 var _dark: float = 1.0
@@ -1922,6 +1925,50 @@ func boat_pose(seconds: float) -> Dictionary:
 ## takes the sunset and the sun glitters on it, the festoons and path lanterns are just
 ## on and the lighthouse lamp is lit with its beam faint; by night the beam sweeps, the
 ## lamps are full and the chalk catches the moon.
+## The lamps by the paths (street-local): their light shines on the wet path at night.
+func lamp_spots() -> Array[Vector3]:
+	var result: Array[Vector3] = []
+	for at: Vector3 in _lights:
+		if at.y < 2.2 and _on_path(Vector2(at.x, at.z), 0.7):
+			result.append(at)
+	return result
+
+
+## The day's weather (WeatherState.Kind): in the rain the sea below runs grey and rough
+## and most gulls stay away; a cloudy sea is duller.
+func set_weather(kind: int) -> void:
+	if kind == _weather:
+		return
+	_weather = kind
+	_apply_night()
+
+
+## A place for a puddle on the cliff path or the car park, `across` (0..1) of the way
+## along the path from the shop (u only nudges it); NaN when there is no room there.
+func wet_spot(across: float, u: float, radius: float) -> Vector2:
+	if path_points.size() < 2:
+		return Vector2(NAN, NAN)
+	var length: float = 0.0
+	for index: int in range(1, path_points.size()):
+		length += path_points[index].distance_to(path_points[index - 1])
+	# The path's first stretch, nearest the shop, is the one in view.
+	var target: float = minf(length, 24.0) * across
+	for index: int in range(1, path_points.size()):
+		var a: Vector2 = path_points[index - 1]
+		var b: Vector2 = path_points[index]
+		var step: float = a.distance_to(b)
+		if target <= step or index == path_points.size() - 1:
+			var along: Vector2 = a.lerp(b, clampf(target / maxf(step, 0.001), 0.0, 1.0))
+			var side: Vector2 = (b - a).normalized().orthogonal()
+			var nudge: float = clampf(fposmod(u, 1.0) * 2.0 - 1.0, -1.0, 1.0) * maxf(PATH_HALF - radius - 0.05, 0.0)
+			var point: Vector2 = along + side * nudge
+			if radius > PATH_HALF + 0.05 or _is_blocked(point, radius):
+				return Vector2(NAN, NAN)
+			return point
+		target -= step
+	return Vector2(NAN, NAN)
+
+
 func set_night(level: float, late: float, dark: float = 1.0) -> void:
 	_night = level
 	_late = late
@@ -1949,8 +1996,9 @@ func _apply_night() -> void:
 	_beam_material.albedo_color = Color(skin.lamp_glow, 0.2 * _night * lerpf(DUSK_BEAM, 1.0, _dark))
 	beam.visible = _night > 0.01
 	_boat_lamp.visible = _night > 0.01
-	for gull: Node3D in gulls:
-		gull.visible = _late < NIGHT_HIDE
+	for index: int in gulls.size():
+		gulls[index].visible = _late < NIGHT_HIDE and (_weather != WeatherState.Kind.RAIN or index % RAIN_GULL_SHARE == 0)
+	sea_material.set_shader_parameter(&"storm", NeighbourhoodShore.SEA_STORM[clampi(_weather, 0, 2)])
 	sea_material.set_shader_parameter(&"dusk", _night * (1.0 - _late))
 	sea_material.set_shader_parameter(&"moon", _night * _late)
 	sea_material.set_shader_parameter(&"sunset", _night * (1.0 - _dark))

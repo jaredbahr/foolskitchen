@@ -157,6 +157,8 @@ var _building_signs: Array[Dictionary] = []
 var _shop_doors: Array[float] = []
 var _shop_spans: Array[Vector2] = []
 var _lamp_feet: Array[Vector2] = []
+## The street lamps' bulbs (street-local), for their reflections on a wet street.
+var _lamp_spots: Array[Vector3] = []
 var _lamp_bulbs: MeshInstance3D
 var _lamp_glow: MeshInstance3D
 var _bulb_material: StandardMaterial3D
@@ -214,6 +216,10 @@ var _rooftop: NeighbourhoodRooftop
 ## The cliff top (#380), when the street's preset names one: its root and builder.
 var _cliff_root: Node3D
 var _cliff: NeighbourhoodCliff
+## The day's weather on the street (WeatherState.Kind): rain wets it and keeps some people
+## in; sunny leaves everything exactly as built.
+var _weather: int = WeatherState.Kind.SUNNY
+var _wet: WeatherWet = WeatherWet.new()
 
 
 func _init() -> void:
@@ -421,6 +427,7 @@ func rebuild() -> void:
 	_rooftop_root.visible = _configured
 	_cliff_root.visible = _configured
 	_apply_night()
+	_apply_weather()
 	_apply_time(_effective_time())
 
 
@@ -514,6 +521,7 @@ func _clear_static() -> void:
 	_shop_doors.clear()
 	_shop_spans.clear()
 	_lamp_feet.clear()
+	_lamp_spots.clear()
 	_routes.clear()
 	_pedestrian_sweeps.clear()
 	_door_approaches.clear()
@@ -1670,6 +1678,7 @@ func _build_lamps() -> void:
 	prop.free()
 	if _promenade != null:
 		_build_promenade_lamps(bulbs, glow, halo_at)
+	_lamp_spots = halo_at.duplicate()
 	if bulbs.soup.is_empty():
 		return
 	_bulb_material = StandardMaterial3D.new()
@@ -2019,6 +2028,11 @@ func clear_review_time() -> void:
 	_apply_time(_display_seconds)
 
 
+## The street's clock as it is shown: the review time when one is set, else the display clock.
+func shown_time() -> float:
+	return _effective_time()
+
+
 func _effective_time() -> float:
 	return _review_time if _review_time >= 0.0 else _display_seconds
 
@@ -2044,7 +2058,7 @@ func _apply_time(seconds: float) -> void:
 	for index: int in walkers:
 		var route: Vector2 = _routes[index]
 		var length: float = route.y - route.x
-		if length <= 0.0:
+		if length <= 0.0 or stays_in(index):
 			pedestrians[index].hide()
 			if _walk_props[index] != null:
 				_walk_props[index].hide()
@@ -2119,6 +2133,182 @@ func _place_walk_prop(index: int, seconds: float, route: Vector2, progress: floa
 			if span.length() > 0.05:
 				var look: Basis = Basis.looking_at(span.normalized(), Vector3.UP)
 				leash.transform = Transform3D(look * Basis.from_scale(Vector3(1.0, 1.0, span.length())), (hand + collar) * 0.5)
+
+
+# --- weather ------------------------------------------------------------------
+
+## Puts the day's weather (WeatherState.Kind) on the street: a wet, glossy street and
+## fewer people out in the rain, a fainter shadow under a cloudy sky, and each place's own
+## weather (a rougher grey sea, swaying crops, thicker city haze). Sunny undoes it all.
+func set_weather(kind: int) -> void:
+	_weather = clampi(kind, WeatherState.Kind.SUNNY, WeatherState.Kind.RAIN)
+	_apply_weather()
+	_apply_time(_effective_time())
+
+
+func weather() -> int:
+	return _weather
+
+
+## The wet sheen's light (the sky's light now) and the camera's forward on the ground.
+func set_weather_light(sheen_color: Color, view_dir: Vector2) -> void:
+	_wet.set_light(sheen_color, view_dir)
+
+
+## The materials the rain put on the street (for tests): empty on a dry day.
+func wet_state() -> Dictionary:
+	return {"kind": _weather, "swaps": _wet.swap_count(), "materials": _wet.wet_materials()}
+
+
+func _apply_weather() -> void:
+	if _weather == WeatherState.Kind.SUNNY and _wet.swap_count() == 0 and _wet.kind() == WeatherState.Kind.SUNNY:
+		_apply_place_weather()
+		return
+	_wet.apply(self, _weather)
+	_apply_place_weather()
+
+
+func _apply_place_weather() -> void:
+	if _shore != null:
+		_shore.set_weather(_weather)
+	if _forest != null:
+		_forest.set_weather(_weather)
+	if _country != null:
+		_country.set_weather(_weather)
+	if _rooftop != null:
+		_rooftop.set_weather(_weather)
+	if _cliff != null:
+		_cliff.set_weather(_weather)
+
+
+## The street's lamps (the dressing's parent's space): each one's light as (x, y, z) and the
+## ground height under it in w, for the glow it casts on a wet street at night.
+func lamp_spots() -> Array[Vector4]:
+	var result: Array[Vector4] = []
+	if not _configured:
+		return result
+	var local: Array[Vector3] = _lamp_spots.duplicate()
+	var ground: float = _paving_top
+	if _country != null:
+		local = _country.lamp_spots()
+		ground = NeighbourhoodCountry.LANE_Y
+	elif _cliff != null:
+		local = _cliff.lamp_spots()
+		ground = NeighbourhoodCliff.PATH_Y
+	if _rooftop != null:
+		# The roof's pools of lamplight, each given on the ground under it.
+		for spot: Vector3 in _rooftop.lamp_spots():
+			var foot: Vector3 = transform * (_frame * spot)
+			result.append(Vector4(foot.x, foot.y + 1.2, foot.z, foot.y))
+		return result
+	for spot: Vector3 in local:
+		var at: Vector3 = transform * (_frame * spot)
+		result.append(Vector4(at.x, at.y, at.z, (transform * (_frame * Vector3(spot.x, ground, spot.z))).y))
+	return result
+
+
+## In the rain every other passer-by stays indoors (the first one is always out).
+func stays_in(index: int) -> bool:
+	return _weather == WeatherState.Kind.RAIN and index % 2 == 1
+
+
+## Up to `count` places for puddles or splashes on the street's paving, road, track or
+## roof near the shop, as (x, y, z, radius) in the dressing's parent's space: each one's
+## centre and the room it has (`size` scales the radius; 0 gives points). Seeded by
+## position and `salt`, so the same street always gets the same puddles.
+func wet_spots(count: int, salt: int, size: float = 1.0) -> Array[Vector4]:
+	var result: Array[Vector4] = []
+	if not _configured:
+		return result
+	var tries: int = count * 12
+	for index: int in tries:
+		if result.size() >= count:
+			break
+		var a: float = NeighbourhoodGround.hash01(index, salt, 811)
+		var b: float = NeighbourhoodGround.hash01(index, salt, 977)
+		var c: float = NeighbourhoodGround.hash01(index, salt, 433)
+		var u: float = _local_reserve.get_center().x + (a * 2.0 - 1.0) * FURNITURE_REACH
+		var radius: float = (0.22 + 0.4 * c * c) * size
+		var spot: Vector3 = _wet_spot(u, b, radius)
+		if is_nan(spot.y):
+			continue
+		var clear: bool = true
+		for other: Vector4 in result:
+			if Vector2(other.x, other.z).distance_to(Vector2(spot.x, spot.z)) < other.w + radius + 0.3:
+				clear = false
+				break
+		if not clear:
+			continue
+		var at: Vector3 = transform * (_frame * spot)
+		if not _wet_cell_clear(at, radius):
+			continue
+		result.append(Vector4(at.x, at.y, at.z, radius))
+	return result
+
+
+## A spot at `u` across the place's walkable band (`across` 0..1), in the street's local
+## frame, or NaN in y when the place has nowhere wet there.
+func _wet_spot(u: float, across: float, radius: float) -> Vector3:
+	var none: Vector3 = Vector3(0.0, NAN, 0.0)
+	var z: float = 0.0
+	var y: float = 0.0
+	if _forest != null:
+		z = _forest.track_z(u) + (across * 2.0 - 1.0) * maxf(NeighbourhoodForest.TRACK_HALF - radius - 0.15, 0.0)
+		y = NeighbourhoodForest.TRACK_Y
+	elif _country != null:
+		z = _country.lane_z(u) + (across * 2.0 - 1.0) * maxf(NeighbourhoodCountry.LANE_HALF - radius - 0.15, 0.0)
+		y = NeighbourhoodCountry.LANE_Y
+	elif _cliff != null:
+		var on: Vector2 = _cliff.wet_spot(across, u, radius)
+		if is_nan(on.x):
+			return none
+		return Vector3(on.x, NeighbourhoodCliff.PATH_Y, on.y)
+	elif _rooftop != null:
+		var roof: Vector2 = _rooftop.wet_spot(across, u, radius)
+		if is_nan(roof.x):
+			return none
+		return Vector3(roof.x, NeighbourhoodRooftop.ROOF_Y, roof.y)
+	elif _traffic:
+		# Near pavement, road or far pavement, by thirds.
+		var band: int = mini(int(across * 3.0), 2)
+		var t: float = fposmod(across * 3.0, 1.0)
+		var bands: Array[Vector2] = [Vector2(PAVING_START, PAVING_START + PAVING_DEPTH),
+			Vector2(ROAD_START, ROAD_END), Vector2(FAR_START, FAR_START + FAR_DEPTH)]
+		var span: Vector2 = bands[band]
+		var inset: float = radius + 0.2
+		if span.y - span.x <= inset * 2.0:
+			return none
+		z = _shift + lerpf(span.x + inset, span.y - inset, t)
+		y = 0.0 if band == 1 else _paving_top
+	elif _promenade != null:
+		var inset: float = radius + 0.3
+		z = _shift + lerpf(PAVING_START + inset, FAR_START + FAR_DEPTH - inset, across)
+		y = _paving_top
+	else:
+		return none
+	var point: Vector2 = Vector2(u, z - _shift)
+	for placed: NeighbourhoodFurniture.Placed in _furniture:
+		if placed.rect().grow(radius + 0.15).has_point(point):
+			return none
+	var local: Rect2 = Rect2(_local_reserve.position.x, _local_reserve.position.z, _local_reserve.size.x, _local_reserve.size.z)
+	if local.grow(radius + 0.2).has_point(Vector2(u, z)):
+		return none
+	return Vector3(u, y, z)
+
+
+## True when a spot of `radius` round `at` (the dressing's parent's space) lies wholly off
+## the shop: every grid cell it touches is plain outside, never floor, wall or patio.
+func _wet_cell_clear(at: Vector3, radius: float) -> bool:
+	if _grid == null:
+		return true
+	var low: Vector2i = GridMath.world_to_cell(at - Vector3(radius, 0.0, radius))
+	var high: Vector2i = GridMath.world_to_cell(at + Vector3(radius, 0.0, radius))
+	for y: int in range(low.y, high.y + 1):
+		for x: int in range(low.x, high.x + 1):
+			var cell: Vector2i = Vector2i(x, y)
+			if _grid.bounds.has_point(cell) and (_grid.terrain(cell) != SimGrid.Terrain.OUTSIDE or _grid.is_outdoor_floor(cell)):
+				return false
+	return true
 
 
 # --- the woodland clearing (#607) and its stands of trees (for #597) -----------
@@ -2232,6 +2422,7 @@ func set_stand_state(id: StringName, state: NeighbourhoodForest.StandState) -> b
 		return false
 	_stand_states[id] = state
 	_forest.show_stand(id, state)
+	_apply_weather()
 	return true
 
 
@@ -2441,6 +2632,7 @@ func set_plot_state(id: StringName, state: NeighbourhoodCountry.PlotState) -> bo
 		return false
 	_plot_states[id] = state
 	_country.show_plot(id, state)
+	_apply_weather()
 	return true
 
 
