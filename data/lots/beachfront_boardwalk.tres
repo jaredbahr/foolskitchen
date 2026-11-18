@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" path="res://src/sim/content/lot_def.gd" id="1_lot"]
 [ext_resource type="Resource" path="res://data/layouts/lot_beachfront_boardwalk.tres" id="2_layout"]
+[ext_resource type="Resource" path="res://data/layouts/legacy/lot_beachfront_boardwalk_v1.tres" id="3_legacy"]
+[ext_resource type="Script" path="res://src/sim/shop/shop_layout.gd" id="4_layout_script"]
 
 [resource]
 script = ExtResource("1_lot")
@@ -9,6 +11,7 @@ id = &"beachfront_boardwalk"
 display_name = "Beachfront Boardwalk"
 blurb = "A little shop between the beach and the boardwalk. Families stop for something cold, and the regulars know the way to the back patio."
 base_layout = ExtResource("2_layout")
+legacy_layouts = Array[ExtResource("4_layout_script")]([ExtResource("3_legacy")])
 street_preset = "res://data/streets/promenade.tres"
 price = 11500
 daily_rent = 90

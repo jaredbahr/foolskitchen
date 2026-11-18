@@ -103,12 +103,12 @@ static func guest_floor(grid: SimGrid) -> Dictionary[Vector2i, bool]:
 ## opens into floor become Kitchen when they touch a Kitchen cell, so guests
 ## never brush past the stove through an opened wall; the player may repaint
 ## them. `before` is the shop before the change (its rooms decide), `after`
-## the shop's terrain after it. Cells outside `building` (bought lot floor)
-## stay Dining.
-static func opened_kitchen(before: SimGrid, after: SimGrid, building: Rect2i) -> Dictionary[Vector2i, int]:
+## the shop's terrain after it. Cells off the starting shell (bought lot
+## floor, including the notch of an L-shaped shell) stay Dining.
+static func opened_kitchen(before: SimGrid, after: SimGrid, footprint: ShopFootprint) -> Dictionary[Vector2i, int]:
 	var out: Dictionary[Vector2i, int] = {}
 	for cell: Vector2i in after.cells():
-		if not building.has_point(cell) or after.terrain(cell) != SimGrid.Terrain.FLOOR \
+		if not footprint.is_starting_shell(cell) or after.terrain(cell) != SimGrid.Terrain.FLOOR \
 				or before.terrain(cell) == SimGrid.Terrain.FLOOR:
 			continue
 		for step: Vector2i in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
