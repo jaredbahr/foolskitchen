@@ -20,6 +20,9 @@ const STARTER: String = "res://data/streets/starter.tres"
 ## A woodland clearing on a forest track instead of a street (#607): no road, cars,
 ## pavements or neighbouring buildings. None keeps the street.
 @export var forest: ForestSkin
+## The shop's default wall finish on this street (#611, a WallStyleDef id): every
+## wall face starts in it and Build can still change any face. Empty is plain paint.
+@export var wall_style: StringName = &""
 
 
 ## The starter street, the one every site had before presets (#422, #423).

@@ -161,3 +161,4 @@ id = &"woodland"
 ground = SubResource("Resource_vxod5")
 buildings = SubResource("Resource_j1pk1")
 forest = SubResource("Resource_jo87j")
+wall_style = &"logs"

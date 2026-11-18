@@ -62,6 +62,10 @@ var floors: FloorFinishes = FloorFinishes.new()
 ## default is the free plain paint in wall_swatch_id, so a shop without wall
 ## finishes looks as it always did.
 var walls: WallFinishes = WallFinishes.new()
+## The lot's default wall finish (#611): what every wall face shows until the player
+## finishes it otherwise (plain paint, unless the lot's street names another, such
+## as a woodland's log walls). Never saved: it comes from the lot on every load.
+var default_wall_style: StringName = WallStyleDef.DEFAULT_ID
 var decor: WallDecor = WallDecor.new()
 ## The anchor a successful hang or move left its item at (undo history).
 var last_anchor: Vector3i = WallFaces.NO_FACE
@@ -105,10 +109,13 @@ class Exact extends RefCounted:
 		note = ledger_note
 
 
-func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout: ShopLayout = null) -> void:
+func _init(sim: RestaurantSim, content: ContentDB, books: ShopEditBooks, layout: ShopLayout = null,
+		wall_style_id: StringName = WallStyleDef.DEFAULT_ID) -> void:
 	_sim = sim
 	_content = content
 	_books = books
+	if content != null and content.wall_style(wall_style_id) != null:
+		default_wall_style = wall_style_id
 	if layout != null:
 		_save_layout_id = layout.save_layout_id
 		wall_swatch_id = _known_swatch(layout.wall_swatch_id)
@@ -979,7 +986,8 @@ func _load_floors(layout: ShopLayout) -> void:
 
 
 ## Wall finishes and wall decor (D26) decode as forgivingly as floor types:
-## the default is always plain paint (a saved other default is ignored), a
+## a saved default is ignored (the lot gives it: plain paint, or #611's log
+## walls on a woodland), a
 ## face that is no longer a wall face, an unknown finish or item and a
 ## malformed or overlapping row are skipped, and an unknown colour falls back
 ## to the finish's own. Versions 1 to 5 had none (plain paint, nothing hung).
@@ -1052,7 +1060,7 @@ static func _saved_face(row: Array, size: int, max_direction: int = 3) -> Vector
 
 ## The layout's wall finishes and decor onto this shop (forgiving, like decoding).
 func _load_walls(layout: ShopLayout) -> void:
-	walls = WallFinishes.new(WallStyleDef.DEFAULT_ID, wall_swatch_id)
+	walls = WallFinishes.new(default_wall_style, wall_swatch_id)
 	decor = WallDecor.new()
 	if _content == null or _sim == null or _sim.world == null:
 		return
@@ -1501,8 +1509,8 @@ func wall_faces_of(cells: Array[Vector2i]) -> Array[Vector3i]:
 
 ## Read-only check of new wall looks (face -> Finish), like check_flooring: a
 ## change of finish costs the new finish's price per face and refunds half
-## the old one's, only in the morning or after closing; a recolour (same
-## finish) is free at any time. Undo and redo (`exact`) move exact money and
+## the old one's (the lot's default finish refunds nothing), only in the
+## morning or after closing; a recolour (same finish) is free at any time. Undo and redo (`exact`) move exact money and
 ## skip the unlock level.
 func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], exact: Exact = null) -> EditCheck:
 	if _sim == null or _sim.world == null or _content == null:
@@ -1533,7 +1541,8 @@ func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], ex
 			continue
 		relaid = true
 		cost += style.price
-		var old: WallStyleDef = _content.wall_style(current.style)
+		# The lot's default finish came with the shop: replacing it refunds nothing.
+		var old: WallStyleDef = _content.wall_style(current.style) if not walls.is_default(face) else null
 		refund += floori(old.price / 2.0) if old != null else 0
 		if locked.is_empty() and not style.unlocked(_owner_level, _career_tier):
 			locked = style.locked_reason(_owner_level, _career_tier)

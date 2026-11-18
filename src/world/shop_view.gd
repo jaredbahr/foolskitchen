@@ -148,6 +148,10 @@ var neighbourhood_dressing: NeighbourhoodDressing
 var street_preset: StreetPreset
 ## Separate from the actual delivery/service lot: maximum future building land.
 var _neighbourhood_reserve: Rect2i = Rect2i()
+## The lot's first, unexpanded lease (#611; Main sets it before show_world()). A
+## woodland grows trees on the maximum lot's land outside it until the lease covers
+## that land. Empty: the current lot (set_lot) stands in for it.
+var first_lease: Rect2i = Rect2i()
 var weather_view: WeatherView
 var _restaurant_name: String = MenuSettings.DEFAULT_NAME
 var item_nodes: Dictionary[int, ItemVisual] = {}
@@ -195,6 +199,8 @@ var segment_view: WallSegmentView
 ## Wall finishes and hung wall decor (D26).
 var wall_finish_view: WallFinishView
 var _wall_finishes: WallFinishes
+## Patterned shell materials by look (#611).
+var _shell_materials: Dictionary[String, ShaderMaterial] = {}
 var _wall_decor: WallDecor
 var _lot: Rect2i = Rect2i()
 var _shell_windows: Dictionary[Vector2i, Vector2i] = {}
@@ -433,6 +439,7 @@ func _refresh_neighbourhood() -> void:
 	if segment_view != null:
 		for tile: PropView in segment_view.path_tiles():
 			paving.append((segment_view.transform * tile.transform) * tile.get_combined_aabb())
+	neighbourhood_dressing.set_lease(_lot, first_lease if first_lease.has_area() else _lot)
 	neighbourhood_dressing.configure(world.grid, neighbourhood_reserved_lot(),
 		room_dressing.frontage_runs(), paving)
 
@@ -1394,12 +1401,13 @@ func _apply_paint() -> void:
 	if world == null or floor_mesh == null:
 		return
 	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
+	var shell: Material = _shell_material(wall_id)
 	for wall: MeshInstance3D in _wall_nodes.values():
-		wall.material_override = _paint_material(wall_id, wall_color)
+		wall.material_override = shell
 	if wall_finish_view != null:
 		wall_finish_view.set_wall_colour(_paint_color(wall_id, wall_color), wall_id)
 	if segment_view != null:
-		segment_view.set_materials(_paint_material(wall_id, wall_color), _material(wall_top_color), floor_mesh.material_override)
+		segment_view.set_materials(shell, _material(wall_top_color), floor_mesh.material_override)
 	var floor_id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
 	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
 	if floor_shader != null:
@@ -1586,7 +1594,31 @@ func _apply_wall_heights() -> void:
 
 func _current_wall_material() -> Material:
 	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
-	return _paint_material(wall_id, wall_color)
+	return _shell_material(wall_id)
+
+
+## The shell's wall material in paint `wall_id`: flat paint, or on a lot whose
+## default wall finish is a pattern (#611, a woodland's log walls) that pattern, laid
+## in world space round the outside, in the paint or else the finish's own colour.
+func _shell_material(wall_id: StringName) -> Material:
+	var style: WallStyleDef = null
+	if _wall_finishes != null and _wall_finishes.default_style != WallStyleDef.DEFAULT_ID and _paint_content != null:
+		style = _paint_content.wall_style(_wall_finishes.default_style)
+	if style == null or style.pattern == WallStyleDef.Pattern.PAINT:
+		return _paint_material(wall_id, wall_color)
+	var main: Color = _paint_color(wall_id, _paint_color(style.default_swatch, wall_color))
+	var accent: Color = _paint_color(style.default_accent, WallFinishView.auto_accent(int(style.pattern), main, main)) \
+		if not style.default_accent.is_empty() else WallFinishView.auto_accent(int(style.pattern), main, main)
+	var key: String = "%d|%s|%s" % [int(style.pattern), main.to_html(), accent.to_html()]
+	if not _shell_materials.has(key):
+		var material: ShaderMaterial = ShaderMaterial.new()
+		material.shader = WallFinishView.SHADER
+		material.set_shader_parameter("pattern", int(style.pattern))
+		material.set_shader_parameter("main_color", main)
+		material.set_shader_parameter("accent_color", accent)
+		material.set_shader_parameter("world_space", true)
+		_shell_materials[key] = material
+	return _shell_materials[key]
 
 
 func _unhandled_input(event: InputEvent) -> void:

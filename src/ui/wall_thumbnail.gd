@@ -56,6 +56,18 @@ static func colour(pattern: int, p: Vector2, main: Color, accent: Color) -> Colo
 			return _bond(p, Vector2(0.15, 0.075), 0.006, main, accent)
 		WallStyleDef.Pattern.BRICK:
 			return _bond(p + Vector2(0.0, 0.02), Vector2(0.22, 0.075), 0.009, main, accent)
+		WallStyleDef.Pattern.LOGS:
+			var course: float = 0.14
+			var row: float = floorf(p.y / course)
+			var t: float = fposmod(p.y / course, 1.0)
+			if minf(t, 1.0 - t) * course < 0.008:
+				return accent
+			var tone: float = 0.95 + 0.08 * fposmod(sin(row * 12.9898) * 43758.5453, 1.0)
+			if t > 0.66:
+				tone *= 1.1
+			elif t < 0.24:
+				tone *= 0.8
+			return _shade(main, tone)
 	return main
 
 

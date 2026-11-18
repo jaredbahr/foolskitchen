@@ -2,7 +2,10 @@ extends TestCase
 ## The woodland cabin's street (#607): a clearing on a forest track. The woodland
 ## preset is valid and has no traffic; its named stands of trees exist beside and
 ## behind the lot, never over its maximum footprint, and can show stumps or cleared
-## ground through a rebuild; and the starter street is exactly what it was.
+## ground through a rebuild; and the starter street is exactly what it was. The lot's
+## land outside its first lease is wooded right up to the lease and felled once the
+## lease covers it, never treed where the player can build or over the door's
+## approach; the porch deck meets the facade; and the shop's walls are logs (#611).
 
 const DRESSING: PackedScene = preload("res://src/world/neighbourhood_dressing.tscn")
 const WOODLAND: String = "res://data/streets/woodland.tres"
@@ -261,3 +264,128 @@ func test_the_starter_street_is_unchanged() -> void:
 	assert_false(dressing.set_stand_state(&"east", NeighbourhoodForest.StandState.STUMPS))
 	assert_eq(_digest(dressing), STARTER_DIGEST, "the starter street builds exactly what it did before the woodland")
 	_free(dressing)
+
+
+## The building's own cells in `_grid()` (walls and floor, not the entrance row): the
+## first lease in the land tests, two cells in from the maximum lot on three sides.
+const FIRST_LEASE: Rect2i = Rect2i(0, 0, 8, 7)
+
+
+func _leased(current: Rect2i) -> NeighbourhoodDressing:
+	var dressing: NeighbourhoodDressing = DRESSING.instantiate() as NeighbourhoodDressing
+	_viewport.add_child(dressing)
+	dressing.set_process(false)
+	dressing.use_preset(load(WOODLAND) as StreetPreset)
+	dressing.set_lease(current, FIRST_LEASE)
+	_configure(dressing, _grid())
+	return dressing
+
+
+static func _cells_box(cells: Rect2i) -> AABB:
+	return AABB(Vector3(cells.position.x, 0.0, cells.position.y) * GridMath.CELL_SIZE,
+		Vector3(cells.size.x, 1.0, cells.size.y) * GridMath.CELL_SIZE)
+
+
+## Vertices of `mesh` (under `frame`) higher than `above` that fall inside any box.
+static func _strays(mesh: Mesh, frame: Transform3D, boxes: Array[AABB], above: float) -> int:
+	var count: int = 0
+	if mesh == null or mesh.get_surface_count() == 0:
+		return 0
+	for point: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array:
+		var world: Vector3 = frame * point
+		if world.y <= above:
+			continue
+		for box: AABB in boxes:
+			if world.x > box.position.x + 0.001 and world.x < box.end.x - 0.001 \
+					and world.z > box.position.z + 0.001 and world.z < box.end.z - 0.001:
+				count += 1
+	return count
+
+
+func test_unbought_land_is_wooded_up_to_the_lease() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _leased(FIRST_LEASE)
+	assert_eq(dressing.build_error, "")
+	var ids: Array[StringName] = dressing.stand_ids()
+	for id: StringName in [&"west_land", &"east_land", &"north_land"]:
+		assert_true(ids.has(id), "the unleased land %s is a stand" % id)
+		assert_false(dressing.stand_leased(id), "%s is not leased yet" % id)
+		assert_eq(dressing.stand_state(id), NeighbourhoodForest.StandState.FOREST, "%s is woods" % id)
+	assert_true(dressing.forest().stand(&"east_land").trees.size() >= 2, "trees stand on the east land")
+	assert_true(dressing.forest().stand(&"west_land").trees.size() >= 2, "and on the west land")
+	# No tree on a cell the player can build on now, or over the door's approach.
+	var keep_off: Array[AABB] = [_cells_box(FIRST_LEASE)]
+	for box: Dictionary in dressing.capture_state()["bounds"]["door_approaches"]:
+		keep_off.append(AABB(_vector(box["position"]), _vector(box["size"])))
+	var frame: Transform3D = dressing.forest().root.global_transform
+	for id: StringName in [&"west_land", &"east_land", &"north_land"]:
+		var body: MeshInstance3D = dressing.forest().stand(id).node.get_node(^"Forest/Body") as MeshInstance3D
+		assert_eq(_strays(body.mesh, frame, keep_off, 0.02), 0, "nothing in %s stands on the lease or the approach" % id)
+		assert_false(NeighbourhoodMeshBatch.xz_intersects(dressing.stand_bounds(id), keep_off[0].grow(-0.01)),
+			"no crown of %s reaches over the lease" % id)
+		for other: StringName in ids:
+			if other != id:
+				assert_false(dressing.forest().stand(id).rect.grow(-0.005).intersects(dressing.forest().stand(other).rect),
+					"%s and %s do not overlap" % [id, other])
+	# The stands round the lot still keep off the whole maximum lot.
+	for id: StringName in [&"west", &"east", &"north"]:
+		assert_false(NeighbourhoodMeshBatch.xz_intersects(dressing.stand_bounds(id), _reserve(dressing)))
+	_free(dressing)
+
+
+func test_leased_land_is_felled_flush_and_never_treed() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _leased(FIRST_LEASE)
+	var generation: int = dressing.capture_state()["rebuild_generation"]
+	# The lease grows over the whole lot: its land is the player's to build on.
+	dressing.set_lease(RESERVE, FIRST_LEASE)
+	_configure(dressing, _grid())
+	assert_true(int(dressing.capture_state()["rebuild_generation"]) > generation, "the lease change rebuilt the clearing")
+	var frame: Transform3D = dressing.forest().root.global_transform
+	for id: StringName in [&"west_land", &"east_land", &"north_land"]:
+		assert_true(dressing.stand_leased(id), "%s is leased" % id)
+		assert_eq(dressing.stand_state(id), NeighbourhoodForest.StandState.STUMPS, "%s is felled" % id)
+		var node: Node3D = dressing.forest().stand(id).node
+		assert_false((node.get_node(^"Forest") as Node3D).visible, "no trees on %s" % id)
+		assert_true((node.get_node(^"Stumps") as Node3D).visible, "%s shows its stumps" % id)
+		var stumps: MeshInstance3D = node.get_node(^"Stumps/Body") as MeshInstance3D
+		assert_eq(_strays(stumps.mesh, frame, [_cells_box(RESERVE)] as Array[AABB], -0.002), 0,
+			"%s's stumps are cut flush, under the floor line" % id)
+		assert_false(dressing.set_stand_state(id, NeighbourhoodForest.StandState.FOREST), "trees never grow back on leased land")
+		assert_true(dressing.set_stand_state(id, NeighbourhoodForest.StandState.CLEARED), "it can be cleared")
+		assert_true((node.get_node(^"Cleared") as Node3D).visible)
+	# A street without a first lease has no land stands.
+	var plain: NeighbourhoodDressing = _dressing(load(WOODLAND) as StreetPreset)
+	assert_eq(plain.stand_ids().size(), 3, "only the stands round the lot")
+	_free(plain)
+	_free(dressing)
+
+
+func test_the_porch_meets_the_facade_beside_the_door() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _leased(FIRST_LEASE)
+	var forest: NeighbourhoodForest = dressing.forest()
+	var facade: Rect2 = forest.lease
+	assert_almost_eq(forest.porch.position.y, facade.end.y, 0.001, "the deck runs back to the facade")
+	assert_true(forest.porch.end.y > forest.shift + 1.0, "and out past the entrance row")
+	var inside: bool = forest.porch.position.x >= forest.building.position.x - 0.001 and forest.porch.end.x <= forest.building.end.x + 0.001
+	assert_true(inside or is_equal_approx(forest.porch.size.x, 1.6), "it stops at the building's corner (or is the shortest deck)")
+	for rect: Rect2 in forest.keep_clear:
+		assert_false(forest.porch.intersects(rect), "the door's approach stays clear")
+	_free(dressing)
+
+
+func test_a_patterned_default_draws_every_face_in_its_own_colour() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var grid: SimGrid = _grid()
+	var view: WallFinishView = WallFinishView.new()
+	view.bind(grid, content, WallFinishes.new(&"logs"), WallDecor.new())
+	assert_true(view.patterned_default())
+	assert_eq(view.finished_faces(), WallFaces.all(grid, true), "every face, the facade outside included")
+	var face: Vector3i = WallFaces.all(grid)[0]
+	assert_eq(view.drawn_finish(face).swatch, content.wall_style(&"logs").default_swatch, "the logs' own honey, not cream")
+	view.bind(grid, content, WallFinishes.new(), WallDecor.new())
+	assert_false(view.patterned_default())
+	assert_eq(view.finished_faces(), [] as Array[Vector3i], "plain paint draws no facings, as before")
+	view.free()

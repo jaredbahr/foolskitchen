@@ -17,6 +17,18 @@ uniform vec4 accent_color : source_color = vec4(0.65, 0.6, 0.5, 1.0);
 // A proposal (the Wall finish tool's drag, the paint hover): a thin outline.
 uniform bool preview = false;
 uniform vec4 preview_color : source_color = vec4(0.42, 0.67, 0.48, 1.0);
+// The shell's own wall boxes on a lot whose default finish is a pattern (log walls,
+// #611): the pattern is laid from world position instead of UV (x along whichever
+// horizontal axis the face runs, y up), so it lines up with the facings.
+uniform bool world_space = false;
+
+varying vec2 world_p;
+
+void vertex() {
+	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 facing = abs(mat3(MODEL_MATRIX) * NORMAL);
+	world_p = vec2(facing.x > facing.z ? world.z : world.x, world.y);
+}
 
 // Coverage of a line of half width `half_width` at distance `d` (metres),
 // antialiased over `fw` (metres per pixel).
@@ -70,10 +82,26 @@ vec3 bond(vec2 p, vec2 size, float joint, vec3 base, vec3 seam, float fw) {
 	return mix(base, seam, cover * detail(size.y, fw));
 }
 
+// 5: log wall: round logs 0.14 m high, laid flat-shaded like a low-poly log (a lit
+// upper facet, the face, a shaded under facet), a thin chink line between them and
+// a small step of tone from log to log.
+vec3 logs(vec2 p, vec3 base, vec3 chink, float fw) {
+	float course = 0.14;
+	float row = floor(p.y / course);
+	float t = fract(p.y / course);
+	float tone = 0.95 + 0.08 * fract(sin(row * 12.9898) * 43758.5453);
+	vec3 colour = base * tone;
+	float fade = detail(course, fw);
+	colour = mix(colour, base * tone * 1.1, step(0.66, t) * fade);
+	colour = mix(colour, base * tone * 0.8, (1.0 - step(0.24, t)) * fade);
+	float seam = min(t, 1.0 - t) * course;
+	return mix(colour, chink, line_cover(seam, 0.006, fw) * fade);
+}
+
 void fragment() {
 	vec3 base = main_color.rgb;
 	vec3 accent = accent_color.rgb;
-	vec2 p = UV;
+	vec2 p = world_space ? world_p : UV;
 	float fw = max(max(fwidth(p.x), fwidth(p.y)), 0.0001);
 	vec3 colour = base;
 	if (pattern == 1) {
@@ -86,6 +114,8 @@ void fragment() {
 	} else if (pattern == 4) {
 		// 4: brick, 0.22 x 0.075 m with mortar joints.
 		colour = bond(p + vec2(0.0, 0.02), vec2(0.22, 0.075), 0.007, base, accent, fw);
+	} else if (pattern == 5) {
+		colour = logs(p, base, accent, fw);
 	}
 	if (preview) {
 		vec2 q = UV2;
