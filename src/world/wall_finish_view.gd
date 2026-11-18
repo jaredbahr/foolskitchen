@@ -20,6 +20,13 @@ const FACE_GAP: float = 0.003
 const HALF_THICKNESS: float = WallSegmentView.THICKNESS * 0.5
 ## Automatic accents: a darker shade of the main colour.
 const AUTO_ACCENT_SHADE: float = 0.78
+## A wall's top cap is its face colour times this, as the authored cap
+## (ShopView.wall_top_color) is to the cream wall paint.
+const CAP_SHADE: float = 0.8
+## How much paler than the main colour the shader draws a concrete or a whitewashed
+## face (wall_finish.gdshader), so the cap matches the face the player sees.
+const CONCRETE_FACE: float = 1.29
+const WHITEWASH_FACE: float = 1.14
 ## Wall decor wrappers stand on a cell centre with their back on the cell's
 ## far edge; a face of an interior wall is this much nearer the room.
 const HUNG_FALLBACK_HEIGHT: float = 0.6
@@ -597,6 +604,24 @@ func _material(look: FloorFinishes.Finish, previewed: bool) -> ShaderMaterial:
 	material.set_shader_parameter("preview_color", BuildPreview.VALID_COLOR)
 	_materials[key] = material
 	return material
+
+
+## The colour of a wall's top cap under a lot's patterned default finish: the
+## finish's own face a shade darker, as the authored cap is to the cream paint, so
+## concrete panels get a grey coping and log walls a wooden top. Paint keeps the
+## authored cap, and so do the finishes whose main colour covers only the wall's
+## foot (panelling, a mill's stone under its boards).
+static func cap_colour(pattern: int, main: Color, authored: Color) -> Color:
+	var face: float = 1.0
+	match pattern:
+		WallStyleDef.Pattern.PAINT, WallStyleDef.Pattern.WAINSCOT, WallStyleDef.Pattern.MILL:
+			return authored
+		WallStyleDef.Pattern.CONCRETE:
+			face = CONCRETE_FACE
+		WallStyleDef.Pattern.WHITEWASH:
+			face = WHITEWASH_FACE
+	var shade: float = face * CAP_SHADE
+	return Color(clampf(main.r * shade, 0.0, 1.0), clampf(main.g * shade, 0.0, 1.0), clampf(main.b * shade, 0.0, 1.0))
 
 
 ## The automatic accent: the shop's wall colour above painted panelling, a

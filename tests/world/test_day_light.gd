@@ -112,3 +112,23 @@ func test_a_real_session_lights_the_shop_at_night_and_puts_it_out_by_day() -> vo
 	main.call("refresh_presentation")
 	assert_false(lights.visible, "lights out again for morning prep")
 	assert_almost_eq(key.light_energy, 0.4, 0.0001, "the authored morning sun")
+
+
+## Dusk is a golden evening: clearly lit by a warm, low sun, well above the
+## night it fades into, and the light never pops on the way.
+func test_dusk_is_a_warm_evening_well_above_night() -> void:
+	var noon: DayLight.Look = DayLight.sample(780.0, TUNING)
+	var dusk: DayLight.Look = DayLight.sample(1230.0, TUNING)
+	var night: DayLight.Look = DayLight.sample(1410.0, TUNING)
+	assert_true(dusk.key_energy > night.key_energy * 4.0, "the sun is still up at dusk")
+	assert_true(dusk.key_energy > noon.key_energy * 0.6 and dusk.key_energy < noon.key_energy, "a little softer than noon")
+	assert_true(dusk.ambient_energy > night.ambient_energy + 0.08, "the evening is well lit")
+	assert_true(dusk.key_color.r > dusk.key_color.g + 0.2 and dusk.key_color.g > dusk.key_color.b, "a warm orange-pink sun")
+	assert_true(dusk.key_pitch > noon.key_pitch, "a lower sun, so longer shadows")
+	assert_true(dusk.interior_energy > 0.0, "the lamps are coming on")
+	var last: DayLight.Look = DayLight.sample(900.0, TUNING)
+	for minute: int in range(901, 1440):
+		var look: DayLight.Look = DayLight.sample(float(minute), TUNING)
+		assert_true(absf(look.key_energy - last.key_energy) < 0.01, "no pop in the sun at minute %d" % minute)
+		assert_true(absf(look.ambient_energy - last.ambient_energy) < 0.01, "no pop in the ambient at minute %d" % minute)
+		last = look

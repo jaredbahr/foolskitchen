@@ -18,7 +18,8 @@ const DIGESTS: Dictionary[String, String] = {
 	"res://data/streets/seaside.tres": "84d6b57a43954776d68096fa88f967ba1fe6b9a51a8c40c4a7509146a81b0c86",
 	"res://data/streets/promenade.tres": "6360419dd2afd9921e1450c39fea1879465f0ae8df33491001de67d8f2406649",
 	"res://data/streets/woodland.tres": "25d71eed7b271fc2ae3df6c594d0deaa3efb3fe402918f832694dfa16a832950",
-	"res://data/streets/country.tres": "06808771942aa2313f5bdbf8f92daf6a069b91d37b72a920d2402497836512da",
+	# The country lane since its far fields went soft (polish sweep).
+	"res://data/streets/country.tres": "e340cb3a22130c02203eb7adb202cf52194c418c568a2ec9cf5147d04ea9ffcb",
 	"res://data/streets/rooftop.tres": "2b1100223514a6d0063f9794b040524243a3d18d602a0a82b9aac1522ab369ad",
 }
 

@@ -80,6 +80,8 @@ var _top_material: Material
 var _floor_material: Material
 var _glass_material: StandardMaterial3D
 var _painted: Array[MeshInstance3D] = []
+## The top caps, so a new cap material (a lot's patterned finish) reaches them at once.
+var _caps: Array[MeshInstance3D] = []
 var _panes: Array[PropView] = []
 var _pane_bounds: AABB = AABB()
 ## Back-door leaves by shell cell: {leaf, sign (turns it outward), base
@@ -127,10 +129,14 @@ func set_materials(wall_material: Material, top_material: Material, floor_materi
 	_floor_material = floor_material
 	for mesh: MeshInstance3D in _painted:
 		mesh.material_override = wall_material
+	for mesh: MeshInstance3D in _caps:
+		if is_instance_valid(mesh):
+			mesh.material_override = top_material
 
 
 func clear() -> void:
 	_painted.clear()
+	_caps.clear()
 	_panes.clear()
 	_leaves.clear()
 	for tile: PropView in _paths:
@@ -529,6 +535,7 @@ func _cap(root: Node3D, x0: float, x1: float, height: float, depth: float) -> vo
 	mesh.name = "Top"
 	mesh.position = Vector3((x0 + x1) * 0.5, height + 0.005, 0.0)
 	root.add_child(mesh)
+	_caps.append(mesh)
 
 
 func _pane(root: Node3D, span: Vector2) -> PropView:
