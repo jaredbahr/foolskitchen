@@ -722,6 +722,73 @@ func test_lot_tags_follow_the_active_site_in_build_blueprints_and_stock() -> voi
 	assert_false(_has_stock_row(fresh))
 
 
+func test_boardwalk_purchase_connects_the_rear_patio_and_unlocks_treats() -> void:
+	_start()
+	var boardwalk: StringName = &"beachfront_boardwalk"
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(boardwalk)
+	var machines: Dictionary[StringName, StringName] = {
+		&"soft_serve_machine": &"soft_serve",
+		&"shaved_ice_cart": &"shaved_ice",
+	}
+	for machine: StringName in machines:
+		assert_false(_main.call("shop_buy", machine, Vector2i.ZERO))
+		assert_eq((_main.get("shop_editor") as ShopEditor).last_check.why,
+			"Only available at a lot with: Seaside")
+	assert_false(_has_stock_row(&"fruit_syrup"))
+
+	_play_to_close()
+	_next_morning()
+	_owner().career_tier = 3
+	var reviews: ReputationBook = _main.get("reputation") as ReputationBook
+	for index: int in range(ReputationBook.WINDOW):
+		reviews.record_event_review(4)
+	_set_cash(lot.price + 1000)
+	assert_true(_main.call("set_property_visible", true))
+	assert_false(_buy_button(boardwalk).disabled, String(_main.call("lot_purchase_refusal", boardwalk)))
+	_buy_button(boardwalk).pressed.emit()
+	assert_true(_book().has_site(boardwalk))
+	assert_eq(Economy.cash, 1000)
+	assert_true(_main.call("switch_site", boardwalk), String(_main.call("site_switch_refusal", boardwalk)))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	assert_eq(view.street_preset.id, &"promenade")
+	assert_false(view.street_preset.has_traffic())
+	var world: SimWorld = _main.get("world") as SimWorld
+	var rear: Vector2i = Vector2i(15, -3)
+	assert_true(world.grid.is_outdoor_floor(rear), "the purchased site starts with the rear patio")
+	assert_true(world.grid.is_guest_reachable(world.grid.entries()[0], rear), "guests can reach the patio through the back door")
+	assert_true(_has_stock_row(&"fruit_syrup"), "the active seaside market sells fruit syrup")
+	assert_true(_main.call("stock_cart_set", &"fruit_syrup", 1))
+	assert_true(_main.call("stock_place_order"))
+	assert_eq(Economy.stock.count(&"fruit_syrup"), 1)
+
+	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
+	editor.set_owner_level(4)
+	var menu: MenuSettings = _main.get("menu_settings") as MenuSettings
+	for machine: StringName in machines:
+		assert_null(menu.recipe(machines[machine]))
+	var bought_soft_serve: bool = _main.call("shop_buy", &"soft_serve_machine", Vector2i(2, 3))
+	assert_true(bought_soft_serve, "buy the soft-serve machine: " + editor.last_check.why)
+	assert_not_null(menu.recipe(&"soft_serve"), "the soft-serve machine makes its recipe available")
+	assert_null(menu.recipe(&"shaved_ice"))
+	var bought_shaved_ice: bool = _main.call("shop_buy", &"shaved_ice_cart", Vector2i(3, 3))
+	assert_true(bought_shaved_ice, "buy the shaved-ice cart: " + editor.last_check.why)
+	assert_not_null(menu.recipe(&"shaved_ice"), "the shaved-ice cart makes its recipe available")
+	assert_null(menu.recipe(&"cone_fries"), "the cone still requires a fryer")
+
+	_jump_a_morning()
+	_close()
+	_start()
+	assert_eq(_book().active_id, boardwalk)
+	world = _main.get("world") as SimWorld
+	assert_true(world.grid.is_outdoor_floor(rear), "the authored patio survives reloading")
+	menu = _main.get("menu_settings") as MenuSettings
+	assert_not_null(menu.recipe(&"soft_serve"), "the soft-serve recipe is available after reload")
+	assert_not_null(menu.recipe(&"shaved_ice"), "the shaved-ice recipe is available after reload")
+	assert_true(_main.call("switch_site", SiteBook.HOME_ID), "switch back to the home shop")
+	assert_null((_main.get("menu_settings") as MenuSettings).recipe(&"soft_serve"))
+	assert_false(_has_stock_row(&"fruit_syrup"))
+
+
 func _has_stock_row(id: StringName) -> bool:
 	for row: Dictionary in _main.call("stock_rows"):
 		if row["id"] == id:

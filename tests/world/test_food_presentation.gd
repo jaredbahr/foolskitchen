@@ -39,11 +39,14 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		&"fried_eggs": "egg-cooked", &"pancakes": "pancakes", &"waffles": "waffle",
 		&"cereal": "bowl-cereal", &"muffin": "muffin",
 		&"club_sandwich": "sandwich", &"hot_dog": "hot-dog", &"taco": "taco",
+		&"soft_serve": "ice-cream",
 	}
 	var assembled: Dictionary[StringName, String] = {
 		&"bacon_and_eggs": "res://assets/props/bacon_and_eggs.tscn",
 		&"pizza_slice": "res://assets/props/pizza_slice.tscn",
 		&"ice_cream_sundae": "res://assets/props/ice_cream_sundae.tscn",
+		&"shaved_ice": "res://assets/props/shaved_ice.tscn",
+		&"cone_fries": "res://assets/made/walkup/fries_cone.glb",
 	}
 	var paths: PackedStringArray = _recipe_resource_paths("res://data/recipes")
 	var recipes: Array[RecipeDef] = _content.recipes()
@@ -68,6 +71,24 @@ func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
 		assert_not_null(recipe.view_model)
 		if recipe.view_model != null:
 			assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
+
+
+func test_soft_serve_varies_the_model_by_order_without_rebuilding_the_dish() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	var recipe: RecipeDef = _content.recipe(&"soft_serve")
+	var paths: PackedStringArray = [
+		"res://assets/kenney/food/ice-cream.glb",
+		"res://assets/props/ice_cream_cone_chocolate.tscn",
+		"res://assets/props/ice_cream_cone_mint.tscn",
+	]
+	var before: int = dish.get_child_count()
+	for id: int in range(6):
+		dish.order_id = id
+		dish.show_dish(recipe, false)
+		assert_eq(dish.recipe_id, recipe.id)
+		assert_eq(dish._shown.get_child(0).scene_file_path, paths[id % paths.size()])
+		assert_true(dish._shown.visible and dish.plate.visible)
+	assert_eq(dish.get_child_count(), before)
 
 
 func test_each_breakfast_recipe_shows_food_within_its_plate() -> void:

@@ -24,3 +24,4 @@ standard_price = 7
 unlock_tier = 1
 unlock_level = 4
 theme_tags = Array[StringName]([&"diner", &"cafe"])
+takeaway_ok = true
