@@ -33,7 +33,6 @@ enum PlotState { GROWN, MOWN, CLEARED }
 const FLOOR_Y: float = -0.062
 const PATCH_Y: float = -0.058
 const FIELD_Y: float = -0.054
-const STRIPE_Y: float = -0.051
 const PLOT_Y: float = -0.047
 const PLOT_TOP: float = -0.044
 const GRAVEL_Y: float = -0.044
@@ -90,6 +89,8 @@ const SHEEP_SCALE: float = 1.45
 ## Far fields: the patchwork's column width and row depth (metres).
 const FIELD_W: float = 11.0
 const FIELD_D: float = 9.5
+## Far crop fields are drawn on a grid this coarse (metres), soft tones blending across it.
+const FIELD_CELL: float = 0.9
 ## Boundaries farther than this from the lot are drawn plain (a low box, no stones).
 const DETAIL_REACH: float = 19.0
 
@@ -889,20 +890,7 @@ func _patchwork(fields: NeighbourhoodBuildings.Pen, bounds: NeighbourhoodBuildin
 				_blob(fields, at, size, size * 0.75, _r(seed_value + index, 334) * PI, 8, FIELD_Y,
 					skin.grass.lerp(skin.grass_dark, 0.6) if index % 3 != 0 else skin.grass.lerp(skin.grass_light, 0.6))
 			continue
-		var colour: Color = entry["colour"]
-		fields.flat(inner.position.x, inner.position.y, inner.end.x, inner.end.y, FIELD_Y, colour)
-		# Drill rows: darker lines across or along the field, and two tramlines.
-		var across: bool = entry["across"]
-		var span: float = inner.size.x if across else inner.size.y
-		var count: int = int(span / 0.55)
-		for index: int in count:
-			var t0: float = (float(index) + 0.3) * span / float(count)
-			var t1: float = t0 + 0.2
-			var tone: Color = colour.darkened(0.07) if index % 2 == 0 else colour.lightened(0.04)
-			if across:
-				fields.flat(inner.position.x + t0, inner.position.y, inner.position.x + t1, inner.end.y, STRIPE_Y, tone)
-			else:
-				fields.flat(inner.position.x, inner.position.y + t0, inner.end.x, inner.position.y + t1, STRIPE_Y, tone)
+		_soft_field(fields.soup, inner, entry["colour"], seed_value, entry["across"])
 	# Boundaries: each field draws its far edge and one side, so a shared line is drawn
 	# once; the block's back and its sides are drawn here.
 	for entry: Dictionary in _fields:
@@ -919,6 +907,46 @@ func _patchwork(fields: NeighbourhoodBuildings.Pen, bounds: NeighbourhoodBuildin
 		u = u1
 	for x: float in [block.position.x, block.end.x]:
 		_boundary(bounds, shadows, Vector2(x, block.position.y), Vector2(x, _near_hedge(x) - 0.05))
+
+
+## A far crop field: one soft sheet in its colour, drifting between a deeper and a paler
+## tone in broad patches (as the near wheat does) with a faint grain along its rows, a
+## touch darker at the headland. Per-vertex colour on a coarse grid, so the light blends
+## the tones and nothing reads as a hard stripe.
+func _soft_field(soup: NeighbourhoodGround.Soup, inner: Rect2, colour: Color, seed_value: int, across: bool) -> void:
+	var columns: int = maxi(1, ceili(inner.size.x / FIELD_CELL))
+	var rows: int = maxi(1, ceili(inner.size.y / FIELD_CELL))
+	var step: Vector2 = Vector2(inner.size.x / float(columns), inner.size.y / float(rows))
+	var phase: Vector2 = Vector2(_r(seed_value, 324), _r(seed_value, 325)) * TAU
+	var deep: Color = colour.darkened(0.09)
+	var pale: Color = colour.lerp(colour.lightened(0.2), 0.4)
+	var tones: Array[Color] = []
+	for iz: int in rows + 1:
+		for ix: int in columns + 1:
+			var at: Vector2 = inner.position + Vector2(float(ix) * step.x, float(iz) * step.y)
+			var broad: float = 0.5 + 0.32 * sin(at.x * 0.33 + phase.x) * sin(at.y * 0.41 + phase.y) \
+				+ 0.18 * sin((at.x + at.y) * 0.19 + phase.x - phase.y)
+			var tone: Color = deep.lerp(pale, clampf(broad, 0.0, 1.0))
+			# The rows: a faint, wide grain along the drilling, too soft to read as stripes.
+			var along: float = at.x if across else at.y
+			tone = tone.darkened(0.018 * (0.5 + 0.5 * sin(along * 1.9 + phase.x)))
+			# A soft mottle, vertex by vertex, so the sheet has a grain like the near wheat's.
+			var mottle: float = _r(seed_value * 53 + ix * 31, iz * 977 + 326) - 0.5
+			tone = tone.lightened(0.07 * mottle) if mottle > 0.0 else tone.darkened(-0.06 * mottle)
+			# The headland, where the tractor turns, a shade darker.
+			var edge: float = minf(minf(at.x - inner.position.x, inner.end.x - at.x), minf(at.y - inner.position.y, inner.end.y - at.y))
+			tones.append(tone.darkened(0.05 * (1.0 - clampf(edge / 1.2, 0.0, 1.0))))
+	for iz: int in rows:
+		for ix: int in columns:
+			var i00: int = iz * (columns + 1) + ix
+			var corners: Array[int] = [i00, i00 + 1, i00 + columns + 2, i00 + columns + 1]
+			for tri: Array in [[0, 1, 2], [0, 2, 3]]:
+				for index: int in tri:
+					var corner: int = corners[index]
+					soup.positions.append(Vector3(inner.position.x + float(corner % (columns + 1)) * step.x, FIELD_Y,
+						inner.position.y + float(corner / (columns + 1)) * step.y))
+					soup.normals.append(Vector3.UP)
+					soup.colors.append(tones[corner])
 
 
 ## A field boundary from `a` to `b`, cut where it meets another already drawn, the

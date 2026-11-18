@@ -55,6 +55,8 @@ func _ready() -> void:
 	new_game_seed_override = 1
 	super._ready()
 	if OS.get_environment("SEASIDE_STREET_REVIEW_HOME") == "1":
+		# The starter street takes the time of day too, for a day/dusk/night comparison.
+		_set_stage(OS.get_environment("SEASIDE_STREET_STAGE"))
 		return
 	var site: StringName = SEASIDE
 	if not OS.get_environment("SEASIDE_STREET_LOT").is_empty():

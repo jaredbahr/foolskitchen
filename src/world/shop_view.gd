@@ -1402,12 +1402,16 @@ func _apply_paint() -> void:
 		return
 	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
 	var shell: Material = _shell_material(wall_id)
+	var cap: Material = _cap_material(wall_id)
 	for wall: MeshInstance3D in _wall_nodes.values():
 		wall.material_override = shell
+		var top: MeshInstance3D = wall.get_node_or_null(^"Top") as MeshInstance3D
+		if top != null:
+			top.material_override = cap
 	if wall_finish_view != null:
 		wall_finish_view.set_wall_colour(_paint_color(wall_id, wall_color), wall_id)
 	if segment_view != null:
-		segment_view.set_materials(shell, _material(wall_top_color), floor_mesh.material_override)
+		segment_view.set_materials(shell, cap, floor_mesh.material_override)
 	var floor_id: StringName = _preview_swatch_id if _preview_kind == &"floor" else _floor_swatch_id
 	var floor_shader: ShaderMaterial = floor_mesh.material_override as ShaderMaterial
 	if floor_shader != null:
@@ -1584,7 +1588,8 @@ func _apply_wall_heights() -> void:
 		elif top.has_meta(&"segment_edge"):
 			top.remove_meta(&"segment_edge")
 	if segment_view != null and world != null:
-		segment_view.set_materials(_current_wall_material(), _material(wall_top_color), floor_mesh.material_override)
+		var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
+		segment_view.set_materials(_current_wall_material(), _cap_material(wall_id), floor_mesh.material_override)
 		segment_view.rebuild(world.grid, lowered_interior_edges(), lowered_wall_cells())
 	if wall_finish_view != null and world != null:
 		wall_finish_view.set_lowered(lowered_interior_edges(), lowered_wall_cells())
@@ -1601,12 +1606,10 @@ func _current_wall_material() -> Material:
 ## default wall finish is a pattern (#611, a woodland's log walls) that pattern, laid
 ## in world space round the outside, in the paint or else the finish's own colour.
 func _shell_material(wall_id: StringName) -> Material:
-	var style: WallStyleDef = null
-	if _wall_finishes != null and _wall_finishes.default_style != WallStyleDef.DEFAULT_ID and _paint_content != null:
-		style = _paint_content.wall_style(_wall_finishes.default_style)
+	var style: WallStyleDef = _shell_style()
 	if style == null or style.pattern == WallStyleDef.Pattern.PAINT:
 		return _paint_material(wall_id, wall_color)
-	var main: Color = _paint_color(wall_id, _paint_color(style.default_swatch, wall_color))
+	var main: Color = _shell_main(style, wall_id)
 	var accent: Color = _paint_color(style.default_accent, WallFinishView.auto_accent(int(style.pattern), main, main)) \
 		if not style.default_accent.is_empty() else WallFinishView.auto_accent(int(style.pattern), main, main)
 	var key: String = "%d|%s|%s" % [int(style.pattern), main.to_html(), accent.to_html()]
@@ -1619,6 +1622,33 @@ func _shell_material(wall_id: StringName) -> Material:
 		material.set_shader_parameter("world_space", true)
 		_shell_materials[key] = material
 	return _shell_materials[key]
+
+
+## The lot's patterned default wall finish (#611), or null for plain paint.
+func _shell_style() -> WallStyleDef:
+	if _wall_finishes != null and _wall_finishes.default_style != WallStyleDef.DEFAULT_ID and _paint_content != null:
+		return _paint_content.wall_style(_wall_finishes.default_style)
+	return null
+
+
+## The main colour of the shell's patterned finish `style` in paint `wall_id`.
+func _shell_main(style: WallStyleDef, wall_id: StringName) -> Color:
+	return _paint_color(wall_id, _paint_color(style.default_swatch, wall_color))
+
+
+## The walls' top caps in paint `wall_id`: the authored cap, or under a lot's patterned
+## default finish a darker shade of that finish (a concrete wall's coping is grey).
+func _cap_material(wall_id: StringName) -> StandardMaterial3D:
+	var style: WallStyleDef = _shell_style()
+	if style == null:
+		return _material(wall_top_color)
+	return _material(WallFinishView.cap_colour(int(style.pattern), _shell_main(style, wall_id), wall_top_color))
+
+
+## The top caps' colour now (for tests and reviews).
+func wall_cap_colour() -> Color:
+	var wall_id: StringName = _preview_swatch_id if _preview_kind == &"wall" else _wall_swatch_id
+	return _cap_material(wall_id).albedo_color
 
 
 func _unhandled_input(event: InputEvent) -> void:
