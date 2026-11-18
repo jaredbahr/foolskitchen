@@ -8,66 +8,43 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the build queue (reset 2026-11-07)
-Codex is back (2026-11-07). **Codex: take the `worker-ready` issues below from the top**, skipping any whose **Depends on** hasn't merged and any that already has an open PR or a claim comment (see `AGENTS.md`). Claude reviews every PR before merge.
+## Up next: the build queue (reset 2026-11-18)
+**Codex: take the `worker-ready` issues below from the top**, skipping any whose **Depends on** hasn't merged and any that already has an open PR or a claim comment (see `AGENTS.md`). Claude reviews every PR before merge. `codex` = Codex takes it; `both` = Codex may try, Claude takes over if it fails twice.
 
-**Wave 0, early game and panels (Jared, 2026-11-14): take these first.** A 15-day audit found days 1-5 dull; these fix what players feel first.
-1. `codex` #491 Reviews: a guest who never got a table leaves no review
-2. `codex` #490 Weekly challenges: size targets to the shop
-3. `codex` #492 Critic at Tier 5, and booking offers that fit your seats
-4. `codex` #493 Regulars reachable with a little decor; pairs of guests from level 2
-5. `codex` #500 Menu and Stock panels: one scroll area, compact rows (depends on #497)
-6. `codex` #501 Goals, Staff, evening report and Settings: compact rows (depends on #497)
+**Wave L, every location plays differently (Jared, 2026-11-18; D39, #596): take these first.**
+1. `codex` #625 Rain cover (pergolas, awnings) and the cliff's sea shanty. **Top priority:** the cliff seats everyone outside, so rain empties it until cover can be built.
+2. `both` #623 Seaside Cliff: terrace-only seating rule (start after #632 merges)
+3. `codex` #605 Seaside Cliff: the daily catch
+4. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount (start after #632 merges)
+5. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
+6. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
+7. `both` #629 Seaside Cliff: guests walk up and down the cliff path
+8. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
+9. `both` #597 Growth steps: each lot grows its own way
+10. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
+11. `both` #606 Skyline Rooftop: cocktails and a tasting menu
+12. `both` #590 Walk-up window: a hatch that serves passers-by
+13. `both` #471 New guest types: tourists and the office crowd
 
-**Wave 1 (`worker-ready`):** `codex` = Codex takes it; `both` = Codex may try, Claude takes over if it fails twice.
-1. `codex` #323 Business trend: 7 or 30 days (small; a good first issue)
-2. `codex` #316 Group bookings
-3. `both` #324 Broken equipment
-4. `codex` #325 Rush hour
-5. `codex` #326 Weekly challenge
-6. `codex` #327 First mini-game: supplier haggle
-7. `both` #328 Chop rhythm mini-game (start after #327 merges)
-
-**Wave 2 (`worker-ready`, after wave 1 or alongside it):**
-8. `codex` #334 Speed keys and an F1 shortcuts panel (small)
-9. `codex` #338 Evening report: slowest seller (small)
-10. `codex` #332 Blueprint codes
-11. `codex` #337 Records
-12. `codex` #330 Today's special
-13. `codex` #335 Viral review
-14. `codex` #336 Decor collections
-15. `codex` #331 Signature dish
-16. `codex` #340 Seasons
-17. `codex` #333 Sandbox mode
-18. `both` #339 Dishwasher
-19. `both` #341 Plating mini-game for VIP guests (start after #327 merges)
-
-**Wave 3 (`worker-ready`):**
-20. `codex` #352 Menu prices: -10%, +10%, reset (small)
-21. `codex` #353 Menu prices: walkout readout (small)
-22. `codex` #354 Repay a loan early (small)
-23. `codex` #349 Photo mode (small)
-24. `codex` #348 Auto-pause setting (small)
-25. `codex` #351 Staff panel: work done
-26. `codex` #350 Menu panel: last 7 days per dish
-27. `codex` #357 Evening report: a week of cash flow
-28. `codex` #347 Today log
-29. `codex` #346 Morning paper
-30. `codex` #355 Tip jar decor
-31. `both` #356 Day off
+**Wave M, engine and polish (after wave L, or alongside it when a wave L issue is blocked):**
+14. `both` #548 Dead-end aisles: guard two #545 fixes with tests
+15. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
+16. `both` #391 Aisle pinch warning: faster hover, more routes
+17. `both` #384 Light staff mood
+18. `both` #378 Group bookings: the good-service payoff
+19. `codex` #371 Sixty more review quotes
+20. `both` #356 Day off
+21. `both` #324 Broken equipment
+22. `both` #339 Dishwasher
+23. `both` #328 Chop rhythm mini-game
+24. `both` #341 Plating mini-game for VIP guests
 
 **When this list runs out,** take any open issue labelled `worker-ready` and `codex` (then `both`), lowest number first, with the same checks.
 
-Several issues touch the same screens (evening report, morning menu panel, Goals panel). Running two or three Codex tasks at once is fine; merge `main` into your branch before marking ready, as `AGENTS.md` says.
-
-**Director (`claude`; Codex never starts these):**
-- #322 Movement: staff head-on and door queues (work in progress)
-- #320 Older saves on the original starter layout (needs Jared's call)
-
-Merged since the last reset: #306 deadlock (#314), #317 bar corridor stall (#318), #315 seat warnings (#321), #125 aquarium (#319), #302 health inspector (#309), #293 café counter (#312), #243 patio (#269), music (#313).
+Several issues touch the same screens or the same lot files. Running two or three Codex tasks at once is fine; merge `main` into your branch before marking ready, as `AGENTS.md` says.
 
 **Director-scoped (`claude`, art or taste first):** premium decor #206.
-**Later backlog (`claude` until scoped into `codex` issues):** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors (group bookings), #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
+**Later backlog (`claude` until scoped into `codex` issues):** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors, #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
 
 ## Phase 0: Foundation
 - [ ] Project skeleton, autoload stubs, test runner, `check.sh`, `get_godot.sh` (FK-001, Claude)
