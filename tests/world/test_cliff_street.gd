@@ -157,6 +157,37 @@ func test_the_cliff_preset_is_valid_and_has_no_traffic() -> void:
 	_free(dressing)
 
 
+## Jared's chalk (#380 follow-up): a lower drop so the sea shows, bright white chalk with
+## faint grey bands and dark flint lines under a green turf cap, sea stacks between the
+## sea and the top, and the chalk catching the moon at night.
+func test_the_cliff_is_white_chalk_over_a_lower_drop() -> void:
+	await _host()
+	var skin: CliffSkin = (load(CLIFF) as StreetPreset).cliff
+	assert_true(skin.drop >= 10.0 and skin.drop <= 11.0, "about 10 m down, so the sea shows (%.1f)" % skin.drop)
+	var lightest: float = 0.0
+	var darkest: float = 1.0
+	for colour: Color in skin.strata:
+		lightest = maxf(lightest, colour.get_luminance())
+		darkest = minf(darkest, colour.get_luminance())
+	assert_true(darkest >= 0.75, "every stratum is pale chalk (%.2f)" % darkest)
+	assert_true(lightest <= 0.95, "the brightest stays short of pure white so a lit face never blows out (%.2f)" % lightest)
+	assert_true(lightest - darkest >= 0.05 and lightest - darkest <= 0.2, "the grey bands are faint")
+	assert_true(skin.flint.a > 0.0 and skin.flint.get_luminance() < 0.45, "dark flint lines run through the chalk")
+	assert_true(skin.turf.g > skin.turf.r and skin.turf.g > skin.turf.b, "a green turf cap")
+	assert_true(skin.relief < 1.0, "a sheerer face than ledged sandstone")
+	var dressing: NeighbourhoodDressing = _dressing(load(CLIFF) as StreetPreset)
+	var cliff: NeighbourhoodCliff = dressing.cliff()
+	for stack: Vector4 in cliff.stacks:
+		assert_true(stack.w > 0.5 and stack.w < cliff.drop() - 0.5, "a sea stack stands between the sea and the top")
+	var rock: MeshInstance3D = cliff.root.find_child("Cliff", false, false) as MeshInstance3D
+	var material: StandardMaterial3D = rock.material_override as StandardMaterial3D
+	dressing.set_night(0.0)
+	assert_eq(material.albedo_color, Color.WHITE, "by day the chalk is as the sun lights it")
+	dressing.set_night(1.0, 1.0)
+	assert_true(material.albedo_color.b > 1.0, "at night the chalk catches the moon")
+	_free(dressing)
+
+
 func test_nothing_stands_on_the_lot_or_the_approach() -> void:
 	await _host()
 	var dressing: NeighbourhoodDressing = _dressing(load(CLIFF) as StreetPreset)
