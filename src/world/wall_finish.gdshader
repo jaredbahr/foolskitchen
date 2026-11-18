@@ -169,6 +169,29 @@ vec3 concrete(vec2 p, vec3 base, vec3 reveal, float fw) {
 	return mix(colour, reveal * 0.85, seam * detail(0.05, fw));
 }
 
+// 8: whitewashed rubble (#380): lime wash over rough stone courses about 0.13 m
+// high, each stone a touch its own tone with a lit top edge and soft, wash-filled
+// joints, over a tarred plinth (the accent) to 0.16 m with a pale drip edge. Lime
+// wash reads paler than paint: the face sits a step above the main colour.
+vec3 whitewash(vec2 p, vec3 base, vec3 plinth, float fw) {
+	float foot = 0.16;
+	if (p.y < foot) {
+		return mix(plinth, plinth * 1.3, 1.0 - step(0.018, foot - p.y));
+	}
+	float course = 0.13;
+	float row = floor((p.y - foot) / course);
+	float width = 0.24 + 0.1 * fract(sin(row * 17.1) * 913.7);
+	float x = p.x / width + fract(sin(row * 41.3) * 4375.85);
+	float h = fract(sin(floor(x) * 12.9898 + row * 78.233) * 43758.5453);
+	vec3 colour = base * (1.12 + 0.05 * h);
+	float fade = detail(0.1, fw);
+	vec2 f = vec2(fract(x) * width, mod(p.y - foot, course));
+	colour = mix(colour, base * 1.2, (1.0 - step(0.02, course - f.y)) * fade);
+	vec2 d = min(f, vec2(width, course) - f);
+	float joint = max(line_cover(d.x, 0.006, fw), line_cover(d.y, 0.006, fw));
+	return mix(colour, base * 0.94, joint * fade * 0.8);
+}
+
 void fragment() {
 	vec3 base = main_color.rgb;
 	vec3 accent = accent_color.rgb;
@@ -191,6 +214,8 @@ void fragment() {
 		colour = mill(p, base, accent, fw);
 	} else if (pattern == 7) {
 		colour = concrete(p, base, accent, fw);
+	} else if (pattern == 8) {
+		colour = whitewash(p, base, accent, fw);
 	}
 	if (preview) {
 		vec2 q = UV2;

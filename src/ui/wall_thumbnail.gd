@@ -72,6 +72,8 @@ static func colour(pattern: int, p: Vector2, main: Color, accent: Color) -> Colo
 			return _mill(p, main, accent)
 		WallStyleDef.Pattern.CONCRETE:
 			return _concrete(p, main, accent)
+		WallStyleDef.Pattern.WHITEWASH:
+			return _whitewash(p, main, accent)
 	return main
 
 
@@ -123,6 +125,26 @@ static func _concrete(p: Vector2, main: Color, reveal: Color) -> Color:
 		return _shade(main, 1.06)
 	var h: float = fposmod(sin(cell.x * 12.9898 + cell.y * 78.233) * 43758.5453, 1.0)
 	return _shade(main, 1.26 + 0.06 * h)
+
+
+## Whitewashed rubble (#380), as in the shader: a tarred plinth (the accent) to 0.16 m
+## with a pale drip edge, then washed stone courses 0.13 m high with lit top edges and
+## soft joints.
+static func _whitewash(p: Vector2, main: Color, plinth: Color) -> Color:
+	var foot: float = 0.16
+	if p.y < foot:
+		return _shade(plinth, 1.3) if foot - p.y < 0.018 else plinth
+	var course: float = 0.13
+	var row: float = floorf((p.y - foot) / course)
+	var width: float = 0.24 + 0.1 * fposmod(sin(row * 17.1) * 913.7, 1.0)
+	var x: float = p.x / width + fposmod(sin(row * 41.3) * 4375.85, 1.0)
+	var f: Vector2 = Vector2(fposmod(x, 1.0) * width, fposmod(p.y - foot, course))
+	if minf(f.x, width - f.x) < 0.009 or minf(f.y, course - f.y) < 0.009:
+		return _shade(main, 0.95)
+	if course - f.y < 0.02:
+		return _shade(main, 1.2)
+	var h: float = fposmod(sin(floorf(x) * 12.9898 + row * 78.233) * 43758.5453, 1.0)
+	return _shade(main, 1.12 + 0.05 * h)
 
 
 static func _bond(p: Vector2, size: Vector2, joint: float, main: Color, seam: Color) -> Color:

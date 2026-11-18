@@ -389,3 +389,47 @@ glow (the glowing-part exception); nothing adds a light.
 | Pigeon (body, tail, feet, head that pecks and turns) | the street's birds (#423), at 1.6x life so it reads | about 60 |
 | Wheeling bird (body and two flapping wings), small plane with navigation lights | the street's birds (#423) | 12, about 70 |
 | Window, street-light, car and aircraft glow (camera-facing sprites, one mesh each) | the woodland's bulb glow (#607) | 2 each |
+
+## Seaside Cliff (#380)
+
+Code-built like the rooftop (#614): chunky, flat-shaded, vertex-coloured meshes from
+boxes, drums, low-poly lumps and thin blades, with no textures, imported models or
+lights. Not files under `assets/made/`. Built in `src/world/neighbourhood_cliff.gd`;
+colours come from the cliff preset's `CliffSkin` in `data/streets/cliff.tres`, drawn from
+the shared swatches and the existing street palettes (the beach's sea, sand and gulls,
+the country lane's stone, timber, grass and sheep). The sea is the beach's
+`src/world/sea.gdshader`. The lanterns, festoon bulbs, lighthouse lamp, boat lamp, car
+park lamp and cottage windows glow (the glowing-part exception); nothing adds a light.
+
+| Piece | Based on | Triangles |
+|---|---|---:|
+| Cliff face (strata stepping out in ledges and in under overhangs, turf lip, grassy ledges with sea pinks) | the woodland's banks (#607), the rooftop's haze (#614) | about 20,000 along the whole coast |
+| Boulders at the foot, the cove's beach | the beach's rocks (#588) | about 30 each |
+| Sea stacks (seven-sided strata columns with a turf cap, nesting gulls, sea pinks) | the cliff face | about 250 each |
+| Timber rail on white posts | the promenade's rail (#596), the rooftop's parapet rail (#614) | about 40 a post |
+| Dry-stone walls, stile, finger post | the country lane's walls and farm gate (#613) | about 60 a wall piece |
+| Lantern posts, festoon lights | the country lane's lanterns, the woodland's string lights (#607) | about 90, about 300 a run |
+| Bench, lifebuoy | the street bench (#423), the beach's ball (#588) | about 90, about 70 |
+| Wind-bent grass tufts, sea pinks (thrift), gorse, windswept thorn | the country lane's tufts and hedges (#613), the street's trees (#424) | 4, about 60, about 70, about 150 |
+| Lighthouse and keeper's cottage | the beach's lighthouse (#588), the street's houses (#421) | about 600 |
+| Fishing boat with wheelhouse, mast lamp and wake | the beach's sailboats (#588) | about 120 |
+| Gulls gliding level with the top | the beach's gulls (#588) | about 60 |
+| Car park (gravel, sleepers, parked cars, bus stop, lamp) | `compact_car.glb` proportions (#242), the street lamp (#423) | about 80 a car |
+
+## Pergola rain cover (#380)
+
+Two looks of the terrace's rain cover (D-decision 2 in #380), art only: the buildable
+item that wraps them is a later issue. Rebuild both with
+`blender --background --factory-startup --python tools/build_pergola.py` (or any Python
+with the `bpy` module), which also writes `pergola/pergola.metrics.json` (triangles,
+world sizes, materials and node names). Unchanged Furniture Kit material colours copied
+by name from the kit files; no textures, lights or emission. Each covers a 2 x 2 m patch
+(4 x 4 cells), origin at the base centre, front -Z, authored at world size divided by
+`ArtScale.FURNITURE_SCALE` so the wrapper's uniform scale gives it back. A table with its
+chairs and a standing person fit under either. Review: `SEASIDE_STREET_PERGOLA=1` in
+`tools/seaside_street_review.tscn` stands both over kit tables in front of the cliff café.
+
+| Asset | Nodes | Based on | Triangles | World size (w x h x d) |
+|---|---|---|---:|---|
+| `pergola/pergola_timber.glb` | `PergolaFrame` (posts on `metalDark` shoes, knee braces, beams, rafters in `woodDark`/`wood`), `PergolaCanvas` (`carpetWhite`) | `table` and `kitchenCabinet` wood, `benchCushion` cloth | 744 | 2.16 x 1.81 x 2.26 |
+| `pergola/pergola_awning.glb` | `AwningFrame` (`metal` poles on `metalDark` feet, rails, ridge), `AwningCanopy` (`carpetBlue`/`carpetWhite` stripes, scalloped valances, gable ends) | the #240 street awnings and #589 seaside hatch stripes, `lampRoundFloor` poles | 788 | 2.17 x 2.0 x 2.21 |

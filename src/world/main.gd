@@ -690,8 +690,9 @@ func _frame_shop(reset: bool) -> void:
 		if not runs.is_empty():
 			var normal: Vector2i = runs[0][&"normal"]
 			camera.set_street_pan_extension(normal, STREET_PAN_EXTENSION)
-			# A beach behind the shop (#588) can be looked over as far as the street.
-			if street != null and street.has_shore():
+			# A beach behind the shop (#588), or the sea below a cliff top (#380), can be
+			# looked over as far as the street.
+			if street != null and (street.has_shore() or street.has_cliff()):
 				camera.set_shore_pan_extension(-normal, STREET_PAN_EXTENSION)
 	# The dressed world ends in a tree line; the view never goes past it (#424).
 	if street != null:
