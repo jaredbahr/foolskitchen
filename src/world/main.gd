@@ -6530,7 +6530,8 @@ func _begin_morning() -> void:
 	_held_opening_toasts.clear()
 	daily_special.begin_morning(Clock.sim.day)
 	sim.schedule_evening(0, null)
-	if _evening_tick() > 0:
+	# Restore the day menu whenever it can serve, even if the changeover time is invalid today.
+	if evening_schedule.enabled and _schedule_preset_available(evening_schedule.day_preset):
 		# The overnight mode change governs which saved prices can be applied.
 		menu_settings.set_automatic_prices(not GameMode.is_creative() and difficulty.auto(&"prices"))
 		_apply_menu_preset(menu_presets.index_of_name(evening_schedule.day_preset))
@@ -8295,8 +8296,7 @@ func _on_day_phase_changed(_day: int, phase: int) -> void:
 	elif phase == SimClock.Phase.OPEN:
 		var changeover: int = _evening_tick()
 		if changeover > 0:
-			var result: Dictionary = _apply_menu_preset(menu_presets.index_of_name(evening_schedule.day_preset))
-			_apply_menu_edit(bool(result["enabled_changed"]))
+			# The morning already restored the day menu; keep the player's morning edits.
 			sim.schedule_evening(changeover, DAY_PARTS_TUNING)
 		elif evening_schedule.enabled:
 			$HUD.queue_toast("Evening schedule paused. Check the changeover time and saved menus.")

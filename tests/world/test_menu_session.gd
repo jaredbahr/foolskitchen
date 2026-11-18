@@ -189,6 +189,8 @@ func test_evening_schedule_switches_real_orders_and_round_trips_at_morning() -> 
 	apply.pressed.emit()
 	assert_eq((controls.get_node("%PresetFeedback") as Label).text, "Evening schedule set.")
 	assert_eq(FileAccess.get_file_as_string(_path()), morning_file)
+	# A morning edit after setting the schedule survives opening (the day menu is not re-applied).
+	assert_true(first.call("menu_set_price", &"burger", 9))
 
 	var sim: RestaurantSim = first.get("sim")
 	sim.spawner.min_gap = 1000
@@ -212,7 +214,7 @@ func test_evening_schedule_switches_real_orders_and_round_trips_at_morning() -> 
 	assert_eq(sim.menu[0].id, &"grilled_cheese")
 	assert_eq(lunch_order.recipe_id, &"burger")
 	assert_eq(lunch_order.price, lunch_price)
-	assert_eq(lunch_price, 8)
+	assert_eq(lunch_price, 9)
 	var dinner_order: Order = _order_at_menu(sim, 1002)
 	assert_not_null(dinner_order)
 	if dinner_order == null:
@@ -257,8 +259,8 @@ func test_evening_schedule_switches_real_orders_and_round_trips_at_morning() -> 
 	assert_true(Clock.sim.next_day())
 	assert_false(choices.automatic_prices())
 	assert_eq(restored_sim.menu[0].id, burger.id)
-	assert_eq(choices.price_of(burger), lunch_price, "restore the saved price before the shop opens")
-	assert_eq(restored_sim.prices.get(burger.id), lunch_price)
+	assert_eq(choices.price_of(burger), 8, "restore the saved Lunch price before the shop opens")
+	assert_eq(restored_sim.prices.get(burger.id), 8)
 
 
 func _finish_preset_test_service(main: Node) -> void:
