@@ -24,12 +24,24 @@ const SHOP_LIGHT_HEIGHT: float = 2.6
 ## Reach past the farthest floor corner, so the whole room is lit evenly.
 const SHOP_LIGHT_REACH: float = 1.6
 const SHOP_LIGHT_ATTENUATION: float = 0.5
+## The sun's energy at dusk and at night (data/look/day_light.tres): street_dark runs
+## between them.
+const DARK_SUN_DUSK: float = 0.34
+const DARK_SUN_NIGHT: float = 0.08
 
 
 ## How lit the street lamps are (#423), 0 by day and 1 once the shop's own lights are on:
 ## the same dusk the interior follows, so the whole street comes on together.
 static func street_night(look: DayLight.Look) -> float:
 	return smoothstep(0.0, 0.5, look.interior_energy)
+
+
+## How dark the sky is, 0 by day and through the golden dusk, 1 once the sun has gone:
+## it follows the sun's fall after its sunset key frame (data/look/day_light.tres), so it
+## rises smoothly over last orders. Scenery that lights up from dusk (a city's windows, a
+## lighthouse beam) uses it to keep a sunset look until the night is really dark.
+static func street_dark(look: DayLight.Look) -> float:
+	return 1.0 - smoothstep(DARK_SUN_NIGHT, DARK_SUN_DUSK, look.key_energy)
 
 
 ## How late the night is (#440), 0 until the shop has closed and 1 by its long closed evening: the

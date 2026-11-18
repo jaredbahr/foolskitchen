@@ -79,6 +79,10 @@ const BEAM_LENGTH: float = 18.0
 const BEAM_TURN: float = 0.45
 ## Gulls roost after dark.
 const NIGHT_HIDE: float = 0.5
+## At the golden dusk the lamps are this share of their night strength, and the
+## lighthouse beam this share of its night brightness (faint against the sunset).
+const DUSK_LAMPS: float = 0.7
+const DUSK_BEAM: float = 0.15
 ## The prevailing wind blows in off the sea; grass and gorse lean away from it (local u, z).
 const WIND: Vector2 = Vector2(-0.72, 0.69)
 
@@ -218,6 +222,8 @@ var _pool_material: StandardMaterial3D
 var _pool_soup: NeighbourhoodGround.Soup
 var _night: float = 0.0
 var _late: float = 0.0
+## 0 through the golden dusk, 1 once the sun has gone (set_night).
+var _dark: float = 1.0
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
 
@@ -1911,10 +1917,15 @@ func boat_pose(seconds: float) -> Dictionary:
 
 # --- motion and time of day -------------------------------------------------------
 
-## 0 by day, 1 from dusk; `late` rises after the shop closes.
-func set_night(level: float, late: float) -> void:
+## 0 by day, 1 from dusk; `late` rises after the shop closes; `dark` is 0 through the
+## golden dusk and 1 once the sun has gone (DayNightView.street_dark). At dusk the sea
+## takes the sunset and the sun glitters on it, the festoons and path lanterns are just
+## on and the lighthouse lamp is lit with its beam faint; by night the beam sweeps, the
+## lamps are full and the chalk catches the moon.
+func set_night(level: float, late: float, dark: float = 1.0) -> void:
 	_night = level
 	_late = late
+	_dark = dark
 	_apply_night()
 
 
@@ -1925,20 +1936,24 @@ func is_lit() -> bool:
 func _apply_night() -> void:
 	if root == null:
 		return
-	_glow_material.set_shader_parameter(&"level", _night)
-	_boat_glow.set_shader_parameter(&"level", _night)
-	_glass_material.emission_energy_multiplier = _night * 2.2
-	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
-	_pools.visible = _night > 0.05
+	# The lamps come on at dusk a little short of full, and fill in with the dark.
+	var lamps: float = _night * lerpf(DUSK_LAMPS, 1.0, _dark)
+	var night: float = _night * _dark
+	_glow_material.set_shader_parameter(&"level", lamps)
+	_boat_glow.set_shader_parameter(&"level", lamps)
+	_glass_material.emission_energy_multiplier = lamps * 2.2
+	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, lamps)
+	_pools.visible = lamps > 0.05
 	_glass_material.albedo_color = Color.WHITE
-	_rock_material.albedo_color = Color.WHITE.lerp(skin.moonlit, _night)
-	_beam_material.albedo_color = Color(skin.lamp_glow, 0.2 * _night)
+	_rock_material.albedo_color = Color.WHITE.lerp(skin.moonlit, night)
+	_beam_material.albedo_color = Color(skin.lamp_glow, 0.2 * _night * lerpf(DUSK_BEAM, 1.0, _dark))
 	beam.visible = _night > 0.01
 	_boat_lamp.visible = _night > 0.01
 	for gull: Node3D in gulls:
 		gull.visible = _late < NIGHT_HIDE
 	sea_material.set_shader_parameter(&"dusk", _night * (1.0 - _late))
 	sea_material.set_shader_parameter(&"moon", _night * _late)
+	sea_material.set_shader_parameter(&"sunset", _night * (1.0 - _dark))
 	_applied_at = -1.0
 	apply(_seconds)
 
@@ -1957,8 +1972,8 @@ func apply(seconds: float) -> void:
 	var basis: Basis = Basis(Vector3.UP, float(pose["heading"])) * Basis(Vector3.RIGHT, float(pose["roll"])) * Basis(Vector3.BACK, float(pose["pitch"]))
 	boat.transform = Transform3D(basis, Vector3(at.x, sea_y() + 0.02 + float(pose["bob"]), at.y))
 	var lights: PackedVector4Array = PackedVector4Array([
-		Vector4((_lamp_on_sea.x + _lamp_on_sea.y) * SEA_SCALE, -waterline.signed(_lamp_on_sea) * SEA_SCALE, 0.8 * _night, 0.0),
-		Vector4((at.x + at.y) * SEA_SCALE, (-waterline.signed(at) + 0.6) * SEA_SCALE, 0.45 * _night, 0.0), Vector4.ZERO, Vector4.ZERO])
+		Vector4((_lamp_on_sea.x + _lamp_on_sea.y) * SEA_SCALE, -waterline.signed(_lamp_on_sea) * SEA_SCALE, 0.8 * _night * _dark, 0.0),
+		Vector4((at.x + at.y) * SEA_SCALE, (-waterline.signed(at) + 0.6) * SEA_SCALE, 0.45 * _night * _dark, 0.0), Vector4.ZERO, Vector4.ZERO])
 	sea_material.set_shader_parameter(&"lights", lights)
 	beam.transform = Transform3D(Basis(Vector3.UP, seconds * BEAM_TURN), _lamp)
 	for index: int in gulls.size():
@@ -1973,4 +1988,8 @@ func apply(seconds: float) -> void:
 ## What the cliff shows now, for tests and captures.
 func capture_state() -> Dictionary:
 	return {"drop": skin.drop, "coast_points": coast.points.size(), "rail_posts": rail_points.size(), "gulls": gulls.size(),
-		"stacks": stacks.size(), "beam": beam != null and beam.visible, "night": _night, "late": _late}
+		"stacks": stacks.size(), "beam": beam != null and beam.visible, "night": _night, "late": _late, "dark": _dark,
+		"beam_alpha": _beam_material.albedo_color.a if _beam_material != null else 0.0,
+		"sunset": float(sea_material.get_shader_parameter(&"sunset")) if sea_material != null else 0.0,
+		"lamps": float(_glow_material.get_shader_parameter(&"level")) if _glow_material != null else 0.0,
+		"moonlit": _rock_material.albedo_color.is_equal_approx(skin.moonlit) if _rock_material != null else false}
