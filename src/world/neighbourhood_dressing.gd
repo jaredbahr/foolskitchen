@@ -111,6 +111,9 @@ var _frame: Transform3D = Transform3D.IDENTITY
 var _outward: Vector3 = Vector3.FORWARD
 var _tangent: Vector3 = Vector3.RIGHT
 var _reserve: AABB
+## The terrace's paved block beside and behind the lot (#600), street-local (u, z); empty
+## on a street without a terrace.
+var _paved: Rect2 = Rect2()
 var _local_reserve: AABB
 var _near_pavement: AABB
 var _road: AABB
@@ -184,6 +187,8 @@ var _forest: NeighbourhoodForest
 var _stand_states: Dictionary[StringName, int] = {}
 ## Where the street's people walk (their feet): the paving, or a forest track.
 var _walk_y: float = 0.055
+## Each neighbour's own bulbs (#600), by id, for the ones that have any.
+var _neighbour_lamps: Dictionary[StringName, MeshInstance3D] = {}
 
 
 func _init() -> void:
@@ -323,6 +328,7 @@ func rebuild() -> void:
 	else:
 		_build_kerbs(road_box.size.x, count)
 		_build_buildings()
+		_build_yard_fronts(built)
 		_build_ground()
 	_ensure_actors()
 	_build_routes()
@@ -408,6 +414,7 @@ func _clear_static() -> void:
 	_furniture.clear()
 	_neighbours.clear()
 	_neighbour_plans.clear()
+	_neighbour_lamps.clear()
 	_crowns.clear()
 	_building_signs.clear()
 	_shop_doors.clear()
@@ -423,6 +430,7 @@ func _clear_static() -> void:
 	_outward = Vector3.FORWARD
 	_tangent = Vector3.RIGHT
 	_reserve = AABB()
+	_paved = Rect2()
 	_local_reserve = AABB()
 	_near_pavement = AABB()
 	_road = AABB()
@@ -817,6 +825,7 @@ func _build_buildings() -> void:
 	builder.lawn_shadow = (ground_skin.lawn if ground_skin != null else GroundSkin.standard().lawn).darkened(0.3)
 	builder.plan()
 	_building_boxes = builder.footprints()
+	_paved = NeighbourhoodTerrace.paved_block(builder)
 	_lot_boxes = builder.lots()
 	_building_casters = builder.casters()
 	_building_signs = builder.signs()
@@ -838,7 +847,11 @@ func _build_buildings() -> void:
 		if not _window_cache.has(key):
 			# The window meshes were dropped on their own: regenerate them without the buildings.
 			for plan: NeighbourhoodBuildings.Plan in builder.plans:
-				builder.build_mesh(plan).free()
+				if String(plan.neighbour_id).is_empty():
+					builder.build_mesh(plan).free()
+				else:
+					for part: MeshInstance3D in builder.build_parts(plan):
+						part.free()
 			_store_windows(builder, key)
 		_add_windows(_window_cache[key])
 		_collect_neighbours(builder)
@@ -857,6 +870,80 @@ func _build_buildings() -> void:
 	_store_windows(builder, key)
 	_add_windows(_window_cache[key])
 	_collect_neighbours(builder)
+
+
+## On a terrace (#600): where the lot's side strips meet the street, a wall and gate just
+## outside the lot, across every front cell nobody has built on yet, so the row of
+## frontages runs on from the shop to next door. A strip the player builds over loses
+## its wall (the street rebuilds when the built cells change).
+func _build_yard_fronts(built: Array[Vector2i]) -> void:
+	if not street_set.has_terrace() or not build_error.is_empty():
+		return
+	var inverse: Transform3D = _frame.affine_inverse()
+	var half: float = GridMath.CELL_SIZE * 0.5
+	var taken: Array[Vector2] = []
+	for cell: Vector2i in built:
+		var centre: Vector3 = inverse * GridMath.cell_to_world(cell)
+		# The front two rows: the shop's own frontage and the cells just inside it.
+		if centre.z > _shift - GridMath.CELL_SIZE * 2.0:
+			taken.append(Vector2(centre.x - half, centre.x + half))
+	taken.sort_custom(func(a: Vector2, c: Vector2) -> bool: return a.x < c.x)
+	var free: Array[Vector2] = []
+	var cursor: float = _local_reserve.position.x
+	for span: Vector2 in taken:
+		if span.x > cursor + 0.01:
+			free.append(Vector2(cursor, span.x))
+		cursor = maxf(cursor, span.y)
+	if _local_reserve.end.x > cursor + 0.01:
+		free.append(Vector2(cursor, _local_reserve.end.x))
+	var pen: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	var render: Color = street_set.stone.lerp(street_set.trim, 0.55)
+	var t: float = NeighbourhoodTerrace.FRONT_WALL_T
+	for span: Vector2 in free:
+		var width: float = span.y - span.x
+		if width < GridMath.CELL_SIZE - 0.01:
+			continue
+		var box: AABB = _frame * AABB(Vector3(span.x, 0.0, _shift), Vector3(width, NeighbourhoodTerrace.FRONT_WALL_H, t))
+		if not _clear_front(box):
+			continue
+		# A single gate into a narrow passage, a double gate into a wider yard.
+		var gate: float = minf(width - 0.3, 0.5 if width < 2.0 else 1.0)
+		NeighbourhoodTerrace.wall_run(pen, street_set, span.x, span.y, _shift, t, NeighbourhoodTerrace.FRONT_WALL_H,
+			(span.x + span.y) * 0.5, gate, render)
+	if pen.soup.is_empty():
+		return
+	var mesh: MeshInstance3D = MeshInstance3D.new()
+	mesh.name = "YardFronts"
+	mesh.mesh = pen.soup.to_mesh()
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	material.disable_receive_shadows = true
+	mesh.material_override = material
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.transform = _frame
+	_groups["Buildings"].add_child(mesh)
+	_static_meshes.append(mesh)
+
+
+## The terrace's shared yard paving (#600): the street's stone, lifted toward its pavement,
+## so the yards read as the buildings' own ground and not the promenade.
+func _paved_colour() -> Color:
+	var pavement: Color = ground_skin.pavement if ground_skin != null and ground_skin.pavement.a > 0.0 else street_set.path
+	return street_set.stone.lerp(pavement, 0.62)
+
+
+## A front wall stays off the shop's door approaches and its own paving.
+func _clear_front(bounds: AABB) -> bool:
+	for excluded: AABB in _native_pavement:
+		if NeighbourhoodMeshBatch.xz_intersects(bounds, excluded):
+			return false
+	for excluded: AABB in _door_approaches:
+		if NeighbourhoodMeshBatch.xz_intersects(bounds, excluded):
+			return false
+	return true
 
 
 ## Gathers each named terrace neighbour's parts under its own node (#596):
@@ -882,6 +969,15 @@ func _collect_neighbours(builder: NeighbourhoodBuildings) -> void:
 				mesh = Node3D.new()
 			mesh.name = String(part[1])
 			node.add_child(mesh)
+		# Its bulbs and lit screens (#600) light with the night and go dark when it closes.
+		var lamps: MeshInstance3D = buildings.get_node_or_null(NodePath(plan.id + "_Lamps")) as MeshInstance3D
+		if lamps != null:
+			buildings.remove_child(lamps)
+			lamps.transform = inverse
+			lamps.name = "Lamps"
+			lamps.material_override = _lit_material()
+			node.add_child(lamps)
+			_neighbour_lamps[plan.neighbour_id] = lamps
 		var board: Dictionary = NeighbourhoodTerrace.sign_board(plan)
 		if not board.is_empty():
 			var ink: Color = plan.style.sign_ink
@@ -971,6 +1067,29 @@ func _show_neighbour(id: StringName) -> void:
 	var for_sale: bool = neighbour_state(id) == NeighbourState.FOR_SALE
 	(node.get_node(^"Trade") as Node3D).visible = not for_sale
 	(node.get_node(^"ForSale") as Node3D).visible = for_sale
+	# A closed arcade's bulb sign goes dark (#600): no bulbs, and its name is only paint.
+	var sign: Label3D = node.get_node_or_null(^"Sign") as Label3D
+	if sign != null:
+		sign.shaded = for_sale or _neighbour_plans[id].form != ShopStyle.Form.ARCADE
+	_light_neighbour(id)
+
+
+## A neighbour's bulbs follow the night while it trades and stay dark while it is closed.
+func _light_neighbour(id: StringName) -> void:
+	var lamps: MeshInstance3D = _neighbour_lamps.get(id, null)
+	if lamps == null:
+		return
+	var level: float = 0.0 if neighbour_state(id) == NeighbourState.FOR_SALE else _night
+	lamps.visible = level > 0.01
+	var material: StandardMaterial3D = lamps.material_override as StandardMaterial3D
+	material.albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
+	material.emission_energy_multiplier = level * WINDOW_ENERGY
+
+
+## Whether a neighbour's bulbs are lit now (false when it has none), for tests and tools.
+func neighbour_lit(id: StringName) -> bool:
+	var lamps: MeshInstance3D = _neighbour_lamps.get(id, null)
+	return lamps != null and lamps.visible and (lamps.material_override as StandardMaterial3D).emission_energy_multiplier > 0.0
 
 
 func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
@@ -984,6 +1103,19 @@ func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
 	_window_cache[key] = glows
 
 
+## A fresh unlit, emissive material for lit windows and bulbs, dark until the night lights it.
+static func _lit_material() -> StandardMaterial3D:
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = WINDOW_DAY
+	material.emission_enabled = true
+	material.emission = WINDOW_NIGHT
+	material.emission_energy_multiplier = 0.0
+	material.disable_receive_shadows = true
+	return material
+
+
 ## The warm window quads, one emissive unlit mesh per light tier (#440). Their materials belong
 ## to this dressing so the night level never leaks into another street; the meshes are shared.
 func _add_windows(entries: Array) -> void:
@@ -993,14 +1125,7 @@ func _add_windows(entries: Array) -> void:
 		var mesh: ArrayMesh = entry[1] as ArrayMesh
 		if mesh == null:
 			continue
-		var material: StandardMaterial3D = StandardMaterial3D.new()
-		material.vertex_color_use_as_albedo = true
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = WINDOW_DAY
-		material.emission_enabled = true
-		material.emission = WINDOW_NIGHT
-		material.emission_energy_multiplier = 0.0
-		material.disable_receive_shadows = true
+		var material: StandardMaterial3D = _lit_material()
 		var node: MeshInstance3D = MeshInstance3D.new()
 		node.name = String(entry[0])
 		node.mesh = mesh
@@ -1044,6 +1169,9 @@ func _build_ground() -> void:
 	_light_shift = _compute_light_shift()
 	var key: Array = [_frame, _local_reserve, _shift, _maximum_lot, _building_boxes, _lot_boxes, _shadow_casters, _light_shift,
 			ground_skin.signature() if ground_skin != null else "standard", has_shore()]
+	if _paved.has_area():
+		key.append(_paved)
+		key.append(_paved_colour())
 	if key == _ground_key and ground_root.get_child_count() > 0:
 		ground_root.transform = _frame
 		return
@@ -1064,6 +1192,8 @@ func _build_ground() -> void:
 	builder.shadow_casters = _shadow_casters
 	builder.light_shift = _light_shift
 	builder.shore = has_shore()
+	builder.paved = _paved
+	builder.paved_colour = _paved_colour()
 	var rect: Rect2 = world_rect()
 	var centre: Vector3 = _frame.affine_inverse() * Vector3(rect.get_center().x, 0.0, rect.get_center().y)
 	builder.world_centre = Vector2(centre.x, centre.z)
@@ -1592,6 +1722,8 @@ func _apply_night() -> void:
 		_window_nodes[index].visible = level > 0.01
 		_window_materials[index].albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
 		_window_materials[index].emission_energy_multiplier = level * WINDOW_ENERGY
+	for id: StringName in _neighbour_lamps:
+		_light_neighbour(id)
 	if _bulb_material != null:
 		_bulb_material.emission_energy_multiplier = _night * LAMP_BULB_ENERGY
 		_bulb_material.albedo_color = LAMP_DAY.lerp(LAMP_NIGHT, _night)

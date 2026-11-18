@@ -22,6 +22,17 @@ const BOARD_TOP_MAX: float = 1.64
 ## The for-sale board on its post: the face's centre height and how far out it stands.
 const SALE_POST_Y: float = 1.02
 const SALE_POST_Z: float = 0.46
+## The terrace stands wall to wall with the lot (#600): the next-door walls sit this far
+## outside the maximum lot, just enough that their eaves (and bounds) clear it.
+const SNUG: float = NeighbourhoodBuildings.EAVE + 0.04
+## The walled back yards behind the shops that share the lot's row (#600).
+const YARD_WALL_H: float = 0.62
+const YARD_WALL_T: float = 0.1
+const YARD_GATE: float = 0.5
+## The lot's own side strips meet the street with a taller wall and gate (#600), just
+## outside the lot on the paving, so the frontage runs on unbroken from door to door.
+const FRONT_WALL_H: float = 0.92
+const FRONT_WALL_T: float = 0.08
 
 var b: NeighbourhoodBuildings
 
@@ -42,9 +53,11 @@ func plan_rows() -> void:
 	for side_index: int in 2:
 		var side: float = -1.0 if side_index == 0 else 1.0
 		var row: Array[ShopStyle] = street.terrace_left if side_index == 0 else street.terrace_right
-		var edge: float = b.local_reserve.position.x - NeighbourhoodBuildings.GAP if side < 0.0 \
-			else b.local_reserve.end.x + NeighbourhoodBuildings.GAP
+		var edge: float = b.local_reserve.position.x - SNUG if side < 0.0 else b.local_reserve.end.x + SNUG
 		var recent_h: Array[int] = []
+		# The shops that run on unbroken from the lot share its back line: each gets a
+		# walled yard back to it, so no grass shows between the lot and the row.
+		var joined: bool = true
 		var recent_roof: Array[int] = []
 		for slot: int in row.size():
 			var style: ShopStyle = row[slot]
@@ -66,10 +79,16 @@ func plan_rows() -> void:
 			p.xf = Transform3D(Basis.IDENTITY, Vector3(centre, 0.0, b.shift - NeighbourhoodBuildings.FRONT_INSET))
 			var toward_lot: int = 1 if side < 0.0 else 2
 			var outward: int = 2 if side < 0.0 else 1
-			var before_gap: float = _gap(row[slot - 1], style) if slot > 0 else NeighbourhoodBuildings.GAP
+			# Next door's wall facing the lot is a blank party wall (#600).
+			var before_gap: float = _gap(row[slot - 1], style) if slot > 0 else 0.0
 			p.exposed = 0
 			if before_gap > NeighbourhoodBuildings.ROW_GAP + 0.01:
 				p.exposed |= toward_lot
+			joined = joined and before_gap <= NeighbourhoodBuildings.ROW_GAP + 0.01 \
+				and (p.form == ShopStyle.Form.SHOP or p.form == ShopStyle.Form.ARCADE)
+			var back: float = b.local_reserve.position.z - p.xf.origin.z
+			if joined and back < -p.depth - 0.4:
+				p.yard_back = back
 			if slot == row.size() - 1 or next_gap > NeighbourhoodBuildings.ROW_GAP + 0.01:
 				p.exposed |= outward
 			p.bounds = b._bounds_of(p)
@@ -369,6 +388,94 @@ func _machines(pen: NeighbourhoodBuildings.Pen, p: NeighbourhoodBuildings.Plan, 
 	for fin: Vector2 in [Vector2(-0.16, 0.0), Vector2(0.16, 0.0), Vector2(0.0, -0.16), Vector2(0.0, 0.16)]:
 		pen.box(at + Vector3(fin.x - 0.03 if fin.x != 0.0 else -0.012, 0.08, fin.y - 0.03 if fin.y != 0.0 else -0.012),
 			at + Vector3(fin.x + 0.03 if fin.x != 0.0 else 0.012, 0.22, fin.y + 0.03 if fin.y != 0.0 else 0.012), street.signal_red)
+
+
+# --- the back yards (#600) -----------------------------------------------------
+
+## A walled back yard behind a shop that shares the lot's row, from its back wall to the
+## lot's back line: rendered walls in the shop's own colour with a coping, a plank gate
+## in the back wall, a bin and a stack of crates. Authored in building-local space.
+func yard(pen: NeighbourhoodBuildings.Pen, p: NeighbourhoodBuildings.Plan) -> void:
+	if p.yard_back >= 0.0:
+		return
+	var street: StreetSet = _street()
+	var hw: float = p.width * 0.5
+	var z0: float = p.yard_back
+	var z1: float = -p.depth
+	var render: Color = p.wall.darkened(0.06)
+	var coping: Color = street.trim.darkened(0.04)
+	var t: float = YARD_WALL_T
+	var h: float = YARD_WALL_H
+	# The gate sits off-centre, the side picked from the shop's hash.
+	var gate_side: float = -1.0 if b._r(p.seed_value, 71) < 0.5 else 1.0
+	var gate_x: float = gate_side * (hw * 0.45)
+	# Side walls run back from the shop's corners; the back wall closes them, gate between.
+	for x: float in [-hw, hw - t]:
+		wall_box(pen, street, Vector3(x, 0.0, z0), Vector3(x + t, h, z1), render, coping)
+	wall_run(pen, street, -hw, hw, z0, t, h, gate_x, YARD_GATE, render)
+	# A wheelie bin in the far corner away from the gate, crates against the shop's back.
+	var bin_tone: Color = street.bin_colors[b._pick(street.bin_colors.size(), p.seed_value, 72)] \
+		if not street.bin_colors.is_empty() else street.metal
+	var bx: float = -gate_side * (hw - t - 0.2)
+	var bz: float = z0 + t + 0.2
+	pen.box(Vector3(bx - 0.14, 0.0, bz - 0.15), Vector3(bx + 0.14, 0.4, bz + 0.15), bin_tone)
+	pen.box(Vector3(bx - 0.16, 0.4, bz - 0.17), Vector3(bx + 0.16, 0.45, bz + 0.17), bin_tone.darkened(0.18))
+	var cx: float = gate_side * (hw - t - 0.26)
+	var cz: float = z1 - 0.24
+	var stack: int = 1 + int(b._r(p.seed_value, 73) * 3.0)
+	for level: int in stack:
+		var lean: float = 0.03 * float(level % 2) * gate_side
+		var crate: Color = street.wood.lightened(0.08) if level % 2 == 0 else street.wood.darkened(0.04)
+		var y: float = 0.2 * float(level)
+		pen.box(Vector3(cx - 0.17 + lean, y, cz - 0.15), Vector3(cx + 0.17 + lean, y + 0.19, cz + 0.15), crate)
+		pen.box(Vector3(cx - 0.17 + lean, y + 0.07, cz + 0.15), Vector3(cx + 0.17 + lean, y + 0.11, cz + 0.16), crate.darkened(0.2))
+
+
+## A rendered wall from x0 to x1 (its back face at z, `t` thick toward +z, `h` high) with
+## a plank gate `gate` wide centred at gate_x (no gate when `gate` is 0). In the pen's space.
+static func wall_run(pen: NeighbourhoodBuildings.Pen, street: StreetSet, x0: float, x1: float, z: float, t: float, h: float,
+		gate_x: float, gate: float, render: Color) -> void:
+	var coping: Color = street.trim.darkened(0.04)
+	if gate <= 0.0:
+		wall_box(pen, street, Vector3(x0, 0.0, z), Vector3(x1, h, z + t), render, coping)
+		return
+	var lo: float = gate_x - gate * 0.5
+	var hi: float = gate_x + gate * 0.5
+	wall_box(pen, street, Vector3(x0, 0.0, z), Vector3(lo, h, z + t), render, coping)
+	wall_box(pen, street, Vector3(hi, 0.0, z), Vector3(x1, h, z + t), render, coping)
+	# The gate: vertical planks a touch shorter than the wall, a ledge across them, and
+	# a centre post when it is a double gate.
+	var planks: int = maxi(3, int(round(gate / 0.1)))
+	for index: int in planks:
+		var p0: float = lo + 0.02 + (gate - 0.04) * float(index) / float(planks)
+		var p1: float = lo + 0.02 + (gate - 0.04) * float(index + 1) / float(planks) - 0.008
+		var tone: Color = street.wood if index % 2 == 0 else street.wood.darkened(0.06)
+		pen.box(Vector3(p0, 0.03, z + t * 0.3), Vector3(p1, h - 0.06, z + t * 0.6), tone)
+	pen.box(Vector3(lo + 0.02, h * 0.45, z + t * 0.6), Vector3(hi - 0.02, h * 0.45 + 0.05, z + t * 0.8), street.wood.darkened(0.2))
+	if gate > 0.8:
+		pen.box(Vector3(gate_x - 0.012, 0.03, z + t * 0.6), Vector3(gate_x + 0.012, h - 0.06, z + t * 0.82), street.wood.darkened(0.25))
+
+
+## One stretch of rendered wall: the render, a coping along the top and a stone plinth.
+static func wall_box(pen: NeighbourhoodBuildings.Pen, street: StreetSet, lo: Vector3, hi: Vector3, render: Color, coping: Color) -> void:
+	pen.box(lo, Vector3(hi.x, hi.y - 0.04, hi.z), render)
+	pen.box(Vector3(lo.x - 0.015, hi.y - 0.04, lo.z - 0.015), Vector3(hi.x + 0.015, hi.y, hi.z + 0.015), coping)
+	pen.box(Vector3(lo.x - 0.01, 0.0, lo.z - 0.01), Vector3(hi.x + 0.01, 0.07, hi.z + 0.01), street.stone)
+
+
+## The paved ground the terrace shares with the lot (#600), street-local (u, z): from the
+## outer end of each row's walled yards (or the lot's edge) across, and from the lot's
+## back line to the street. Empty without a terrace.
+static func paved_block(builder: NeighbourhoodBuildings) -> Rect2:
+	if builder.street == null or not builder.street.has_terrace():
+		return Rect2()
+	var lo: float = builder.local_reserve.position.x - SNUG
+	var hi: float = builder.local_reserve.end.x + SNUG
+	for p: NeighbourhoodBuildings.Plan in builder.plans:
+		if p.yard_back < 0.0:
+			lo = minf(lo, p.xf.origin.x - p.width * 0.5)
+			hi = maxf(hi, p.xf.origin.x + p.width * 0.5)
+	return Rect2(lo, builder.local_reserve.position.z, hi - lo, builder.shift - builder.local_reserve.position.z)
 
 
 # --- the stock a SHOP form sets out (#596) ------------------------------------

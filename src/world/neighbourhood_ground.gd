@@ -25,6 +25,14 @@ const LANE_Y: float = -0.030
 const SHADOW_Y: float = -0.022
 const PLANT_Y: float = -0.032
 const SHADOW_LAWN_Y: float = -0.029
+## A terrace's shared paving (#600) lies over the lawn and its shadows, its joints and
+## then its own baked shadows above it, all under the shop floor.
+const PAVED_Y: float = -0.020
+const PAVED_JOINT_Y: float = -0.013
+const PAVED_SHADOW_Y: float = -0.006
+## The paving's flags match the shop grid's cells; the joint between them.
+const PAVED_FLAG: float = 0.5
+const PAVED_JOINT: float = 0.024
 const BLOCK_V: float = 8.105
 ## The back lane runs this far behind the maximum lot's back edge.
 const LANE_GAP: float = 3.1
@@ -113,6 +121,10 @@ var skin: GroundSkin
 ## True when a beach lies behind the back lane (#588): the far hedge, the meadow's
 ## planting and the tree line stop at the lane, and NeighbourhoodShore takes over.
 var shore: bool = false
+## The ground a terrace shares with the lot (#600): paved, not lawn. Empty on other streets.
+var paved: Rect2 = Rect2()
+## Its flags' colour; transparent takes a shade under the street's own pavement.
+var paved_colour: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 var _soup: Soup = Soup.new()
 var _shadows: Soup = Soup.new()
@@ -164,6 +176,7 @@ func build() -> Array[MeshInstance3D]:
 	_plan_exclusions()
 	_patches(base)
 	_lawn_and_lane(base)
+	_paved_block(base)
 	_hedges()
 	_scatter()
 	_forest_edge()
@@ -216,6 +229,8 @@ func _plan_exclusions() -> void:
 		local_reserve.size.x, shift - local_reserve.position.z)
 	# The side gaps between the lot and its neighbours stay clear too (1.4 m each).
 	_blocked.append(lot.grow(0.7))
+	if paved.has_area():
+		_blocked.append(paved.grow(0.7))
 	for box: AABB in buildings:
 		_blocked.append(Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(0.4))
 	for box: AABB in lots:
@@ -277,6 +292,12 @@ func _baked_shadows(base: Soup, lawn: Rect2) -> void:
 			points.assign(piece)
 			if points.size() >= 3:
 				base.star(_centroid(points), points, SHADOW_LAWN_Y, tone)
+		if paved.has_area():
+			for piece: PackedVector2Array in Geometry2D.intersect_polygons(hull, PackedVector2Array(_rect_points(paved, 0.0))):
+				var points: Array[Vector2] = []
+				points.assign(piece)
+				if points.size() >= 3:
+					base.star(_centroid(points), points, PAVED_SHADOW_Y, _paved_tone().darkened(0.3))
 
 
 func _centroid(points: Array[Vector2]) -> Vector2:
@@ -320,6 +341,37 @@ func _lawn_and_lane(base: Soup) -> void:
 		WORLD_HALF * 2.0 - 1.0, 1.24)
 	base.flat(_rect_points(lane, 0.0), LANE_Y, _lane_edge)
 	base.flat(_rect_points(lane.grow_individual(0.0, -0.1, 0.0, -0.1), 0.0), LANE_Y + 0.004, _lane)
+
+
+## The colour of a terrace's shared paving: a shade under the street's own pavement.
+func _paved_tone() -> Color:
+	if paved_colour.a > 0.0:
+		return paved_colour
+	var pavement: Color = skin.pavement if skin != null and skin.pavement.a > 0.0 else _lane
+	return pavement.darkened(0.07)
+
+
+## The terrace's shared ground (#600): one paved block over the lot and the walled yards
+## beside it, in flags on the shop grid's lines (the block's edges are cell lines).
+func _paved_block(base: Soup) -> void:
+	if not paved.has_area():
+		return
+	var tone: Color = _paved_tone()
+	base.flat(_rect_points(paved, 0.0), PAVED_Y, tone)
+	var joint: Color = tone.darkened(0.1)
+	var half: float = PAVED_JOINT * 0.5
+	# Courses run along the street; each course's joints are offset half a flag.
+	var rows: int = int(round(paved.size.y / PAVED_FLAG))
+	for row: int in range(1, rows):
+		var z: float = paved.end.y - PAVED_FLAG * float(row)
+		base.flat(_rect_points(Rect2(paved.position.x, z - half, paved.size.x, PAVED_JOINT), 0.0), PAVED_JOINT_Y, joint)
+	for row: int in rows:
+		var z1: float = paved.end.y - PAVED_FLAG * float(row)
+		var z0: float = maxf(paved.position.y, z1 - PAVED_FLAG)
+		var x: float = paved.position.x + (PAVED_FLAG * 0.5 if row % 2 == 1 else PAVED_FLAG)
+		while x < paved.end.x - 0.05:
+			base.flat(_rect_points(Rect2(x - half, z0, PAVED_JOINT, z1 - z0), 0.0), PAVED_JOINT_Y, joint)
+			x += PAVED_FLAG
 
 
 ## The verge skips the shop's own frontage and its neighbours' footprints.

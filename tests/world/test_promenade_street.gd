@@ -1,7 +1,9 @@
 extends TestCase
 ## The seaside promenade (#596): a car-free street front with a terrace of beach
 ## shops. The promenade preset has no traffic; its named neighbours exist and can be
-## shown closed and for sale; and the starter street is exactly what it was.
+## shown closed and for sale; and the starter street is exactly what it was. The
+## terrace stands wall to wall with the lot without ever touching it, and a closed
+## arcade's bulb sign goes dark (#600).
 
 const DRESSING: PackedScene = preload("res://src/world/neighbourhood_dressing.tscn")
 const PROMENADE: String = "res://data/streets/promenade.tres"
@@ -182,6 +184,85 @@ func test_a_neighbour_can_be_shown_closed_and_for_sale() -> void:
 	assert_true(dressing.set_neighbour_state(&"surf_hire", NeighbourhoodDressing.NeighbourState.OCCUPIED))
 	assert_false((dressing.neighbour(&"surf_hire").get_node(^"ForSale") as Node3D).visible, "open again")
 	assert_false(dressing.set_neighbour_state(&"no_such_shop", NeighbourhoodDressing.NeighbourState.FOR_SALE), "an unknown id is refused")
+	dressing.get_parent().remove_child(dressing)
+	dressing.free()
+
+
+## The lot in the dressing's space (x, z), as the shop view hands it over: RESERVE in cells.
+func _lot_rect() -> Rect2:
+	return Rect2(Vector2(RESERVE.position) * GridMath.CELL_SIZE, Vector2(RESERVE.size) * GridMath.CELL_SIZE)
+
+
+static func _overlaps(a: Rect2, b: Rect2) -> bool:
+	return a.position.x < b.end.x - 0.0001 and a.end.x > b.position.x + 0.0001 \
+		and a.position.y < b.end.y - 0.0001 and a.end.y > b.position.y + 0.0001
+
+
+static func _xz(node: MeshInstance3D) -> Rect2:
+	var box: AABB = node.global_transform * node.get_aabb()
+	return Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
+
+
+func test_no_neighbour_overlaps_the_maximum_lot_and_the_next_door_shops_stand_wall_to_wall() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _dressing(load(PROMENADE) as StreetPreset)
+	assert_eq(dressing.build_error, "")
+	var lot: Rect2 = _lot_rect()
+	# The lot here reaches past the shop on every side, like a lease with room to expand.
+	for box: AABB in dressing.building_boxes_in_view():
+		assert_false(_overlaps(Rect2(box.position.x, box.position.z, box.size.x, box.size.z), lot),
+			"a building's box clears the maximum lot: %s" % box)
+	# Every mesh a neighbour owns (its shell and walled yard, its stock, its for-sale front and
+	# its bulbs) and the lot's own front walls stay off the maximum lot too.
+	var meshes: Array[MeshInstance3D] = []
+	for id: StringName in dressing.neighbour_ids():
+		for node: Node in dressing.neighbour(id).find_children("*", "MeshInstance3D", true, false):
+			meshes.append(node as MeshInstance3D)
+	var fronts: MeshInstance3D = dressing.find_child("YardFronts", true, false) as MeshInstance3D
+	assert_not_null(fronts, "the lot's side strips meet the promenade with a wall and gate")
+	if fronts != null:
+		meshes.append(fronts)
+	for mesh: MeshInstance3D in meshes:
+		if mesh.mesh != null:
+			assert_false(_overlaps(_xz(mesh), lot), "%s clears the maximum lot" % dressing.get_path_to(mesh))
+	# Wall to wall: each next-door shop's party wall stands within a hand's width of the lot's edge.
+	for id: StringName in [&"surf_hire", &"beach_goods"]:
+		var info: Dictionary = dressing.neighbour_info(id)
+		var facade: Transform3D = info["facade"]
+		var inner: float = facade.origin.x - float(info["side"]) * float(info["width"]) * 0.5
+		var edge: float = lot.position.x if int(info["side"]) < 0 else lot.end.x
+		var gap: float = (edge - inner) * -float(info["side"])
+		assert_true(gap > 0.0 and gap < 0.2, "%s backs right onto the lot (gap %.3f m)" % [id, gap])
+	# The starter street has no terrace, so no front walls either.
+	var starter: NeighbourhoodDressing = _dressing(StreetPreset.starter())
+	assert_null(starter.find_child("YardFronts", true, false), "the starter street builds no yard walls")
+	for node: NeighbourhoodDressing in [dressing, starter]:
+		node.get_parent().remove_child(node)
+		node.free()
+
+
+func test_a_closed_arcade_s_bulb_sign_goes_dark() -> void:
+	await _host()
+	var dressing: NeighbourhoodDressing = _dressing(load(PROMENADE) as StreetPreset)
+	var arcade: Node3D = dressing.neighbour(&"arcade")
+	assert_not_null(arcade, "the promenade has its arcade")
+	var sign: Label3D = arcade.get_node_or_null(^"Sign") as Label3D
+	assert_not_null(arcade.get_node_or_null(^"Lamps"), "the arcade has its own bulbs")
+	assert_false(dressing.neighbour_lit(&"arcade"), "by day the bulbs are off")
+	dressing.set_night(1.0)
+	assert_true(dressing.neighbour_lit(&"arcade"), "at night an open arcade's bulbs are lit")
+	assert_false(sign.shaded, "and its name glows")
+	assert_true(dressing.set_neighbour_state(&"arcade", NeighbourhoodDressing.NeighbourState.FOR_SALE))
+	assert_false(dressing.neighbour_lit(&"arcade"), "closed and for sale: the bulbs are dark")
+	assert_true(sign.shaded, "and its name is only paint in the dark")
+	# Dark through a rebuild of the street, and lit again when it reopens.
+	dressing.street_set = (load(PROMENADE) as StreetPreset).buildings
+	dressing.rebuild()
+	assert_false(dressing.neighbour_lit(&"arcade"), "still dark after a rebuild")
+	assert_true((dressing.neighbour(&"arcade").get_node(^"Sign") as Label3D).shaded, "its sign too")
+	assert_true(dressing.set_neighbour_state(&"arcade", NeighbourhoodDressing.NeighbourState.OCCUPIED))
+	assert_true(dressing.neighbour_lit(&"arcade"), "reopened, it lights up again")
+	assert_false((dressing.neighbour(&"arcade").get_node(^"Sign") as Label3D).shaded)
 	dressing.get_parent().remove_child(dressing)
 	dressing.free()
 
