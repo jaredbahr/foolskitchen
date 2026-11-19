@@ -70,7 +70,7 @@ func test_catalogue_capture_expectations_include_every_native_card_and_the_waiti
 
 func test_catalogue_review_requires_one_profile_paused_main_and_exact_schedule() -> void:
 	for profile: String in ["rustic", "modern"]:
-		var arguments: PackedStringArray = PackedStringArray(["--catalogue-review=" + profile, "--speed=0", "--frames=90,120"])
+		var arguments: PackedStringArray = PackedStringArray(["--catalogue-review=" + profile, "--speed=0", "--frames=120,150"])
 		var accepted: Dictionary = CAPTURE.catalogue_review_options(arguments)
 		assert_eq(accepted["error"], "")
 		assert_eq(accepted["profile"], StringName(profile))
@@ -79,12 +79,12 @@ func test_catalogue_review_requires_one_profile_paused_main_and_exact_schedule()
 		for extra: String in ["--catalogue-review=rustic", "--catalogue-review=unknown", "--loan-review", "--open", "--fast=1",
 				"--select=owner", "--assign-owner=kitchen", "--f3", "--menu", "--staff", "--settings", "--settings-world",
 				"--hud-layout", "--window-size=1600x900", "--door-queue", "--report", "--build=green", "--paint", "--quarter=0",
-				"--speed=0", "--speed=1", "--frames=90,120", "--frames=120,90", "--scene=res://other.tscn", "--unknown"]:
+				"--speed=0", "--speed=1", "--frames=120,150", "--frames=90,120", "--frames=150,120", "--scene=res://other.tscn", "--unknown"]:
 			var invalid: PackedStringArray = arguments.duplicate()
 			invalid.append(extra)
 			assert_false(String(CAPTURE.catalogue_review_options(invalid)["error"]).is_empty(), extra)
 	for arguments: PackedStringArray in [PackedStringArray(["--catalogue-review"]), PackedStringArray(["--catalogue-review=yes"]),
-			PackedStringArray(["--catalogue-review=rustic", "--speed=0"]), PackedStringArray(["--catalogue-review=modern", "--frames=90,120"])]:
+			PackedStringArray(["--catalogue-review=rustic", "--speed=0"]), PackedStringArray(["--catalogue-review=modern", "--frames=120,150"])]:
 		assert_false(String(CAPTURE.catalogue_review_options(arguments)["error"]).is_empty())
 	assert_eq(CAPTURE.catalogue_review_options(PackedStringArray(["--loan-review", "--speed=0", "--frames=12,90"]))["profile"], &"")
 	assert_false(String(CAPTURE.loan_review_options(PackedStringArray(["--loan-review", "--speed=0", "--frames=12,90", "--catalogue-review=rustic"]))["error"]).is_empty())

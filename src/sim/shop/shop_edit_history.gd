@@ -35,6 +35,8 @@ class Entry extends RefCounted:
 	var to_turns: int = 0
 	var swatch_id: StringName = &""
 	var variant_id: StringName = &""
+	## A sold starter piece (#596) comes back as starter decor on undo.
+	var starter: bool = false
 	var variant_after: StringName = &""
 	## Signed cash the original edit moved (negative = spent).
 	var cash: int = 0
@@ -208,6 +210,7 @@ func sell(item_id: int) -> int:
 	entry.swatch_id = placed.swatch_id
 	entry.paint = placed.paint.copy()
 	entry.variant_id = placed.variant_id
+	entry.starter = placed.starter
 	entry.label = "sell " + _name(item_id)
 	entry.item = _ref(item_id)
 	var refund: int = _editor.sell(item_id)
@@ -433,6 +436,8 @@ func _restore_hung(hung: WallDecor.Hung, anchor: Vector3i, exact: ShopEditor.Exa
 		return false
 	if not _check(_editor.hang(hung.def_id, anchor, exact, hung.swatch_id)):
 		return false
+	if hung.starter:
+		_editor.decor.set_starter(anchor, true)
 	if hung.menu_section != -1:
 		_editor.set_menu_board_section(anchor, hung.menu_section)
 	return true
@@ -812,6 +817,8 @@ func _restore(entry: Entry, exact: ShopEditor.Exact) -> bool:
 	var id: int = _editor.last_item_id
 	entry.item.id = id
 	_refs[id] = entry.item
+	if entry.starter and _grid != null and _grid.item(id) != null:
+		_grid.item(id).starter = true
 	if entry.paint != null and not entry.paint.is_empty():
 		_editor.set_item_look(id, entry.swatch_id, entry.paint)
 	elif not entry.swatch_id.is_empty():

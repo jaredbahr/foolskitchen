@@ -1095,7 +1095,7 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	assert_true((catalogue["dining_failures"] as Dictionary).is_empty())
 	assert_true(catalogue["catalogue_visible"])
 	_assert_catalogue_cards_match_data(catalogue, content)
-	_assert_catalogue_vibe_matches_actual_sources(catalogue, 90)
+	_assert_catalogue_vibe_matches_actual_sources(catalogue, CAPTURE.CATALOGUE_OPEN_FRAME)
 	assert_true(CAPTURE.catalogue_tabs_valid(catalogue, recipe), "the real Buy tabs include Blueprints without an ItemDef room")
 	var blueprint_index: int = -1
 	for index: int in range(catalogue["tabs"].size()):
@@ -1116,14 +1116,14 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 		assert_false(CAPTURE.catalogue_tabs_valid(missing, recipe), "a missing tab must fail")
 	var bad_meter: Dictionary = catalogue["vibe"].duplicate(true)
 	bad_meter["meter"]["caption_bounds"][0] = float(bad_meter["meter"]["panel_bounds"][0]) - 10.0
-	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, 90), "the native meter cannot be clipped out of its panel or scroll viewport")
+	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, CAPTURE.CATALOGUE_OPEN_FRAME), "the native meter cannot be clipped out of its panel or scroll viewport")
 	bad_meter = (catalogue["vibe"] as Dictionary).duplicate(true)
 	bad_meter["meter"]["tooltip"] = String(bad_meter["meter"]["tooltip"]).get_slice("\n", 0)
-	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, 90), "the native tooltip must include the current prestige")
+	assert_false(CAPTURE.catalogue_vibe_valid(bad_meter, CAPTURE.CATALOGUE_OPEN_FRAME), "the native tooltip must include the current prestige")
 	if DisplayServer.get_name() == "headless":
 		assert_false(catalogue["cache"]["supported"])
 		assert_false(catalogue["cache"]["icons_match"])
-		assert_false(CAPTURE.catalogue_review_valid(catalogue, 90, fixture), "headless state never fabricates rendered previews")
+		assert_false(CAPTURE.catalogue_review_valid(catalogue, CAPTURE.CATALOGUE_OPEN_FRAME, fixture), "headless state never fabricates rendered previews")
 	# Locked cards and unselected categories still belong to the expected set.
 	var panel: BuildCatalogue = _main.get_node("Overlay/BuildCatalogue") as BuildCatalogue
 	panel.set_owner_level(1)
@@ -1142,9 +1142,9 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	await _frames(2)
 	before = _catalogue_capture_snapshot()
 	var room: Dictionary = CAPTURE.catalogue_review_evidence(_main, tree.root)
-	_assert_catalogue_vibe_matches_actual_sources(room, 120)
-	assert_true(CAPTURE.catalogue_review_valid(room, 120, fixture))
-	assert_false(CAPTURE.catalogue_review_valid(room, 90, fixture))
+	_assert_catalogue_vibe_matches_actual_sources(room, CAPTURE.CATALOGUE_CLOSED_FRAME)
+	assert_true(CAPTURE.catalogue_review_valid(room, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(room, CAPTURE.CATALOGUE_OPEN_FRAME, fixture))
 	assert_eq(_catalogue_capture_snapshot(), before)
 	assert_eq(_world().now, 0)
 	assert_eq(_world().clock.phase, SimClock.Phase.MORNING)
@@ -1155,47 +1155,47 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 	# profile label. Mutating only the detached evidence checks this gate.
 	var wrong: Dictionary = room.duplicate(true)
 	wrong.erase("vibe")
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "missing Vibe evidence fails closed")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "missing Vibe evidence fails closed")
 	wrong = room.duplicate(true)
 	wrong["vibe"]["main"]["score"] = float(wrong["vibe"]["main"]["score"]) + 0.5
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "stale Main state must disagree with the actual inputs")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "stale Main state must disagree with the actual inputs")
 	wrong = room.duplicate(true)
 	wrong["vibe"]["meter"]["caption"] = "Vibe -"
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "native label text is read independently of cached view_state")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "native label text is read independently of cached view_state")
 	wrong = room.duplicate(true)
 	wrong["vibe"]["meter"]["value"] = NAN
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "nonfinite native values cannot pass approximate comparisons")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "nonfinite native values cannot pass approximate comparisons")
 	wrong = room.duplicate(true)
 	wrong["vibe"]["meter"]["view_state"]["tooltip"] = "Vibe unavailable"
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
 	wrong = room.duplicate(true)
 	wrong["vibe"]["meter"]["fill_color"] = [0.0, 0.0, 0.0, 0.0]
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "the meter retains the shared theme")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "the meter retains the shared theme")
 	wrong = room.duplicate(true)
 	wrong.erase("generated_vibe_uids")
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
 	wrong = room.duplicate(true)
 	wrong["generated_vibe_uids"]["entries"][0]["matches_registered"] = false
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
 	wrong = room.duplicate(true)
 	wrong["vibe"]["meter"]["caption_bounds"] = [0.0, 0.0, 0.0, 0.0]
-	assert_true(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "hidden closed-catalogue controls need not be onscreen")
+	assert_true(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "hidden closed-catalogue controls need not be onscreen")
 	wrong = room.duplicate(true)
 	wrong["dining_links"][0]["front_table"] = 0
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
 	wrong = room.duplicate(true)
 	(wrong["cards"] as Array).pop_back()
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "missing cards cannot shrink the expected data set")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "missing cards cannot shrink the expected data set")
 	wrong = room.duplicate(true)
 	(wrong["cache"]["expected_scenes"] as Array).pop_back()
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "expected wrappers are checked against all visible data")
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "expected wrappers are checked against all visible data")
 	wrong = room.duplicate(true)
 	# Locate a purchased record, rather than assuming item order after table sales.
 	for item: Dictionary in wrong["items"]:
 		if purchased.has(item["id"]):
 			item["catalogue_visible"] = false
 			break
-	assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+	assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
 	if profile == &"rustic":
 		var server_post: Vector2i = (_main.get("sim") as RestaurantSim).staff_spawns[&"server"]
 		assert_eq(room["server"]["cell"], [server_post.x, server_post.y])
@@ -1206,19 +1206,19 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 		assert_eq(room["server"]["model"], room["server"]["expected_model"])
 		wrong = room.duplicate(true)
 		wrong["server"]["cell"] = [server_post.x + 1, server_post.y]
-		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "an off-post server cannot prove the authored paused pose")
+		assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "an off-post server cannot prove the authored paused pose")
 		wrong = room.duplicate(true)
 		wrong["server"]["visible"] = false
-		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "a hidden server cannot prove the person-beside-rug requirement")
+		assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "a hidden server cannot prove the person-beside-rug requirement")
 		wrong = room.duplicate(true)
 		wrong["server"]["head"]["in_frustum"] = false
-		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture))
+		assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture))
 		wrong = room.duplicate(true)
 		for item: Dictionary in wrong["items"]:
 			if item["definition"] == "rug_rectangle":
 				item["coverage"] = []
 				break
-		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "layer coverage must prove the table and both chairs are on the rug")
+		assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "layer coverage must prove the table and both chairs are on the rug")
 		wrong = room.duplicate(true)
 		for item: Dictionary in wrong["items"]:
 			if item["definition"] == "rug_rectangle":
@@ -1226,7 +1226,7 @@ func _assert_catalogue_capture_fixture(profile: StringName) -> void:
 					if cell["normal"] != 0:
 						cell["normal"] = 0
 						break
-		assert_false(CAPTURE.catalogue_review_valid(wrong, 120, fixture), "normal and floor-decor indexes must agree with the actual furniture")
+		assert_false(CAPTURE.catalogue_review_valid(wrong, CAPTURE.CATALOGUE_CLOSED_FRAME, fixture), "normal and floor-decor indexes must agree with the actual furniture")
 
 
 func _assert_catalogue_vibe_matches_actual_sources(state: Dictionary, frame: int) -> void:
@@ -1252,7 +1252,7 @@ func _assert_catalogue_vibe_matches_actual_sources(state: Dictionary, frame: int
 	ids.sort()
 	assert_eq(vibe["inputs"]["menu_ids"], ids)
 	assert_true(CAPTURE.catalogue_vibe_uids_valid(state["generated_vibe_uids"]), JSON.stringify(state["generated_vibe_uids"]))
-	assert_eq(vibe["meter"]["visible"], frame == 90)
+	assert_eq(vibe["meter"]["visible"], frame == CAPTURE.CATALOGUE_OPEN_FRAME)
 
 
 func _assert_catalogue_cards_match_data(state: Dictionary, content: ContentDB) -> void:
