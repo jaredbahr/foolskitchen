@@ -9,6 +9,10 @@ extends Resource
 @export var inspect_line: String = ""
 ## A hint for the view's icon over the guest (placeholder until art), such as &"camera".
 @export var icon: StringName = &""
+## The badge picture floating over the guest (a 64 px round icon, drawn by
+## tools/build_quirk_badges.py). A new quirk shows a badge just by setting this;
+## empty means no badge.
+@export var badge: Texture2D = null
 ## Relative pick weight among the quirks a guest can have.
 @export var weight: float = 1.0
 ## Guest types that can have this quirk; empty means any type.

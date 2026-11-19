@@ -2485,6 +2485,7 @@ func _update_guest_mood(agent: SimAgent, body: Node3D, frame: AgentPresentationC
 	var indicator: GuestMoodIndicator = mood_nodes[agent.id]
 	# set_band is idempotent; anchor positioning must still follow every frame.
 	indicator.set_band(band)
+	indicator.quirk_badge.set_quirk(guest.quirk)
 	indicator.position = frame.mood_anchor if frame.anchors_ready else Vector3.UP * GuestMoodIndicator.HEAD_OFFSET
 
 

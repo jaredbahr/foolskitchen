@@ -4828,6 +4828,7 @@ static func mood_evidence(world: SimWorld, view: Node, camera: Camera3D = null) 
 			"parent_agent_id": icon.get_parent().get_meta("agent_id", -1),
 			"visible_in_tree": icon.is_visible_in_tree(), "dot_visible": icon.dot.is_visible_in_tree(),
 			"mark": icon.mark.text, "mark_visible": icon.mark.is_visible_in_tree(),
+			"quirk_badge_visible": icon.quirk_badge.is_visible_in_tree(),
 			"color": [color.r, color.g, color.b, color.a],
 			"screen_position": screen, "in_camera_frustum": in_frustum})
 	return {"available": true, "fixture": "none", "waiting_guests": waiting, "visible_indicators": indicators}
