@@ -40,9 +40,10 @@ func test_both_tanks_load_as_high_charm_cosy_seafood_decor() -> void:
 		var content: ContentDB = ContentDB.new()
 		assert_eq(content.load_all(), PackedStringArray())
 		for other: ItemDef in content.items():
-			if not other.fish_tank and other.category == ItemDef.Category.DECOR:
+			# The premium showpieces (#206, levels 10 and up) out-charm them on purpose.
+			if not other.fish_tank and other.category == ItemDef.Category.DECOR and other.unlock_level < 10:
 				highest_other = maxi(highest_other, other.charm)
-		assert_true(definition.charm > highest_other, "%s has the highest decor charm" % definition.id)
+		assert_true(definition.charm > highest_other, "%s has the highest decor charm below the premium tier" % definition.id)
 	assert_true(LARGE.charm > TANK.charm)
 	assert_true(TUNING.is_valid())
 	assert_true(TUNING.maintenance, "maintenance is on by default")

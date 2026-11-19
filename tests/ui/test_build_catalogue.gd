@@ -981,7 +981,7 @@ func test_grid_bounds_at_supported_window_sizes_and_interface_scales() -> void:
 	var shipped: ContentDB = ContentDB.new()
 	assert_eq(shipped.load_all(), PackedStringArray())
 	_catalogue.bind_content(shipped)
-	_catalogue.set_owner_level(9)  # #647: every shipped unlock, up to level 9
+	_catalogue.set_owner_level(13)  # every shipped unlock, up to level 13 (the premium decor, #206)
 	_catalogue.set_build_visible(true)
 	for physical_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 900)]:
 		window.size = physical_size
