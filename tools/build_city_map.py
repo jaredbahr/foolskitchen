@@ -16,6 +16,7 @@ Files land in assets/made/city_map/:
   pin_for_sale.png, pin_locked.png   a lot's board
   roadworks.png     cones, a "Road closed" barrier and a digger (an area waiting on a tier)
   hoarding.png      a "Coming soon" fence with a painted preview (an area with no lot yet)
+  van.png           the little red delivery van that rides the map road between shops (T5)
 """
 from __future__ import annotations
 
@@ -666,6 +667,32 @@ def hoarding_art() -> Image.Image:
     return c.finish()
 
 
+def van_art() -> Image.Image:
+    """The owner's delivery van, side on and facing right (the ride drives it
+    along the map road, so it is drawn small and chunky, like the pins)."""
+    c = Canvas(120, 80, PSS)
+    ground_shadow(c, 60, 70, 52)
+    # The cargo box, then the cab and its bonnet, all one red.
+    c.rect(8, 14, 76, 62, RED, INK, 4, r=6)
+    c.rect(12, 18, 72, 26, shade(RED, 1.18))
+    c.poly([(76, 26), (96, 26), (112, 44), (114, 62), (76, 62)], RED, INK, 4)
+    c.poly([(82, 31), (95, 31), (106, 44), (82, 44)], (170, 214, 232), INK, 3)
+    # A cream stripe round the box with the spoon the shop sells under.
+    c.rect(8, 40, 76, 50, CREAM, INK, 3)
+    c.ellipse(50, 45, 5, 3.4, INK)
+    c.line([(54, 45), (68, 45)], INK, 2.4)
+    # Bumpers, lights and the door line.
+    c.rect(106, 54, 116, 62, (176, 176, 180), INK, 3)
+    c.rect(2, 54, 10, 62, (176, 176, 180), INK, 3)
+    c.ellipse(110, 49, 3, 3, YELLOW, INK, 1.5)
+    c.line([(88, 46), (88, 60)], shade(RED, 0.7), 2.5, caps=False)
+    # Wheels over the arches.
+    for x in (30, 92):
+        c.ellipse(x, 62, 13, 13, (60, 50, 44), INK, 4)
+        c.ellipse(x, 62, 5, 5, (190, 190, 190), INK, 2)
+    return c.finish()
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     areas, roads = read_data()
@@ -676,6 +703,7 @@ def main() -> None:
     pin_locked().save(OUT / "pin_locked.png", optimize=True)
     roadworks_art().save(OUT / "roadworks.png", optimize=True)
     hoarding_art().save(OUT / "hoarding.png", optimize=True)
+    van_art().save(OUT / "van.png", optimize=True)
     print("city map art written to", OUT)
 
 

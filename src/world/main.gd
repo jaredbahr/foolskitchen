@@ -330,6 +330,15 @@ var _city_panel: CityPanel
 var _city_map: CityMapDef
 ## The morning site card (FK-087, #464): shown once a morning with 2+ sites.
 var _site_card: SiteCard
+## The van ride that follows a switch to another neighbourhood (docs/CITY_MAP.md
+## T5). Seconds the van drives; 0 means no ride. Cosmetic only: it runs after
+## switch_site has succeeded and changes nothing. Headless runs (tests) have none
+## unless a test sets this.
+var van_ride_seconds: float = 0.0 if DisplayServer.get_name() == "headless" else 2.0
+var _van_ride: VanRide
+var _commute_lines: CommuteLines
+## The commute line shown last, so the next ride picks another. Never saved.
+var _last_commute_line: String = ""
 var _site_card_day: int = 0
 ## The new site the same-day question is about (#464), or &"".
 var _site_prompt_target: StringName = &""
@@ -564,8 +573,14 @@ func _bind_world_presentation() -> void:
 		_city_panel.close_requested.connect(_on_city_close_requested)
 		_city_panel.site_chosen.connect(_on_city_site_chosen)
 		_city_panel.market_requested.connect(_on_city_market_requested)
+	if _van_ride == null:
+		# Added last, so it draws over every other panel.
+		_van_ride = VanRide.new()
+		$Overlay.add_child(_van_ride)
 	_site_card = $Overlay/SiteCard
 	_site_card.hide()
+	if not _site_card.map_requested.is_connected(_on_site_card_map_requested):
+		_site_card.map_requested.connect(_on_site_card_map_requested)
 	_on_site_card_visibility_changed()
 	if not _site_card.visibility_changed.is_connected(_on_site_card_visibility_changed):
 		_site_card.visibility_changed.connect(_on_site_card_visibility_changed)
@@ -1062,6 +1077,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_service_event_visible():
 			# A card is up under a one-frame capture: no key reaches the Clock.
 			_mark_input_handled()
+		return
+	if is_van_ride_visible():
+		# A key ends the ride and goes no further (a click does the same).
+		if key != null and key.pressed and not key.echo:
+			skip_van_ride()
+		_mark_input_handled()
 		return
 	if is_haggle_active():
 		_mark_input_handled()
@@ -5811,7 +5832,7 @@ func _on_site_prompt_answered(accept: bool) -> void:
 	_site_prompt_target = &""
 	set_site_card_visible(false)
 	if accept and not target.is_empty():
-		if not switch_site(target):
+		if not travel_to_site(target):
 			_log_switch_refusal(target, site_switch_refusal(target))
 	elif can_edit_menu():
 		set_property_visible(true)
@@ -5900,9 +5921,67 @@ func set_site_card_visible(value: bool) -> bool:
 	if not _started or display_only or site_book.site_count() < 2 \
 			or Clock.sim.phase != SimClock.Phase.MORNING or _owner_first_morning_pending:
 		return false
+	_site_card.map_available = _city_panel != null and PropertyMarket.shown(owner_progress.career_tier)
 	_site_card.set_rows(_site_card_rows())
 	_site_card.show()
 	return true
+
+
+## "See the map" on the morning card (T6): the card gives way to the city
+## screen, which closes back to the Menu. When the map cannot open, the card stays.
+func _on_site_card_map_requested() -> void:
+	set_site_card_visible(false)
+	if not set_city_visible(true):
+		set_site_card_visible(true)
+
+
+## `switch_site`, then the van ride (T5) when the trip crosses the map. The
+## switch is exactly switch_site's (same rules, same save); the ride only draws
+## afterwards. Returns what switch_site returned.
+func travel_to_site(target: StringName) -> bool:
+	var from_lot: StringName = site_book.lot_id(site_book.active_id)
+	if not switch_site(target):
+		return false
+	_start_van_ride(from_lot, site_book.lot_id(target), Clock.sim.day)
+	return true
+
+
+## Starts the ride from the neighbourhood of `from_lot` to that of `to_lot`.
+## False, with nothing shown, when rides are off, there is no map art, either
+## lot has no neighbourhood, or both are in the same one (no road to drive).
+func _start_van_ride(from_lot: StringName, to_lot: StringName, day: int) -> bool:
+	if _van_ride == null or van_ride_seconds <= 0.0 or _city_panel == null or _city_panel.map_texture == null:
+		return false
+	if _city_map == null:
+		_city_map = CityMap.load_default()
+	if _city_map == null:
+		return false
+	var from_area: NeighbourhoodDef = _city_map.neighbourhood_for_lot(from_lot)
+	var to_area: NeighbourhoodDef = _city_map.neighbourhood_for_lot(to_lot)
+	if from_area == null or to_area == null:
+		return false
+	var path: PackedVector2Array = CityMap.van_path(_city_map, from_area.id, to_area.id)
+	if path.size() < 2:
+		return false
+	if _commute_lines == null:
+		_commute_lines = CommuteLines.load_default()
+	var line: String = ""
+	if _commute_lines != null:
+		line = _commute_lines.pick(day, to_area.id, to_area.commute_line, _last_commute_line)
+	if not _van_ride.play(_city_panel.map_texture, path, line, van_ride_seconds):
+		return false
+	_last_commute_line = line
+	return true
+
+
+func is_van_ride_visible() -> bool:
+	return _van_ride != null and _van_ride.is_playing()
+
+
+## Ends the van ride at once, if one is on.
+func skip_van_ride() -> void:
+	if _van_ride != null:
+		_van_ride.skip()
 
 
 func _on_site_card_visibility_changed() -> void:
@@ -5954,7 +6033,7 @@ func _on_site_card_chosen(id: StringName) -> void:
 		_log_switch_refusal(id, site_switch_refusal(id))
 		return
 	# switch_site logs its own refusal when the site does not load.
-	switch_site(id)
+	travel_to_site(id)
 
 
 func _dismiss_property() -> void:
@@ -6046,7 +6125,7 @@ func _on_city_site_chosen(id: StringName) -> void:
 		return
 	_city_panel.hide()
 	# switch_site logs its own refusal when the site does not load.
-	switch_site(id)
+	travel_to_site(id)
 
 
 func _on_city_market_requested() -> void:

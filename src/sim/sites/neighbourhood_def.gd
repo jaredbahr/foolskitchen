@@ -25,6 +25,9 @@ const HOME_LOT: StringName = &"home"
 ## For an area with no lots yet: what is coming ("A cabin in the woods").
 ## Empty for an area with lots.
 @export var coming_soon: String = ""
+## An extra commute joke that only turns up when the owner drives to this
+## neighbourhood (CommuteLines mixes it in with the general ones). Empty for none.
+@export var commute_line: String = ""
 
 
 func is_coming_soon() -> bool:

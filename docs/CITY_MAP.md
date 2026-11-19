@@ -135,6 +135,8 @@ Engine rule (unchanged): `switch_site(target)` runs only in the morning, after t
 - **B. A little van ride (recommended).** A two-second animation: your owner's van putters along the map road to the pin, then the fade. It is purely cosmetic and skippable with a click. Cost: one 2D sprite and a path per road. It makes the city feel like one place.
 - **C. A morning commute card.** A tiny jokey line while it loads ("You took the scenic route. A goose chased you past the mill."). Cheap, and a nice spot for parody. It combines with A or B.
 
+**Built (#644).** `main.gd` `travel_to_site(target)` calls `switch_site` and, only if it succeeded, `_start_van_ride`, which drives `CityMap.van_path` from the leaving neighbourhood to the arriving one (`VanRide`, `van_ride_seconds` = 2.0; no ride in headless runs, for the same neighbourhood, or without map art). Any click, tap or key skips it. The commute line comes from `data/city/commute_lines.tres` (general lines) plus the arriving neighbourhood's `commute_line`, picked from the day and the destination alone, never the same line twice in a row. `switch_site`'s rules and the morning autosave are untouched.
+
 **T6: the morning site card**
 - **A. Keep the card, add "See the map" (recommended for now).** The card is fast and already tested. The map is for looking around.
 - **B. The map replaces the card.** On a morning with 2+ shops the map opens instead. This is the most immersive, but slower for a player with two shops who only wants to tap "Stay here".
