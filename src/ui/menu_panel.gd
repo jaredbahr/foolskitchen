@@ -12,6 +12,8 @@ signal settings_requested()
 signal goals_requested()
 ## The browse-only property market (FK-087 part 2), offered from Tier 3.
 signal property_requested()
+## The city screen (docs/CITY_MAP.md), offered with the property market.
+signal city_requested()
 signal lease_requested()
 ## The one-time morning cat adoption (#119); the session checks and charges it.
 signal cat_adoption_requested()
@@ -77,6 +79,7 @@ var _detail: VBoxContainer
 var _settings_button: Button
 var _goals_button: Button
 var _property_button: Button
+var _city_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
 ## Food rows stay in Rows; drink rows are in DrinkRows (FK-083). Both sit in
@@ -518,6 +521,10 @@ func _bind_nodes() -> void:
 	_property_button.text = PropertyText.TITLE
 	_property_button.tooltip_text = PropertyText.BUTTON_TOOLTIP
 	_property_button.pressed.connect(_on_property_pressed)
+	_city_button = %CityButton
+	_city_button.text = ChainText.BUTTON
+	_city_button.tooltip_text = ChainText.BUTTON_TOOLTIP
+	_city_button.pressed.connect(_on_city_pressed)
 
 
 ## Keep name and hours together, with forecast and the wage note beneath them.
@@ -663,6 +670,20 @@ func is_property_available() -> bool:
 
 func _on_property_pressed() -> void:
 	property_requested.emit()
+
+
+## Main decides (with the market: PropertyMarket.shown); hidden below Tier 3.
+func set_city_available(available: bool) -> void:
+	_bind_nodes()
+	_city_button.visible = available
+
+
+func is_city_available() -> bool:
+	return _city_button != null and _city_button.visible
+
+
+func _on_city_pressed() -> void:
+	city_requested.emit()
 
 
 func _rebuild_rows() -> void:
