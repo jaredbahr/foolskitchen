@@ -1,7 +1,8 @@
 class_name WeatherWet
 extends RefCounted
 ## Puts the day's weather on the neighbourhood's own meshes by swapping materials, never
-## the meshes: rain wets the ground, paths, roads, roofs and decks (wet_ground.gdshader:
+## the meshes: foliage (a mesh marked NeighbourhoodGround.SWAY_META) sways in the wind in
+## every weather, gently when fair, harder under cloud and in gusts in the rain; rain wets the ground, paths, roads, roofs and decks (wet_ground.gdshader:
 ## darker, a touch richer and faintly glossy; grass only a touch darker), and an overcast
 ## sky fades the baked ground shadows. Every swap is recorded and undone exactly, so a
 ## sunny day shows the very materials it always had. View-only, no random draws.
@@ -14,6 +15,10 @@ const MIN_SPAN: float = 1.5
 const PAVED_GROUPS: Array[StringName] = [&"Road", &"Pavement", &"Kerbs", &"FarStreet"]
 ## How much darker soaked ground gets by day (wet_ground.gdshader's default).
 const DARKEN: float = 0.27
+## The wind in the foliage by weather (sunny, cloudy, rain): how far a crown leans (metres)
+## and how gusty it is.
+const SWAY_REACH: Array[float] = [0.018, 0.032, 0.06]
+const SWAY_GUST: Array[float] = [0.2, 0.4, 0.75]
 const RENDER_MODE_LINE: String = "render_mode vertex_lighting, specular_disabled, shadows_disabled;"
 
 ## What a swap replaced: the node, the surface (-1 for material_override) and the old value.
@@ -22,6 +27,8 @@ var _kind: int = WeatherState.Kind.SUNNY
 ## Variant shaders by render modes, and the wet and faded materials made, by key.
 var _shaders: Dictionary[String, Shader] = {}
 var _wet: Dictionary[String, ShaderMaterial] = {}
+var _sway: Dictionary[String, ShaderMaterial] = {}
+var _sway_time: float = 0.0
 var _faded: Dictionary[Material, Material] = {}
 var _sheen_color: Color = Color(0.6, 0.66, 0.75)
 var _view_dir: Vector2 = Vector2(0.57, -0.82)
@@ -33,7 +40,8 @@ func kind() -> int:
 	return _kind
 
 
-## How many surfaces currently show weather materials (0 on a sunny day).
+## How many surfaces currently show weather materials (on a sunny day, only the swaying
+## foliage).
 func swap_count() -> int:
 	return _swaps.size()
 
@@ -43,9 +51,30 @@ func apply(root: Node, kind_value: int) -> void:
 	restore()
 	_faded.clear()
 	_kind = kind_value
-	if root == null or _kind == WeatherState.Kind.SUNNY:
+	var index: int = clampi(_kind, WeatherState.Kind.SUNNY, WeatherState.Kind.RAIN)
+	for material: ShaderMaterial in _sway.values():
+		material.set_shader_parameter(&"wet", _wetness if _kind == WeatherState.Kind.RAIN else 0.0)
+		material.set_shader_parameter(&"sway_reach", SWAY_REACH[index])
+		material.set_shader_parameter(&"gust", SWAY_GUST[index])
+	if root == null:
 		return
 	_visit(root, false)
+
+
+## The wind's clock (the street's display clock): the swaying foliage follows it.
+func set_sway_time(seconds: float) -> void:
+	if is_equal_approx(seconds, _sway_time):
+		return
+	_sway_time = seconds
+	for material: ShaderMaterial in _sway.values():
+		material.set_shader_parameter(&"sway_time", _sway_time)
+
+
+## The foliage materials in use (for tests).
+func sway_materials() -> Array[ShaderMaterial]:
+	var result: Array[ShaderMaterial] = []
+	result.assign(_sway.values())
+	return result
 
 
 ## Puts every swapped surface back as it was.
@@ -70,7 +99,7 @@ func set_light(sheen_color: Color, view_dir: Vector2, darken: float = DARKEN) ->
 	_sheen_color = sheen_color
 	_view_dir = view_dir
 	_darken = darken
-	for material: ShaderMaterial in _wet.values():
+	for material: ShaderMaterial in _wet.values() + _sway.values():
 		material.set_shader_parameter(&"sheen_color", _sheen_color)
 		material.set_shader_parameter(&"view_dir", _view_dir)
 		material.set_shader_parameter(&"darken", _darken)
@@ -97,32 +126,38 @@ func _wet_mesh(node: MeshInstance3D, paved: bool) -> void:
 	var box: AABB = node.get_aabb()
 	var wide: bool = maxf(box.size.x, box.size.z) >= MIN_SPAN
 	var shadow: bool = String(node.name).contains("Shadow") or node.name == &"Shade"
+	var sway: bool = node.mesh.has_meta(NeighbourhoodGround.SWAY_META)
 	if node.material_override != null:
-		var replacement: Material = _replacement(node.material_override, wide, paved, shadow)
+		var replacement: Material = _replacement(node.material_override, wide, paved, shadow, sway)
 		if replacement != null:
 			_swaps.append([node, -1, node.material_override])
 			node.material_override = replacement
 		return
 	for surface: int in node.mesh.get_surface_count():
 		var material: Material = node.get_active_material(surface)
-		var replacement: Material = _replacement(material, wide, paved, shadow)
+		var replacement: Material = _replacement(material, wide, paved, shadow, sway)
 		if replacement != null:
 			_swaps.append([node, surface, node.get_surface_override_material(surface)])
 			node.set_surface_override_material(surface, replacement)
 
 
-## `shadow`: the mesh is a baked shadow (by its name), which only fades.
-func _replacement(material: Material, wide: bool, paved: bool, shadow: bool) -> Material:
+## `shadow`: the mesh is a baked shadow (by its name), which only fades. `sway`: the mesh
+## holds foliage, which sways in every weather.
+func _replacement(material: Material, wide: bool, paved: bool, shadow: bool, sway: bool) -> Material:
 	var standard: StandardMaterial3D = material as StandardMaterial3D
 	if standard == null:
 		return null
 	var rainy: bool = _kind == WeatherState.Kind.RAIN
 	if standard.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 		# A baked shadow (vertex alpha): fainter under an overcast sky. Glows keep their look.
-		if not shadow or not standard.vertex_color_use_as_albedo:
+		if not shadow or not standard.vertex_color_use_as_albedo or _kind == WeatherState.Kind.SUNNY:
 			return null
 		return _faded_shadow(standard)
-	if not rainy or standard.emission_enabled or standard.albedo_texture != null:
+	if standard.emission_enabled or standard.albedo_texture != null:
+		return null
+	if sway and standard.vertex_color_use_as_albedo and standard.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED:
+		return _sway_material(standard)
+	if not rainy:
 		return null
 	if standard.vertex_color_use_as_albedo:
 		if not wide or standard.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED:
@@ -160,13 +195,37 @@ func _wet_material(source: StandardMaterial3D, flat_colour: bool) -> ShaderMater
 	return material
 
 
+## The foliage's material: the wet shader with SWAY, lit like the source (its specular too).
+func _sway_material(source: StandardMaterial3D) -> ShaderMaterial:
+	var per_vertex: bool = source.shading_mode == BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	var key: String = "%s|%s|%d|%.3f" % [per_vertex, source.disable_receive_shadows, source.cull_mode, source.metallic_specular]
+	if _sway.has(key):
+		return _sway[key]
+	var index: int = clampi(_kind, WeatherState.Kind.SUNNY, WeatherState.Kind.RAIN)
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _shader(false, per_vertex, source.disable_receive_shadows, source.cull_mode, true)
+	material.set_shader_parameter(&"wet", _wetness if _kind == WeatherState.Kind.RAIN else 0.0)
+	material.set_shader_parameter(&"sheen_color", _sheen_color)
+	material.set_shader_parameter(&"view_dir", _view_dir)
+	material.set_shader_parameter(&"darken", _darken)
+	material.set_shader_parameter(&"specular_share", source.metallic_specular)
+	material.set_shader_parameter(&"sway_time", _sway_time)
+	material.set_shader_parameter(&"sway_reach", SWAY_REACH[index])
+	material.set_shader_parameter(&"gust", SWAY_GUST[index])
+	_sway[key] = material
+	return material
+
+
 ## The wet shader with the source material's own lighting, shadows and culling, and, for a
 ## plain-coloured mesh, its colour from a uniform instead of the vertices.
-func _shader(flat_colour: bool, per_vertex: bool, no_shadows: bool, cull: int) -> Shader:
-	var key: String = "%s|%s|%s|%d" % [flat_colour, per_vertex, no_shadows, cull]
+## With `sway` the foliage's vertices move and the source's specular is kept.
+func _shader(flat_colour: bool, per_vertex: bool, no_shadows: bool, cull: int, sway: bool = false) -> Shader:
+	var key: String = "%s|%s|%s|%d|%s" % [flat_colour, per_vertex, no_shadows, cull, sway]
 	if _shaders.has(key):
 		return _shaders[key]
-	var modes: Array[String] = ["specular_disabled"]
+	var modes: Array[String] = []
+	if not sway:
+		modes.append("specular_disabled")
 	if per_vertex:
 		modes.append("vertex_lighting")
 	if no_shadows:
@@ -175,6 +234,8 @@ func _shader(flat_colour: bool, per_vertex: bool, no_shadows: bool, cull: int) -
 	var code: String = WET_SHADER.code.replace(RENDER_MODE_LINE, "render_mode %s;" % ", ".join(modes))
 	if flat_colour:
 		code = code.replace("shader_type spatial;", "shader_type spatial;\n#define FLAT_COLOUR")
+	if sway:
+		code = code.replace("shader_type spatial;", "shader_type spatial;\n#define SWAY")
 	var shader: Shader = Shader.new()
 	shader.code = code
 	_shaders[key] = shader
