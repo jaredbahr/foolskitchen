@@ -8,7 +8,7 @@ extends Resource
 
 ## Tags this game knows. Each one is a perk on the market screen
 ## (PropertyText.TAG_PERKS) and, later, gates lot-only content.
-const KNOWN_TAGS: Array[StringName] = [&"seaside", &"rooftop"]
+const KNOWN_TAGS: Array[StringName] = [&"seaside", &"rooftop", &"woodland"]
 const MIN_RENOVATION_DAYS: int = 2
 const MAX_RENOVATION_DAYS: int = 5
 ## The most one expansion adds on a side (the home lease's own limit).

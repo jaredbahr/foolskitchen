@@ -6,6 +6,7 @@ extends TestCase
 ## land outside its first lease is wooded right up to the lease and felled once the
 ## lease covers it, never treed where the player can build or over the door's
 ## approach; the porch deck meets the facade; and the shop's walls are logs (#611).
+## A shop's own front patio is its porch (#596).
 
 const DRESSING: PackedScene = preload("res://src/world/neighbourhood_dressing.tscn")
 const WOODLAND: String = "res://data/streets/woodland.tres"
@@ -372,6 +373,41 @@ func test_the_porch_meets_the_facade_beside_the_door() -> void:
 	assert_true(inside or is_equal_approx(forest.porch.size.x, 1.6), "it stops at the building's corner (or is the shortest deck)")
 	for rect: Rect2 in forest.keep_clear:
 		assert_false(forest.porch.intersects(rect), "the door's approach stays clear")
+	_free(dressing)
+
+
+## The shop's own patio in front is the cabin's porch (#596): the forest wraps those
+## cells in its deck, skirt and rail instead of the drawn deck with rocking chairs, lays
+## no street paving there, and puts the woodpile and fire pit off the porch.
+func test_a_front_patio_is_the_cabins_porch() -> void:
+	await _host()
+	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray([
+		"########", "#......#", "#......#", "#......#", "#......#", "#......#", "###..###", "...EE...", "...  ..."]))
+	var patio: Dictionary[Vector2i, int] = {}
+	for y: int in [7, 8]:
+		for x: int in [0, 1, 2, 5, 6, 7]:
+			patio[Vector2i(x, y)] = SimGrid.Room.PATIO
+	assert_true(grid.set_rooms(patio))
+	var dressing: NeighbourhoodDressing = DRESSING.instantiate() as NeighbourhoodDressing
+	_viewport.add_child(dressing)
+	dressing.set_process(false)
+	dressing.use_preset(load(WOODLAND) as StreetPreset)
+	_configure(dressing, grid)
+	var forest: NeighbourhoodForest = dressing.forest()
+	assert_eq(forest.porch_cells.size(), patio.size(), "every patio cell is porch")
+	assert_true(forest.chairs.is_empty(), "no drawn rocking chairs on the player's porch")
+	assert_null(dressing.find_child("PatioPavement", true, false), "no street paving under the deck")
+	for cell: Rect2 in forest.porch_cells:
+		assert_true(forest.porch.encloses(cell))
+	# The door's own columns stay open: the porch runs either side of them.
+	var door_u: float = forest.keep_clear[0].get_center().x
+	var sides: Dictionary[bool, bool] = {}
+	for cell: Rect2 in forest.porch_cells:
+		assert_true(absf(cell.get_center().x - door_u) >= GridMath.CELL_SIZE, "the door's path stays clear")
+		sides[cell.get_center().x > door_u] = true
+	assert_eq(sides.size(), 2, "the porch runs both sides of the door")
+	assert_false(forest.woodpile.intersects(forest.porch), "the woodpile stands off the porch")
+	assert_false(forest.porch.grow(0.5).has_point(forest.fire_pit), "the fire pit stands off the porch")
 	_free(dressing)
 
 
