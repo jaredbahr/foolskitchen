@@ -182,6 +182,16 @@ func test_a_gloomy_afternoon_brings_the_lamps_on_early_and_dimly() -> void:
 	dressing.set_gloom(0.0)
 	assert_false(bool(dressing.lamp_state()["glow_visible"]))
 	_free(dressing)
+	var woods: NeighbourhoodDressing = _dressing("res://data/streets/woodland.tres")
+	woods.set_night(0.0, 0.0, 0.0)
+	assert_false(woods.forest().is_fire_lit(), "no campfire on a fair afternoon")
+	woods.set_gloom(rain)
+	assert_true(woods.forest().is_fire_lit(), "a gloomy afternoon lights the campfire with the lanterns")
+	woods.set_gloom(0.0)
+	assert_false(woods.forest().is_fire_lit())
+	woods.set_night(1.0, 0.0, 1.0)
+	assert_true(woods.forest().is_fire_lit(), "it burns at night as before")
+	_free(woods)
 
 
 func test_each_place_takes_its_own_weather() -> void:

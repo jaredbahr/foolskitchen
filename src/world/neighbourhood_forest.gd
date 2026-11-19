@@ -1878,8 +1878,8 @@ func set_weather(kind: int) -> void:
 	_apply_night()
 
 
-## A gloomy afternoon's early lamplight (WeatherLook.gloom): the lamps and windows come on
-## dimly, everything else keeps the clock's time of day.
+## A gloomy afternoon's early lamplight (WeatherLook.gloom): the lamps, windows and the
+## campfire come on dimly, everything else keeps the clock's time of day.
 func set_gloom(level: float) -> void:
 	var value: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
 	if is_equal_approx(value, _gloom):
@@ -1903,7 +1903,7 @@ func _apply_night() -> void:
 	_bulb_material.set_shader_parameter(&"level", lamps)
 	_fly_material.set_shader_parameter(&"level", smoothstep(0.35, 0.9, _night))
 	_stream_material.set_shader_parameter(&"moon", _night * _late)
-	var lit: bool = _night > 0.05
+	var lit: bool = is_fire_lit()
 	# Unlit glows still cost a blended pass: hide them by day.
 	_bulb_glow.visible = lamps > 0.05
 	_fireflies.visible = _night > 0.35
@@ -1919,7 +1919,12 @@ func _apply_night() -> void:
 
 
 func is_fire_lit() -> bool:
-	return _night > 0.05
+	return _fire() > 0.05
+
+
+## How brightly the fire burns: by night, or on a gloomy afternoon (lit with the lanterns).
+func _fire() -> float:
+	return maxf(_night, _gloom)
 
 
 ## Moves everything to the street clock's `seconds`; skipped when nothing changed.
@@ -1934,10 +1939,10 @@ func apply(seconds: float) -> void:
 		var t: float = seconds * (7.0 + float(index)) + float(index) * 1.7
 		var flicker: float = 0.85 + 0.12 * sin(t) + 0.08 * sin(t * 2.3 + 0.5)
 		var sway: float = 0.12 * sin(seconds * 3.1 + float(index))
-		var scale: float = _night * flicker
+		var scale: float = _fire() * flicker
 		flames[index].basis = Basis(Vector3.UP, seconds * 0.7 + float(index)) * Basis(Vector3.BACK, sway) \
-			* Basis.from_scale(Vector3(maxf(_night, 0.05), maxf(scale, 0.05), maxf(_night, 0.05)))
-	_fire_glow_material.albedo_color = Color(1.0, 1.0, 1.0, _night * (0.9 + 0.1 * sin(seconds * 6.3) * sin(seconds * 2.9)))
+			* Basis.from_scale(Vector3(maxf(_fire(), 0.05), maxf(scale, 0.05), maxf(_fire(), 0.05)))
+	_fire_glow_material.albedo_color = Color(1.0, 1.0, 1.0, _fire() * (0.9 + 0.1 * sin(seconds * 6.3) * sin(seconds * 2.9)))
 	for index: int in chairs.size():
 		var rock: float = 0.035 * sin(seconds * 0.9 + float(index) * 2.1) * (0.6 + 0.4 * sin(seconds * 0.13 + float(index)))
 		chairs[index].transform = _chair_spots[index] * Transform3D(Basis(Vector3.RIGHT, rock), Vector3.ZERO)
