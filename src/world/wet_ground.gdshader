@@ -4,8 +4,11 @@ shader_type spatial;
 // faint glossy sheen of the sky's light streaked toward the viewer, as wet ground reflects.
 // Flat, upward-facing surfaces soak the most; walls only darken a little, and grass and
 // leaves (a colour whose green leads) only a touch. `wet` 0 is the dry colour exactly.
-// Nothing moves: the sheen is a function of the world position, so a paused capture is
-// always the same frame.
+// Light, warm colours (sand) keep their gold: they darken less and grow richer.
+// With SWAY (foliage: trees, bushes, hedges, grass, reeds) the vertices whose colour alpha is
+// under 1 lean and stir in the wind, more the higher they stand above the ground, so trunks
+// and stems stay planted. The sheen and the sway are functions of the world position and
+// `sway_time` (the street's display clock), so a paused capture is always the same frame.
 render_mode vertex_lighting, specular_disabled, shadows_disabled;
 
 uniform float wet = 0.0;
@@ -20,12 +23,38 @@ uniform float sheen = 0.11;
 // The camera's forward direction on the ground (x, z): reflections streak along it.
 uniform vec2 view_dir = vec2(0.57, -0.82);
 
+// The scenery's own specular share (its StandardMaterial3D's metallic_specular).
+uniform float specular_share = 0.5;
+#ifdef SWAY
+uniform float sway_time = 0.0;
+// How far a crown leans at full sway (metres), and how much the wind comes in gusts.
+uniform float sway_reach = 0.02;
+uniform float gust = 0.2;
+uniform vec2 wind = vec2(0.8, 0.6);
+#endif
+
 varying float up;
 varying vec2 ground;
 
 void vertex() {
 	up = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
-	ground = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
+	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	ground = world.xz;
+#ifdef SWAY
+	float free = 1.0 - COLOR.a;
+	if (free > 0.0) {
+		// Planted at the ground, freer the higher it stands.
+		float height = smoothstep(-0.04, 0.32, world.y) * (0.45 + 0.55 * clamp(world.y, 0.0, 2.6));
+		float along = dot(world.xz, wind);
+		float t = sway_time;
+		// Gusts roll across the place; under them each plant stirs on its own beat.
+		float envelope = 1.0 - gust + gust * (0.5 + 0.5 * sin(along * 0.13 - t * 0.55));
+		float stir = 0.35 + 0.65 * sin(t * 1.6 + along * 0.5 + world.z * 0.23);
+		float lean = sway_reach * free * height * envelope * stir;
+		vec3 push = vec3(wind.x * lean, -abs(lean) * 0.2, wind.y * lean);
+		VERTEX += transpose(mat3(MODEL_MATRIX)) * push;
+	}
+#endif
 }
 
 void fragment() {
@@ -37,11 +66,13 @@ void fragment() {
 	float green = clamp((colour.g - max(colour.r, colour.b)) * 7.0, 0.0, 1.0);
 	float flat_face = smoothstep(0.55, 0.92, up);
 	float soak = wet * mix(0.3, 1.0, flat_face) * mix(1.0, grass_share, green);
-	// Wet things darken and grow a little richer.
+	// Wet things darken and grow a little richer; pale warm sand to a deeper gold, not brown.
 	float grey = dot(colour, vec3(0.3, 0.5, 0.2));
-	colour = mix(vec3(grey), colour, 1.0 + 0.18 * soak) * (1.0 - darken * soak);
+	float sandy = clamp((colour.r - colour.b) * 3.0, 0.0, 1.0) * smoothstep(0.45, 0.7, grey) * (1.0 - green);
+	colour = mix(vec3(grey), colour, 1.0 + (0.18 + 0.6 * sandy) * soak) * (1.0 - darken * (1.0 - 0.75 * sandy) * soak);
 	ALBEDO = max(colour, vec3(0.0));
 	ROUGHNESS = 1.0;
+	SPECULAR = specular_share;
 	// The sheen: long soft streaks running toward the viewer, broken up along their length.
 	vec2 across_dir = vec2(-view_dir.y, view_dir.x);
 	float along = dot(ground, view_dir);
