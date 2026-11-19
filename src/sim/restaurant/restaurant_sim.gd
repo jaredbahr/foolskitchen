@@ -1179,9 +1179,11 @@ func _price_walkout_chance(recipe: RecipeDef, budget_multiplier: float, preview_
 		return 0.0
 	var sensitivity: float = pricing_tuning.price_sensitivity
 	var maximum: float = pricing_tuning.max_price_walkout
-	if not is_finite(sensitivity) or not is_finite(maximum):
+	var grace: float = pricing_tuning.price_grace
+	if not is_finite(sensitivity) or not is_finite(maximum) or not is_finite(grace):
 		return 0.0
-	return clampf(((ratio - 1.0) / budget_multiplier) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
+	var over: float = maxf(0.0, ratio - 1.0 - clampf(grace, 0.0, 1.0))
+	return clampf((over / budget_multiplier) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
 
 
 ## Adds a guest using an independent random stream (also useful for scenarios).
