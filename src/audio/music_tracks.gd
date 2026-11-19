@@ -9,6 +9,7 @@ extends RefCounted
 ## - service_evening: Smoky Vamp (from dusk, when the shop lights come on)
 ## - the evening report has no song: whatever service music was playing
 ##   carries on under it
+## - Seaside Cliff plays Buoyant Sea Shanty all service, whatever the theme (#625)
 ## - anything else (morning, closed with no report open): silence
 
 const TITLE: StringName = &"title"
@@ -35,6 +36,15 @@ const BY_THEME: Dictionary[StringName, Array] = {
 	&"diner": [preload("res://assets/music/diner_boogie.ogg")],
 	&"cafe": [preload("res://assets/music/coffee_shop_morning.ogg")],
 	&"seafood": [preload("res://assets/music/coastal_afternoon.ogg")],
+	SITE_CLIFF: [preload("res://assets/music/buoyant_sea_shanty.ogg")],
+}
+
+## Site music (#625): a lot with its own song plays it whatever the vibe theme.
+## The value is a BY_THEME key no vibe theme can have, so the day-long single
+## loop rules for themes apply unchanged. Other lots never reach these entries.
+const SITE_CLIFF: StringName = &"site_seaside_cliff"
+const BY_LOT: Dictionary[StringName, StringName] = {
+	&"seaside_cliff": SITE_CLIFF,
 }
 
 ## The shop's own lights count as dusk once they reach this share of full
@@ -84,9 +94,13 @@ static func in_playlist(track: AudioStream) -> bool:
 
 
 ## A mapped room theme wins over the fallback, which follows the shop light.
-static func service_context(open_for_service: bool, light: float, theme: StringName = &"") -> StringName:
+## A lot's own song (BY_LOT) wins over both.
+static func service_context(open_for_service: bool, light: float, theme: StringName = &"",
+		lot: StringName = &"") -> StringName:
 	if not open_for_service:
 		return &""
+	if BY_LOT.has(lot):
+		return BY_LOT[lot]
 	if BY_THEME.has(theme):
 		return theme
 	return SERVICE_EVENING if light >= EVENING_LIGHT else SERVICE_DAY

@@ -37,6 +37,8 @@ var _music_grid_version: int = -1
 var _music_item_id: int = -1
 var _music_loop: StringName = &""
 var _vibe_theme: StringName = &""
+## The active site's lot id: Seaside Cliff plays its own song (MusicTracks.BY_LOT).
+var _lot_id: StringName = &""
 var _service_context: StringName = &""
 var _service_day: int = 0
 var _music_changed_usec: int = -1
@@ -98,6 +100,7 @@ func unbind() -> void:
 	_music_item_id = -1
 	_music_loop = &""
 	_vibe_theme = &""
+	_lot_id = &""
 	_clear_service_music()
 	Sounds.stop_loops()
 	if not display_only:
@@ -107,6 +110,10 @@ func unbind() -> void:
 
 func _exit_tree() -> void:
 	unbind()
+
+
+func set_lot(lot_id: StringName) -> void:
+	_lot_id = lot_id
 
 
 func set_vibe(result: VibeModel.Result) -> void:
@@ -169,7 +176,7 @@ func _refresh_service_music(serving: bool, light: float, report_open: bool, now_
 			context = MusicTracks.MORNING
 		Sounds.set_music_context(context)
 		return
-	var wanted: StringName = MusicTracks.service_context(true, light, _vibe_theme)
+	var wanted: StringName = MusicTracks.service_context(true, light, _vibe_theme, _lot_id)
 	var themed: bool = MusicTracks.BY_THEME.has(wanted)
 	var day: int = Clock.sim.day if themed else 0
 	var changed: bool = wanted != _service_context or day != _service_day

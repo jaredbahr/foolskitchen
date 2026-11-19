@@ -61,6 +61,8 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 		else:
 			assert_almost_eq(bounds.position.y, 0.0, 0.0001, String(definition.id))
 		var footprint_rect: Rect2 = Rect2(-half_width, -half_depth, half_width * 2.0, half_depth * 2.0)
+		# Rain cover (#625): the roof eaves reach past the 2 x 2 m patch by design (<= 0.15 m a side).
+		var slack: float = 0.15 if definition.rain_cover else 0.05
 		var permitted: Rect2 = footprint_rect
 		var body_bounds: AABB
 		var have_body: bool = false
@@ -83,8 +85,8 @@ func test_every_authored_item_has_floor_aligned_parts_inside_its_footprint_or_de
 			else:
 				body_bounds = body_bounds.merge(part_bounds) if have_body else part_bounds
 				have_body = true
-			assert_true(allowed.grow(0.05).encloses(_xz_rect(part_bounds)), "%s/%s must fit its own footprint or seat cell" % [definition.id, part.name])
-		assert_true(permitted.grow(0.05).encloses(_xz_rect(bounds)), String(definition.id))
+			assert_true(allowed.grow(slack).encloses(_xz_rect(part_bounds)), "%s/%s must fit its own footprint or seat cell" % [definition.id, part.name])
+		assert_true(permitted.grow(slack).encloses(_xz_rect(bounds)), String(definition.id))
 		assert_true(have_body, String(definition.id))
 		# Bodies are centred unless the wrapper declares an offset inside its footprint.
 		assert_true(absf(view.body_center_offset.x) <= half_width and absf(view.body_center_offset.y) <= half_depth, "%s body offset must stay inside its footprint" % definition.id)
