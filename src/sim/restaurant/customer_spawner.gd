@@ -74,6 +74,7 @@ func advance(sim: RestaurantSim) -> void:
 			if count == 1:
 				var guest: CustomerAgent = sim.add_visitor(entry, randoms[0], kind, visit)
 				sim.try_disguise_critic(guest)
+				sim.try_give_quirk(guest)
 				if guest != null:
 					sim.record_rush_arrivals([guest.id])
 			elif count > 1:

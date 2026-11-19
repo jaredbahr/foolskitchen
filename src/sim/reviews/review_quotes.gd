@@ -7,6 +7,8 @@ const CAUSES: Array[StringName] = [
 	&"dirty_floor", &"sticky_floor", &"lovely_place", &"never_served", &"no_restroom", &"restroom_busy",
 	&"comfortable_wait", &"petted_cat", &"critic_good", &"critic_bad",
 	&"signature_dish",
+	# Guest quirks (docs/GUESTS.md): good visits by a guest with that quirk.
+	&"photo_happy", &"chatty_happy", &"quick_lunch",
 ]
 
 @export var groups: Dictionary[StringName, PackedStringArray] = {}
