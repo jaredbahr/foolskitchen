@@ -54,6 +54,8 @@ func test_every_lot_and_the_home_shop_have_a_neighbourhood() -> void:
 	assert_not_null(map.neighbourhood_for_lot(HOME), "the starter shop stands somewhere")
 	for lot: LotDef in _lots():
 		assert_not_null(map.neighbourhood_for_lot(lot.id), "%s has a neighbourhood" % lot.id)
+	assert_eq(map.neighbourhood_for_lot(&"woodland_cabin").id, &"pinewood", "the Woodland Cabin stands in Pinewood")
+	assert_false(map.neighbourhood(&"pinewood").is_coming_soon(), "Pinewood is open now it has a lot")
 
 
 func test_reads_find_neighbourhoods_by_id_and_lot() -> void:
@@ -187,6 +189,7 @@ func test_shipped_opening_tiers() -> void:
 	var lots: Array[LotDef] = _lots()
 	assert_eq(CityMap.opening_tier(map.neighbourhood_for_lot(HOME), lots), 1)
 	assert_eq(CityMap.opening_tier(map.neighbourhood_for_lot(&"skyscraper_rooftop"), lots), 4)
+	assert_eq(CityMap.opening_tier(map.neighbourhood_for_lot(&"woodland_cabin"), lots), 3)
 
 
 func test_covered_and_reachable_neighbourhoods_in_map_order() -> void:

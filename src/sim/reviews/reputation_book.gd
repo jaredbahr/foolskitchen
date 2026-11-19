@@ -188,7 +188,9 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 	# Restrooms (FK-101): both terms are exactly zero in a shop that has none
 	# and is below the seat threshold.
 	var restroom: float = _bounded(visit.restroom_bonus, 1.0) - _bounded(visit.restroom_penalty, 4.0)
-	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom + difficulty_bonus,
+	# Exactly zero unless a local-food lover ate a local dish (#471).
+	var local: float = _bounded(visit.local_dish_bonus, 1.0)
+	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom + difficulty_bonus + local,
 		1.0, 5.0))
 
 

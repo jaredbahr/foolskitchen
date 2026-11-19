@@ -87,7 +87,13 @@ func test_tier_three_lists_the_neighbourhoods_and_the_lots_without_changing_anyt
 	assert_eq((rooftop.get_node("Body/Line") as Label).text, "Locked: needs Tier 4 and 4.3 stars")
 	assert_eq(_panel().row_for(&"skyline").get_meta(&"state"), CityMap.AreaState.LOCKED)
 	assert_eq((_panel().row_for(&"skyline").get_node("State") as Label).text, "Opens at Tier 4")
-	assert_eq(_panel().row_for(&"pinewood").get_meta(&"state"), CityMap.AreaState.COMING_SOON)
+	# Pinewood holds the Woodland Cabin (Tier 3, 4.0 stars): at Tier 3 with no
+	# closing stars yet it is locked, and says what is missing, not a tier.
+	assert_eq(_panel().row_for(&"pinewood").get_meta(&"state"), CityMap.AreaState.LOCKED)
+	assert_eq((_panel().row_for(&"pinewood").get_node("State") as Label).text, "Locked: needs 4.0 stars")
+	var cabin: Control = _panel().row_for(&"woodland_cabin")
+	assert_eq(cabin.get_meta(&"state"), CityMap.LotState.LOCKED)
+	assert_eq((cabin.get_node("Body/Line") as Label).text, "Locked: needs 4.0 stars")
 	assert_eq(Economy.cash, cash, "browsing is free")
 	assert_eq(JSON.stringify(SaveSystem.capture_sections(SiteSections.PER_SITE)), JSON.stringify(before),
 		"the summary's capture changes nothing")

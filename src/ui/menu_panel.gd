@@ -63,6 +63,8 @@ var _phase: int = SimClock.Phase.MORNING
 var _weather_kind: int = WeatherState.Kind.SUNNY
 var _forecast_rendered_kind: int = -1
 var _has_patio: bool = false
+var _covered_seats: int = 0
+var _forecast_rendered_covered: int = 0
 var _forecast_rendered_patio: bool = false
 var _status: Label
 var _rush_notice: Label
@@ -198,9 +200,10 @@ func _on_cat_pressed() -> void:
 		cat_adoption_requested.emit()
 
 
-func set_weather(kind: int, has_patio: bool = false) -> void:
+func set_weather(kind: int, has_patio: bool = false, covered_seats: int = 0) -> void:
 	_weather_kind = kind
 	_has_patio = has_patio
+	_covered_seats = covered_seats
 	_refresh_forecast()
 
 
@@ -239,10 +242,12 @@ func _on_booking_decline_pressed() -> void:
 func _refresh_forecast() -> void:
 	var forecast: Label = %WeatherForecast
 	forecast.visible = _phase == SimClock.Phase.MORNING
-	if _forecast_rendered_kind != _weather_kind or _forecast_rendered_patio != _has_patio:
+	if _forecast_rendered_kind != _weather_kind or _forecast_rendered_patio != _has_patio \
+			or _forecast_rendered_covered != _covered_seats:
 		_forecast_rendered_kind = _weather_kind
 		_forecast_rendered_patio = _has_patio
-		forecast.text = WeatherText.forecast_for(_weather_kind, _has_patio)
+		_forecast_rendered_covered = _covered_seats
+		forecast.text = WeatherText.forecast_for(_weather_kind, _has_patio, _covered_seats)
 		IconStyle.decorate_label(forecast, WeatherText.icon_for(_weather_kind), IconCatalogue.PANEL_SIZE)
 
 

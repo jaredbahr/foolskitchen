@@ -40,9 +40,9 @@ map_position = Vector2(0.76, 0.55)
 script = ExtResource("2_area")
 id = &"pinewood"
 display_name = "Pinewood"
-blurb = "Tall pines, a forest track and a stream. Nobody has opened a kitchen out here. Yet."
+blurb = "A log cabin in a pine clearing, a fire pit under the string lights and hikers who arrive very hungry."
+lots = Array[StringName]([&"woodland_cabin"])
 map_position = Vector2(0.62, 0.12)
-coming_soon = "A cabin in the woods"
 
 [sub_resource type="Resource" id="Resource_road_mill"]
 script = ExtResource("3_road")

@@ -90,7 +90,8 @@ func load_all(root: String = "res://data") -> PackedStringArray:
 		else:
 			errors.append("%s: expected LotDef" % path)
 	errors.append_array(validate_definitions(ingredient_defs, recipe_defs, item_defs, lot_defs))
-	errors.append_array(validate_lots(lot_defs, item_defs, _customer_type_ids(root)))
+	errors.append_array(validate_lots(lot_defs, item_defs, _customer_type_ids(root),
+		_customer_type_ids(root, 1)))
 	errors.append_array(validate_swatches(swatch_defs))
 	errors.append_array(validate_wall_kinds(wall_defs))
 	errors.append_array(validate_floor_styles(floor_defs, swatch_defs))
@@ -331,8 +332,11 @@ func lots() -> Array[LotDef]:
 ## with a renovation bill and 2 to 5 days), rent, an expansion that costs
 ## something and does not lower the rent, a tier and reputation in range, a
 ## guest mix over known customer types, and known tags.
+## `opening_type_ids` are the types that arrive from owner level 1; when given,
+## every mix must name one, or a new site could open with nobody to come in.
 static func validate_lots(definitions: Array[LotDef], item_defs: Array[ItemDef],
-		customer_type_ids: Array[StringName]) -> PackedStringArray:
+		customer_type_ids: Array[StringName],
+		opening_type_ids: Array[StringName] = []) -> PackedStringArray:
 	var errors: PackedStringArray = []
 	var ids: Dictionary[StringName, bool] = {}
 	var item_ids: Dictionary[StringName, bool] = {}
@@ -388,6 +392,12 @@ static func validate_lots(definitions: Array[LotDef], item_defs: Array[ItemDef],
 				errors.append("%s: unknown customer type '%s'" % [who, kind])
 			if not is_finite(share) or share <= 0.0:
 				errors.append("%s: guest share for '%s' must be > 0" % [who, kind])
+		if not opening_type_ids.is_empty() and not definition.guest_mix.is_empty():
+			var opens: bool = false
+			for kind: StringName in definition.guest_mix:
+				opens = opens or opening_type_ids.has(kind)
+			if not opens:
+				errors.append("%s: guest_mix needs a type that visits from level 1" % who)
 		var seen_tags: Dictionary[StringName, bool] = {}
 		for tag: StringName in definition.tags:
 			if not LotDef.KNOWN_TAGS.has(tag):
@@ -442,8 +452,9 @@ static func _lot_layout_errors(definition: LotDef, who: String, item_ids: Dictio
 	return errors
 
 
-## Customer type ids from <root>/customers/types.tres, for the lots' guest mix.
-static func _customer_type_ids(root: String) -> Array[StringName]:
+## Customer type ids from <root>/customers/types.tres, for the lots' guest mix;
+## with `max_unlock_level` above 0, only types unlocked by that owner level.
+static func _customer_type_ids(root: String, max_unlock_level: int = 0) -> Array[StringName]:
 	var ids: Array[StringName] = []
 	var path: String = root.path_join("customers/types.tres")
 	if not ResourceLoader.exists(path):
@@ -452,7 +463,7 @@ static func _customer_type_ids(root: String) -> Array[StringName]:
 	if catalogue == null:
 		return ids
 	for kind: CustomerType in catalogue.types:
-		if kind != null:
+		if kind != null and (max_unlock_level <= 0 or kind.unlock_level <= max_unlock_level):
 			ids.append(kind.id)
 	return ids
 
@@ -648,6 +659,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': blocking cells must be unique, inside the footprint, and separate from work and seat cells" % definition.id)
 		if not definition.catalogue_room.is_empty() and not ItemDef.CATALOGUE_ROOMS.has(definition.catalogue_room):
 			errors.append("item '%s': unknown catalogue room '%s'" % [definition.id, definition.catalogue_room])
+		if definition.rain_cover and (not definition.outdoor_only or definition.placement_layer != ItemDef.PlacementLayer.FLOOR_DECOR):
+			errors.append("item '%s': rain cover must be outdoor-only floor decor" % definition.id)
 		if definition.serve_across and definition.category != ItemDef.Category.TABLE:
 			errors.append("item '%s': only a table or counter can be served across" % definition.id)
 		if definition.paintable and definition.paint_slot != &"body":

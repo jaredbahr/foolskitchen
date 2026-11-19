@@ -15,9 +15,13 @@ class RefusingGuest extends CustomerAgent:
 
 func test_authored_ranges_and_fixed_singletons_keep_the_random_stream() -> void:
 	assert_true(TYPES.is_valid())
+	# Location types (#471): tourists come in up to fours, the office crowd in up to threes.
+	var ranges: Dictionary[StringName, Vector2i] = {&"family": Vector2i(2, 4),
+		&"tourist": Vector2i(1, 4), &"office": Vector2i(1, 3)}
 	for kind: CustomerType in TYPES.types:
-		assert_eq(kind.party_size_min, 2 if kind.id == &"family" else 1)
-		assert_eq(kind.party_size_max, 4 if kind.id == &"family" else 2)
+		var range_for: Vector2i = ranges.get(kind.id, Vector2i(1, 2))
+		assert_eq(kind.party_size_min, range_for.x)
+		assert_eq(kind.party_size_max, range_for.y)
 		var one: CustomerType = kind.duplicate() as CustomerType
 		one.party_size_min = 1
 		one.party_size_max = 1

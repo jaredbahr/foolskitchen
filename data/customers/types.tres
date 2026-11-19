@@ -89,6 +89,43 @@ visit_weights = Dictionary[StringName, float]({
 &"drinks": 0.4
 })
 
+[sub_resource type="Resource" id="Tourist"]
+script = ExtResource("2_type")
+id = &"tourist"
+display_name = "Tourist"
+report_name = "Tourists"
+party_size_max = 4
+party_unlock_level = 4
+budget_multiplier = 1.3
+quality_weight = 0.15
+review_chance_multiplier = 1.3
+drink_add_chance = 0.35
+pastry_add_chance = 0.15
+restroom_chance = 0.3
+local_dish_bonus = 0.3
+
+[sub_resource type="Resource" id="OfficeCrowd"]
+script = ExtResource("2_type")
+id = &"office"
+display_name = "Office worker"
+report_name = "Office crowd"
+party_size_max = 3
+party_unlock_level = 4
+budget_multiplier = 1.25
+patience_multiplier = 0.7
+quality_weight = 0.1
+review_chance_multiplier = 0.8
+drink_add_chance = 0.2
+pastry_add_chance = 0.1
+restroom_chance = 0.15
+visit_weights = Dictionary[StringName, float]({
+&"coffee": 1.2,
+&"drinks": 0.3
+})
+arrival_window_start = 690
+arrival_window_end = 840
+off_window_weight = 0.2
+
 [resource]
 script = ExtResource("1_catalogue")
-types = Array[ExtResource("2_type")]([SubResource("Regular"), SubResource("Student"), SubResource("Foodie"), SubResource("Family")])
+types = Array[ExtResource("2_type")]([SubResource("Regular"), SubResource("Student"), SubResource("Foodie"), SubResource("Family"), SubResource("Tourist"), SubResource("OfficeCrowd")])
