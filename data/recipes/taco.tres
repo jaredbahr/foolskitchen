@@ -29,5 +29,5 @@ steps = Array[ExtResource("3_step")]([SubResource("Step_prep"), SubResource("Ste
 base_quality = 0.59
 standard_price = 10
 unlock_tier = 1
-unlock_level = 6
+unlock_level = 7
 theme_tags = Array[StringName]([&"diner"])

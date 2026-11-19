@@ -10,9 +10,9 @@ const CASES: Array[Dictionary] = [
 	{"id": &"plant_small_3", "name": "Tall plant", "asset": "plantSmall3", "price": 25, "unlock": 5, "charm": 1, "tags": [&"rustic"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"bookcase_open_low", "name": "Low open bookcase", "asset": "bookcaseOpenLow", "price": 65, "unlock": 6, "charm": 2, "tags": [&"cosy", &"rustic"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"coat_rack_standing", "name": "Standing coat rack", "asset": "coatRackStanding", "price": 25, "unlock": 5, "charm": 1, "tags": [&"diner"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
-	{"id": &"speaker", "name": "Speaker", "asset": "speaker", "price": 75, "unlock": 7, "charm": 2, "tags": [&"modern", &"bar"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
+	{"id": &"speaker", "name": "Speaker", "asset": "speaker", "price": 75, "unlock": 6, "charm": 2, "tags": [&"modern", &"bar"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 	{"id": &"television_vintage", "name": "Vintage television", "asset": "televisionVintage", "price": 150, "unlock": 8, "charm": 3, "tags": [&"diner", &"bar"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
-	{"id": &"side_table", "name": "Side table", "asset": "sideTable", "price": 35, "unlock": 5, "charm": 1, "tags": [&"rustic", &"cafe"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
+	{"id": &"side_table", "name": "Side table", "asset": "sideTable", "price": 35, "unlock": 2, "charm": 1, "tags": [&"rustic", &"cafe"], "footprint": Vector2i(1, 1), "solid": true, "paintable": true},
 ]
 
 var _views: Array[PropView] = []

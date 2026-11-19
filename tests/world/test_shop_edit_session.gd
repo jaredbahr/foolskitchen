@@ -160,10 +160,10 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	assert_eq(report.owner_level_before, 1)
 	assert_eq(report.owner_level_after, 2)
 	assert_eq(report.owner_unlocks, ["A-frame sign", "Bacon and eggs recipe", "Bar fries recipe", "Cereal recipe",
-		"Club sandwich recipe", "Corner cabinet", "Fish & chips recipe", "Four-seat table", "Freezer", "Fried eggs recipe",
-		"Fries recipe", "Fryer", "Hot dog recipe", "Log walls", "Mountain print", "Muffin recipe", "Pancakes recipe", "Potted plant", "Rectangular rug",
+		"Corner cabinet", "Four-seat table", "Freezer", "Fried eggs recipe",
+		"Fries recipe", "Fryer", "Mountain print", "Muffin recipe", "Pancakes recipe", "Potted plant",
 		"Round table", "Rounded chair", "Shop name sign", "Side table", "Side table with a square lamp", "Small tiles floor",
-		"Square floor lamp", "Square rug", "Standing coat rack", "Subway tiles walls", "Tomato melt recipe",
+		"Square floor lamp", "Square rug", "Subway tiles walls", "Tomato melt recipe",
 		"Two-seat bench", "Waffles recipe", "Wine recipe"] as Array[String],
 		"the level-up banner lists every available level-two unlock")
 	var panel: Control = first.get_node("Overlay/EveningReport") as Control
@@ -261,19 +261,20 @@ func test_saved_furniture_on_staff_spawn_loads_and_staff_can_escape() -> void:
 	assert_eq(GameState._capture_save(), randoms_before_walk)
 
 
-func test_level_three_announcements_skip_hidden_tall_plant_and_keep_visible_unlocks() -> void:
+func test_level_five_announcements_skip_hidden_tall_plant_and_keep_visible_unlocks() -> void:
+	# #647 moved the tall plant (hidden) and the square bar stool to level 5.
 	var main: Node = _start()
 	var content: ContentDB = main.get("content") as ContentDB
 	var hidden: ItemDef = content.item(&"plant_small_3")
-	var visible: ItemDef = content.item(&"cushioned_bench")
-	assert_eq(hidden.unlock_level, 3)
+	var visible: ItemDef = content.item(&"square_bar_stool")
+	assert_eq(hidden.unlock_level, 5)
 	assert_false(hidden.catalogue_visible)
-	assert_eq(visible.unlock_level, 3)
+	assert_eq(visible.unlock_level, 5)
 	assert_true(visible.catalogue_visible)
 	var saved: String = FileAccess.get_file_as_string(_path())
 	var books: Dictionary = Economy._capture_save()
 	var rng: Dictionary = GameState._capture_save()
-	var unlocked: Array[String] = main.call("_unlocked_at_levels", 2, 3)
+	var unlocked: Array[String] = main.call("_unlocked_at_levels", 4, 5)
 	assert_false(unlocked.has(hidden.display_name))
 	assert_true(unlocked.has(visible.display_name))
 	assert_eq(FileAccess.get_file_as_string(_path()), saved)

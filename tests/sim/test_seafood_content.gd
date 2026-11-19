@@ -41,7 +41,8 @@ func test_seafood_ingredients_have_their_authored_storage_and_conditional_target
 
 func test_seafood_unlock_links_levels_sections_and_stations_form_a_valid_branch() -> void:
 	var parents: Array[StringName] = [&"fries", &"tomato_soup", &"fish_and_chips", &"mussels_broth", &"shrimp_skewer"]
-	var levels: Array[int] = [2, 3, 4, 4, 5]
+	# #647: the seafood branch is a later-game treat, levels 6 to 9.
+	var levels: Array[int] = [6, 7, 8, 9, 9]
 	var sections: Array[int] = [RecipeDef.Section.MAINS, RecipeDef.Section.STARTERS,
 		RecipeDef.Section.STARTERS, RecipeDef.Section.MAINS, RecipeDef.Section.MAINS]
 	var stations: Array[Array] = [[&"prep_counter", &"fryer"], [&"stove"], [&"prep_counter"],
@@ -82,8 +83,8 @@ func test_deck_planks_reuses_the_existing_pattern_and_palette_without_changing_t
 	assert_eq(floor.pattern, FloorStyleDef.Pattern.PLANKS)
 	assert_eq([floor.default_swatch, floor.default_accent], [&"slate_blue", &"cream"])
 	assert_eq(floor.theme_tags, [&"seafood"] as Array[StringName])
-	assert_false(floor.unlocked(3))
-	assert_true(floor.unlocked(4))
+	assert_false(floor.unlocked(5))
+	assert_true(floor.unlocked(6))
 	assert_eq(floor.price, 3)
 	assert_not_null(_content.swatch(floor.default_swatch))
 	assert_not_null(_content.swatch(floor.default_accent))

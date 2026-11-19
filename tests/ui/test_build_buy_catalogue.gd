@@ -274,7 +274,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"cushioned_bench"),
 		["Cushioned two-seat bench", "$50", "Seats 2", "Themes: Cosy"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"television_vintage"),
-		["Vintage television", "$150", "Decoration", "Charm +3", "Themes: Diner, Bar"] as Array[String])
+		["Vintage television", "$150  (unlocks at level 8)", "Decoration", "Charm +3", "Themes: Diner, Bar"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"rug_round"),
 		["Round rug", "$30", "Rug: tables and chairs can stand on it", "Charm +1", "Themes: Cosy, Rustic"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"stove"),
@@ -285,7 +285,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"table_2")[2], "Table with seats for 2")
 	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Diner, Bar", "vibe theme order")
 	_catalogue.set_owner_level(1)
-	assert_eq(_catalogue.hover_card_lines(&"glass_table")[1], "$120  (unlocks at level 9)")
+	assert_eq(_catalogue.hover_card_lines(&"glass_table")[1], "$120  (unlocks at level 6)")
 	assert_eq(_catalogue.hover_card_lines(&"no_such_item"), [] as Array[String])
 	for definition: ItemDef in _content.items():
 		for line: String in _catalogue.hover_card_lines(definition.id):

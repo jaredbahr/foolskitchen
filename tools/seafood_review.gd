@@ -16,8 +16,8 @@ func _ready() -> void:
 		return
 	Economy.add_cash(2000, Ledger.OTHER)
 	owner_progress.award_bonus(owner_progress.threshold_for(5))
-	shop_editor.set_owner_level(5)
-	menu_settings.set_owner_level(5)
+	shop_editor.set_owner_level(9)  # #647: the seafood branch unlocks at levels 6 to 9
+	menu_settings.set_owner_level(9)
 	_build_catalogue.set_owner_level(5)
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	if not shop_buy(&"fryer", Vector2i(11, 3), 0) or not shop_buy(&"freezer", Vector2i(13, 3), 0) \

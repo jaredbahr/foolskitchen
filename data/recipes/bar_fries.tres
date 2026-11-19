@@ -24,5 +24,5 @@ steps = Array[ExtResource("3_step")]([SubResource("Step_fry")])
 base_quality = 0.6
 standard_price = 5
 unlock_tier = 1
-unlock_level = 4
+unlock_level = 2
 theme_tags = Array[StringName]([&"bar"])
