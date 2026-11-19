@@ -5956,12 +5956,9 @@ func _start_van_ride(from_lot: StringName, to_lot: StringName, day: int) -> bool
 		_city_map = CityMap.load_default()
 	if _city_map == null:
 		return false
-	var from_area: NeighbourhoodDef = _city_map.neighbourhood_for_lot(from_lot)
 	var to_area: NeighbourhoodDef = _city_map.neighbourhood_for_lot(to_lot)
-	if from_area == null or to_area == null:
-		return false
-	var path: PackedVector2Array = CityMap.van_path(_city_map, from_area.id, to_area.id)
-	if path.size() < 2:
+	var path: PackedVector2Array = VanRide.ride_path(_city_map, from_lot, to_lot)
+	if to_area == null or path.size() < 2:
 		return false
 	if _commute_lines == null:
 		_commute_lines = CommuteLines.load_default()
@@ -5978,7 +5975,8 @@ func is_van_ride_visible() -> bool:
 	return _van_ride != null and _van_ride.is_playing()
 
 
-## Ends the van ride at once, if one is on.
+## A click, tap or key during the ride (VanRide.skip): the first jumps to the
+## arrival with the line shown, the second ends it.
 func skip_van_ride() -> void:
 	if _van_ride != null:
 		_van_ride.skip()

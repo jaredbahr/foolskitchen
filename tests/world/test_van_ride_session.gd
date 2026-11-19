@@ -97,12 +97,15 @@ func test_the_ride_needs_two_neighbourhoods_and_map_art() -> void:
 	assert_eq(_book().active_id, FIXER)
 
 
-func test_skip_ends_it_at_once_by_key_click_or_call() -> void:
+func test_skip_jumps_to_the_arrival_then_ends_by_key_click_or_call() -> void:
 	await _start(2.0)
 	assert_true(_main.call("travel_to_site", FIXER))
 	assert_true(_main.call("is_van_ride_visible"))
 	_main.call("skip_van_ride")
-	assert_false(_main.call("is_van_ride_visible"))
+	assert_true(_main.call("is_van_ride_visible"), "the first skip shows the arrival and the line")
+	assert_true(_ride().has_arrived())
+	_main.call("skip_van_ride")
+	assert_false(_main.call("is_van_ride_visible"), "the second ends it")
 	assert_true(_main.call("travel_to_site", SiteBook.HOME_ID))
 	assert_true(_main.call("is_van_ride_visible"))
 	var key: InputEventKey = InputEventKey.new()
@@ -110,13 +113,17 @@ func test_skip_ends_it_at_once_by_key_click_or_call() -> void:
 	key.physical_keycode = KEY_SPACE
 	key.pressed = true
 	_main.call("_unhandled_input", key)
-	assert_false(_main.call("is_van_ride_visible"), "any key skips")
+	assert_true(_ride().has_arrived(), "a key skips to the arrival")
+	_main.call("_unhandled_input", key)
+	assert_false(_main.call("is_van_ride_visible"), "a second key ends it")
 	assert_true(_main.call("travel_to_site", FIXER))
 	var click: InputEventMouseButton = InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
 	_ride()._gui_input(click)
-	assert_false(_main.call("is_van_ride_visible"), "a click skips")
+	assert_true(_ride().has_arrived(), "a click skips to the arrival")
+	_ride()._gui_input(click)
+	assert_false(_main.call("is_van_ride_visible"), "a second click ends it")
 
 
 func test_the_commute_line_never_repeats_back_to_back() -> void:
@@ -129,7 +136,7 @@ func test_the_commute_line_never_repeats_back_to_back() -> void:
 		assert_true(_main.call("travel_to_site", target), "trip %d" % trip)
 		assert_true(_main.call("is_van_ride_visible"))
 		seen.append(_ride().line())
-		_ride().skip()
+		_ride().tick(10.0)
 	for index: int in range(1, seen.size()):
 		assert_ne(seen[index], seen[index - 1], "trip %d repeated a line" % index)
 

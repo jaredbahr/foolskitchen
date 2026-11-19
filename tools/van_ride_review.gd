@@ -5,16 +5,17 @@ extends Control
 ##   xvfb-run -a godot --path . --rendering-driver opengl3 --resolution 1600x900 \
 ##     res://tools/van_ride_review.tscn -- --at=1.0 --out=screens/ride_mid.png
 ## Options: --at=<seconds into the ride> (0 start, 1 middle, 2.2 arrived with
-## the line), --from=<neighbourhood id> --to=<neighbourhood id> (default
-## old_town to skyline), --case=card (the morning card), --phone (a 390 x 844
+## the line), --from=<lot id> --to=<lot id> (default home to
+## skyscraper_rooftop), --skip (press skip once at --at), --case=card (the morning card), --phone (a 390 x 844
 ## screen drawn 1:1), --out=<png>.
 
 const FRAMES: int = 8
 
 var _out: String = ""
 var _at: float = 0.0
-var _from: StringName = &"old_town"
-var _to: StringName = &"skyline"
+var _from: StringName = &"home"
+var _to: StringName = &"skyscraper_rooftop"
+var _skip: bool = false
 var _case: String = "ride"
 var _frames: int = 0
 
@@ -32,6 +33,8 @@ func _ready() -> void:
 			_to = StringName(arg.trim_prefix("--to="))
 		elif arg.begins_with("--case="):
 			_case = arg.trim_prefix("--case=")
+		elif arg == "--skip":
+			_skip = true
 		elif arg == "--phone":
 			phone = true
 	if phone:
@@ -49,14 +52,17 @@ func _ready() -> void:
 func _ride() -> void:
 	var map: CityMapDef = CityMap.load_default()
 	var lines: CommuteLines = CommuteLines.load_default()
-	var line: String = lines.pick(12, _to, map.neighbourhood(_to).commute_line)
+	var area: NeighbourhoodDef = map.neighbourhood_for_lot(_to)
+	var line: String = lines.pick(12, area.id, area.commute_line)
 	var ride: VanRide = VanRide.new()
 	add_child(ride)
 	var panel: CityPanel = (load("res://src/ui/city_panel.tscn") as PackedScene).instantiate() as CityPanel
-	ride.play(panel.map_texture, CityMap.van_path(map, _from, _to), line, 2.0)
+	ride.play(panel.map_texture, VanRide.ride_path(map, _from, _to), line, 2.0)
 	panel.free()
 	# Late frames are fed in whole, so the picture is exactly that moment.
 	ride.tick(_at)
+	if _skip:
+		ride.skip()
 
 
 func _card() -> void:

@@ -28,10 +28,14 @@ const CAPTION_PAD: float = 14.0
 const VAN_RATIO: float = 0.1
 const VAN_MIN: float = 52.0
 const VAN_MAX: float = 120.0
-const TRAIL_COLOR: Color = Color("c44838")
+const TRAIL_COLOR: Color = Color(0.77, 0.28, 0.22, 0.7)
 const INK_COLOR: Color = Color("3b2a20")
 const PAPER_COLOR: Color = Color("e8d9b4")
+## How far outside a banner's edge the van's detour corners sit, map units.
+const DETOUR_MARGIN: float = 0.012
 const HINT: String = "Click to skip"
+## After a skip the line stays this long (seconds), then the ride ends by itself.
+const SKIP_HOLD_SECONDS: float = 1.2
 
 var _map_texture: Texture2D
 ## The route in map units (0 to 1 on each axis) and the length up to each point.
@@ -42,6 +46,7 @@ var _hold_seconds: float = HOLD_SECONDS
 var _elapsed: float = 0.0
 var _playing: bool = false
 var _line: String = ""
+var _skipped: bool = false
 
 var _dim: ColorRect
 var _frame: Control
@@ -145,6 +150,7 @@ func play(map_texture: Texture2D, path: PackedVector2Array, line: String, ride_s
 	_hold_seconds = maxf(hold_seconds, 0.0)
 	_line = line
 	_caption_label.text = line
+	_skipped = false
 	_elapsed = 0.0
 	_playing = true
 	visible = true
@@ -158,9 +164,127 @@ func is_playing() -> bool:
 	return _playing
 
 
-## Ends the ride at once (a click, a tap or a key).
+## A click, a tap or a key. The first one jumps to the arrival with the
+## commute line fully shown (the line is the payoff), which then ends by itself
+## after SKIP_HOLD_SECONDS; a second one, or a skip when there is no line to
+## read or the van has already arrived, ends the ride at once.
 func skip() -> void:
-	_end(true)
+	if not _playing:
+		return
+	if _skipped or _elapsed >= _ride_seconds or _line.is_empty():
+		_skipped = true
+		_end(true)
+		return
+	_skipped = true
+	_elapsed = _ride_seconds
+	_hold_seconds = SKIP_HOLD_SECONDS
+	_update()
+
+
+## True once the van has arrived (by driving or by a skip).
+func has_arrived() -> bool:
+	return _playing and _elapsed >= _ride_seconds
+
+
+## The route for a trip from the shop on `from_lot` to the one on `to_lot`, in
+## map units: along the roads (CityMap.van_path), but from the leaving lot's
+## pin spot to the arriving lot's, which sit below their neighbourhood banners,
+## so the van never parks on the lettering. Empty when either lot has no
+## neighbourhood or both are in the same one.
+static func ride_path(map: CityMapDef, from_lot: StringName, to_lot: StringName) -> PackedVector2Array:
+	if map == null:
+		return PackedVector2Array()
+	var from_area: NeighbourhoodDef = map.neighbourhood_for_lot(from_lot)
+	var to_area: NeighbourhoodDef = map.neighbourhood_for_lot(to_lot)
+	if from_area == null or to_area == null:
+		return PackedVector2Array()
+	var path: PackedVector2Array = CityMap.van_path(map, from_area.id, to_area.id)
+	if path.size() < 2:
+		return path
+	path[0] = pin_spot(from_area, from_lot)
+	path[path.size() - 1] = pin_spot(to_area, to_lot)
+	# Each end's last leg goes round its banner rather than across the lettering.
+	# The road's first and last bends often start inside the banner: skip those.
+	var to_box: Rect2 = banner(to_area)
+	var from_box: Rect2 = banner(from_area)
+	while path.size() > 2 and to_box.grow(DETOUR_MARGIN).has_point(path[path.size() - 2]):
+		path.remove_at(path.size() - 2)
+	while path.size() > 2 and from_box.grow(DETOUR_MARGIN).has_point(path[1]):
+		path.remove_at(1)
+	var arriving: PackedVector2Array = detour(path[path.size() - 2], path[path.size() - 1], to_box)
+	path.remove_at(path.size() - 1)
+	path.append_array(arriving)
+	var leaving: PackedVector2Array = detour(path[1], path[0], from_box)
+	leaving.reverse()
+	path = leaving + path.slice(1)
+	return path
+
+
+## True when the segment a to b passes through `box` (Liang-Barsky clipping).
+static func segment_hits(box: Rect2, a: Vector2, b: Vector2) -> bool:
+	var t0: float = 0.0
+	var t1: float = 1.0
+	var delta: Vector2 = b - a
+	var edges: Array[Vector2] = [Vector2(-delta.x, a.x - box.position.x), Vector2(delta.x, box.end.x - a.x),
+		Vector2(-delta.y, a.y - box.position.y), Vector2(delta.y, box.end.y - a.y)]
+	for edge: Vector2 in edges:
+		if is_zero_approx(edge.x):
+			if edge.y < 0.0:
+				return false
+			continue
+		var t: float = edge.y / edge.x
+		if edge.x < 0.0:
+			t0 = maxf(t0, t)
+		else:
+			t1 = minf(t1, t)
+		if t0 > t1:
+			return false
+	return true
+
+
+## A neighbourhood's name banner on the map, in map units (as CityPanel sizes it).
+static func banner(area: NeighbourhoodDef) -> Rect2:
+	var half: Vector2 = Vector2(CityPanel.NAME_LETTER * area.display_name.length() + CityPanel.NAME_ENDS,
+		CityPanel.NAME_HEIGHT) / 2.0
+	return Rect2(area.map_position - half, half * 2.0)
+
+
+## The points to drive after `from` to reach `to` (any corners, then `to`)
+## so the way keeps off `box`: straight when it already does, otherwise round
+## the shortest side of its corners.
+static func detour(from: Vector2, to: Vector2, box: Rect2) -> PackedVector2Array:
+	var direct: PackedVector2Array = PackedVector2Array([to])
+	if not segment_hits(box, from, to):
+		return direct
+	var pad: Vector2 = Vector2.ONE * DETOUR_MARGIN
+	var left: float = box.position.x - pad.x
+	var right: float = box.end.x + pad.x
+	var top: float = box.position.y - pad.y
+	var bottom: float = box.end.y + pad.y
+	var options: Array[PackedVector2Array] = [
+		PackedVector2Array([Vector2(left, bottom)]), PackedVector2Array([Vector2(right, bottom)]),
+		PackedVector2Array([Vector2(left, top), Vector2(left, bottom)]),
+		PackedVector2Array([Vector2(right, top), Vector2(right, bottom)]),
+		PackedVector2Array([Vector2(left, top)]), PackedVector2Array([Vector2(right, top)])]
+	var best: PackedVector2Array = direct
+	var best_length: float = INF
+	for corners: PackedVector2Array in options:
+		var way: PackedVector2Array = PackedVector2Array([from]) + corners + direct
+		var clear: bool = true
+		var length: float = 0.0
+		for index: int in range(1, way.size()):
+			clear = clear and not segment_hits(box, way[index - 1], way[index])
+			length += way[index - 1].distance_to(way[index])
+		if clear and length < best_length:
+			best_length = length
+			best = corners + direct
+	return best
+
+
+## Where a lot's pin sits on the map (CityPanel.pin_position), kept inside the paper.
+static func pin_spot(area: NeighbourhoodDef, lot: StringName) -> Vector2:
+	var spot: Vector2 = CityPanel.pin_position(area.map_position, maxi(area.lots.find(lot), 0), area.lots.size())
+	return spot.clamp(Vector2.ONE * CityPanel.EDGE_MARGIN, Vector2.ONE * (1.0 - CityPanel.EDGE_MARGIN))
 
 
 ## Moves the ride on by `delta` seconds. _process calls it; tests call it
@@ -170,7 +294,7 @@ func tick(delta: float) -> void:
 		return
 	_elapsed += delta
 	if _elapsed >= _ride_seconds + _hold_seconds:
-		_end(false)
+		_end(_skipped)
 		return
 	_update()
 
