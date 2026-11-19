@@ -16,9 +16,11 @@ enum LotState { OWNED, FOR_SALE, LOCKED, UNLISTED }
 
 ## What a neighbourhood's patch shows.
 ## OPEN: the owner has a site there, or a lot there is for sale.
-## LOCKED: every lot there is locked.
+## LOCKED: a lot there is locked and none is owned or for sale.
 ## COMING_SOON: no lots yet (its coming-soon line says what is coming).
-enum AreaState { OPEN, LOCKED, COMING_SOON }
+## EMPTY: its lots are all unlisted (the starter shop sold, a lot missing
+## from the data): nothing to buy or open, and no lock to quote.
+enum AreaState { OPEN, LOCKED, COMING_SOON, EMPTY }
 
 const DEFAULT_PATH: String = "res://data/city/city_map.tres"
 
@@ -46,11 +48,13 @@ static func area_state(area: NeighbourhoodDef, lots: Array[LotDef], owned_lots: 
 		career_tier: int, reputation: float) -> AreaState:
 	if area == null or area.is_coming_soon():
 		return AreaState.COMING_SOON
+	var locked: bool = false
 	for lot: StringName in area.lots:
 		var state: LotState = lot_state(find_lot(lots, lot), owned_lots.has(lot), career_tier, reputation)
 		if state == LotState.OWNED or state == LotState.FOR_SALE:
 			return AreaState.OPEN
-	return AreaState.LOCKED
+		locked = locked or state == LotState.LOCKED
+	return AreaState.LOCKED if locked else AreaState.EMPTY
 
 
 ## The lowest career tier any lot in `area` needs (1 for the home lot), or 0

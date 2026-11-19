@@ -79,7 +79,7 @@ func reachable(listed: Array[StringName], owned_lots: Array[StringName]) -> Arra
 ## LotDef id to its display name; CityMap.lot_names builds it), in a stable order;
 ## empty when it is good. The rules: at least one neighbourhood; each has a
 ## unique valid id, a unique trimmed name of 1 to 40 characters that is not a
-## lot's name, a blurb of at most 160, a map position inside 0..1, and either
+## lot's name, a blurb of 1 to 160 characters, a trimmed coming-soon line, a map position inside 0..1, and either
 ## lots (each listed once, each the home lot or a known lot) or a coming-soon
 ## line, never both; and every lot, plus the home lot, stands in exactly one
 ## neighbourhood.
@@ -117,8 +117,12 @@ func validate(lots: Dictionary[StringName, String]) -> PackedStringArray:
 		elif lot_names.has(area.display_name):
 			errors.append("%s has the same name as a lot" % label)
 		seen_names[area.display_name] = true
-		if area.blurb.length() > MAX_BLURB_LENGTH:
+		if area.blurb.strip_edges().is_empty():
+			errors.append("%s needs a blurb" % label)
+		elif area.blurb.length() > MAX_BLURB_LENGTH:
 			errors.append("%s has a blurb over %d characters" % [label, MAX_BLURB_LENGTH])
+		if area.coming_soon != area.coming_soon.strip_edges():
+			errors.append("%s has a coming-soon line with spaces at its ends" % label)
 		if not _on_map(area.map_position):
 			errors.append("%s is off the map (positions run 0 to 1)" % label)
 		if area.lots.is_empty() and area.coming_soon.strip_edges().is_empty():

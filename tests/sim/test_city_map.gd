@@ -28,6 +28,7 @@ func _area(id: StringName, display_name: String, lots: Array[StringName], soon: 
 	area.display_name = display_name
 	area.lots = lots
 	area.coming_soon = soon
+	area.blurb = "A part of town for tests."
 	return area
 
 
@@ -53,16 +54,6 @@ func test_every_lot_and_the_home_shop_have_a_neighbourhood() -> void:
 	assert_not_null(map.neighbourhood_for_lot(HOME), "the starter shop stands somewhere")
 	for lot: LotDef in _lots():
 		assert_not_null(map.neighbourhood_for_lot(lot.id), "%s has a neighbourhood" % lot.id)
-
-
-func test_the_shipped_map_has_a_coming_soon_area() -> void:
-	var map: CityMapDef = CityMap.load_default()
-	var soon: int = 0
-	for area: NeighbourhoodDef in map.neighbourhoods:
-		if area.is_coming_soon():
-			soon += 1
-			assert_false(area.coming_soon.is_empty())
-	assert_true(soon >= 1, "a locked area waits for a future lot")
 
 
 func test_reads_find_neighbourhoods_by_id_and_lot() -> void:
@@ -106,6 +97,21 @@ func test_validation_refuses_bad_fields() -> void:
 		var area: NeighbourhoodDef = case[0]
 		var errors: PackedStringArray = _map([area, _area(&"z", "Zed", [&"lot_b"])]).validate(CityMap.lot_names(lots))
 		assert_true(" ".join(errors).contains(case[1]), "expected '%s' in %s" % [case[1], errors])
+
+
+func test_a_coming_soon_area_is_valid_with_no_lots() -> void:
+	var map: CityMapDef = _map([_area(&"a", "Alpha", [HOME]), _area(&"s", "Soon", [] as Array[StringName], "A cabin")])
+	assert_eq(map.validate({} as Dictionary[StringName, String]), PackedStringArray())
+	assert_true(map.neighbourhood(&"s").is_coming_soon())
+
+
+func test_validation_refuses_an_empty_blurb_and_an_untrimmed_coming_soon() -> void:
+	var bare: NeighbourhoodDef = _area(&"a", "Alpha", [HOME])
+	bare.blurb = "  "
+	var soon: NeighbourhoodDef = _area(&"s", "Soon", [] as Array[StringName], "A cabin ")
+	var errors: String = " ".join(_map([bare, soon]).validate({} as Dictionary[StringName, String]))
+	assert_true(errors.contains("Neighbourhood 'a' needs a blurb"))
+	assert_true(errors.contains("Neighbourhood 's' has a coming-soon line with spaces at its ends"))
 
 
 func test_validation_refuses_off_map_positions_and_long_blurbs() -> void:
@@ -161,6 +167,11 @@ func test_area_state() -> void:
 		CityMap.AreaState.OPEN, "a site there opens it")
 	assert_eq(CityMap.area_state(home, lots, owned, 1, NAN), CityMap.AreaState.OPEN)
 	assert_eq(CityMap.area_state(soon, lots, owned, 6, 5.0), CityMap.AreaState.COMING_SOON)
+	assert_eq(CityMap.area_state(home, lots, [] as Array[StringName], 6, 5.0), CityMap.AreaState.EMPTY,
+		"the starter shop sold: nothing there, and no lock to quote")
+	var sold_and_locked: NeighbourhoodDef = _area(&"x", "Mixed", [HOME, &"lot_c"])
+	assert_eq(CityMap.area_state(sold_and_locked, lots, [] as Array[StringName], 3, NAN), CityMap.AreaState.LOCKED,
+		"an unlisted lot beside a locked one still reads locked")
 
 
 func test_opening_tier_is_the_lowest_lot_gate() -> void:
