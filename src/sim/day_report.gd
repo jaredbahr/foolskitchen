@@ -50,6 +50,9 @@ var reviews: Array[String] = []
 var cleanliness_label: String = ""
 ## Live closing display only: transient mishaps never add save fields.
 var mishaps_text: String = ""
+## Quirk id -> guests with that quirk who were served today. Feeds the morning
+## paper's brief; live only, never saved.
+var quirk_counts: Dictionary = {}
 ## Player-facing reviews for this day. Each card has an integer stars (1-5)
 ## and a quote; simulation cause ids are deliberately excluded.
 var review_cards: Array[Dictionary] = []

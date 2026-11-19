@@ -472,6 +472,7 @@ func mood_band() -> int:
 func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisit:
 	var visit: ReviewVisit = ReviewVisit.new()
 	visit.served = paid
+	visit.type_id = customer_type_id
 	if paid and not takeaway and _eating >= eat_ticks and order != null \
 			and order.state == Order.State.DELIVERED:
 		visit.consumed_recipe_ids.append(order.recipe_id)

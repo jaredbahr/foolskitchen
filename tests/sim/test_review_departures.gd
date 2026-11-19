@@ -147,7 +147,9 @@ func test_reviews_use_each_guests_arrival_dirt_after_the_floor_changes() -> void
 	assert_almost_eq(dirt.dirt_fraction(), 1.0)
 	_sim.record_departure(spotless_guest)
 	assert_eq(_sim.reviews_today[1]["stars"], 4)
-	assert_true(QUOTES.groups[&"lovely_place"].has(_sim.reviews_today[1]["quote"]),
+	var guest_voice: StringName = ReviewQuotes.type_cause(spotless_guest.customer_type_id)
+	assert_true(QUOTES.groups[&"lovely_place"].has(_sim.reviews_today[1]["quote"])
+		or QUOTES.groups[guest_voice].has(_sim.reviews_today[1]["quote"]),
 		"later dirt cannot become a complaint for an earlier spotless arrival")
 	assert_eq(_events.size(), 2)
 	assert_false(_sim.reviews_today[0].has("cause"), "internal review ids stay out of report rows")

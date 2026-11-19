@@ -64,6 +64,7 @@ static func build(day: int, sources: DayReportSources) -> DayReport:
 	report.customers_lost = sources.sim.lost_today
 	report.visitor_breakdown = sources.sim.visitor_breakdown()
 	report.takeaways = sources.sim.takeaways_today
+	report.quirk_counts = sources.sim.quirks_today.duplicate()
 	if sources.sim.mishaps != null:
 		report.mishaps_text = MishapText.daily(sources.sim.mishaps.spills_today,
 			sources.sim.mishaps.broken_plates_today, sources.sim.mishaps.degreases_today)

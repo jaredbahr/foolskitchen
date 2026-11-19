@@ -11,6 +11,9 @@ const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 var _scores: Array[int] = []
 ## Report wording is day-local. It is deliberately absent from the save format.
 var _quotes_used_today: Dictionary[String, bool] = {}
+## The shared lovely_place lines already drawn today, whichever voice wrote the
+## shown quote, so guest-type voices never change how many draws a pick makes.
+var _lovely_used_today: Dictionary[String, bool] = {}
 
 
 func _init() -> void:
@@ -20,12 +23,14 @@ func _init() -> void:
 func reset() -> void:
 	_scores.clear()
 	_quotes_used_today.clear()
+	_lovely_used_today.clear()
 	for _index: int in range(INITIAL_REVIEWS):
 		_scores.append(INITIAL_STARS)
 
 
 func begin_day() -> void:
 	_quotes_used_today.clear()
+	_lovely_used_today.clear()
 
 
 func scores() -> Array[int]:
@@ -71,7 +76,10 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 	var cause: StringName = cause_of(visit, tuning, vibe_tuning)
 	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
 			and visit.ate_signature_dish else cause
-	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
+	# A plain good visit is written in the guest type's own voice. Quote text
+	# only: the score, the cause in the row and the draws are unchanged.
+	var voice: StringName = ReviewQuotes.type_cause(visit.type_id) if stars >= 4 else &""
+	var quote: String = _pick_quote(quote_cause, voice, quotes, random)
 	if not quote.is_empty():
 		_quotes_used_today[quote] = true
 	_scores.append(stars)
@@ -79,6 +87,15 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 		_scores.pop_front()
 	return {"stars": stars, "cause": cause, "quote": quote,
 		"before": before, "after": average()}
+
+
+## One quote pick. Every lovely_place pick goes through the shared pool's own
+## record (see ReviewQuotes.pick_lovely); `voice` only applies to that cause.
+func _pick_quote(cause: StringName, voice: StringName, quotes: ReviewQuotes,
+		random: RandomNumberGenerator) -> String:
+	if cause == &"lovely_place":
+		return quotes.pick_lovely(voice, random, _quotes_used_today, _lovely_used_today)
+	return quotes.pick(cause, random, _quotes_used_today)
 
 
 ## One review from a service event card (#495): a plain score in the window,
@@ -128,7 +145,7 @@ func record_booking(visits: Array[ReviewVisit], tuning: ReviewTuning, quotes: Re
 		ate_signature = ate_signature or (visit.served and visit.ate_signature_dish)
 	var quote_cause: StringName = &"signature_dish" if stars >= 4 \
 			and ate_signature else cause
-	var quote: String = quotes.pick(quote_cause, random, _quotes_used_today)
+	var quote: String = _pick_quote(quote_cause, &"", quotes, random)
 	if not quote.is_empty():
 		_quotes_used_today[quote] = true
 	for _copy: int in weight:
@@ -269,6 +286,7 @@ func from_dict(value: Variant) -> bool:
 		restored.append(int(item))
 	_scores = restored
 	_quotes_used_today.clear()
+	_lovely_used_today.clear()
 	return true
 
 

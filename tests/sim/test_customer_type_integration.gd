@@ -401,9 +401,23 @@ func _snapshot(sim: RestaurantSim) -> Dictionary:
 		"rng": sim.rng.state, "review_rng": sim.review_rng.state,
 		"next_arrival": sim.spawner._remaining, "guests": guests, "orders": orders,
 		"log": sim.world.event_log.duplicate(), "served": sim.served_today, "lost": sim.lost_today,
-		"reasons": sim.leave_reasons_today.duplicate(), "reviews": sim.reviews_today.duplicate(true),
+		"reasons": sim.leave_reasons_today.duplicate(), "reviews": _reviews_without_voices(sim),
 		"scores": sim.review_book.scores(), "stock": sim.stock.to_dict(),
 		"plates": sim.kitchen.plates.to_dict()}
+
+
+## The pre-type oracle predates guest voices (#662): its good-visit quotes come
+## from lovely_place, a Regular's now from regular_happy. Everything else in the
+## row (stars, before, after) and the review stream state still compare exactly.
+func _reviews_without_voices(sim: RestaurantSim) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for row: Dictionary in sim.reviews_today:
+		var copy: Dictionary = row.duplicate(true)
+		var quote: String = String(copy.get("quote", ""))
+		if QUOTES.groups[&"regular_happy"].has(quote) or QUOTES.groups[&"lovely_place"].has(quote):
+			copy["quote"] = "(a lovely_place line)"
+		rows.append(copy)
+	return rows
 
 
 func _random(seed: int) -> RandomNumberGenerator:
