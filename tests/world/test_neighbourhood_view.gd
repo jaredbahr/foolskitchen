@@ -276,6 +276,10 @@ func test_actual_static_triangles_avoid_maximum_lease_native_pads_and_service_pa
 
 func test_actual_pedestrian_and_car_meshes_stay_clear_of_the_lease_and_door_across_their_display_cycle() -> void:
 	await _start()
+	# Every walker must be out to be measured: force a dry day, as some stay in
+	# when it rains (the weather otherwise follows whatever seed ran before).
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
 	assert_not_null(dressing)
