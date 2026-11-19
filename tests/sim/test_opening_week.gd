@@ -4,6 +4,7 @@ extends TestCase
 
 const CHAIN: OpeningWeekSet = preload("res://data/balance/opening_week.tres")
 const WEEK_TWO: OpeningWeekSet = preload("res://data/balance/week_two.tres")
+const WEEK_THREE: OpeningWeekSet = preload("res://data/balance/week_three.tres")
 const CHAINS: GoalChainSequence = preload("res://data/balance/goal_chains.tres")
 
 
@@ -137,7 +138,8 @@ func _ids(goals: Array[OpeningGoal]) -> Array[StringName]:
 
 func test_week_two_is_authored_and_pays_about_seven_hundred() -> void:
 	assert_true(CHAINS.is_valid())
-	assert_eq(CHAINS.chains, [CHAIN, WEEK_TWO] as Array[OpeningWeekSet], "Opening week, then Week 2")
+	assert_eq(CHAINS.chains, [CHAIN, WEEK_TWO, WEEK_THREE] as Array[OpeningWeekSet],
+		"Opening week, then Week 2, then Week 3")
 	assert_eq(CHAINS.natural_start(0), 1)
 	assert_eq(CHAINS.natural_start(1), 8, "Week 2's window is days 8 to 14")
 	assert_true(WEEK_TWO.is_valid())
@@ -247,10 +249,14 @@ func test_week_two_starts_the_morning_after_opening_week_and_runs_seven_days() -
 	assert_true(state.completed_ids().is_empty(), "a fresh list of goals")
 	assert_false(state.end_if_due(14, WEEK_TWO))
 	assert_true(state.end_if_due(15, WEEK_TWO))
-	assert_false(state.advance(15, CHAINS), "no chain after Week 2")
+	assert_true(state.advance(15, CHAINS), "Week 3 follows Week 2")
+	assert_eq(state.current(CHAINS), WEEK_THREE)
+	assert_eq([state.start_day, state.last_day(WEEK_THREE)], [15, 21])
+	assert_true(state.end_if_due(22, WEEK_THREE))
+	assert_false(state.advance(22, CHAINS), "no chain after Week 3")
 	assert_eq(state.status, OpeningWeek.Status.FINISHED)
 	assert_null(state.current(CHAINS))
-	assert_false(state.advance(16, CHAINS))
+	assert_false(state.advance(23, CHAINS))
 
 
 func test_an_early_finish_starts_week_two_the_next_morning() -> void:
@@ -272,8 +278,11 @@ func test_old_saves_get_week_two_inside_its_window() -> void:
 		assert_eq(state.current(CHAINS), WEEK_TWO)
 		assert_eq(state.start_day, 8)
 		assert_eq(state.last_day(WEEK_TWO), 14, "an old save keeps the days that remain")
-	var late: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
-	assert_false(late.advance(15, CHAINS), "past day 14 there is no chain")
+	var third: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
+	assert_true(third.advance(15, CHAINS), "days 15 to 21 are Week 3's window")
+	assert_eq(third.current(CHAINS), WEEK_THREE)
+	var late: OpeningWeek = OpeningWeek.legacy_for_day(22, CHAINS)
+	assert_false(late.advance(22, CHAINS), "past day 21 there is no chain")
 	assert_false(late.is_active())
 	# A version-1 save (Opening week alone) that ended early on day 4.
 	var v1: OpeningWeek = OpeningWeek.new()
@@ -334,6 +343,73 @@ func test_creative_and_tools_have_no_chain() -> void:
 	assert_false(state.end_if_due(9, WEEK_TWO))
 	assert_false(state.advance(9, CHAINS), "a finished state never starts a chain")
 	assert_null(state.current(CHAINS))
+
+
+# --- Week 3: the road to Tier 3 (early-game audit 2) --------------------------
+
+func test_week_three_is_authored_and_points_at_tier_three() -> void:
+	assert_true(WEEK_THREE.is_valid())
+	assert_eq(CHAINS.natural_start(2), 15, "Week 3's window is days 15 to 21")
+	assert_eq(WEEK_THREE.id, &"week_three")
+	assert_eq(WEEK_THREE.title, "Week 3")
+	assert_eq([WEEK_THREE.days, WEEK_THREE.shown_goals], [7, 3])
+	assert_eq(_ids(WEEK_THREE.goals), [&"second_cook", &"oven_dish", &"waiting_bench",
+		&"eight_five_star", &"serve_35", &"four_star_day"] as Array[StringName])
+	for goal: OpeningGoal in WEEK_THREE.goals:
+		assert_true(goal.reward_xp > 0 and goal.reward_xp <= 20, "%s: a little XP" % goal.id)
+	assert_eq(WEEK_THREE.total_cash(), 550, "about the size of the first two weeks")
+	assert_eq(WEEK_THREE.by_id(&"second_cook").role, &"cook")
+	assert_eq(WEEK_THREE.by_id(&"second_cook").target, 2.0, "the starter cook plus one")
+	assert_eq(WEEK_THREE.by_id(&"oven_dish").station_type, &"oven")
+	assert_eq(WEEK_THREE.by_id(&"waiting_bench").item_ids, [&"waiting_bench"] as Array[StringName])
+	assert_eq(WEEK_THREE.by_id(&"waiting_bench").condition, OpeningGoal.Condition.ITEMS_OWNED,
+		"a bench owned before Week 3 counts, so the goal can never stick")
+	var tiers: CareerTierTuning = load("res://data/balance/career_tiers.tres") as CareerTierTuning
+	var four_star: OpeningGoal = WEEK_THREE.by_id(&"four_star_day")
+	for tier: CareerTier in tiers.tiers:
+		if tier.tier == 3:
+			assert_eq(four_star.target, tier.min_reputation, "the calm day asks for Tier 3's rating")
+	assert_eq(four_star.leave_reasons, [&"waited_too_long"] as Array[StringName])
+	# Items and dishes named by the goals exist and unlock by Tier 2's levels.
+	for id: StringName in [&"waiting_bench", &"oven"]:
+		var item: ItemDef = load("res://data/items/%s.tres" % id) as ItemDef
+		assert_not_null(item, "%s exists" % id)
+		if item != null:
+			assert_true(item.unlock_level <= 3, "%s unlocks by level 3" % id)
+
+
+func test_each_week_three_goal_triggers_from_its_own_condition() -> void:
+	for goal: OpeningGoal in WEEK_THREE.goals:
+		var state: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
+		state.advance(15, CHAINS)
+		var met: Array[OpeningGoal] = state.observe(goal.condition, goal.target, WEEK_THREE, goal.id)
+		assert_eq(met.size(), 1, "%s triggers" % goal.id)
+	var cooks: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
+	cooks.advance(15, CHAINS)
+	assert_true(cooks.observe(OpeningGoal.Condition.STAFF_ROLE, 1.0, WEEK_THREE, &"second_cook").is_empty(),
+		"the starter cook alone is not a second cook")
+	assert_true(cooks.observe(OpeningGoal.Condition.CALM_DAY_STARS, 3.9, WEEK_THREE, &"four_star_day").is_empty())
+
+
+func test_an_early_finish_of_week_two_starts_week_three_the_next_morning() -> void:
+	var state: OpeningWeek = _week_two()
+	for goal: OpeningGoal in WEEK_TWO.goals:
+		state.observe(goal.condition, goal.target, WEEK_TWO, goal.id)
+	assert_true(state.end_if_due(11, WEEK_TWO), "every Week 2 goal done on day 11")
+	assert_true(state.advance(12, CHAINS), "Week 3 starts the very next morning")
+	assert_eq(state.current(CHAINS), WEEK_THREE)
+	assert_eq([state.start_day, state.last_day(WEEK_THREE)], [12, 18])
+
+
+func test_items_owned_needs_its_items_and_counts_what_is_there() -> void:
+	var goal: OpeningGoal = WEEK_THREE.by_id(&"waiting_bench").duplicate() as OpeningGoal
+	assert_true(goal.is_valid())
+	goal.item_ids = []
+	assert_false(goal.is_valid(), "an owned-items goal names its items")
+	var state: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
+	state.advance(15, CHAINS)
+	assert_true(state.observe(OpeningGoal.Condition.ITEMS_OWNED, 0.0, WEEK_THREE, &"waiting_bench").is_empty())
+	assert_eq(state.observe(OpeningGoal.Condition.ITEMS_OWNED, 2.0, WEEK_THREE, &"waiting_bench").size(), 1)
 
 
 func _week_two() -> OpeningWeek:
