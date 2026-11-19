@@ -290,7 +290,7 @@ None of this adds saved state, so old saves need no migration (section 10).
 
 ## 12. Chain goals and the Ladle ladder (#643, design)
 
-Status: **draft for the director and Jared** (2026-11-19). Section 6 sketched the ladder; T7 and T8 are now decided (a Golden Ladle in every neighbourhood, then an awards night; the player names the chain). This section turns that into something buildable and lists the calls still open (C1 to C6). Nothing here is built.
+Status: **decided** (Jared, 2026-11-19; see 12.5, DESIGN D43). Section 6 sketched the ladder, T7 and T8 settled the ending, and this section turns it into something buildable. Nothing here is built yet; the build plan is 12.6.
 
 ### 12.1 What the player sees
 - **The chain strip** on the city screen grows a goals line: "Chain goals: 3 of 9 · Next: Neighbourly (shops in 3 neighbourhoods)". Tapping it opens the ladder.
@@ -314,7 +314,7 @@ Status: **draft for the director and Jared** (2026-11-19). Section 6 sketched th
 
 All numbers are placeholders and live in data (`data/balance/chain_goals.tres`), like `goal_chains.tres`. Goals pay once, never fail and don't need to be met in order. The list shows them in order, and later ones can be met early: a Ladle at the home shop meets First Ladle before Two's Company.
 
-### 12.3 How long the last goal takes (please read: C2)
+### 12.3 How long the last goal takes (C2: kept as designed)
 - The critic only comes from **career Tier 5** (`critic.tres` `unlock_tier`), with a 5-day cooldown and a 20% chance each eligible day. They only visit the restaurant you are working that day, and only a good review with enough prestige awards a Ladle.
 - "Every neighbourhood" means five places: Old Town, Millbrook, The Seafront, Skyline and Pinewood. Owning five restaurants needs **Tier 6** (Tier 5 allows three).
 - So Golden City is a long arc. Roughly: reach Tier 6, own five restaurants, then visit each until the critic awards it a Ladle. That is about 10 or more in-game days per restaurant once its prestige is ready, so 50 or more days after Tier 6. D31 calls this the long arc, so that may be right, but it is Jared's call (C2).
@@ -332,7 +332,17 @@ All numbers are placeholders and live in data (`data/balance/chain_goals.tres`),
   It is registered with `SaveSystem.register()`, classed global in `SiteSections`, and written only by the morning autosave. A save without the section starts with nothing met; what it does with goals an old chain already meets is C3. Migration tests cover both a save with no section and a version-1 round trip.
 - **UI:** the words live in one place (`ChainText`, rule 11). The chain strip line, the Goals ladder card and the report line. The awards night is its own piece (C4).
 
-### 12.5 Open calls for Jared
+### 12.5 Calls for Jared (decided)
+
+**Decided (Jared, 2026-11-19, relayed by the director), each on the recommendation:**
+- **C1:** cash **and** a trophy for each goal.
+- **C2:** Golden City stays as designed: a Golden Ladle in all five neighbourhoods.
+- **C3:** goals an old save already meets are marked met, with no cash, and one welcome note says so.
+- **C4:** the awards night is a special edition of *The Daily Ladle*, with a short parody awards bit inside it.
+- **C5:** the pun names in 12.2.
+- **C6:** a prompt to name the chain the first time you own two restaurants, and the name stays editable on the city screen.
+
+The options as they were put:
 | # | Question | Options | Recommendation |
 |---|---|---|---|
 | C1 | What do chain goals pay? | **A.** Cash and a little XP, like the week goals (the table above). **B.** Trophies only: a plaque or statue on the map and in the shop, no money. **C.** Both: smaller cash plus a trophy per goal. | **C**: money keeps it a tycoon goal, and a trophy you can see is the cosy payoff. |
@@ -342,8 +352,8 @@ All numbers are placeholders and live in data (`data/balance/chain_goals.tres`),
 | C5 | Goal names | **A.** The puns above (Two's Company, Delegator, Neighbourly, Full House, Chain Reaction, First Ladle, The Whole Town, Ladle Collector, Golden City). **B.** Plain names ("Second restaurant", "Three neighbourhoods"…). **C.** Jared's own. | **A**, with Jared editing any he dislikes. |
 | C6 | Where to name the chain (T8) | **A.** A prompt the first time you own two restaurants. **B.** Only on the city screen's header, any time. **C.** Both. | **C**: the moment it becomes a chain is the natural time to name it, and it stays editable. |
 
-### 12.6 Build plan once the calls are in
-1. **G1 (Codex, once C1, C3 and C5 are answered):** data, `ChainFacts`, `ChainGoals`, the ledger category, the save section and its migration tests. No UI beyond the report line.
+### 12.6 Build plan
+1. **G1 (Codex):** data, `ChainFacts`, `ChainGoals`, the ledger category, the save section and its migration tests. No UI beyond the report line.
 2. **G2 (Codex):** the chain strip goals line and the Goals ladder card.
 3. **G3 (Codex):** chain naming (C6).
 4. **G4 (Claude):** Golden City's awards night (C4) and the statue's hook into the map (the art itself is #642's).
