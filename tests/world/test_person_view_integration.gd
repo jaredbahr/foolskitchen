@@ -695,6 +695,72 @@ func test_courier_wears_a_cap_and_a_private_uniform_copy_of_the_colormap() -> vo
 	cook.free()
 
 
+func test_tourists_wear_a_hat_and_shirt_and_the_office_crowd_a_lanyard_and_jacket() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var scene: PackedScene = preload("res://assets/people/person.tscn")
+	var views: Array[PersonView] = []
+	for look: Array in [[&"tourist", 0], [&"tourist", 1], [&"tourist", 2], [&"office", 0], [&"office", 1],
+			[&"office", 2], [&"office", 3], [&"student", 0], [&"regular", 0]]:
+		var view: PersonView = scene.instantiate() as PersonView
+		view.role = &"customer"
+		view.guest_id = look[1]
+		view.customer_type = look[0]
+		tree.root.add_child(view)
+		views.append(view)
+	for view: PersonView in views:
+		var tourist: bool = view.customer_type == &"tourist"
+		var office: bool = view.customer_type == &"office"
+		var hat: Node = view._skeleton.get_node_or_null("SunHatAttachment")
+		var lanyard: Node = view._skeleton.get_node_or_null("LanyardAttachment")
+		assert_eq(hat != null, tourist, "%s %d: hat" % [view.customer_type, view.guest_id])
+		assert_eq(lanyard != null, office, "%s %d: lanyard" % [view.customer_type, view.guest_id])
+		var shirt: MeshInstance3D = null
+		for node: Node in view._model.find_children("body-mesh", "MeshInstance3D", true, false):
+			shirt = node as MeshInstance3D
+		var override: Material = shirt.get_surface_override_material(0)
+		assert_eq(override != null, tourist or office, "only these guests are repainted")
+		if tourist or office:
+			var recolors: Array[Dictionary] = PersonPresentation.type_recolors(&"customer", view.guest_id,
+				view.customer_type, view.model_name())
+			var rect: Rect2i = recolors[0]["rect"]
+			var painted: Image = (override as StandardMaterial3D).albedo_texture.get_image()
+			var want: Color = recolors[0]["color"]
+			assert_true(painted.get_pixel(rect.position.x + 16, rect.position.y).is_equal_approx(want))
+			# The head keeps the kit's imported material.
+			for node: Node in view._model.find_children("head-mesh", "MeshInstance3D", true, false):
+				assert_null((node as MeshInstance3D).get_surface_override_material(0))
+		if hat != null:
+			# The hat sits on the head top of the model, never inside the face.
+			var piece: Node3D = hat.get_child(0) as Node3D
+			var head_top: float = PersonPresentation.source_head_top(view.model_name())
+			var bone_y: float = view._skeleton.get_bone_global_rest(view._skeleton.find_bone("head")).origin.y
+			assert_true(absf(piece.position.y + PersonPresentation.SUN_HAT_SINK - (head_top - bone_y)) < 0.0001)
+	# A pooled view re-looked on the same model must change its pieces and colors:
+	# tourist id 0 (female-d) becomes a regular guest on female-d (id 2), no hat.
+	var swap: PersonView = views[0]
+	assert_eq(swap.model_name(), &"character-female-d")
+	assert_not_null(swap._skeleton.get_node_or_null("SunHatAttachment"))
+	assert_true(swap.set_look(&"customer", 2, &"regular"))
+	assert_eq(swap.model_name(), &"character-female-d")
+	assert_null(swap._skeleton.get_node_or_null("SunHatAttachment"))
+	for node: Node in swap._model.find_children("body-mesh", "MeshInstance3D", true, false):
+		assert_null((node as MeshInstance3D).get_surface_override_material(0), "no tourist shirt left behind")
+	# Same model, other shirt color: tourist ids 0 and 2 share female-d, not a shirt.
+	for index: int in [0, 1]:
+		var id: int = [0, 2][index]
+		assert_true(swap.set_look(&"customer", id, &"tourist"))
+		assert_eq(swap.model_name(), &"character-female-d")
+		var rect: Rect2i = PersonPresentation.CLOTHING_RAMPS[&"character-female-d"]
+		var override: StandardMaterial3D = null
+		for node: Node in swap._model.find_children("body-mesh", "MeshInstance3D", true, false):
+			override = (node as MeshInstance3D).get_surface_override_material(0) as StandardMaterial3D
+		var painted: Color = override.albedo_texture.get_image().get_pixel(rect.position.x + 16, rect.position.y)
+		assert_true(painted.is_equal_approx(PersonPresentation.TOURIST_SHIRTS[index]), "id %d" % id)
+	for view: PersonView in views:
+		view.free()
+
+
 func _enter_view() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

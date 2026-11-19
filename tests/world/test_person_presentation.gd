@@ -113,3 +113,57 @@ func test_seated_lean_validation_uses_the_shared_finite_presentation_limit() -> 
 		assert_true(PersonPresentation.seated_lean_valid(degrees))
 	for degrees: float in [-0.001, ItemDef.MAX_SEATED_LEAN_DEGREES + 0.001, NAN, INF, -INF] as Array[float]:
 		assert_false(PersonPresentation.seated_lean_valid(degrees))
+
+
+func test_tourists_and_the_office_crowd_have_their_own_looks_and_no_one_else_does() -> void:
+	for id: int in [0, 1, 2, 3, -1, -2, 9223372036854775807]:
+		for role: StringName in [&"customer", &"guest"]:
+			assert_true(PersonPresentation.has_sun_hat(role, &"tourist"))
+			assert_false(PersonPresentation.has_lanyard(role, &"tourist"))
+			assert_true(PersonPresentation.has_lanyard(role, &"office"))
+			assert_false(PersonPresentation.has_sun_hat(role, &"office"))
+		for kind: StringName in [&"regular", &"student", &"foodie", &"family", &"unknown"]:
+			assert_false(PersonPresentation.has_sun_hat(&"customer", kind))
+			assert_false(PersonPresentation.has_lanyard(&"customer", kind))
+			assert_eq(PersonPresentation.type_look_key(&"customer", id, kind), &"")
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			assert_true(PersonPresentation.type_recolors(&"customer", id, kind, model).is_empty())
+		for role: StringName in [&"cook", &"server", &"owner", &"courier", &"inspector"]:
+			assert_false(PersonPresentation.has_sun_hat(role, &"tourist"))
+			assert_false(PersonPresentation.has_lanyard(role, &"office"))
+			assert_eq(PersonPresentation.type_look_key(role, id, &"tourist"), &"")
+			assert_true(PersonPresentation.type_recolors(role, id, &"tourist", &"character-female-d").is_empty())
+
+
+func test_tourist_and_office_models_and_colors_are_deterministic_by_guest_id() -> void:
+	var colors_seen: Dictionary[String, bool] = {}
+	for kind: StringName in [&"tourist", &"office"]:
+		var pair: Array[StringName] = []
+		for id: int in [0, 1, 2, 3, 4, 5, -1, -2, -3, -4, 9223372036854775807, -9223372036854775807 - 1]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			assert_eq(model, PersonPresentation.model_for(&"customer", id, kind), "same id, same model")
+			assert_true(PersonPresentation.GUEST_MODELS.has(model))
+			if not pair.has(model):
+				pair.append(model)
+			var recolors: Array[Dictionary] = PersonPresentation.type_recolors(&"customer", id, kind, model)
+			assert_false(recolors.is_empty(), "%s id %d is repainted" % [kind, id])
+			assert_eq(recolors, PersonPresentation.type_recolors(&"customer", id, kind, model))
+			assert_eq(recolors[0]["rect"], PersonPresentation.CLOTHING_RAMPS[model], "the model's own clothing block")
+			assert_true(Rect2i(0, 0, 512, 512).encloses(recolors[0]["rect"]))
+			assert_eq(PersonPresentation.type_look_key(&"customer", id, kind),
+				StringName("%s:%d" % [kind, PersonPresentation.type_variant(id)]))
+			colors_seen["%s:%s" % [kind, (recolors[0]["color"] as Color).to_html()]] = true
+		assert_eq(pair.size(), 2, "%s use a male and a female model" % kind)
+	assert_eq(colors_seen.size(), 4, "two shirt colors and two jacket colors")
+	# The color index is independent of the model index (the low id bit).
+	for kind: StringName in [&"tourist", &"office"]:
+		var combos: Dictionary[String, bool] = {}
+		for id: int in range(8):
+			combos["%s:%d" % [PersonPresentation.model_for(&"customer", id, kind), PersonPresentation.type_variant(id)]] = true
+		assert_eq(combos.size(), 4, "each model wears both colors")
+
+
+func test_tourist_hat_fits_every_model_the_pair_can_use() -> void:
+	for id: int in [0, 1]:
+		var model: StringName = PersonPresentation.model_for(&"customer", id, &"tourist")
+		assert_true(PersonPresentation.source_head_top(model) > 0.0, "a measured head top for %s" % model)

@@ -473,3 +473,13 @@ The illustrated paper map for the city screen (docs/CITY_MAP.md T1 and T4), draw
 | `city_map/pin_for_sale.png`, `pin_locked.png` (160 px) | A lot's estate-agent board, and a padlocked, chained board. |
 | `city_map/roadworks.png` | Cones, a "Road closed" barrier and a digger, for an area waiting on a tier. |
 | `city_map/hoarding.png` | A "Coming soon" fence with a painted preview, for an area with no lot yet. |
+
+## Guest looks: sun hat and lanyard (#661)
+Two small pieces for the guest types that come to the new places, in the Mini Characters style: chunky flat-shaded prisms coloured only through the characters kit's own `colormap.png` (every face's UVs point at one swatch, the image is referenced by relative path, not copied). Built by `python3 tools/build_guest_props.py` (standard library only, no random draws, so a rebuild writes the same bytes). Units are the kit's source units, the same ones the courier cap and the head bone use.
+
+| Asset | Worn by | Based on | Triangles |
+|---|---|---|---:|
+| `people/sun_hat.glb` (round straw brim, short crown, slate-navy band; origin at the middle of the underside) | tourists, on the head bone, lifted to each model's measured head top, tilted up a little at the front | the courier cap's size and attachment; `character-*` hair blocks for the straw swatch | 92 |
+| `people/lanyard.glb` (red strap in a V, a white card with a photo square and a name stripe, and a white shirt front; origin at the torso bone's rest position) | the office crowd, on the torso bone so it follows idle, walk, sit and holding | the kit torsos' chest depth (all eight guest models share one skeleton) | 96 |
+
+The tourist's holiday shirt (sunny coral or turquoise) and the office guest's jacket (navy or grey) are repaints of the model's own clothing block in a private copy of the colormap, as the courier's uniform is. Which color a guest wears follows the guest id, so a guest always looks the same.
