@@ -28,7 +28,7 @@ Design for guest types, quirks and how reviews and the morning paper talk about 
 
 `| D42 | Guests with personality | Each location draws its own crowd through its guest mix (the home shop keeps today's): tourists (Seaside Cliff), the office crowd (Skyline Rooftop), then walkers, surfers, farmers and foragers. From owner level 3, one guest in eight has a small quirk, shown by an icon over them and a line when inspected, with one effect each and small trade-offs both ways (a Chatterbox holds a seat longer, a Lunch-breaker walks out sooner). One tourist in twenty returns as a named regular. The office crowd mostly comes at lunch (a soft window). A "maybe famous" guest makes the next hour's arrivals about 15% faster. Dogs only where there's outdoor seating. Design: docs/GUESTS.md | 2026-11-19 |`
 
-**What I'm building now (separate PRs):** tourists and the office crowd (#471), with each location's guest mix now really shaping who walks in there (today the mix only shows on the property card), then the quirk data and three quirks end to end (Shutterbug, Chatterbox, Lunch-breaker) with their review quotes. The rest is filed as issues (see the last section).
+**Built (draft PRs):** tourists and the office crowd (#651, for #471), with each location's guest mix now really shaping who walks in there (before, the mix only showed on the property card); the quirk data and three quirks end to end, the Shutterbug, Chatterbox and Lunch-breaker, with their review quotes (#652). The rest is filed as issues (section 7).
 
 ---
 
@@ -50,8 +50,8 @@ Numbers are multipliers on today's baseline (Regular = 1.0). Party is min–max,
 | **Student** | coffee, cheap plates; café theme | 0.8 | 1.3 | 1–2 | 0.9 | Home, Old Mill 0.25 | built |
 | **Foodie** | good food (quality weight 0.4); evening menus | 1.4 | 0.9 | 1–2 | 1.4 | Home (grows with stars), Rooftop 0.3 | built |
 | **Family** | patient groups; restroom | 1.1 | 1.4 | 2–4 | 1.1 | Home (from level 4), Boardwalk 0.35 | built |
-| **Tourist** | local and seafood dishes (+0.3 stars) | 1.3 | 1.0 | 1–4 | 1.3 | Seaside Cliff 0.55, Boardwalk 0.3 | building (#471) |
-| **Office crowd** | quick lunches; arrive 11:30–14:00 | 1.25 | 0.7 | 1–3 | 0.8 | Rooftop 0.6 | building (#471) |
+| **Tourist** | local and seafood dishes (+0.3 stars) | 1.3 | 1.0 | 1–4 | 1.3 | Seaside Cliff 0.55, Boardwalk 0.3 | #651 |
+| **Office crowd** | quick lunches; arrive 11:30–14:00 | 1.25 | 0.7 | 1–3 | 0.8 | Rooftop 0.6 | #651 |
 | **Walker** | hot drinks, hearty food; shrug off rain | 1.0 | 1.2 | 1–2 | 1.0 | Seaside Cliff 0.3 | issue |
 | **Surfer** | cold drinks, fries; patio seats; afternoons | 0.9 | 1.2 | 2–4 | 1.1 | Boardwalk 0.25 | issue |
 | **Farmer** | big plates, pies; early; a second dish | 0.85 | 1.2 | 1–2 | 0.8 | Old Mill 0.35 | issue |
@@ -76,8 +76,8 @@ A quirk is a small personality on top of the type: one icon, one line in the ins
 | Quirk | What you see (T3) | Sim effect (testable) | Review line hook | Status |
 |---|---|---|---|---|
 | **Shutterbug**: photographs every dish | camera icon; holds up a phone when food lands | Always writes a review when served (review chance 1.0) | 4–5 stars: `photo_happy` quotes | built |
-| **Chatterbox**: tells the whole room about their week | speech-dots icon; leans across the table | Stays 50% longer at the table (holds the seat), +0.5 raw stars | 4–5 stars: `chatty_happy` quotes | building |
-| **Lunch-breaker**: on a strict lunch hour | watch icon; taps wrist | Patience x0.6; if food arrives inside half their food patience, +1 raw star | fast: `quick_lunch`; slow: their usual slow-food line | building |
+| **Chatterbox**: tells the whole room about their week | speech-dots icon; leans across the table | Stays 50% longer at the table (holds the seat), +0.5 raw stars | 4–5 stars: `chatty_happy` quotes | #652 |
+| **Lunch-breaker**: on a strict lunch hour | watch icon; taps wrist | Patience x0.6; if food arrives inside half their food patience, +1 raw star | fast: `quick_lunch`; slow: their usual slow-food line | #652 |
 | **Window seat**: always asks for the window | window icon | Prefers a free seat next to a window; +0.5 raw stars when they get one | `window_happy` | issue |
 | **Dog walker**: brings a very good dog | paw icon; a dog sits by the chair (art) | Only where there's outdoor seating (T8): sits outside, +0.5 stars there; never rolled at a shop with no outdoor seats | `dog_happy` | issue |
 | **Birthday table**: a party celebrating | balloon icon over the table | Party orders one extra dessert or drink if on the menu; booking-style review weight 2 when served well | `birthday` | issue |
@@ -114,6 +114,21 @@ A quirk is a small personality on top of the type: one icon, one line in the ins
 - The `customers` stream is never touched by quirks. At the home shop with quirks below their unlock, a seeded run is identical to today. Above the unlock, quirk effects change waits and reviews by design; the PR records the balance probe before and after.
 - Nothing new is saved: types and quirks are authored data, and a guest's quirk lasts one visit (saves happen only at the morning autosave, when no guest is in the shop). Old saves load unchanged.
 
-## 7. Filed as issues
+## 7. Built and filed
 
-See the issue links in the PR. In short: walkers, surfers, farmers, foragers (one issue each, Codex, once their lot or data exists); window seat, sweet tooth, big eater, indecisive and early bird quirks (Codex); tourists who fall in love and return as regulars (T5, Codex); dog walker and birthday table (art, director); maybe famous (T7 decided, Codex); quirk icons over heads (art, director); morning-paper quirk briefs and type-flavoured review quotes (writing, director).
+**Built:** tourists and the office crowd, with lot mixes driving arrivals (#651, closes #471); the quirk data plus the Shutterbug, Chatterbox and Lunch-breaker with their quotes (#652).
+
+**Codex** (`codex` + `worker-ready`):
+- #653 four small quirks: sweet tooth, big eater, indecisive, early bird
+- #654 the window-seat lover
+- #655 the maybe-famous guest (T7)
+- #656 one tourist in twenty returns as a named regular (T5)
+- #657 walkers (Seaside Cliff)
+- #658 surfers (Boardwalk)
+- #663 farmers (Old Mill), after #653
+
+**Director** (`claude`):
+- #659 foragers, once `woodland_cabin` lands
+- #660 the dog walker (T8) and the birthday table (art)
+- #661 quirk icons over guests (T3) and looks for the new types
+- #662 type-flavoured review quotes and the morning-paper quirk brief

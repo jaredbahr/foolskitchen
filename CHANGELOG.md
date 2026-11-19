@@ -287,6 +287,7 @@ Each line ends with its PR number.
 
 ### Under the hood
 - A design for guests with personality (`docs/GUESTS.md`): six new guest types tied to locations (tourists, the office crowd, walkers, surfers, farmers, foragers), small quirks like the guest who photographs every dish, and how reviews and the morning paper talk about them. (#637)
+- A design proposal for the city map and the chain: an illustrated map of the town's neighbourhoods with your shops, lots for sale and locked areas, a chain view per shop, chain goals on the way to Golden Ladles, and a phased build plan, with the choices Jared still has to make (`docs/CITY_MAP.md`). (#638)
 - The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
