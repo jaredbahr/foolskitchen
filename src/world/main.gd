@@ -6748,8 +6748,7 @@ func _prepare_morning_paper(yesterday: DayReport, hire_note: String = "") -> voi
 		var booking: Dictionary = group_booking.booking
 		notes.append("A table for %d is booked at %s today." % [
 			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
-	if not dish.is_empty():
-		notes.append("%s was yesterday’s favorite." % dish)
+	# MorningPaper adds yesterday's tip and favourite dish after these notes.
 	_morning_paper_edition = MorningPaper.build(day, yesterday, world.weather.kind, notes,
 		GameState.rng(&"paper"), dish, history)
 	_morning_paper_edition["day"] = day

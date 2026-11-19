@@ -7,6 +7,15 @@ const HEADLINES: MorningPaperHeadlines = preload("res://data/paper/headlines.tre
 const FALLBACK_HEADLINE: String = "The kitchen gets ready for another day"
 const FALLBACK_DISH: String = "the menu"
 const MAX_NOTES: int = 3
+## Yesterday's tip shows once this many guests left for one reason.
+const TIP_MIN_GUESTS: int = 3
+## The tip for each leave reason, most useful first when counts tie.
+const TIPS: Dictionary[StringName, String] = {
+	&"no_table": "%d guests found every seat taken. More tables, and hands to serve them, would fit them in.",
+	&"waited_too_long": "%d guests gave up waiting. Another pair of hands would speed things up.",
+	&"too_expensive": "%d guests left over the prices. A gentler price brings them back.",
+	&"out_of_stock": "%d guests wanted a dish that ran out. A bigger order keeps it on.",
+}
 
 
 static func build(day: int, yesterday: DayReport, weather_kind: int, notes: Array[String],
@@ -26,7 +35,7 @@ static func build(day: int, yesterday: DayReport, weather_kind: int, notes: Arra
 		"cash": Fmt.money(cash),
 	}
 	return {"masthead": MASTHEAD, "headline": _fill(headline, fields),
-		"notes": _briefs(yesterday, weather_kind, notes)}
+		"notes": _briefs(yesterday, weather_kind, notes, dish)}
 
 
 static func best_dish(dishes: Dictionary, content: ContentDB) -> String:
@@ -51,15 +60,25 @@ static func _headline_group(day: int, yesterday: DayReport, history: Dictionary)
 		return &"first_day"
 	if yesterday == null and history.is_empty():
 		return &""
+	# Good news leads: a new tier, then a level-up, outrank everyday results.
+	if yesterday != null and not yesterday.career_tier_line.is_empty():
+		return &"tier"
 	if yesterday != null and not yesterday.inspection_lines.is_empty():
 		return &"inspection"
+	if yesterday != null and yesterday.owner_level_after > yesterday.owner_level_before:
+		return &"level_up"
 	if yesterday != null and not yesterday.record_lines.is_empty():
 		return &"record"
+	if yesterday != null and _new_regulars(yesterday):
+		return &"regular"
 	var cash: int = yesterday.profit() if yesterday != null else int(history.get("cash_change", 0))
 	if cash < 0:
 		return &"loss"
 	var lost: int = yesterday.customers_lost if yesterday != null else int(history.get("lost", 0))
 	if lost >= 3:
+		# Mostly turned away for want of a seat: a busy shop, not a bad one.
+		if yesterday != null and int(yesterday.leave_reasons.get(&"no_table", 0)) * 2 >= lost:
+			return &"full_house"
 		return &"walkouts"
 	if yesterday != null:
 		for card: Dictionary in yesterday.review_cards:
@@ -68,13 +87,17 @@ static func _headline_group(day: int, yesterday: DayReport, history: Dictionary)
 	return &"quiet"
 
 
-static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String]) -> Array[String]:
+static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String],
+		dish: String = "") -> Array[String]:
 	var available: Array[String] = []
 	if weather_kind in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
 		available.append(WeatherText.forecast_for(weather_kind))
 	if yesterday != null and not yesterday.inspection_lines.is_empty():
 		available.append(yesterday.inspection_lines[0])
 	available.append_array(notes)
+	available.append(tip_for(yesterday))
+	if not dish.is_empty():
+		available.append("%s was yesterday’s favorite." % dish)
 	var briefs: Array[String] = []
 	for line: String in available:
 		var brief: String = line.strip_edges()
@@ -83,6 +106,27 @@ static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String
 		if briefs.size() == MAX_NOTES:
 			break
 	return briefs
+
+
+## One practical line about yesterday's biggest reason guests left, or "".
+static func tip_for(yesterday: DayReport) -> String:
+	if yesterday == null:
+		return ""
+	var best: StringName = &""
+	var best_count: int = TIP_MIN_GUESTS - 1
+	for reason: StringName in TIPS:
+		var count: int = int(yesterday.leave_reasons.get(reason, 0))
+		if count > best_count:
+			best = reason
+			best_count = count
+	return "" if best.is_empty() else TIPS[best] % best_count
+
+
+static func _new_regulars(yesterday: DayReport) -> bool:
+	for line: String in yesterday.regulars_lines:
+		if line.begins_with("New regulars: "):
+			return true
+	return false
 
 
 ## Copy only the template's fields. Replacement values are always literal.
