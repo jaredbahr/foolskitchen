@@ -286,6 +286,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The city's neighbourhoods are now data (`data/city/city_map.tres`): Old Town, Millbrook, The Seafront, Skyline and a coming-soon Pinewood (placeholder names), each listing the lots that stand in it, with checks that every lot sits in exactly one, and the rules for what each lot and neighbourhood shows on the coming city map (`CityMap`). Nothing in the game uses it yet. (#639)
 - A chain summary for the coming city map: for each of your restaurants, where it stands (here, managed, closed or renovating), yesterday's money, stars, Golden Ladles, its manager, the team's mood, exactly what tonight's close will book for it while you are away, and what needs you (nobody to run it, no cook or server, losing money, a booking lapsing, an unhappy team, ready to open), plus chain-wide totals (`ChainSummary`, `ChainStats`). Nothing in the game shows it yet. (#640)
 - The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
