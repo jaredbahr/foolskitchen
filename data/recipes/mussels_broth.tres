@@ -26,5 +26,5 @@ steps = Array[ExtResource("3_step")]([SubResource("Step_0")])
 base_quality = 0.65
 standard_price = 13
 unlock_tier = 1
-unlock_level = 3
+unlock_level = 7
 theme_tags = Array[StringName]([&"seafood"])

@@ -285,7 +285,7 @@ func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"table_2")[2], "Table with seats for 2")
 	assert_eq(_catalogue.hover_card_lines(&"bar_counter")[3], "Themes: Modern, Diner, Bar", "vibe theme order")
 	_catalogue.set_owner_level(1)
-	assert_eq(_catalogue.hover_card_lines(&"glass_table")[1], "$120  (unlocks at level 6)")
+	assert_eq(_catalogue.hover_card_lines(&"glass_table")[1], "$120  (unlocks at level 9)")
 	assert_eq(_catalogue.hover_card_lines(&"no_such_item"), [] as Array[String])
 	for definition: ItemDef in _content.items():
 		for line: String in _catalogue.hover_card_lines(definition.id):
