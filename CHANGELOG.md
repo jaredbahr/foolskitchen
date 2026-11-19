@@ -287,6 +287,7 @@ Each line ends with its PR number.
 
 ### Under the hood
 - The city's neighbourhoods are now data (`data/city/city_map.tres`): Old Town, Millbrook, The Seafront, Skyline and a coming-soon Pinewood (placeholder names), each listing the lots that stand in it, with checks that every lot sits in exactly one, and the rules for what each lot and neighbourhood shows on the coming city map (`CityMap`). Nothing in the game uses it yet. (#639)
+- A design proposal for the city map and the chain: an illustrated map of the town's neighbourhoods with your shops, lots for sale and locked areas, a chain view per shop, chain goals on the way to Golden Ladles, and a phased build plan, with the choices Jared still has to make (`docs/CITY_MAP.md`). (#638)
 - The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
