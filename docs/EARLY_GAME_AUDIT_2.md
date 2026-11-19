@@ -16,7 +16,7 @@ Second early-game pass (2026-11-19), after wave 0 (#490 to #493, #500, #501), th
 **What I fixed (draft PRs)**
 - **#640 Week 3: the road to Tier 3.** A third paid goal chain (about $590): hire a second cook, add an oven dish, add a waiting bench, put out an A-frame sign, get eight 5-star reviews in a day, serve 35 in a day, and have a calm 4-star day (Tier 3's rating). It's pure data. In probe runs the tracker now has goals until day 13 or 14, and the engaged player reaches Tier 3 on day 6, 9 or 12 (seeds 2, 3 and 1), where before it never got there by day 10.
 - **#646 Daily Ladle: good news and one tip.** New headline groups for a new tier, a level-up, a new regular and a "full house". A day lost mostly to no free table now reads as a busy shop, not a bad one. A tip line names yesterday's biggest reason guests left, with the fix: "12 guests found every seat taken. More tables, and hands to serve them, would fit them in." It also covers prices, waits and stock-outs.
-- **#651 (this doc)** also adds the audit driver `tools/early_game_audit.gd`.
+- **#664 (this doc)** also adds the audit driver `tools/early_game_audit.gd`.
 
 **What needs your call** (issues filed, labelled `claude`)
 - **Unlock pacing (#647):** spread levels 2 to 4's 99 unlocks out to levels 5 to 9, so something new arrives every day or two. This decides which items arrive when.
