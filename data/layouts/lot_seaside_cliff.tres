@@ -47,13 +47,18 @@ script = ExtResource("1_place")
 item_id = &"patio_table_2"
 origin = Vector2i(13, 8)
 
+[sub_resource type="Resource" id="Placement_8"]
+script = ExtResource("1_place")
+item_id = &"pergola"
+origin = Vector2i(4, 6)
+
 [resource]
 script = ExtResource("2_layout")
 id = &"lot_seaside_cliff"
 save_layout_id = &"lot_seaside_cliff_cottage"
 display_name = "Seaside cliff"
 rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "##..#####..#####", "  EE            ")
-placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7")])
+placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8")])
 room_rows = PackedStringArray("", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),

@@ -390,7 +390,8 @@ func rebuild() -> void:
 	_build_planks()
 	_build_promenade_pattern()
 	road_prop.free()
-	if not patio.is_empty():
+	# A woodland's patio is the cabin's porch deck, which the forest draws (#596).
+	if not patio.is_empty() and not has_forest():
 		paving.set_body_tint(patio_color())
 		_build_patio_paving(paving, paving_box, patio)
 	paving.clear_body_tint()
@@ -2372,6 +2373,11 @@ func _build_forest() -> void:
 	_forest.lease = _local_cells(_lease)
 	_forest.first_lease = _local_cells(_first_lease)
 	_forest.building = _local_cells(_built_rect)
+	# The shop's own patio in front is the cabin's porch (#596).
+	for cell: Vector2i in _grid.cells():
+		if _grid.is_outdoor_floor(cell):
+			_forest.patio.append(_local_cells(Rect2i(cell, Vector2i.ONE)))
+	_forest.patio_top = _paving_top
 	_forest.build(_forest_root)
 	for id: StringName in _forest.stand_ids():
 		_forest.show_stand(id, stand_state(id))

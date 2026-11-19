@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/made/pergola/pergola_timber.glb" id="2_model"]
+
+[node name="Pergola" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(4, 4)
+
+[node name="Cover" type="Node3D" parent="."]
+
+[node name="Art" type="Node3D" parent="Cover"]
+
+[node name="Model" parent="Cover/Art" instance=ExtResource("2_model")]

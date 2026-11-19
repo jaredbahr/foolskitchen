@@ -805,3 +805,56 @@ func _has_stock_row(id: StringName) -> bool:
 		if row["id"] == id:
 			return true
 	return false
+
+
+## The Woodland Cabin (#596): locked below Tier 3 and its stars, bought at Tier 3
+## from the property screen, it opens on the woodland street as a log cabin with
+## its porch tables out front, and its lease clears the trees off its land.
+func test_the_woodland_cabin_is_bought_at_its_tier_with_its_porch_and_log_walls() -> void:
+	_start()
+	var woods: StringName = &"woodland_cabin"
+	var lot: LotDef = (_main.get("content") as ContentDB).lot(woods)
+	_play_to_close()
+	_next_morning()
+	var reviews: ReputationBook = _main.get("reputation") as ReputationBook
+	for index: int in range(ReputationBook.WINDOW):
+		reviews.record_event_review(5)
+	_set_cash(lot.price + 1000)
+	_owner().career_tier = 2
+	assert_ne(String(_main.call("lot_purchase_refusal", woods)), "", "not before Tier 3")
+	assert_false(_main.call("buy_lot", woods))
+	_owner().career_tier = 3
+	assert_true(_main.call("set_property_visible", true))
+	assert_not_null(_panel().card_for(woods), "the market lists it")
+	assert_false(_buy_button(woods).disabled, String(_main.call("lot_purchase_refusal", woods)))
+	_buy_button(woods).pressed.emit()
+	assert_true(_book().has_site(woods))
+	assert_eq(Economy.cash, 1000)
+	assert_true(_main.call("switch_site", woods), String(_main.call("site_switch_refusal", woods)))
+	var view: ShopView = _main.get_node("ShopView") as ShopView
+	assert_eq(view.street_preset.id, &"woodland")
+	var editor: ShopEditor = _main.get("shop_editor") as ShopEditor
+	assert_eq(editor.walls.default_style, &"logs", "a log cabin")
+	var world: SimWorld = _main.get("world") as SimWorld
+	var porch_seats: int = 0
+	for placed: PlacedItem in world.grid.items():
+		for seat: Vector2i in placed.seat_cells:
+			if world.grid.is_outdoor_floor(seat):
+				porch_seats += 1
+				assert_true(world.grid.is_guest_reachable(world.grid.entries()[0], seat), "guests reach the porch seat %s" % seat)
+	assert_eq(porch_seats, 6, "three porch tables")
+	var forest: NeighbourhoodForest = view.neighbourhood_dressing.forest()
+	assert_not_null(forest)
+	assert_eq(forest.porch_cells.size(), lot.base_layout.patio_cells.size(), "the porch is the patio")
+	assert_true(forest.chairs.is_empty(), "the porch is the player's to furnish")
+	var land: Array[StringName] = []
+	for id: StringName in view.neighbourhood_dressing.stand_ids():
+		if String(id).ends_with("_land"):
+			land.append(id)
+			assert_false(view.neighbourhood_dressing.stand_leased(id), "%s is wooded until the lease covers it" % id)
+	assert_false(land.is_empty(), "trees stand on the land not yet leased")
+	assert_true(_main.call("set_property_visible", false))
+	_set_cash(lot.expansion_price)
+	assert_true(_main.call("lease_buy"), String(_main.call("lease_refusal")))
+	for id: StringName in land:
+		assert_true(view.neighbourhood_dressing.stand_leased(id), "the lease fells %s" % id)

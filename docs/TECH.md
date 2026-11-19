@@ -3123,7 +3123,7 @@ There is no new save point or SaveSystem migration.
 - **Tuning:** streams, gains, intervals and loop levels are in `data/audio/sound_tuning.tres` (`SoundTuning`). Kenney files are in `assets/kenney/audio/`; the made loops are in `assets/made/audio/`.
 - **Dining-room ambience** (#366): the room tone, the chatter layers and the table clinks play on the **Ambience** bus (`default_bus_layout.tres`; Settings' Ambience slider, saved as the optional `ambience_volume` key, so older settings files load at 100%). Every level is in `data/audio/ambience.tres` (`AmbienceTuning`): loops and their gains (`room_tone`, `chatter_light/busy/packed`), `room_tone_full_guests`, the crowd size each chatter layer peaks at, the chatter fade and jukebox duck, and one `ClinkSet` per clink kind (at least 4 variants, gain, minimum interval). `SoundDirector` plays `plate` or `glass` on `OrderBook.order_delivered` (the recipe's `is_drink()`), `dish_stack` on a completed `bus_table` task, `sink` when `Kitchen.plates_changed` shows a plate washed (dirty down, clean up) and `cutlery` from a random eating guest at `AmbienceMix.cutlery_rate` (per eater, capped), with exponential gaps. Clinks fire only while open, running (speed above 0) and not `display_only`. `Sfx.play_clink` picks the variant and a pitch within `pitch_spread` (5%) from its own seeded generator (`CLINK_SEED`), never the sim's, throttles each kind, reports `clink_played` headless and plays through `AudioStreamPlayer3D`s at the table with attenuation off, so the camera's listener pans them. Chatter: `AmbienceMix.chatter_levels(crowd, anchors)` crossfades the layers that have a file at equal power by the guests not leaving, fades at `chatter_fade_seconds`, and ducks under a playing jukebox. The chatter loops (`assets/commons/audio/chatter_*.ogg`, 30 s, made from a public-domain recording; see `SOURCE.txt`) sit at -24 dB so the murmur is barely audible (Jared: a few percent of full volume). A null loop keeps its level and plays nothing, and a layer with no file drops out of the crossfade (its neighbours cover it). Adding the files is a `.tres` edit.
 - **Music.** `Sfx` plays on the Music bus through a two-second crossfade. Settings keeps the bus 6 dB under the slider. `MusicTracks.BY_CONTEXT` keeps Stir It Slow on the title, Buoyant Swing Groove followed by Kitchen Jamboree for the daytime fallback, and Smoky Vamp at dusk (`MusicTracks.EVENING_LIGHT` of `DayLight.Look.interior_energy`). The fallback playlist starts at its first track and advances when each track ends. The title and evening tracks loop. Morning and report have empty contexts.
-- **Themed service (#367).** `SoundDirector` receives Main's thresholded `VibeModel.Result.active_theme`. The table `MusicTracks.BY_THEME` maps bar, diner, café and seafood to their tracks. If a theme has several tracks, it loops the one at `day % count`, so a reload selects the same track without using RNG. Changes involving a themed selection wait for 60 seconds of monotonic time since the last service selection. The fallback still changes naturally at dusk. The evening report holds the current service song and playlist position when it first opens. Once the report closes, the music fades out. The counted jukebox uses the same daily selection for its style, with the made Effects loop as the fallback and the existing quiet gain for either source. A display-only Main leaves the title music alone. Headless and script runs still select and fade their tracks without creating players. On the web playback begins after the first input. To add a theme track, place its Ogg in `assets/music/`, set `loop=true` in its import sidecar and add the preload to `BY_THEME`.
+- **Themed service (#367).** `SoundDirector` receives Main's thresholded `VibeModel.Result.active_theme`. The table `MusicTracks.BY_THEME` maps bar, diner, café and seafood to their tracks. If a theme has several tracks, it loops the one at `day % count`, so a reload selects the same track without using RNG. Changes involving a themed selection wait for 60 seconds of monotonic time since the last service selection. The fallback still changes naturally at dusk. The evening report holds the current service song and playlist position when it first opens. Once the report closes, the music fades out. The counted jukebox uses the same daily selection for its style, with the made Effects loop as the fallback and the existing quiet gain for either source. A display-only Main leaves the title music alone. Headless and script runs still select and fade their tracks without creating players. On the web playback begins after the first input. Site music (#625): `MusicTracks.BY_LOT` names a lot's own context (Seaside Cliff plays "Buoyant Sea Shanty" through all service, whatever the vibe theme or light); `SoundDirector.set_lot` takes the active site's lot id from Main, and the context is a `BY_THEME` key no vibe theme can have, so it loops one song a day like a theme. To add a theme track, place its Ogg in `assets/music/`, set `loop=true` in its import sidecar and add the preload to `BY_THEME`.
 
 ### Supplier haggle (FK-136, #327)
 
@@ -3506,7 +3506,10 @@ bench wrappers. Their shared `patio_dark_metal` look maps the existing wood
 surface to the kit's `metalDark` donor without changing source models.
 
 `PatioRules` reads the already selected daily weather: Sunny and Cloudy allow
-outdoor dining and waiting; Rain skips those seats. The morning weather line
+outdoor dining and waiting; Rain skips those seats, except under rain cover
+(#625): `pergola` and `awning` are passive `FLOOR_DECOR` items (`ItemDef.rain_cover`,
+`outdoor_only`, 4 x 4 cells) that share cells with tables and chairs, and
+`SimGrid.is_rain_covered(cell)` keeps the seats under them open in rain. The morning weather line
 reports the patio's status only when cells are owned. Dining capacity, party
 seating and waiting benches use the same eligibility; waiting still uses its
 existing arrival bonus and reservations. Service and bussing follow ordinary
@@ -4200,6 +4203,32 @@ market's own rules: `lot_state` (OWNED, FOR_SALE, LOCKED, UNLISTED),
 `area_state` (OPEN, LOCKED, COMING_SOON, EMPTY when every lot is unlisted, such as the sold starter shop) and `opening_tier`;
 `CityMapDef.covered` and `reachable` list neighbourhoods for chain goals.
 Placeholder names until Jared's call (CITY_MAP.md T2, T3). No saved state.
+
+**City screen (#666, docs/CITY_MAP.md phase C2).** `CityPanel`
+(`src/ui/city_panel.tscn`, every line in `ChainText`) is the plain list
+version of the map: an alerts block (`ChainStats.alerts`), then each
+neighbourhood in map order (its name, `ChainText.area_line` and blurb), the
+owner's sites on its lots (status, yesterday, tonight, manager, standing,
+alerts and a Go button: "You are here", "Work here today", "Design here
+today" or the `site_switch_refusal` text, disabled), and the lots that are
+for sale (with "See it on the market") or locked (the market's lock line).
+Rows carry `row_id` (and `state`) metas for tests. `main.gd`:
+`set_city_visible` is a morning view like Property, offered by the Menu's
+City button from `PropertyMarket.shown`; `_dismiss_property` dismisses it
+too, so every path that closes the market closes it; `chain_summary()` feeds
+it (`SaveSystem.capture_sections(SiteSections.PER_SITE)` for the active
+site, the close's own rent multiplier); Go calls `switch_site` after
+`can_switch_site` (a refusal is logged and the list refreshed), and the
+market link opens `set_property_visible`. **Art slots (D41, the director's
+art):** `CityPanel.map_texture` (the paper map) shows `%MapView` above the
+list once set, with a `CityPin` (`src/ui/city_pin.tscn`, an `icons` texture
+per kind: area, shop, for_sale, locked) anchored at each neighbourhood's
+`map_position` and its lots spread below it (`CityPanel.pin_position`);
+a pin scrolls the list to its row. `CityMapDef.roads` are `CityRoadDef`s
+(`from`, `to`, `bends` in map units; one per pair, validated), and
+`CityMap.van_path(map, from, to)` gives the van's polyline (bends reversed
+when travelling the road backwards, straight with no road, empty for no
+ride). No saved state.
 
 **Later parts.** Moving furniture between sites (part 5; staff transfer is built, #473),
 bar gambling income (part 7), upstairs (part 8).
