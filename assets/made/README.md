@@ -436,7 +436,7 @@ chairs and a standing person fit under either. Review: `SEASIDE_STREET_PERGOLA=1
 
 ## Location starter decor (#596, "Location interiors")
 
-Ten small pieces that dress each place's starter building (D40), all ordinary decor
+Twelve small pieces that dress each place's starter building (D40), all ordinary decor
 buyable at every lot. Rebuild them with `python tools/build_location_decor.py` (any
 Python with the `bpy` module, or `blender --background --factory-startup --python ...`),
 which also writes `location_decor/location_decor.metrics.json` (triangles, world sizes,
@@ -454,9 +454,11 @@ side by side with Food Kit plates, bowls, cups and mugs on and in them.
 | `bunting.glb` (street front, over a door or window) | cliff | #240 string lights' string, `benchCushion` cloth | 192 | 1.45 x 0.22 x 0.03 |
 | `flour_sacks.glb` | mill | `pillow`, `cardboardBoxClosed` | 348 | 0.49 x 0.38 x 0.39 |
 | `barrel.glb` | mill | `trashcan` proportions, `kitchenCabinet` wood | 352 | 0.42 x 0.49 x 0.42 |
+| `millstone.glb` (stands on its edge, leaning on a wall) | mill | `kitchenCabinet` metal, `bookcaseOpenLow` wood | 332 | 0.95 x 0.94 x 0.44 |
 | `wheat_sheaf.glb` | mill | `plantSmall3`, `coatRack` peg | 412 | 0.38 x 0.58 x 0.10 |
 | `skyline_print.glb` | rooftop | #147 diner wall art frame, `televisionModern` | 464 | 0.70 x 0.46 x 0.04 |
 | `surfboard.glb` (stands on its tail) | boardwalk | `chairModernCushion` blue | 236 | 0.31 x 0.70 x 0.07 |
 | `beach_sign.glb` (two painted arrow planks) | boardwalk | #240 shop name sign, `paneling` | 340 | 0.90 x 0.40 x 0.06 |
 | `shell_jars.glb` (sits on a counter or table) | boardwalk | `bathroomMirror` glass, Food Kit cup | 416 | 0.18 x 0.15 x 0.08 |
+| `crossed_paddles.glb` (three faces wide: two paddles on a plank) | woodland cabin | `coatRack` wood, `books` red | 304 | 1.40 x 0.78 x 0.07 |
 | `pendant_cord.glb` (the cord and ceiling rose the kit `lampSquareCeiling` pendant hangs from) | any | `lampSquareCeiling` metal | 76 | 0.06 x 0.23 x 0.06 |

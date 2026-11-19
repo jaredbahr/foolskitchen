@@ -105,7 +105,7 @@ func test_wall_decor_hangs_moves_and_sells_from_the_buy_catalogue() -> void:
 	catalogue.set_group(&"wall_decor")
 	assert_true(catalogue.group_buttons[&"wall_decor"].visible)
 	assert_eq(catalogue.visible_ids(), [&"a_frame_sign", &"street_awning_2", &"street_awning_3", &"street_awning_4",
-		&"bunting", &"menu_board", &"fishing_net", &"flower_window_box", &"lifebuoy", &"wall_art_peaks", &"neon_open_sign",
+		&"bunting", &"menu_board", &"crossed_paddles", &"fishing_net", &"flower_window_box", &"lifebuoy", &"wall_art_peaks", &"neon_open_sign",
 		&"beach_sign", &"shop_name_sign", &"skyline_print", &"wall_art_sunrise", &"surfboard", &"wheat_sheaf"] as Array[StringName],
 		"the original four, six exterior pieces, the A-frame and the location decor (#596) by name")
 	assert_true(catalogue.item_buttons[&"neon_open_sign"].disabled, "level 4")

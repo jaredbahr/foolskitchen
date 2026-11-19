@@ -208,6 +208,46 @@
         "Food Kit cup"
       ]
     },
+    "millstone": {
+      "triangles": 332,
+      "budget": 800,
+      "world_dimensions": [
+        0.9455,
+        0.9439,
+        0.4401
+      ],
+      "materials": [
+        "metal",
+        "metalDark",
+        "metalMedium",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "bookcaseOpenLow.glb (woodDark chocks)",
+        "kitchenCabinet.glb (metal)"
+      ]
+    },
+    "crossed_paddles": {
+      "triangles": 304,
+      "budget": 800,
+      "world_dimensions": [
+        1.3978,
+        0.784,
+        0.073
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetDarker",
+        "carpetWhite",
+        "lamp",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "coatRack.glb (wood)",
+        "paneling.glb"
+      ]
+    },
     "pendant_cord": {
       "triangles": 76,
       "budget": 300,

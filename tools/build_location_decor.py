@@ -1,4 +1,4 @@
-"""Build the location starter decor (#596, "Location interiors"): ten small pieces.
+"""Build the location starter decor (#596, "Location interiors"): twelve small pieces.
 
 python tools/build_location_decor.py   (any Python with the `bpy` module)
 or: blender --background --factory-startup --python tools/build_location_decor.py
@@ -9,7 +9,10 @@ sizes, materials). Each place's starter building hangs or stands some of them:
 - Seaside cliff (nautical): `lifebuoy`, `fishing_net` (a net with floats and a
   coil of rope on a pole), `bunting` (pennants on a sagging string).
 - Old Mill (farmhouse): `flour_sacks` (three burlap sacks, blue band, flour at the neck),
-  `barrel`, `wheat_sheaf` (a tied sheaf on a peg).
+  `barrel`, `wheat_sheaf` (a tied sheaf on a peg), `millstone` (a stone wheel stood on
+  its edge and leaned on a wall, the mill's signature piece).
+- Woodland cabin (lodge): `crossed_paddles` (two canoe paddles crossed on a plank, three
+  wall faces wide).
 - Skyline rooftop (sleek): `skyline_print` (a framed city print).
 - Beachfront boardwalk (beachy): `surfboard` (on two wall pegs), `beach_sign`
   (two painted arrow planks), `shell_jars` (two glass jars of shells for a counter).
@@ -384,6 +387,29 @@ def wheat_sheaf():
     return {}
 
 
+def millstone():
+    """A millstone stood on its edge and leaned back against the wall: a pale stone
+    wheel with an iron band, a dark eye and eight furrows, on two wooden chocks."""
+    stone = Piece("Millstone")
+    radius, thick, tilt = 0.47, 0.16, math.radians(12)
+    sides = 16
+    parts = [(disc((0, 0), radius, 0.0, thick, sides=sides, phase=math.pi / sides), "metal"),
+             (disc((0, 0), radius + .012, thick * .38, thick * .62, sides=sides, phase=math.pi / sides), "metalDark"),
+             (disc((0, 0), .085, thick - .004, thick + .012, sides=8), "metalDark")]
+    for k in range(8):
+        spoke = box((.13, thick - .004, -.014), (radius - .05, thick + .009, .014))
+        transformed(spoke, Matrix.Rotation(k * math.tau / 8 + math.pi / 16, 4, "Y"))
+        parts.append((spoke, "metalMedium"))
+    lean = Matrix.Translation((0, radius * math.sin(tilt), radius * math.cos(tilt))) @ Matrix.Rotation(tilt, 4, "X")
+    for part, token in parts:
+        stone.add(transformed(part, lean), token)
+    front = thick * math.cos(tilt) + 2 * radius * math.sin(tilt)
+    for x in (-0.24, 0.24):
+        stone.add(box((x - .08, front - .05, 0.0), (x + .08, front + .09, .08), bevel=.012), "woodDark")
+    stone.finish()
+    return {}
+
+
 # ---------------------------------------------------------------- skyline rooftop
 
 def skyline_print():
@@ -506,6 +532,31 @@ def shell_jars():
     return {}
 
 
+# ---------------------------------------------------------------- woodland cabin
+
+def crossed_paddles():
+    """Two canoe paddles crossed on a red-brown plank, hung over the dining room."""
+    paddles = Piece("CrossedPaddles")
+    # Three wall faces wide (1.5 m), so the cross reads from the game's camera.
+    k = 1.3
+    width, height, depth = 0.96 * k * 1.12, 0.58 * k, 0.03
+    paddles.add(box((-width / 2, 0.0, 0.0), (width / 2, depth, height), bevel=.012), "woodDark")
+    paddles.add(box((-width / 2 + .035, depth - .004, .035), (width / 2 - .035, depth + .006, height - .035)), "carpetDarker")
+    cz = height / 2
+    for sign, shaft, band in ((1, "lamp", "carpetBlue"), (-1, "carpetWhite", "carpet")):
+        angle = sign * math.radians(38)
+        o = .006 * (sign < 0)
+        parts = [(box((-.016 * k, depth + o, -.33 * k), (.016 * k, depth + .026 + o, .24 * k), bevel=.004), shaft),
+                 (slab([(x * k, z * k) for x, z in ((-.062, -.15), (.062, -.15), (.07, -.27), (.035, -.37), (0.0, -.39),
+                                                    (-.035, -.37), (-.07, -.27))], depth + o, depth + .03 + o), shaft),
+                 (box((-.06 * k, depth + .03 + o, -.34 * k), (.06 * k, depth + .037 + o, -.3 * k)), band),
+                 (box((-.06 * k, depth + o, .235 * k), (.06 * k, depth + .026 + o, .27 * k), bevel=.006), shaft)]
+        for part, token in parts:
+            paddles.add(transformed(part, Matrix.Translation((0, 0, cz)) @ Matrix.Rotation(angle, 4, "Y")), token)
+    paddles.finish()
+    return {}
+
+
 # ---------------------------------------------------------------- lamp cord
 
 PENDANT_CORD = 0.23
@@ -550,6 +601,8 @@ ASSETS = [
     ("surfboard", surfboard, 800, ["chairModernCushion.glb (carpetBlue)", "coatRack.glb"]),
     ("beach_sign", beach_sign, 800, ["#240 shop_name_sign", "paneling.glb"]),
     ("shell_jars", shell_jars, 800, ["bathroomMirror.glb (glass)", "Food Kit cup"]),
+    ("millstone", millstone, 800, ["bookcaseOpenLow.glb (woodDark chocks)", "kitchenCabinet.glb (metal)"]),
+    ("crossed_paddles", crossed_paddles, 800, ["coatRack.glb (wood)", "paneling.glb"]),
     ("pendant_cord", pendant_cord, 300, ["lampSquareCeiling.glb (metalDark)", "lampWall.glb"]),
 ]
 
@@ -557,8 +610,14 @@ ASSETS = [
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     report = {"issue": 596, "furniture_scale": FURNITURE_SCALE, "assets": {}}
+    # Optional asset ids after `--` rebuild just those and keep the others' files and metrics.
     only = set(sys.argv[sys.argv.index("--") + 1:]) if "--" in sys.argv else set()
+    metrics_path = OUTPUT / "location_decor.metrics.json"
+    if only and metrics_path.exists():
+        report = json.loads(metrics_path.read_text())
     for asset_id, builder, budget, nearest in ASSETS:
+        if only and asset_id not in only:
+            continue
         clear_scene()
         extra = builder()
         path = OUTPUT / (asset_id + ".glb")
@@ -572,7 +631,8 @@ def main():
             "world_dimensions": [round(v * FURNITURE_SCALE, 4) for v in measured["dimensions"]],
             "materials": sorted(m["name"] for m in doc["materials"]),
             "nearest_kit": nearest, **{k: v for k, v in extra.items()}}
-    (OUTPUT / "location_decor.metrics.json").write_text(json.dumps(report, indent=2) + "\n")
+    report["assets"] = dict(sorted(report["assets"].items(), key=lambda item: [a[0] for a in ASSETS].index(item[0])))
+    metrics_path.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({k: (v["triangles"], v["world_dimensions"]) for k, v in report["assets"].items()}, indent=1))
 
 
