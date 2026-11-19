@@ -8176,6 +8176,8 @@ func _observe_opening_at_open() -> void:
 		_observe_opening(OpeningGoal.Condition.GROW_TOGETHER, 1.0)
 	if lease_expanded:
 		_observe_opening(OpeningGoal.Condition.LEASE_EXPANDED, 1.0)
+	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.ITEMS_OWNED):
+		_observe_opening(OpeningGoal.Condition.ITEMS_OWNED, float(_items_counted(now, goal.item_ids)), goal.id)
 	var roles: Dictionary = now["roles"]
 	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.STAFF_ROLE):
 		_observe_opening(OpeningGoal.Condition.STAFF_ROLE, float(roles.get(goal.role, 0)), goal.id)
