@@ -24,6 +24,12 @@ Design for guest types, quirks and how reviews and the morning paper talk about 
 7. **T7.** The "maybe famous" guest draws a small crowd: arrivals come about 15% faster for the next hour.
 8. **T8.** Dogs only where there's outdoor seating.
 
+**Decided** (Jared, 2026-11-19, second round):
+9. **T9. Quirk badges.** A quirk shows as a small badge over the seated guest, like the mood dot. The director draws them (#661).
+10. **T10. Review voices.** Each guest type has its own review voice on good visits only. Complaints keep the shared pool (#662).
+11. **T11. Birthday table.** A group booking you accept the day before, with a cake request and a bonus when the cake lands and the party is happy (#684). One dog model for now, no breeds (director's call, #660).
+12. **T12. Forager gift.** About 1 forager visit in 10 leaves a small basket of mushrooms: a few go into stock, free (#659).
+
 **D-row for DESIGN.md** (ready to paste):
 
 `| D42 | Guests with personality | Each location draws its own crowd through its guest mix (the home shop keeps today's): tourists (Seaside Cliff), the office crowd (Skyline Rooftop), then walkers, surfers, farmers and foragers. From owner level 3, one guest in eight has a small quirk, shown by an icon over them and a line when inspected, with one effect each and small trade-offs both ways (a Chatterbox holds a seat longer, a Lunch-breaker walks out sooner). One tourist in twenty returns as a named regular. The office crowd mostly comes at lunch (a soft window). A "maybe famous" guest makes the next hour's arrivals about 15% faster. Dogs only where there's outdoor seating. Design: docs/GUESTS.md | 2026-11-19 |`
@@ -55,7 +61,7 @@ Numbers are multipliers on today's baseline (Regular = 1.0). Party is min–max,
 | **Walker** | hot drinks, hearty food; shrug off rain | 1.0 | 1.2 | 1–2 | 1.0 | Seaside Cliff 0.3 | issue |
 | **Surfer** | cold drinks, fries; patio seats; afternoons | 0.9 | 1.2 | 2–4 | 1.1 | Boardwalk 0.25 | issue |
 | **Farmer** | big plates, pies; early; a second dish | 0.85 | 1.2 | 1–2 | 0.8 | Old Mill 0.35 | issue |
-| **Forager** | local and foraged dishes; quiet seats | 0.9 | 1.4 | 1–2 | 1.2 | Woodland 0.6 | issue (lot not built) |
+| **Forager** | local and foraged dishes; quiet seats | 0.9 | 1.4 | 1–2 | 1.2 | Woodland 0.5 | #659 (Codex) |
 
 **Notes per type**
 - **Tourist.** Mostly one-time visitors: one in twenty falls in love with the place and returns as a named regular (T5); the rest never join the regulars. Less fussy about price (a higher budget). A dish tagged `seafood`, or one carrying one of the location's own tags (a boardwalk soft serve at a seaside lot), gives a small happiness bonus; when #626's Local tag lands, Local dishes count too. Review chance is a little higher: they post about their holiday.
@@ -63,7 +69,7 @@ Numbers are multipliers on today's baseline (Regular = 1.0). Party is min–max,
 - **Walker.** Come up the cliff path in any weather: in rain their arrival weight holds while others drop. A hot drink with their meal is likely. Often bring a dog (the dog-walker quirk is twice as likely for them).
 - **Surfer.** Arrive in twos to fours, mostly in the afternoon, prefer the patio, order cold drinks and fries. Relaxed: patient but not big spenders.
 - **Farmer.** Early: weighted to the first two hours. Thrifty but hungry: one in three orders a second dish (the big-eater quirk is twice as likely for them). Low review chance: they've better things to do.
-- **Forager.** Patient, curious, love anything local or foraged (#608). Tied to the `woodland_cabin` lot once it lands. Very rarely bring you a basket of mushrooms (a tiny free stock gift, issue later).
+- **Forager.** Patient, curious, love anything local or foraged (#608). Tied to the `woodland_cabin` lot once it lands. About one visit in ten ends with a basket of mushrooms, a few into stock for free (T12, #659).
 
 **How a lot's mix shapes arrivals (with #471).** Today `LotDef.guest_mix` only shows on the property card; arrivals everywhere use the reputation weights. With #471, at the home shop arrivals stay exactly as today. At any other location the lot's `guest_mix` share replaces the type's reputation weight, but a type still waits for its owner-level unlock, and the room's theme bonus and the evening multipliers still apply. The location types (tourists, office crowd and the later four) have zero reputation weight, so they never arrive at the home shop, which has no mix.
 
@@ -80,7 +86,7 @@ A quirk is a small personality on top of the type: one icon, one line in the ins
 | **Lunch-breaker**: on a strict lunch hour | watch icon; taps wrist | Patience x0.6; if food arrives inside half their food patience, +1 raw star | fast: `quick_lunch`; slow: their usual slow-food line | #652 |
 | **Window seat**: always asks for the window | window icon | Prefers a free seat next to a window; +0.5 raw stars when they get one | `window_happy` | issue |
 | **Dog walker**: brings a very good dog | paw icon; a dog sits by the chair (art) | Only where there's outdoor seating (T8): sits outside, +0.5 stars there; never rolled at a shop with no outdoor seats | `dog_happy` | issue |
-| **Birthday table**: a party celebrating | balloon icon over the table | Party orders one extra dessert or drink if on the menu; booking-style review weight 2 when served well | `birthday` | issue |
+| **Birthday table**: a party celebrating | balloon icon over the table | A Birthday group booking (T11): with a dessert on the menu, one member orders the cake (the menu's first dessert); a flat bonus when the cake is served and the review reaches the good-service stars; booking review weight 2 as usual | `birthday` | issue |
 | **Sweet tooth** | cupcake icon | Always adds a pastry when one is on the menu | `sweet` | issue |
 | **Big eater** | double plate icon | Orders a second dish (one more ticket, one more sale) | `big_eater` | issue |
 | **Indecisive** | question-mark icon | Takes twice as long to order (holds the server a little) | `indecisive` | issue |
@@ -126,9 +132,10 @@ A quirk is a small personality on top of the type: one icon, one line in the ins
 - #657 walkers (Seaside Cliff)
 - #658 surfers (Boardwalk)
 - #663 farmers (Old Mill), after #653
+- #659 foragers at the Woodland Cabin, with the mushroom gift (T12), after #608
+- #684 the birthday table booking (T11) and the dog walker quirk (T8), sim only
 
 **Director** (`claude`):
-- #659 foragers, once `woodland_cabin` lands
-- #660 the dog walker (T8) and the birthday table (art)
-- #661 quirk icons over guests (T3) and looks for the new types
-- #662 type-flavoured review quotes and the morning-paper quirk brief
+- #660 art for #684: one dog model, birthday balloons, and the real dog review lines
+- #661 quirk badges over seated guests (T3, T9) and looks for the new types
+- #662 each type's review voice on good visits (T10) and the morning-paper quirk brief
