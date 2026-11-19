@@ -6742,13 +6742,14 @@ func _prepare_morning_paper(yesterday: DayReport, hire_note: String = "") -> voi
 			history = recent[0]
 	var dishes: Dictionary = yesterday.dishes_sold if yesterday != null else history.get("dishes_sold", {})
 	var dish: String = MorningPaper.best_dish(dishes, content)
-	var notes: Array[String] = [hire_note, sim.rush_hour.morning_notice()]
+	var notes: Array[String] = [hire_note, sim.rush_hour.morning_notice(),
+		MorningPaper.tip_for(yesterday, difficulty.auto(&"prices"), hire_note)]
 	if group_booking != null and group_booking.has_active_booking() \
 			and int(group_booking.booking.get("service_day", -1)) == day:
 		var booking: Dictionary = group_booking.booking
 		notes.append("A table for %d is booked at %s today." % [
 			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
-	# MorningPaper adds yesterday's tip and favourite dish after these notes.
+	# MorningPaper adds yesterday's favourite dish after these notes.
 	_morning_paper_edition = MorningPaper.build(day, yesterday, world.weather.kind, notes,
 		GameState.rng(&"paper"), dish, history)
 	_morning_paper_edition["day"] = day

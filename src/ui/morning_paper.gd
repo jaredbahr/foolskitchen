@@ -9,12 +9,23 @@ const FALLBACK_DISH: String = "the menu"
 const MAX_NOTES: int = 3
 ## Yesterday's tip shows once this many guests left for one reason.
 const TIP_MIN_GUESTS: int = 3
-## The tip for each leave reason, most useful first when counts tie.
+## A "full house" headline needs at least this many guests served.
+const FULL_HOUSE_MIN_SERVED: int = 8
+## The staff advice rules the evening report uses, so the paper never blames
+## a role the report does not.
+const STAFF_ADVICE_RULES: StaffAdviceTuning = preload("res://data/balance/staff_advice.tres")
+## Each tip is true in every difficulty: no advice to order stock (buying may
+## be automatic), none about prices when the game sets them.
 const TIPS: Dictionary[StringName, String] = {
 	&"no_table": "%d guests found every seat taken. More tables, and hands to serve them, would fit them in.",
-	&"waited_too_long": "%d guests gave up waiting. Another pair of hands would speed things up.",
+	&"waited_too_long": "%d guests gave up waiting. A waiting bench by the door and quicker service help them stay.",
 	&"too_expensive": "%d guests left over the prices. A gentler price brings them back.",
-	&"out_of_stock": "%d guests wanted a dish that ran out. A bigger order keeps it on.",
+	&"out_of_stock": "%d guests found a dish sold out. More shelves or another fridge let the morning order bring enough.",
+}
+## The waiting tip when yesterday's staff advice names a busy role.
+const WAITING_ROLE_TIPS: Dictionary[StringName, String] = {
+	&"cook": "%d guests gave up waiting while the cooks were flat out. Another cook would speed things up.",
+	&"server": "%d guests gave up waiting while the servers were flat out. Another server would speed things up.",
 }
 
 
@@ -34,7 +45,10 @@ static func build(day: int, yesterday: DayReport, weather_kind: int, notes: Arra
 		"guests": str(guests),
 		"cash": Fmt.money(cash),
 	}
-	return {"masthead": MASTHEAD, "headline": _fill(headline, fields),
+	var filled: String = _fill(headline, fields)
+	# A template that opens with {dish} still opens with a capital ("The menu ...").
+	filled = filled.left(1).to_upper() + filled.substr(1)
+	return {"masthead": MASTHEAD, "headline": filled,
 		"notes": _briefs(yesterday, weather_kind, notes, dish)}
 
 
@@ -77,7 +91,8 @@ static func _headline_group(day: int, yesterday: DayReport, history: Dictionary)
 	var lost: int = yesterday.customers_lost if yesterday != null else int(history.get("lost", 0))
 	if lost >= 3:
 		# Mostly turned away for want of a seat: a busy shop, not a bad one.
-		if yesterday != null and int(yesterday.leave_reasons.get(&"no_table", 0)) * 2 >= lost:
+		if yesterday != null and int(yesterday.leave_reasons.get(&"no_table", 0)) * 2 >= lost \
+				and yesterday.customers_served >= FULL_HOUSE_MIN_SERVED:
 			return &"full_house"
 		return &"walkouts"
 	if yesterday != null:
@@ -95,7 +110,6 @@ static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String
 	if yesterday != null and not yesterday.inspection_lines.is_empty():
 		available.append(yesterday.inspection_lines[0])
 	available.append_array(notes)
-	available.append(tip_for(yesterday))
 	if not dish.is_empty():
 		available.append("%s was yesterday’s favorite." % dish)
 	var briefs: Array[String] = []
@@ -109,17 +123,29 @@ static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String
 
 
 ## One practical line about yesterday's biggest reason guests left, or "".
-static func tip_for(yesterday: DayReport) -> String:
+## The caller places it among the notes (#646: ahead of a booking note).
+## `prices_automatic`: the game sets prices (Easy), so no price tip. A
+## `hire_note` from this morning already answered a staffing gap, so the
+## waiting tip then names no role.
+static func tip_for(yesterday: DayReport, prices_automatic: bool = false, hire_note: String = "") -> String:
 	if yesterday == null:
 		return ""
 	var best: StringName = &""
 	var best_count: int = TIP_MIN_GUESTS - 1
 	for reason: StringName in TIPS:
+		if reason == &"too_expensive" and prices_automatic:
+			continue
 		var count: int = int(yesterday.leave_reasons.get(reason, 0))
 		if count > best_count:
 			best = reason
 			best_count = count
-	return "" if best.is_empty() else TIPS[best] % best_count
+	if best.is_empty():
+		return ""
+	if best == &"waited_too_long" and hire_note.strip_edges().is_empty():
+		var role: StringName = STAFF_ADVICE_RULES.recommendation(yesterday.staff_activity, yesterday.leave_reasons)
+		if WAITING_ROLE_TIPS.has(role):
+			return WAITING_ROLE_TIPS[role] % best_count
+	return TIPS[best] % best_count
 
 
 static func _new_regulars(yesterday: DayReport) -> bool:
