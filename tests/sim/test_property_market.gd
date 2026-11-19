@@ -31,12 +31,16 @@ func _good_lot(id: StringName = &"test_lot") -> LotDef:
 	lot.expansion_price = 500
 	lot.expanded_daily_rent = 60
 	lot.expansion_east = 2
-	lot.guest_mix = {&"foodie": 1.0}
+	lot.guest_mix = {&"regular": 0.5, &"foodie": 0.5}
 	return lot
 
 
 func _errors(lots: Array[LotDef]) -> PackedStringArray:
-	return ContentDB.validate_lots(lots, _db().items(), _customer_ids())
+	var opening: Array[StringName] = []
+	for kind: CustomerType in CUSTOMER_TYPES.types:
+		if kind.unlock_level <= 1:
+			opening.append(kind.id)
+	return ContentDB.validate_lots(lots, _db().items(), _customer_ids(), opening)
 
 
 func _has_error(errors: PackedStringArray, fragment: String) -> bool:
@@ -178,6 +182,9 @@ func test_bad_lots_are_reported() -> void:
 	var unknown_type: LotDef = _good_lot()
 	unknown_type.guest_mix = {&"pirate": 1.0}
 	cases.append([unknown_type, "unknown customer type 'pirate'"])
+	var locked_only: LotDef = _good_lot()
+	locked_only.guest_mix = {&"foodie": 0.6, &"family": 0.4}
+	cases.append([locked_only, "needs a type that visits from level 1"])
 	var zero_share: LotDef = _good_lot()
 	zero_share.guest_mix = {&"foodie": 0.0}
 	cases.append([zero_share, "must be > 0"])
