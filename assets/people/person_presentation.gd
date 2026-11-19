@@ -42,6 +42,35 @@ const CLIPBOARD_HOLD: StringName = &"clipboard-hold"
 ## How far each rigid arm swings forward from the shoulder line, and drops.
 const CLIPBOARD_ARM_YAW_DEGREES: float = 72.0
 const CLIPBOARD_ARM_DROP_DEGREES: float = 35.0
+## Clothing ramps measured from each kit body-mesh's torso UVs. None is a
+## skin ramp; the separate head mesh always keeps its imported material.
+const CLOTHING_RAMPS: Dictionary[StringName, Rect2i] = {
+	&"character-female-a": Rect2i(480, 256, 32, 128),
+	&"character-female-c": Rect2i(352, 256, 32, 128),
+	&"character-female-d": Rect2i(96, 384, 32, 128),
+	&"character-female-e": Rect2i(288, 384, 32, 128),
+	&"character-female-f": Rect2i(160, 256, 32, 128),
+	&"character-male-a": Rect2i(96, 256, 32, 128),
+	&"character-male-c": Rect2i(352, 256, 32, 128),
+	&"character-male-d": Rect2i(32, 384, 32, 128),
+	&"character-male-e": Rect2i(160, 256, 32, 128),
+	&"character-male-f": Rect2i(96, 256, 32, 128),
+}
+## Tourists (#661) wear a straw sun hat and one of two holiday shirts; the
+## office crowd wear a lanyard and a navy or grey jacket over a white shirt.
+## Which one follows the guest id (type_variant), never a random stream.
+const TOURIST_SHIRTS: Array[Color] = [Color("f06a4f"), Color("26b9c2")]
+const OFFICE_JACKETS: Array[Color] = [Color("3b57a0"), Color("8a8f9c")]
+## A second clothing block a jacket also covers (the sleeves and skirt of the
+## kit's female-a use a block of their own).
+const JACKET_EXTRA_RAMPS: Dictionary[StringName, Rect2i] = {
+	&"character-female-a": Rect2i(352, 256, 32, 128),
+}
+## How far the hat's underside sinks into the hair below the head top.
+const SUN_HAT_SINK: float = 0.04
+## The hat sits a little back and tilted up at the front, so the face shows from above.
+const SUN_HAT_BACK: float = -0.03
+const SUN_HAT_TILT_DEGREES: float = -10.0
 # Rest-pose head mesh maxima read from the vendored GLB POSITION accessors.
 # These are source measurements, before the single shared character scale.
 const HEAD_TOPS: Dictionary[StringName, float] = {
@@ -78,6 +107,10 @@ static func model_for(role: StringName, guest_id: int = 0, customer_type: String
 					models = [&"character-female-c", &"character-male-e"]
 				&"family":
 					models = [&"character-female-e", &"character-male-c"]
+				&"tourist":
+					models = [&"character-female-d", &"character-male-e"]
+				&"office":
+					models = [&"character-female-a", &"character-male-f"]
 			# Avoid abs(INT64_MIN) and use no RNG, including for negative IDs.
 			var count: int = models.size()
 			var index: int = ((guest_id % count) + count) % count
@@ -90,6 +123,52 @@ static func model_path_for(role: StringName, guest_id: int = 0, customer_type: S
 		owner_model: StringName = OwnerAppearance.DEFAULT_MODEL) -> String:
 	var model: StringName = model_for(role, guest_id, customer_type, owner_model)
 	return "" if model == &"" else MODEL_DIRECTORY + String(model) + ".glb"
+
+
+static func _is_guest_role(role: StringName) -> bool:
+	return role == &"customer" or role == &"guest"
+
+
+## Tourists wear a small straw sun hat (#661).
+static func has_sun_hat(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"tourist"
+
+
+## The office crowd wear an ID lanyard on the chest (#661).
+static func has_lanyard(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"office"
+
+
+## 0 or 1 from the guest id, independent of the model pair (which uses the low
+## bit), so each model shows both shirt and jacket colours.
+static func type_variant(guest_id: int) -> int:
+	return posmod(guest_id >> 1, 2)
+
+
+## Names the tourist or office look (type and colour) a view must wear, or
+## &"" for any other guest; a view rebuilds when this changes, even on the same model.
+static func type_look_key(role: StringName, guest_id: int, customer_type: StringName) -> StringName:
+	if has_sun_hat(role, customer_type) or has_lanyard(role, customer_type):
+		return StringName("%s:%d" % [customer_type, type_variant(guest_id)])
+	return &""
+
+
+## Colormap blocks to repaint on the body mesh of a tourist (holiday shirt) or
+## an office guest (jacket), as {rect, color}. Empty for every other look.
+static func type_recolors(role: StringName, guest_id: int, customer_type: StringName,
+		model: StringName) -> Array[Dictionary]:
+	var colors: Array[Color] = []
+	if has_sun_hat(role, customer_type):
+		colors = TOURIST_SHIRTS
+	elif has_lanyard(role, customer_type):
+		colors = OFFICE_JACKETS
+	if colors.is_empty() or not CLOTHING_RAMPS.has(model):
+		return []
+	var color: Color = colors[type_variant(guest_id)]
+	var recolors: Array[Dictionary] = [{"rect": CLOTHING_RAMPS[model], "color": color}]
+	if has_lanyard(role, customer_type) and JACKET_EXTRA_RAMPS.has(model):
+		recolors.append({"rect": JACKET_EXTRA_RAMPS[model], "color": color})
+	return recolors
 
 
 static func has_chef_hat(role: StringName) -> bool:

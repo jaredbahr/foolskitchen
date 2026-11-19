@@ -15,20 +15,8 @@ const REGULAR_SWATCHES: Dictionary[StringName, SwatchDef] = {
 	&"cream": preload("res://data/swatches/cream.tres"),
 }
 
-## Clothing ramps measured from each kit body-mesh's torso UVs. None is a
-## skin ramp; the separate head mesh always keeps its imported material.
-const REGULAR_CLOTHING_RAMPS: Dictionary[StringName, Rect2i] = {
-	&"character-female-a": Rect2i(480, 256, 32, 128),
-	&"character-female-c": Rect2i(352, 256, 32, 128),
-	&"character-female-d": Rect2i(96, 384, 32, 128),
-	&"character-female-e": Rect2i(288, 384, 32, 128),
-	&"character-female-f": Rect2i(160, 256, 32, 128),
-	&"character-male-a": Rect2i(96, 256, 32, 128),
-	&"character-male-c": Rect2i(352, 256, 32, 128),
-	&"character-male-d": Rect2i(32, 384, 32, 128),
-	&"character-male-e": Rect2i(160, 256, 32, 128),
-	&"character-male-f": Rect2i(96, 256, 32, 128),
-}
+## Clothing ramps measured from each kit body-mesh's torso UVs (see PersonPresentation).
+const REGULAR_CLOTHING_RAMPS: Dictionary[StringName, Rect2i] = PersonPresentation.CLOTHING_RAMPS
 static var _regular_materials: Dictionary[StringName, Material] = {}
 
 var _regular_model: StringName = &""
@@ -40,6 +28,8 @@ var _hat: Node3D
 var _cap: Node3D
 var _clipboard: Node3D
 var _model_name: StringName = &""
+## Which tourist or office look the current model wears (see PersonPresentation.type_look_key).
+var _piece_key: StringName = &""
 var _clip: StringName = &""
 var _requested_clip: StringName = &"idle"
 var _seat_height: float = 0.0
@@ -50,8 +40,13 @@ var _sit_lean_track: int = -1
 var _sit_base_rotations: Array[Quaternion] = []
 ## Where the clipboard sits from the midpoint of the two palms (person-local).
 const CLIPBOARD_OFFSET: Vector3 = Vector3(0.0, 0.0, -0.1)
+## Made pieces for guest types (#661), built by tools/build_guest_props.py.
+const SUN_HAT_SCENE: PackedScene = preload("res://assets/made/people/sun_hat.glb")
+const LANYARD_SCENE: PackedScene = preload("res://assets/made/people/lanyard.glb")
 ## Uniform materials by role, built once from the vendored colormap.
 static var _uniform_materials: Dictionary[StringName, Material] = {}
+## Tourist shirts and office jackets, by model and look.
+static var _type_materials: Dictionary[String, Material] = {}
 
 
 func _ready() -> void:
@@ -72,7 +67,8 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	var desired_model: StringName = _regular_model if regular else PersonPresentation.model_for(role, guest_id, customer_type, owner_model)
 	if not _initialized:
 		return desired_model != &""
-	if desired_model == _model_name and _model != null:
+	var piece_key: StringName = PersonPresentation.type_look_key(role, guest_id, customer_type)
+	if desired_model == _model_name and _model != null and piece_key == _piece_key:
 		return true
 	var seated_time: float = _player.current_animation_position if _player != null and _clip == &"sit" else 0.0
 	_clear_model()
@@ -108,12 +104,16 @@ func set_look(value: StringName, id: int = 0, kind: StringName = &"regular") -> 
 	if PersonPresentation.has_courier_cap(role) and not _attach_to_head(_cap, "CourierCapAttachment"):
 		_clear_model()
 		return false
+	if not _attach_guest_type_pieces(regular, desired_model):
+		_clear_model()
+		return false
 	if _clipboard != null:
 		_clipboard.visible = PersonPresentation.has_clipboard(role)
 	if regular and not _apply_regular_clothing(desired_model):
 		_clear_model()
 		return false
 	_model_name = desired_model
+	_piece_key = piece_key
 	var played: bool = _play_requested_clip()
 	if played and _clip == &"sit" and seated_time > 0.0:
 		_player.seek(minf(seated_time, _player.get_animation(&"sit").length), true)
@@ -154,6 +154,73 @@ func _apply_regular_clothing(model: StringName) -> bool:
 			if material == null:
 				return false
 			_regular_materials[key] = material
+		for surface: int in mesh.mesh.get_surface_count():
+			mesh.set_surface_override_material(surface, material)
+		return true
+	return false
+
+
+## The tourist's sun hat and shirt, the office worker's lanyard and jacket
+## (#661). Presentation only: the choice reads the guest id, never a random stream.
+func _attach_guest_type_pieces(regular: bool, model: StringName) -> bool:
+	if PersonPresentation.has_sun_hat(role, customer_type):
+		var lift: float = _head_top_in_bone_space(model)
+		if lift < 0.0:
+			return false
+		var hat: Node3D = SUN_HAT_SCENE.instantiate() as Node3D
+		if hat == null or not _attach_made_piece(hat, "SunHatAttachment", "head",
+				Vector3(0.0, lift - PersonPresentation.SUN_HAT_SINK, PersonPresentation.SUN_HAT_BACK),
+				PersonPresentation.SUN_HAT_TILT_DEGREES):
+			return false
+	if PersonPresentation.has_lanyard(role, customer_type):
+		var lanyard: Node3D = LANYARD_SCENE.instantiate() as Node3D
+		if lanyard == null or not _attach_made_piece(lanyard, "LanyardAttachment", "torso", Vector3.ZERO):
+			return false
+	if regular:
+		return true
+	var recolors: Array[Dictionary] = PersonPresentation.type_recolors(role, guest_id, customer_type, model)
+	if recolors.is_empty():
+		return true
+	return _apply_body_recolors(recolors, "%s:%s:%d" % [model, customer_type, PersonPresentation.type_variant(guest_id)])
+
+
+## Head top above the head bone's rest origin, in the bone's own space.
+func _head_top_in_bone_space(model: StringName) -> float:
+	var head: int = _skeleton.find_bone("head")
+	if head < 0 or PersonPresentation.source_head_top(model) <= 0.0:
+		return -1.0
+	return PersonPresentation.source_head_top(model) - _skeleton.get_bone_global_rest(head).origin.y
+
+
+func _attach_made_piece(piece: Node3D, attachment_name: String, bone: String, offset: Vector3,
+		tilt_degrees: float = 0.0) -> bool:
+	if piece == null or _skeleton.find_bone(bone) < 0:
+		if piece != null:
+			piece.free()
+		return false
+	var attachment: BoneAttachment3D = BoneAttachment3D.new()
+	attachment.name = attachment_name
+	attachment.bone_name = bone
+	_skeleton.add_child(attachment)
+	piece.position = offset
+	piece.rotation_degrees.x = tilt_degrees
+	attachment.add_child(piece)
+	return true
+
+
+## Repaints blocks of a private colormap copy on the body mesh only, so the
+## head keeps the kit's skin and hair.
+func _apply_body_recolors(recolors: Array[Dictionary], key: String) -> bool:
+	for node: Node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if mesh.name != &"body-mesh":
+			continue
+		var material: Material = _type_materials.get(key)
+		if material == null:
+			material = _uniform_material(mesh.mesh.surface_get_material(0), recolors)
+			if material == null:
+				return false
+			_type_materials[key] = material
 		for surface: int in mesh.mesh.get_surface_count():
 			mesh.set_surface_override_material(surface, material)
 		return true
@@ -482,6 +549,7 @@ func _clear_model() -> void:
 	_player = null
 	_skeleton = null
 	_model_name = &""
+	_piece_key = &""
 	_clip = &""
 	_sit_lean_track = -1
 	_sit_base_rotations.clear()
