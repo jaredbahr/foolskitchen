@@ -11,5 +11,5 @@ price = 3
 pattern = 0
 default_swatch = &"slate_blue"
 default_accent = &"cream"
-unlock_level = 4
+unlock_level = 6
 theme_tags = Array[StringName]([&"seafood"])

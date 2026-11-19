@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- New things to buy and cook arrive more evenly: owner levels 2 to 4 unlock fewer extras, and levels 5 to 9 now bring 26 new things between them instead of 6, such as the hot dog and club sandwich at 5, the seafood dishes from 6 to 9, the cushioned bench, bookcase and speaker at 6, and the aquariums at 7 and 9. The basics (bigger tables, the fryer and oven, breakfast, the tip jar, the first lamps, rugs and plants) stay early. The Log, Stone and timber, Concrete panel and Whitewash wall finishes now unlock at level 6, when their lots open up. (#675)
 - Group bookings come sooner: a party of four can book a single four-seat or round table, so offers start once you own one, instead of only after six seats of tables are pushed together. (#671)
 - Week 2 now asks you to hire a second cook instead of a cleaner (the cleaner moves to Week 3), and the bigger lease costs $40 a day instead of $60, so growing the shop pays. (#674)
 - A small price rise costs fewer guests: the first 5% over a dish's standard price is shrugged off, so a 10% rise turns away about half as many guests as before. The first Opening week goal now says to move a price and watch how guests react. (#672)

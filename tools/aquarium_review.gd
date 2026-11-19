@@ -32,7 +32,7 @@ func _ready() -> void:
 		push_error("Aquarium review needs a fresh shop")
 		return
 	Economy.add_cash(2000, Ledger.OTHER)
-	shop_editor.set_owner_level(5)
+	shop_editor.set_owner_level(9)  # #647: the tanks and bookcase unlock later now
 	# Against the kitchen wall, facing the room, with the style proof beside
 	# it: the kit's low open bookcase and side table.
 	_tank = _buy(&"aquarium", TANK_AT, 2)
