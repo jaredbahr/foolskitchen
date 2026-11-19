@@ -4195,5 +4195,22 @@ loads the starter team). `ChainStats` (pure) adds them up: `site_income`
 `chain_total`, `total_ladles`, `mean_stars`, `status_counts`, `tonight_total`
 and `alerts` (most urgent first, then site order). No saved state.
 
+**City screen (#641, docs/CITY_MAP.md phase C2).** `CityPanel`
+(`src/ui/city_panel.tscn`, every line in `ChainText`) is the plain list
+version of the map: an alerts block (`ChainStats.alerts`), then each
+neighbourhood in map order (its name, `ChainText.area_line` and blurb), the
+owner's sites on its lots (status, yesterday, tonight, manager, standing,
+alerts and a Go button: "You are here", "Work here today", "Design here
+today" or the `site_switch_refusal` text, disabled), and the lots that are
+for sale (with "See it on the market") or locked (the market's lock line).
+Rows carry `row_id` (and `state`) metas for tests. `main.gd`:
+`set_city_visible` is a morning view like Property, offered by the Menu's
+City button from `PropertyMarket.shown`; `_dismiss_property` dismisses it
+too, so every path that closes the market closes it; `chain_summary()` feeds
+it (`SaveSystem.capture_sections(SiteSections.PER_SITE)` for the active
+site, the close's own rent multiplier); Go calls `switch_site` after
+`can_switch_site` (a refusal is logged and the list refreshed), and the
+market link opens `set_property_visible`. No saved state.
+
 **Later parts.** Moving furniture between sites (part 5; staff transfer is built, #473),
 bar gambling income (part 7), upstairs (part 8).
