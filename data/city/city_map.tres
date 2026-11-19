@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="CityMapDef" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/sim/sites/city_map_def.gd" id="1_map"]
+[ext_resource type="Script" path="res://src/sim/sites/neighbourhood_def.gd" id="2_area"]
+
+[sub_resource type="Resource" id="Resource_old_town"]
+script = ExtResource("2_area")
+id = &"old_town"
+display_name = "Old Town"
+blurb = "Where it all started: a little high street with a bakery, a florist and your first shop."
+lots = Array[StringName]([&"home"])
+map_position = Vector2(0.5, 0.45)
+
+[sub_resource type="Resource" id="Resource_millbrook"]
+script = ExtResource("2_area")
+id = &"millbrook"
+display_name = "Millbrook"
+blurb = "Hedgerows, a mill stream and the best flour in town, down the lane past the last bus stop."
+lots = Array[StringName]([&"town_fixer_upper"])
+map_position = Vector2(0.2, 0.32)
+
+[sub_resource type="Resource" id="Resource_seafront"]
+script = ExtResource("2_area")
+id = &"seafront"
+display_name = "The Seafront"
+blurb = "Ice cream on the boardwalk, gulls on the railings and a café up on the cliff."
+lots = Array[StringName]([&"beachfront_boardwalk", &"seaside_cliff"])
+map_position = Vector2(0.32, 0.8)
+
+[sub_resource type="Resource" id="Resource_skyline"]
+script = ExtResource("2_area")
+id = &"skyline"
+display_name = "Skyline"
+blurb = "Glass towers, office lunches and a rooftop with the best view in town."
+lots = Array[StringName]([&"skyscraper_rooftop"])
+map_position = Vector2(0.76, 0.55)
+
+[sub_resource type="Resource" id="Resource_pinewood"]
+script = ExtResource("2_area")
+id = &"pinewood"
+display_name = "Pinewood"
+blurb = "Tall pines, a forest track and a stream. Nobody has opened a kitchen out here. Yet."
+map_position = Vector2(0.62, 0.12)
+coming_soon = "A cabin in the woods"
+
+[resource]
+script = ExtResource("1_map")
+neighbourhoods = Array[ExtResource("2_area")]([SubResource("Resource_old_town"), SubResource("Resource_millbrook"), SubResource("Resource_seafront"), SubResource("Resource_skyline"), SubResource("Resource_pinewood")])
