@@ -52,6 +52,7 @@ const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_manage
 const SITE_LIMITS: SiteLimitTuning = preload("res://data/balance/sites.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
+const QUIRKS: GuestQuirkCatalogue = preload("res://data/customers/quirks.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
 const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
 ## The paid goal chains (#494 Opening week, #514 Week 2): goals that guide
@@ -324,6 +325,9 @@ var _goals_panel: GoalsPanel
 var _goals_return_to_menu: bool = false
 ## The property market (FK-087), opened from the Menu: lots to browse and buy.
 var _property_panel: PropertyPanel
+## The city screen (docs/CITY_MAP.md): a morning view like Property.
+var _city_panel: CityPanel
+var _city_map: CityMapDef
 ## The morning site card (FK-087, #464): shown once a morning with 2+ sites.
 var _site_card: SiteCard
 var _site_card_day: int = 0
@@ -535,6 +539,8 @@ func _bind_world_presentation() -> void:
 		_menu_panel.goals_requested.connect(_on_menu_goals_requested)
 	if not _menu_panel.property_requested.is_connected(_on_menu_property_requested):
 		_menu_panel.property_requested.connect(_on_menu_property_requested)
+	if not _menu_panel.city_requested.is_connected(_on_menu_city_requested):
+		_menu_panel.city_requested.connect(_on_menu_city_requested)
 	if not _menu_panel.hours_requested.is_connected(_on_hours_requested):
 		_menu_panel.hours_requested.connect(_on_hours_requested)
 	if not _menu_panel.quit_to_title_requested.is_connected(request_quit_to_title):
@@ -552,6 +558,12 @@ func _bind_world_presentation() -> void:
 		_property_panel.close_requested.connect(_on_property_close_requested)
 	if not _property_panel.buy_requested.is_connected(_on_property_buy_requested):
 		_property_panel.buy_requested.connect(_on_property_buy_requested)
+	_city_panel = $Overlay/CityPanel
+	_city_panel.hide()
+	if not _city_panel.close_requested.is_connected(_on_city_close_requested):
+		_city_panel.close_requested.connect(_on_city_close_requested)
+		_city_panel.site_chosen.connect(_on_city_site_chosen)
+		_city_panel.market_requested.connect(_on_city_market_requested)
 	_site_card = $Overlay/SiteCard
 	_site_card.hide()
 	_on_site_card_visibility_changed()
@@ -886,6 +898,9 @@ func _wire_session() -> bool:
 	# provider is called then), so shops below that level keep their exact streams.
 	sim.critic.tuning = CRITIC
 	sim.critic_rng_provider = GameState.rng.bind(&"critic")
+	# Guest quirks (docs/GUESTS.md): the stream is asked for only from their unlock.
+	sim.quirks = QUIRKS
+	sim.quirk_rng_provider = GameState.rng.bind(&"quirks")
 	for recipe: RecipeDef in content.recipes():
 		sim.regular_recipe_labels[recipe.id] = recipe.display_name
 	# Configure only after the complete restore/new-game decision, using its
@@ -1144,7 +1159,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if $HUD.dismiss_loan_repayment(true):
 				_mark_input_handled()
 				return
-			if is_property_visible():
+			if is_city_visible():
+				set_city_visible(false)
+			elif is_property_visible():
 				set_property_visible(false)
 			elif is_goals_visible():
 				set_goals_visible(false)
@@ -5505,6 +5522,7 @@ func set_menu_visible(value: bool) -> bool:
 		_refresh_evening_schedule_controls()
 		_menu_panel.set_hours(Clock.sim.display_open_minute, Clock.sim.display_close_minute, HOURS_TUNING)
 		_menu_panel.set_property_available(PropertyMarket.shown(owner_progress.career_tier))
+		_menu_panel.set_city_available(PropertyMarket.shown(owner_progress.career_tier))
 	_menu_panel.set_phase(Clock.sim.phase)
 	_menu_panel.visible = value
 	refresh_hints()
@@ -5942,9 +5960,97 @@ func _on_site_card_chosen(id: StringName) -> void:
 func _dismiss_property() -> void:
 	if _property_panel != null:
 		_property_panel.hide()
+	# The city screen is a morning view beside Property: every path that
+	# dismisses the market dismisses it too.
+	if _city_panel != null:
+		_city_panel.hide()
 
 
 func _on_menu_property_requested() -> void:
+	set_property_visible(true)
+
+
+## Shows or hides the city screen (docs/CITY_MAP.md, phase C2): a morning
+## view from the Menu, offered with the property market (Tier 3), that closes
+## back to the Menu. It shows; switching stays `switch_site`'s.
+func set_city_visible(value: bool) -> bool:
+	if _city_panel == null:
+		return false
+	if not value:
+		var was_open: bool = _city_panel.visible
+		_city_panel.hide()
+		if was_open and can_edit_menu():
+			set_menu_visible(true)
+		return true
+	if not can_edit_menu() or not PropertyMarket.shown(owner_progress.career_tier):
+		return false
+	if is_settings_visible():
+		_settings_return_to_menu = false
+		if not set_settings_visible(false):
+			return false
+	_dismiss_goals()
+	_dismiss_property()
+	set_menu_visible(false)
+	_refresh_city()
+	_city_panel.show()
+	refresh_hints()
+	return true
+
+
+func is_city_visible() -> bool:
+	return _city_panel != null and _city_panel.visible
+
+
+## The chain view's facts per site (docs/CITY_MAP.md section 4): the active
+## site from a live capture of its per-site sections, the others from their
+## frozen copies. Tonight's preview uses the close's own inputs.
+func chain_summary() -> Array[ChainSummary.Site]:
+	var lots: Array[LotDef] = content.lots() if content != null else ([] as Array[LotDef])
+	return ChainSummary.build(site_book, SaveSystem.capture_sections(SiteSections.PER_SITE),
+		menu_settings.restaurant_name(), Economy.ledger, Clock.sim.day, _home_rent(), SITE_MANAGERS,
+		BOOKING_TUNING, lots, difficulty.mult(&"rent"))
+
+
+func _refresh_city() -> void:
+	if _city_panel == null:
+		return
+	if _city_map == null:
+		_city_map = CityMap.load_default()
+	var view: CityPanel.View = CityPanel.View.new()
+	view.sites = chain_summary()
+	for id: StringName in site_book.site_ids():
+		if id != site_book.active_id:
+			view.refusals[id] = site_switch_refusal(id)
+	view.lots = content.lots() if content != null else ([] as Array[LotDef])
+	view.career_tier = owner_progress.career_tier
+	view.reputation = closing_reputation()
+	_city_panel.set_city(_city_map, view)
+
+
+func _on_menu_city_requested() -> void:
+	set_city_visible(true)
+
+
+func _on_city_close_requested() -> void:
+	set_city_visible(false)
+
+
+## "Work here today" on the city screen: the same switch as the morning site
+## card (mornings only; a refusal is logged and the screen refreshed).
+func _on_city_site_chosen(id: StringName) -> void:
+	if id == site_book.active_id:
+		return
+	if not can_switch_site(id):
+		_log_switch_refusal(id, site_switch_refusal(id))
+		_refresh_city()
+		return
+	_city_panel.hide()
+	# switch_site logs its own refusal when the site does not load.
+	switch_site(id)
+
+
+func _on_city_market_requested() -> void:
+	_city_panel.hide()
 	set_property_visible(true)
 
 
@@ -7973,7 +8079,7 @@ func _on_service_closed(day: int) -> void:
 	elif day_notes.milestone_award_day == day and not day_notes.milestones_reached.is_empty():
 		Sounds.play(&"milestone")
 	_show_evening_report(shown_report)
-	if _paint_active or is_staff_visible() or is_goals_visible() or is_property_visible():
+	if _paint_active or is_staff_visible() or is_goals_visible() or is_property_visible() or is_city_visible():
 		_report.hide()
 	if is_staff_visible():
 		_staff_panel.refresh()
@@ -8597,7 +8703,8 @@ func refresh_hints() -> void:
 	var step: int = hints.observe(context)
 	# Modal panels keep their own input and remain readable. Progress waits
 	# here; closing Settings after a replay immediately reveals the guide.
-	if step < 0 or is_settings_visible() or is_goals_visible() or is_property_visible() or is_site_card_visible() \
+	if step < 0 or is_settings_visible() or is_goals_visible() or is_property_visible() or is_city_visible() \
+			or is_site_card_visible() \
 			or is_staff_visible() or is_owner_picker_visible() \
 			or is_menu_visible() or is_stock_visible() or is_build_active() or _paint_active:
 		_hints_bubble.clear_hint()
