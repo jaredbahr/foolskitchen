@@ -89,8 +89,9 @@ static func largest_usable_capacity(grid: SimGrid, from_cell: Vector2i = SimGrid
 	return largest
 
 
-## Tomorrow's booking has to fit one reachable group. Keep two seats for
-## walk-ins when the layout allows it without excluding the minimum party.
+## Tomorrow's booking has to fit one reachable group: a single table (a
+## four-seat or round table, #650) or tables pushed together. Keep two seats
+## for walk-ins when the layout allows it without excluding the minimum party.
 static func booking_capacity(grid: SimGrid, minimum_party: int) -> int:
 	var entries: Array[Vector2i] = grid.entries()
 	if entries.is_empty():
@@ -105,8 +106,7 @@ static func booking_capacity(grid: SimGrid, minimum_party: int) -> int:
 		seen[group_id] = true
 		var seats: int = usable_cells(grid, table, entries[0]).size()
 		total += seats
-		if grid.dining_group_members(table.id).size() > 1:
-			largest = maxi(largest, seats)
+		largest = maxi(largest, seats)
 	return mini(largest, maxi(minimum_party, total - 2))
 
 

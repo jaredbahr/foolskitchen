@@ -35,6 +35,9 @@ var wall_menu_sections: Dictionary[Vector3i, int] = {}
 ## Optional exterior instance data, absent from legacy inside/window rows.
 @export var wall_item_mounts: Dictionary[Vector3i, int] = {}
 @export var wall_item_swatches: Dictionary[Vector3i, StringName] = {}
+## Starter decor (#596): anchors of wall items the lot's building came with.
+## Their charm counts half towards the vibe (see ShopPlacement.starter).
+@export var starter_wall_items: Array[Vector3i] = []
 ## Starting cell per staff role (&"cook", &"server", &"cleaner", &"owner").
 @export var staff_spawns: Dictionary[StringName, Vector2i] = {}
 ## Wall segments (FK-070): edge key (SimGrid edge) -> WallKindDef id.

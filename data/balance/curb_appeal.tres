@@ -13,6 +13,7 @@ item_categories = Dictionary[StringName, StringName]({
 &"string_lights_2": &"lights",
 &"string_lights_3": &"lights",
 &"string_lights_4": &"lights",
+&"bunting": &"lights",
 &"neon_open_sign": &"open_sign",
 &"a_frame_sign": &"a_frame",
 &"patio_table_2": &"patio",

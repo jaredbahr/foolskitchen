@@ -8,42 +8,55 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 - **Jared:** taste and lore calls, playtests each phase build, merges or asks for changes.
 - Each phase has a tracking issue (`Phase N: ...`) that lists its task issues.
 
-## Up next: the build queue (reset 2026-11-18)
+## Up next: the build queue (reset 2026-11-19)
 **Codex: take the `worker-ready` issues below from the top**, skipping any whose **Depends on** hasn't merged and any that already has an open PR or a claim comment (see `AGENTS.md`). Claude reviews every PR before merge. `codex` = Codex takes it; `both` = Codex may try, Claude takes over if it fails twice.
 
-**Wave L, every location plays differently (Jared, 2026-11-18; D39, #596): take these first.**
-1. `codex` #625 Rain cover (pergolas, awnings) and the cliff's sea shanty. **Top priority:** the cliff seats everyone outside, so rain empties it until cover can be built.
-2. `both` #623 Seaside Cliff: terrace-only seating rule (start after #632 merges)
-3. `codex` #605 Seaside Cliff: the daily catch
-4. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount (start after #632 merges)
-5. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
-6. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
-7. `both` #629 Seaside Cliff: guests walk up and down the cliff path
-8. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
-9. `both` #597 Growth steps: each lot grows its own way
-10. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
-11. `both` #606 Skyline Rooftop: cocktails and a tasting menu
-12. `both` #590 Walk-up window: a hatch that serves passers-by
-13. `both` #471 New guest types: tourists and the office crowd
+**Wave N, early game, the chain and guests (Jared, 2026-11-19): take these first.**
+1. `codex` #676 Early game: no "serve N" weekly challenge while the Opening week runs
+2. `codex` #667 Evening report: one "Your chain today" line across all your restaurants
+3. `codex` #668 Morning site card: each away restaurant's tonight result and top alert
+4. `codex` #670 City screen: open it any time with M (read-only outside the morning)
+5. `codex` #669 City screen: buy a lot for sale right from the city screen
+6. `codex` #653 Four small guest quirks: sweet tooth, big eater, indecisive, early bird
+7. `codex` #663 New guest type: farmers at Old Mill Street (after #653)
+8. `codex` #657 New guest type: walkers at the Seaside Cliff
+9. `codex` #658 New guest type: surfers at the Beachfront Boardwalk
+10. `codex` #659 New guest type: foragers at the Woodland Cabin
+11. `codex` #654 Guest quirk: the window-seat lover
+12. `codex` #655 Guest quirk: the maybe-famous guest draws a small crowd
+13. `codex` #656 One tourist in twenty returns as a named regular
+
+**Wave L, every location plays differently (Jared, 2026-11-18; D39, #596):**
+14. `both` #623 Seaside Cliff: terrace-only seating rule
+15. `codex` #605 Seaside Cliff: the daily catch
+16. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount
+17. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
+18. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
+19. `both` #629 Seaside Cliff: guests walk up and down the cliff path
+20. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
+21. `both` #597 Growth steps: each lot grows its own way
+22. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
+23. `both` #606 Skyline Rooftop: cocktails and a tasting menu
+24. `both` #590 Walk-up window: a hatch that serves passers-by
 
 **Wave M, engine and polish (after wave L, or alongside it when a wave L issue is blocked):**
-14. `both` #548 Dead-end aisles: guard two #545 fixes with tests
-15. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
-16. `both` #391 Aisle pinch warning: faster hover, more routes
-17. `both` #384 Light staff mood
-18. `both` #378 Group bookings: the good-service payoff
-19. `codex` #371 Sixty more review quotes
-20. `both` #356 Day off
-21. `both` #324 Broken equipment
-22. `both` #339 Dishwasher
-23. `both` #328 Chop rhythm mini-game
-24. `both` #341 Plating mini-game for VIP guests
+25. `both` #548 Dead-end aisles: guard two #545 fixes with tests
+26. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
+27. `both` #391 Aisle pinch warning: faster hover, more routes
+28. `both` #384 Light staff mood
+29. `both` #378 Group bookings: the good-service payoff
+30. `codex` #371 Sixty more review quotes
+31. `both` #356 Day off
+32. `both` #324 Broken equipment
+33. `both` #339 Dishwasher
+34. `both` #328 Chop rhythm mini-game
+35. `both` #341 Plating mini-game for VIP guests
 
 **When this list runs out,** take any open issue labelled `worker-ready` and `codex` (then `both`), lowest number first, with the same checks.
 
 Several issues touch the same screens or the same lot files. Running two or three Codex tasks at once is fine; merge `main` into your branch before marking ready, as `AGENTS.md` says.
 
-**Director-scoped (`claude`, art or taste first):** premium decor #206.
+**Director-scoped (`claude`, art or taste first):** premium decor #206; the city map art #642, chain goals #643 (design in #677, waiting on Jared), travel feel #644; guest looks and voices #660, #661, #662; the mill decor #673 and the Woodland Cabin decor #678.
 **Later backlog (`claude` until scoped into `codex` issues):** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors, #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
 
 ## Phase 0: Foundation

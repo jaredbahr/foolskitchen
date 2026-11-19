@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 deposit = 300
-daily_rent = 60
+daily_rent = 40
 extra_west = 0
 extra_east = 4
 extra_north = 4

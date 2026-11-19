@@ -94,7 +94,8 @@ func decline_offer(day: int) -> bool:
 
 
 func mark_held_group(booking_id: int, group_id: int, member_ids: Array[int]) -> bool:
-	if not _active_id(booking_id) or group_id <= 0 or member_ids.size() < 2:
+	# One table can hold a booking since #650 (a four-seat or round table).
+	if not _active_id(booking_id) or group_id <= 0 or member_ids.is_empty():
 		return false
 	booking["held_group_id"] = group_id
 	booking["held_group_members"] = member_ids.duplicate()

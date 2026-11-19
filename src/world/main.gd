@@ -52,6 +52,7 @@ const SITE_MANAGERS: SiteManagerTuning = preload("res://data/balance/site_manage
 const SITE_LIMITS: SiteLimitTuning = preload("res://data/balance/sites.tres")
 const VIBE_TUNING: VibeTuning = preload("res://data/balance/vibe.tres")
 const CUSTOMER_TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
+const QUIRKS: GuestQuirkCatalogue = preload("res://data/customers/quirks.tres")
 const MILESTONES: MilestoneSet = preload("res://data/milestones/starter.tres")
 const WEEKLY_CHALLENGES: WeeklyChallengePool = preload("res://data/balance/weekly_challenges.tres")
 ## The paid goal chains (#494 Opening week, #514 Week 2): goals that guide
@@ -897,6 +898,9 @@ func _wire_session() -> bool:
 	# provider is called then), so shops below that level keep their exact streams.
 	sim.critic.tuning = CRITIC
 	sim.critic_rng_provider = GameState.rng.bind(&"critic")
+	# Guest quirks (docs/GUESTS.md): the stream is asked for only from their unlock.
+	sim.quirks = QUIRKS
+	sim.quirk_rng_provider = GameState.rng.bind(&"quirks")
 	for recipe: RecipeDef in content.recipes():
 		sim.regular_recipe_labels[recipe.id] = recipe.display_name
 	# Configure only after the complete restore/new-game decision, using its
@@ -1726,7 +1730,7 @@ func _recompute_vibe() -> void:
 	_recompute_curb_appeal()
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
 		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items(),
-		sim.aquarium.charm_factors(world.grid, Clock.sim.day))
+		sim.aquarium.charm_factors(world.grid, Clock.sim.day), shop_editor.decor_vibe_scales())
 	var placed_ids: Array[StringName] = []
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef

@@ -136,6 +136,8 @@ static func does(definition: ItemDef) -> String:
 		return "Hangs outside on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_in_window():
 		return "Hangs in a window or on the street front" if definition.allow_exterior else "Hangs in a window, facing the street"
+	if definition.hangs_on_wall() and definition.allow_exterior:
+		return "Hangs on a wall, inside or on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_on_wall():
 		return "Hangs on a wall, %d tiles wide" % definition.footprint.x
 	return "Decoration"
@@ -148,6 +150,8 @@ static func hang_pointer_text(definition: ItemDef) -> String:
 		target = "street-facing outside wall"
 	elif definition.hangs_in_window():
 		target = "window or street-facing outside wall" if definition.allow_exterior else "window"
+	elif definition.allow_exterior:
+		target = "wall or street-facing outside wall"
 	return "Point at a %s to hang %s" % [target, definition.display_name]
 
 

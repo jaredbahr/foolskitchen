@@ -23,7 +23,7 @@ func test_starter_menu_and_orders_are_unchanged_and_new_food_waits_for_the_playe
 	for id: StringName in SEAFOOD:
 		assert_eq(Economy.stock.count(id), 0)
 		assert_false((main.get("reorder_settings") as ReorderSettings).ids().has(id))
-	assert_true(settings.set_owner_level(5))
+	assert_true(settings.set_owner_level(9))
 	main.call("_refresh_menu_catalogue")
 	for id: StringName in DISHES:
 		assert_false(settings.is_enabled(id), "a level-up never picks a new dish")
@@ -138,8 +138,8 @@ func _prepare(main: Node) -> void:
 	assert_true(sim.world.agents.has(owner) and owner.movement_admitted)
 	var progress: OwnerProgress = main.get("owner_progress") as OwnerProgress
 	progress.award_bonus(progress.threshold_for(5))
-	assert_true((main.get("menu_settings") as MenuSettings).set_owner_level(5))
-	(main.get("shop_editor") as ShopEditor).set_owner_level(5)
+	assert_true((main.get("menu_settings") as MenuSettings).set_owner_level(9))
+	(main.get("shop_editor") as ShopEditor).set_owner_level(9)
 	Economy.add_cash(10000, Ledger.OTHER)
 	assert_true(main.call("shop_buy", &"fryer", Vector2i(9, 3), 0))
 	assert_true(main.call("shop_buy", &"freezer", Vector2i(12, 3), 0))

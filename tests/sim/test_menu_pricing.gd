@@ -116,11 +116,12 @@ func test_price_preview_uses_a_shown_price_and_the_existing_special_discount() -
 	var prices: Dictionary = _sim.prices.duplicate()
 	# A menu can still display a stashed price after the dish's station is removed.
 	assert_eq(_sim.price_walkout_chance(recipe), 0.0)
-	assert_almost_eq(_sim.preview_price_walkout_chance(recipe, 16), 0.5)
+	# (16 / 12 - 1 - the 5% grace, #649) x 1.5 sensitivity.
+	assert_almost_eq(_sim.preview_price_walkout_chance(recipe, 16), 0.425)
 	_sim.daily_special = DailySpecial.new()
 	assert_true(_sim.daily_special.select(recipe.id, [recipe]))
 	assert_eq(_sim.daily_special.price_for(recipe, 16), 14, "the preview uses the same rounded discount")
-	assert_almost_eq(_sim.preview_price_walkout_chance(recipe, 16), 0.25)
+	assert_almost_eq(_sim.preview_price_walkout_chance(recipe, 16), 0.175)
 	assert_eq(_sim.price_walkout_chance(recipe), 0.0)
 	assert_eq(_sim.prices, prices, "previewing never installs an override")
 
