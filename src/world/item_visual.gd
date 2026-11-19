@@ -115,6 +115,42 @@ func clear_paint() -> void:
 		fallback.material_override = _fallback_material
 
 
+## Rain cover (#625): the roof meshes of a pergola or awning go see-through while
+## the player builds, so what stands under them can be arranged. Frames stay solid.
+const CANOPY_MESHES: Array[StringName] = [&"PergolaCanvas", &"AwningCanopy"]
+const CANOPY_FADE_ALPHA: float = 0.3
+var canopy_faded: bool = false
+
+
+func set_canopy_faded(faded: bool) -> void:
+	if canopy_faded == faded:
+		return
+	canopy_faded = faded
+	for mesh_node: MeshInstance3D in rendered_meshes():
+		if not _in_canopy(mesh_node):
+			continue
+		for index: int in mesh_node.mesh.get_surface_count():
+			if not faded:
+				mesh_node.set_surface_override_material(index, null)
+				continue
+			var source: BaseMaterial3D = mesh_node.get_active_material(index) as BaseMaterial3D
+			if source == null:
+				continue
+			var ghost: BaseMaterial3D = source.duplicate() as BaseMaterial3D
+			ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			ghost.albedo_color.a = CANOPY_FADE_ALPHA
+			mesh_node.set_surface_override_material(index, ghost)
+
+
+func _in_canopy(mesh_node: Node) -> bool:
+	var node: Node = mesh_node
+	while node != null and node != self:
+		if CANOPY_MESHES.has(StringName(node.name)):
+			return true
+		node = node.get_parent()
+	return false
+
+
 func rendered_meshes() -> Array[MeshInstance3D]:
 	var result: Array[MeshInstance3D] = []
 	_collect_meshes(self, result)

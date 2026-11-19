@@ -90,7 +90,7 @@ The design rules it keeps:
 | **Millbrook** | Old Mill Street (`town_fixer_upper`) | country lane | Tier 3 |
 | **The Seafront** | Beachfront Boardwalk (`beachfront_boardwalk`), Seaside Cliff (`seaside_cliff`) | promenade; cliff path | Tier 3 |
 | **Skyline** | Skyline Rooftop (`skyscraper_rooftop`); later the downtown club (D39) | city pavement, lift lobby | Tier 4 |
-| **Pinewood** | Woodland Cabin (#608, no lot yet) | forest track | locked: "Coming soon" |
+| **Pinewood** | Woodland Cabin (#665; #608 adds its foraging) | forest track | open from Tier 3 and 4.0 stars |
 
 Notes:
 - Each lot belongs to exactly one neighbourhood, and the home lot is always in one. The data check enforces both (section 8).

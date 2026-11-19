@@ -34,6 +34,10 @@ const MAX_SEATED_LEAN_DEGREES: float = 35.0
 @export var placement_layer: PlacementLayer = PlacementLayer.NORMAL
 ## Outdoor furniture and all its seats/work spots belong on purchased patio.
 @export var outdoor_only: bool = false
+## Rain cover (#625): a pergola or awning stands over patio on the floor-decor
+## layer, so tables and chairs go underneath. Patio seats under it stay open when
+## it rains (PatioRules). It needs patio under its whole footprint.
+@export var rain_cover: bool = false
 ## Hidden entries remain valid content so existing saved placements still load.
 @export var catalogue_visible: bool = true
 ## Buy mode room (one of CATALOGUE_ROOMS); empty means Decor.
@@ -136,6 +140,11 @@ func placement_layer_valid() -> bool:
 	if placement_layer == PlacementLayer.SURFACE_DECOR:
 		return category == Category.DECOR and passive and footprint == Vector2i.ONE
 	return placement_layer == PlacementLayer.FLOOR_DECOR and category == Category.DECOR and passive
+
+
+## Covers the patio cells under it from rain (#625).
+func covers_from_rain() -> bool:
+	return rain_cover and placement_layer == PlacementLayer.FLOOR_DECOR
 
 
 ## A passive decoration that sits on furniture and can share the cell with a rug.

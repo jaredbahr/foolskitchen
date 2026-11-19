@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 32)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 85)
+	assert_eq(db.items().size(), 87)
 	assert_eq(db.collections().size(), 6)
 	assert_eq(db.collection(&"diner_classics").item_ids, [&"neon_open_sign", &"menu_board", &"diner_booth"])
 
@@ -120,13 +120,13 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	for definition: ItemDef in db.items():
 		item_ids.append(definition.id)
 	assert_eq(item_ids, [
-		&"a_frame_sign", &"aquarium", &"aquarium_large", &"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right", &"bar_section",
+		&"a_frame_sign", &"aquarium", &"aquarium_large", &"awning", &"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right", &"bar_section",
 		&"bar_stool", &"bathroom_sink", &"bench", &"bookcase_open_low", &"chair", &"cloth_table",
 		&"coat_rack_standing", &"cocktail_station", &"coffee_machine", &"corner_cabinet", &"cross_table", &"cushioned_bench", &"diner_booth", &"diner_stool",
 		&"door", &"drinks_fridge", &"drinks_shelf", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table", &"jukebox",
 		&"lamp_floor_round", &"lamp_floor_square", &"lamp_pendant", &"lamp_table_round", &"lamp_table_square", &"lamp_wall",
 		&"lounge_chair", &"menu_board", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"order_counter", &"oven", &"pass_counter",
-		&"patio_chair", &"patio_table_2", &"patio_waiting_bench", &"plant_small_1",
+		&"patio_chair", &"patio_table_2", &"patio_waiting_bench", &"pergola", &"plant_small_1",
 		&"plant_small_2", &"plant_small_3", &"potted_plant", &"prep_cabinet", &"prep_counter", &"restroom_mirror", &"round_table",
 		&"rounded_chair", &"rug_rectangle", &"rug_round", &"rug_square", &"shaved_ice_cart",
 		&"shop_name_sign", &"side_table", &"sink", &"soft_serve_machine",
@@ -136,7 +136,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 85)
+	assert_eq(db.items().size(), 87)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -144,7 +144,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 32)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 85)
+	assert_eq(db.items().size(), 87)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -157,7 +157,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 149)
+	assert_eq(content_paths, 151)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))
@@ -431,6 +431,23 @@ func test_invalid_floor_layer_definitions_are_reported_without_changing_resource
 	assert_true(definition.placement_layer_valid())
 	assert_eq(definition.placement_layer, ItemDef.PlacementLayer.FLOOR_DECOR)
 	assert_false(definition.solid)
+
+
+func test_rain_cover_must_be_outdoor_only_floor_decor() -> void:
+	var cover: ItemDef = ItemDef.new()
+	cover.id = &"test_cover"
+	cover.category = ItemDef.Category.DECOR
+	cover.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
+	cover.solid = false
+	cover.rain_cover = true
+	cover.outdoor_only = true
+	assert_eq(ContentDB.validate_definitions([], [], [cover]), PackedStringArray())
+	var indoor: ItemDef = cover.duplicate(true) as ItemDef
+	indoor.outdoor_only = false
+	assert_true(_has_error(ContentDB.validate_definitions([], [], [indoor]), "rain cover must be outdoor-only"))
+	var normal: ItemDef = cover.duplicate(true) as ItemDef
+	normal.placement_layer = ItemDef.PlacementLayer.NORMAL
+	assert_true(_has_error(ContentDB.validate_definitions([], [], [normal]), "rain cover must be outdoor-only"))
 
 
 func test_recipe_menu_sections_validate_without_changing_shared_content() -> void:
