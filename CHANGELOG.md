@@ -286,6 +286,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- A design proposal for the city map and the chain: an illustrated map of the town's neighbourhoods with your shops, lots for sale and locked areas, a chain view per shop, chain goals on the way to Golden Ladles, and a phased build plan, with the choices Jared still has to make (`docs/CITY_MAP.md`). (#638)
 - The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
