@@ -745,20 +745,20 @@ def chef_statue():
         chef.add(box((sign * .05 - .015, .115, .7), (sign * .05 + .015, .13, .722)), dark)
     # Toque: a short white band, then a puffy top flaring wider than the head.
     chef.add(cylinder((0, 0), .11, .115, .735, .8, sides=10, bottom=False), white)
-    chef.add(lathe([(.12, .795), (.17, .835), (.195, .895), (.188, .955), (.14, 1.005), (.07, 1.025)], sides=10, cap_bottom=False), white)
+    chef.add(lathe([(.12, .795), (.15, .835), (.168, .895), (.162, .955), (.125, 1.005), (.065, 1.025)], sides=10, cap_bottom=False), white)
     # Left arm: fist on hip.
-    chef.add(rod((-.15, 0.0, .54), (-.25, .02, .46), .034, sides=6), gold)
-    chef.add(rod((-.25, .02, .46), (-.16, .13, .4), .034, sides=6), gold)
+    chef.add(rod((-.15, 0.0, .54), (-.24, .02, .46), .034, sides=6), gold)
+    chef.add(rod((-.24, .02, .46), (-.16, .13, .4), .034, sides=6), gold)
     chef.add(box((-.185, .105, .375), (-.13, .16, .43)), gold)
     # Right arm up, holding a silver ladle high over the toque.
-    chef.add(rod((.15, 0.0, .54), (.27, .0, .62), .034, sides=6), gold)
-    chef.add(rod((.27, .0, .62), (.3, .0, .78), .034, sides=6), gold)
-    chef.add(box((.27, -.03, .77), (.33, .03, .83)), gold)
-    handle_top = (.36, 0.0, 1.1)
-    chef.add(rod((.3, 0.0, .82), handle_top, .014, sides=6), silver)
+    chef.add(rod((.15, 0.0, .54), (.22, .0, .62), .034, sides=6), gold)
+    chef.add(rod((.22, .0, .62), (.25, .0, .78), .034, sides=6), gold)
+    chef.add(box((.22, -.03, .77), (.28, .03, .83)), gold)
+    handle_top = (.23, 0.0, 1.1)
+    chef.add(rod((.25, 0.0, .82), handle_top, .014, sides=6), silver)
     tilt = Matrix.Translation(handle_top) @ Matrix.Rotation(math.radians(-35), 4, "Y")
-    chef.add(transformed(lathe([(.014, -.01), (.06, .01), (.08, .05), (.082, .08)], sides=8, cap_top=False), tilt), silver)
-    chef.add(transformed(lathe([(.074, .076)], sides=8, cap_bottom=False, cap_top=True), tilt), dark)
+    chef.add(transformed(lathe([(.014, -.01), (.045, .01), (.06, .05), (.062, .075)], sides=8, cap_top=False), tilt), silver)
+    chef.add(transformed(lathe([(.056, .071)], sides=8, cap_bottom=False, cap_top=True), tilt), dark)
     chef.finish()
     return {}
 

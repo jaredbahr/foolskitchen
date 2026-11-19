@@ -474,14 +474,14 @@ the efficient buy. Same rules as the pieces above: unchanged Furniture Kit mater
 copied by name, flat shading, no textures, outlines or emission, origin at the base centre,
 front -Z, under the 800 triangle decor budget, and no part more than 0.05 m outside its
 footprint. The people are about 0.74 m high: the jukebox and gramophone come to about a guest's head,
-the display case to a counter and a little over, and the statue (1.21 m with its raised ladle) stands about 1.6 guests tall.
+the display case to a counter and a little over, and the statue (1.20 m with its raised ladle) stands about 1.6 guests tall.
 
 | Asset under `location_decor/` | Item (level, charm, price) | Based on | Triangles | World size (w x h x d) |
 |---|---|---|---:|---|
 | `display_case.glb` (a cream cabinet with a pink band under an open-topped glass case: two stepped shelves of cakes, a plate of tarts, a light bar) | Dessert display case (L10, 6, $420), 2 x 1, by the counter | `kitchenCabinet` body and `bathroomMirror` glass, Food Kit cakes for the colours | 645 | 0.96 x 0.62 x 0.42 |
 | `gramophone.glb` (a tall stand on four legs with a red turntable cabinet, a crank, and a hollow dark-brass horn on a neck that flares up and out at 45 degrees, its dark throat showing in the mouth) | Gramophone (L11, 6, $480), a 1 x 1 floor stand (a counter-top version would be lost at game zoom) | `sideTable` legs and drawer, `lampRoundFloor` metal stem, `radio` | 624 | 0.53 x 0.97 x 0.49 |
 | `jukebox_neon.glb` (a cabinet with a round-topped lit window, chrome frame, blue neon tube, speaker grille and two buttons; its cabinet is the kit `wood` surface, so the music styles recolour it, rose by default) | Deluxe jukebox (L12, 7, $650), 1 x 1, plays music like the basic jukebox, glows at night | the existing `jukebox` window, `speaker` | 640 | 0.42 x 0.73 x 0.36 |
-| `chef_statue.glb` (a gold chef in a pale apron with a round face and curled moustache, a tall puffy white toque flaring wider than his head, one fist on his hip and a silver ladle raised high, on a stone plinth with a plaque) | Chef statue (L13, 8, $900), 1 x 1 | Mini Characters' scale, `kitchenCabinet` plinth | 702 | 0.68 x 1.21 x 0.42 |
+| `chef_statue.glb` (a gold chef in a pale apron with a round face and curled moustache, a tall puffy white toque flaring wider than his head, one fist on his hip and a silver ladle raised high, on a stone plinth with a plaque) | Chef statue (L13, 8, $900), 1 x 1 | Mini Characters' scale, `kitchenCabinet` plinth | 702 | 0.55 x 1.20 x 0.42 |
 
 The deluxe jukebox is the only piece with a light: its item has a `glow_color`, so the shop
 view puts the same soft omni light beside it that the neon sign and the lamps use (the

@@ -53,7 +53,7 @@ func test_made_decor_is_buyable_everywhere_with_its_own_model() -> void:
 		assert_eq(definition.unlock_level, int(entry[3]), String(id))
 		assert_eq(definition.charm, int(entry[4]), String(id))
 		assert_true(definition.lot_tags.is_empty(), "%s is sold at every lot" % id)
-		assert_false(definition.paintable, String(id))
+		assert_eq(definition.paintable, id == &"jukebox_neon", String(id))
 		var view: PropView = definition.view_scene.instantiate() as PropView
 		_views.append(view)
 		var art: Node3D = view.get_child(0).get_node("Art") as Node3D
