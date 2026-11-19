@@ -1,0 +1,77 @@
+[gd_resource type="Resource" script_class="OpeningWeekSet" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/sim/progression/opening_week_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://src/sim/progression/opening_goal.gd" id="2_goal"]
+
+[sub_resource type="Resource" id="goal_1"]
+script = ExtResource("2_goal")
+id = &"second_cook"
+title = "Hire a second cook"
+description = "In Staff, hire another cook so the kitchen keeps up with a bigger room. They count once there are two cooks on the team at opening."
+condition = 11
+target = 2.0
+reward_cash = 80
+reward_xp = 10
+role = &"cook"
+
+[sub_resource type="Resource" id="goal_2"]
+script = ExtResource("2_goal")
+id = &"oven_dish"
+title = "Add an oven dish"
+description = "Put a dish cooked in an oven on the menu, like a pizza slice or a savoury pie (ovens unlock at owner level 3). It counts once you open with it on."
+condition = 10
+target = 1.0
+reward_cash = 80
+reward_xp = 10
+station_type = &"oven"
+
+[sub_resource type="Resource" id="goal_3"]
+script = ExtResource("2_goal")
+id = &"waiting_bench"
+title = "Have a waiting bench"
+description = "Have a waiting bench by the door: guests on it wait longer for a table. One you already own counts at the next opening."
+condition = 14
+target = 1.0
+reward_cash = 40
+reward_xp = 5
+item_ids = Array[StringName]([&"waiting_bench"])
+
+[sub_resource type="Resource" id="goal_5"]
+script = ExtResource("2_goal")
+id = &"eight_five_star"
+title = "Eight 5-star reviews"
+description = "Get eight 5-star reviews in one day. Fair prices and short waits do most of the work."
+condition = 6
+target = 8.0
+reward_cash = 100
+reward_xp = 10
+
+[sub_resource type="Resource" id="goal_6"]
+script = ExtResource("2_goal")
+id = &"serve_35"
+title = "Serve 35 guests in a day"
+description = "A packed day: serve 35 guests in one day. Two cooks and quick tables help."
+condition = 2
+target = 35.0
+reward_cash = 100
+reward_xp = 10
+
+[sub_resource type="Resource" id="goal_7"]
+script = ExtResource("2_goal")
+id = &"four_star_day"
+title = "Reach 4 stars on a calm day"
+description = "Close a day with your rating at 4.0 stars or more and no guest giving up because they waited too long. Tier 3 needs a 4-star rating."
+condition = 13
+target = 4.0
+reward_cash = 150
+reward_xp = 15
+leave_reasons = Array[StringName]([&"waited_too_long"])
+max_turned_away = 0
+
+[resource]
+script = ExtResource("1_set")
+id = &"week_three"
+title = "Week 3"
+goals = Array[ExtResource("2_goal")]([SubResource("goal_1"), SubResource("goal_2"), SubResource("goal_3"), SubResource("goal_5"), SubResource("goal_6"), SubResource("goal_7")])
+days = 7
+shown_goals = 3
