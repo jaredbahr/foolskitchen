@@ -20,7 +20,7 @@ enum Status { HERE, MANAGED, CLOSED, RENOVATING }
 ## MANAGER_NEEDS_A_DAY: away with a manager who has no day of yours to go on.
 ## LOSING_MONEY: its recent in-person days averaged a loss.
 ## BOOKING_LAPSES: an away group booking lapses at tonight's close.
-## UNHAPPY_TEAM: someone on its floor staff is at the lowest mood.
+## UNHAPPY_TEAM: someone on its floor staff is at mood 1 or leaving (0).
 ## READY_TO_OPEN: a bought site, done renovating, that has never served a day.
 enum Alert { NOT_STAFFED, NO_MANAGER, MANAGER_NEEDS_A_DAY, LOSING_MONEY, BOOKING_LAPSES, UNHAPPY_TEAM,
 	READY_TO_OPEN }
@@ -46,13 +46,18 @@ class Site extends RefCounted:
 	var manager_skill: int = 0
 	## The share of the in-person average the manager keeps (0 without one).
 	var manager_rate: float = 0.0
-	## The rolling review stars; NAN before the site has closed a day.
+	## The rolling review stars; NAN until the site has a recorded in-person
+	## day (a fresh site's starting reviews are not stars it earned, as the
+	## market's closing reputation reads them).
 	var stars: float = NAN
 	var golden_ladles: int = 0
 	## The mean mood of the floor staff (managers excluded), NAN with none.
 	var mood: float = NAN
-	## The lowest mood among the floor staff, 0 with none.
+	## The lowest mood among the floor staff (0 is someone leaving); 0 also
+	## when there is no floor staff (see floor_staff).
 	var lowest_mood: int = 0
+	## How many floor staff (managers excluded) the site has.
+	var floor_staff: int = 0
 	var staffed: bool = false
 	## In-person days on record (the manager's formula reads these).
 	var recorded_days: int = 0
@@ -154,7 +159,7 @@ static func _alerts(site: Site, active: bool, plan: Dictionary) -> Array[Alert]:
 		alerts.append(Alert.LOSING_MONEY)
 	if int(plan.get("refund", 0)) > 0:
 		alerts.append(Alert.BOOKING_LAPSES)
-	if site.lowest_mood > 0 and site.lowest_mood <= UNHAPPY_MOOD:
+	if site.floor_staff > 0 and site.lowest_mood <= UNHAPPY_MOOD:
 		alerts.append(Alert.UNHAPPY_TEAM)
 	if site.lot != SiteBook.HOME_LOT and site.renovation_days == 0 and site.recorded_days == 0:
 		alerts.append(Alert.READY_TO_OPEN)
@@ -169,30 +174,24 @@ static func recent_mean(history: Dictionary, tuning: SiteManagerTuning) -> int:
 	var decoded: BusinessHistory = BusinessHistory.new()
 	if not decoded.restore(history):
 		return 0
-	var recorded: Array[int] = []
-	for row: Dictionary in decoded.summaries():
-		if bool(row.get("dish_profit_recorded", false)):
-			recorded.append(int(row.get("dish_profit", 0)))
-	var count: int = mini(recorded.size(), tuning.history_days)
-	if count == 0:
-		return 0
-	var total: int = 0
-	for index: int in range(recorded.size() - count, recorded.size()):
-		total += recorded[index]
-	return roundi(float(total) / float(count))
+	var mean: float = AwaySites.recent_mean(decoded.summaries(), tuning.history_days)
+	return 0 if is_nan(mean) else roundi(mean)
 
 
 static func _read_mood(site: Site, roster: StaffRoster) -> void:
 	var total: int = 0
 	var count: int = 0
+	var lowest: int = 0
 	for member: StaffMember in roster.members():
 		if member.role == StaffMember.MANAGER:
 			continue
 		var mood: int = member.growth_state().mood
 		total += mood
+		if count == 0 or mood < lowest:
+			lowest = mood
 		count += 1
-		if site.lowest_mood == 0 or mood < site.lowest_mood:
-			site.lowest_mood = mood
+	site.floor_staff = count
+	site.lowest_mood = lowest
 	site.mood = float(total) / float(count) if count > 0 else NAN
 
 
