@@ -54,6 +54,8 @@ func test_every_lot_and_the_home_shop_have_a_neighbourhood() -> void:
 	assert_not_null(map.neighbourhood_for_lot(HOME), "the starter shop stands somewhere")
 	for lot: LotDef in _lots():
 		assert_not_null(map.neighbourhood_for_lot(lot.id), "%s has a neighbourhood" % lot.id)
+	assert_eq(map.neighbourhood_for_lot(&"woodland_cabin").id, &"pinewood", "the Woodland Cabin stands in Pinewood")
+	assert_false(map.neighbourhood(&"pinewood").is_coming_soon(), "Pinewood is open now it has a lot")
 
 
 func test_reads_find_neighbourhoods_by_id_and_lot() -> void:
