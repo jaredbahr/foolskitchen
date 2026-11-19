@@ -26,6 +26,95 @@ func test_each_situation_draws_from_its_authored_group() -> void:
 	_assert_group(2, inspection, &"inspection", "0", "$0")
 
 
+func test_good_news_leads_and_a_full_house_is_not_a_walkout() -> void:
+	var tier: DayReport = DayReport.new()
+	tier.career_tier_line = "Your restaurant reached Tier 2!"
+	tier.record_lines = ["Most guests"]
+	tier.owner_level_before = 1
+	tier.owner_level_after = 3
+	var level: DayReport = DayReport.new()
+	level.owner_level_before = 2
+	level.owner_level_after = 3
+	level.record_lines = ["Most guests"]
+	var regular: DayReport = DayReport.new()
+	regular.regulars_lines = ["Came: Felix", "New regulars: Mina"]
+	regular.customers_lost = 9
+	var came_only: DayReport = DayReport.new()
+	came_only.regulars_lines = ["Came: Felix"]
+	came_only.customers_served = 5
+	var full: DayReport = DayReport.new()
+	full.customers_served = 21
+	full.customers_lost = 14
+	full.leave_reasons = {&"no_table": 12, &"too_expensive": 2}
+	var mixed: DayReport = DayReport.new()
+	mixed.customers_lost = 6
+	mixed.leave_reasons = {&"no_table": 2, &"waited_too_long": 4}
+
+	_assert_group(2, tier, &"tier", "0", "$0")
+	_assert_group(2, level, &"level_up", "0", "$0")
+	_assert_group(2, regular, &"regular", "0", "$0")
+	_assert_group(2, came_only, &"quiet", "5", "$0")
+	_assert_group(2, full, &"full_house", "21", "$0")
+	_assert_group(2, mixed, &"walkouts", "6", "$0")
+
+
+func test_one_tip_names_the_biggest_reason_guests_left() -> void:
+	var report: DayReport = DayReport.new()
+	assert_eq(MorningPaper.tip_for(null), "")
+	assert_eq(MorningPaper.tip_for(report), "")
+	report.leave_reasons = {&"no_table": 2, &"too_expensive": 2, &"happy": 30}
+	assert_eq(MorningPaper.tip_for(report), "", "two of a kind is not yet a pattern")
+	report.leave_reasons = {&"no_table": 12, &"too_expensive": 4}
+	assert_true(MorningPaper.tip_for(report).begins_with("12 guests found every seat taken."))
+	report.leave_reasons = {&"no_table": 3, &"too_expensive": 5}
+	assert_true(MorningPaper.tip_for(report).begins_with("5 guests left over the prices."))
+	report.leave_reasons = {&"waited_too_long": 3, &"out_of_stock": 3}
+	assert_true(MorningPaper.tip_for(report).begins_with("3 guests gave up waiting."), "ties keep the listed order")
+
+
+func test_tips_hold_in_every_difficulty() -> void:
+	var report: DayReport = DayReport.new()
+	report.leave_reasons = {&"too_expensive": 6, &"no_table": 4}
+	assert_true(MorningPaper.tip_for(report).begins_with("6 guests left over the prices."))
+	assert_true(MorningPaper.tip_for(report, true).begins_with("4 guests found every seat taken."),
+		"no price tip when the game sets the prices (Easy)")
+	report.leave_reasons = {&"too_expensive": 6}
+	assert_eq(MorningPaper.tip_for(report, true), "")
+	report.leave_reasons = {&"out_of_stock": 5}
+	var stock: String = MorningPaper.tip_for(report)
+	assert_true(stock.contains("shelves") and not stock.contains("order more"),
+		"stock advice that holds when buying is automatic")
+	report.leave_reasons = {&"waited_too_long": 4}
+	var generic: String = MorningPaper.TIPS[&"waited_too_long"] % 4
+	assert_eq(MorningPaper.tip_for(report), generic, "no staff activity: no role is blamed")
+	assert_eq(MorningPaper.tip_for(report, false, "Hired Sam (cook) because guests were waiting for the kitchen."),
+		generic, "a same-morning hire is never contradicted")
+
+
+func test_notes_keep_the_callers_order_and_end_with_the_favourite_dish() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var edition: Dictionary = MorningPaper.build(2, DayReport.new(), WeatherState.Kind.SUNNY,
+		["A tip line", "Booked today"], rng, DISH)
+	assert_eq(edition["notes"], ["Sunny today", "A tip line", "Booked today"], "capped at three")
+	edition = MorningPaper.build(2, DayReport.new(), WeatherState.Kind.SUNNY, [], rng, DISH)
+	assert_eq(edition["notes"], ["Sunny today", "%s was yesterday’s favorite." % DISH])
+
+
+func test_a_tiny_day_is_not_a_full_house_and_headlines_open_with_a_capital() -> void:
+	var tiny: DayReport = DayReport.new()
+	tiny.customers_served = MorningPaper.FULL_HOUSE_MIN_SERVED - 1
+	tiny.customers_lost = 5
+	tiny.leave_reasons = {&"no_table": 5}
+	_assert_group(2, tiny, &"walkouts", "5", "$0")
+	var record: DayReport = DayReport.new()
+	record.record_lines = ["Most guests"]
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	for seed_value: int in range(24):
+		rng.seed = seed_value
+		var headline: String = MorningPaper.build(2, record, WeatherState.Kind.SUNNY, [], rng)["headline"]
+		assert_eq(headline.left(1), headline.left(1).to_upper(), "%s opens with a capital" % headline)
+
+
 func test_slots_are_one_pass_and_leave_literal_dish_names_intact() -> void:
 	var values: Dictionary[String, String] = {
 		"dish": "Soup {cash} \\ $",
@@ -59,7 +148,8 @@ func _assert_group(day: int, report: DayReport, group: StringName, guests: Strin
 		history: Dictionary = {}) -> void:
 	var expected: PackedStringArray = []
 	for source: String in MorningPaper.HEADLINES.groups[group]:
-		expected.append(source.replace("{dish}", DISH).replace("{guests}", guests).replace("{cash}", cash))
+		var line: String = source.replace("{dish}", DISH).replace("{guests}", guests).replace("{cash}", cash)
+		expected.append(line.left(1).to_upper() + line.substr(1))
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	for seed_value: int in range(12):
 		rng.seed = seed_value
