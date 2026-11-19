@@ -189,3 +189,23 @@ func test_the_map_button_waits_for_tier_three_and_stays_off_the_purchase_questio
 	(_main.get("owner_progress") as OwnerProgress).career_tier = 3
 	_card().show_prompt("Q", "Detail", "Yes", "No")
 	assert_null(_card().get_node_or_null("Center/Panel/Content/List/Footer"))
+
+
+func test_a_key_that_skips_the_ride_never_reaches_the_camera() -> void:
+	await _start(10.0)
+	assert_true(_main.call("travel_to_site", FIXER))
+	assert_true(_main.call("is_van_ride_visible"))
+	var camera: CameraRig = _main.get_node("CameraRig") as CameraRig
+	var yaw_before: float = float(camera.get("_target_yaw"))
+	var grid_before: bool = camera.is_grid_forced()
+	for code: Key in [KEY_Q, KEY_G]:
+		for pressed: bool in [true, false]:
+			var key: InputEventKey = InputEventKey.new()
+			key.keycode = code
+			key.physical_keycode = code
+			key.pressed = pressed
+			Input.parse_input_event(key)
+			await (Engine.get_main_loop() as SceneTree).process_frame
+	assert_false(_main.call("is_van_ride_visible"), "Q skipped to the arrival and G ended the ride")
+	assert_almost_eq(float(camera.get("_target_yaw")), yaw_before, 0.0001, "Q did not turn the camera")
+	assert_eq(camera.is_grid_forced(), grid_before, "G did not toggle the grid")

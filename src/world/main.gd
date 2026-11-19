@@ -1059,6 +1059,16 @@ func _exit_tree() -> void:
 			Clock.sim = _previous_clock
 
 
+func _input(event: InputEvent) -> void:
+	# The van ride takes every key first: the camera and the shop view read
+	# Q, E, G and C in their own _unhandled_input, before Main's (#691 review).
+	if event is InputEventKey and is_van_ride_visible():
+		var key: InputEventKey = event as InputEventKey
+		if key.pressed and not key.echo:
+			skip_van_ride()
+		_mark_input_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	var photo: PhotoMode = $PhotoMode
 	var key: InputEventKey = event as InputEventKey
