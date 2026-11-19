@@ -375,3 +375,34 @@ func test_the_kiosk_serves_a_drinks_guest_at_its_counter_on_day_one() -> void:
 			break
 	assert_eq(_paid, guests.size(), "every drinks guest is served (left: %s)" % _left)
 	assert_eq(at_counter.size(), guests.size(), "each one orders at the kiosk counter")
+
+
+## Location interiors (#596): each new starter building comes dressed for its
+## place. Every authored wall item really hangs, the decor keeps every seat and
+## station reachable (checked above), the mill's bread-oven nook stays empty for
+## #604, and the old rectangles (legacy saves) stay bare.
+func test_every_lot_hangs_all_its_starter_decor_and_old_shells_stay_bare() -> void:
+	var dressed: Dictionary[StringName, Array] = {
+		&"seaside_cliff": [&"lifebuoy", &"fishing_net", &"bunting"],
+		&"skyscraper_rooftop": [&"skyline_print", &"lamp_pendant"],
+		&"town_fixer_upper": [&"flour_sacks", &"barrel", &"wheat_sheaf", &"crockery_dresser"],
+		&"beachfront_boardwalk": [&"surfboard", &"beach_sign", &"shell_jars"],
+	}
+	for lot_id: StringName in LOTS:
+		var layout: ShopLayout = _layout(lot_id)
+		var sim: RestaurantSim = _sim(layout)
+		var editor: ShopEditor = _editor(sim, layout)
+		assert_false(layout.wall_items.is_empty(), "%s hangs starter decor" % lot_id)
+		assert_eq(editor.decor.count(), layout.wall_items.size(), "%s: every starter wall item hangs" % lot_id)
+		var present: Array[StringName] = []
+		for placed: PlacedItem in sim.world.grid.items():
+			present.append((placed.def as ItemDef).id)
+		for anchor: Vector3i in layout.wall_items:
+			present.append(layout.wall_items[anchor])
+		for id: StringName in dressed[lot_id]:
+			assert_true(present.has(id), "%s has its %s" % [lot_id, id])
+		for legacy: ShopLayout in _content.lot(lot_id).legacy_layouts:
+			assert_true(legacy.wall_items.is_empty(), "%s: an old shell gets no new decor" % lot_id)
+	var mill: RestaurantSim = _sim(_layout(&"town_fixer_upper"))
+	for cell: Vector2i in [Vector2i(12, 1), Vector2i(13, 1), Vector2i(14, 1), Vector2i(12, 2), Vector2i(13, 2), Vector2i(14, 2)]:
+		assert_true(mill.world.grid.items_at(cell).is_empty(), "the bread-oven nook %s stays empty for #604" % cell)

@@ -433,3 +433,29 @@ chairs and a standing person fit under either. Review: `SEASIDE_STREET_PERGOLA=1
 |---|---|---|---:|---|
 | `pergola/pergola_timber.glb` | `PergolaFrame` (posts on `metalDark` shoes, knee braces, beams, rafters in `woodDark`/`wood`), `PergolaCanvas` (`carpetWhite`) | `table` and `kitchenCabinet` wood, `benchCushion` cloth | 744 | 2.16 x 1.81 x 2.26 |
 | `pergola/pergola_awning.glb` | `AwningFrame` (`metal` poles on `metalDark` feet, rails, ridge), `AwningCanopy` (`carpetBlue`/`carpetWhite` stripes, scalloped valances, gable ends) | the #240 street awnings and #589 seaside hatch stripes, `lampRoundFloor` poles | 788 | 2.17 x 2.0 x 2.21 |
+
+## Location starter decor (#596, "Location interiors")
+
+Ten small pieces that dress each place's starter building (D40), all ordinary decor
+buyable at every lot. Rebuild them with `python tools/build_location_decor.py` (any
+Python with the `bpy` module, or `blender --background --factory-startup --python ...`),
+which also writes `location_decor/location_decor.metrics.json` (triangles, world sizes,
+materials). Unchanged Furniture Kit material colours copied by name from the kit files;
+no textures, lights or emission (the `lamp` yellow is used as plain wheat and window
+colour). Origin at the base centre, front -Z, authored at world size divided by
+`ArtScale.FURNITURE_SCALE`. Wall pieces have their back at the wall face. The
+crockery dresser is not a made model: its wrapper stands two kit `bookcaseOpenLow`
+side by side with Food Kit plates, bowls, cups and mugs on and in them.
+
+| Asset under `location_decor/` | Place | Based on | Triangles | World size (w x h x d) |
+|---|---|---|---:|---|
+| `lifebuoy.glb` | cliff | `pillow` cloth colours, `coatRack` peg | 260 | 0.35 x 0.35 x 0.12 |
+| `fishing_net.glb` (net, cork floats, rope coil on a pole) | cliff | `coatRack` pole, `lampWall` brackets | 744 | 0.94 x 0.64 x 0.10 |
+| `bunting.glb` (street front, over a door or window) | cliff | #240 string lights' string, `benchCushion` cloth | 192 | 1.45 x 0.22 x 0.03 |
+| `flour_sacks.glb` | mill | `pillow`, `cardboardBoxClosed` | 348 | 0.40 x 0.31 x 0.32 |
+| `barrel.glb` | mill | `trashcan` proportions, `kitchenCabinet` wood | 352 | 0.35 x 0.41 x 0.35 |
+| `wheat_sheaf.glb` | mill | `plantSmall3`, `coatRack` peg | 412 | 0.38 x 0.58 x 0.10 |
+| `skyline_print.glb` | rooftop | #147 diner wall art frame, `televisionModern` | 464 | 0.70 x 0.46 x 0.04 |
+| `surfboard.glb` (stands on its tail) | boardwalk | `chairModernCushion` blue | 236 | 0.29 x 0.86 x 0.07 |
+| `beach_sign.glb` (two painted arrow planks) | boardwalk | #240 shop name sign, `paneling` | 340 | 0.90 x 0.40 x 0.06 |
+| `shell_jars.glb` (sits on a counter or table) | boardwalk | `bathroomMirror` glass, Food Kit cup | 416 | 0.18 x 0.15 x 0.08 |

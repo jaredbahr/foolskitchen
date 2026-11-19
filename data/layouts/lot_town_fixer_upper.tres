@@ -72,13 +72,38 @@ script = ExtResource("1_place")
 item_id = &"potted_plant"
 origin = Vector2i(13, 14)
 
+[sub_resource type="Resource" id="Placement_13"]
+script = ExtResource("1_place")
+item_id = &"flour_sacks"
+origin = Vector2i(14, 5)
+
+[sub_resource type="Resource" id="Placement_14"]
+script = ExtResource("1_place")
+item_id = &"crockery_dresser"
+origin = Vector2i(1, 2)
+quarter_turns = 1
+
+[sub_resource type="Resource" id="Placement_15"]
+script = ExtResource("1_place")
+item_id = &"flour_sacks"
+origin = Vector2i(15, 1)
+
+[sub_resource type="Resource" id="Placement_16"]
+script = ExtResource("1_place")
+item_id = &"barrel"
+origin = Vector2i(16, 1)
+
 [resource]
 script = ExtResource("2_layout")
 id = &"lot_town_fixer_upper"
 save_layout_id = &"lot_town_fixer_upper_mill_hall"
 display_name = "Old Mill Street fixer-upper"
 rows = PackedStringArray("##########################", "#........................#", "#........................#", "#........................#", "#........................#", "#........................#", "#........................#", "#........................#", "#........................#", "#..............###########", "#..............#          ", "#..............#          ", "#..............#          ", "#..............#          ", "#..............#          ", "#######..#######          ", "       EE                 ")
-placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8"), SubResource("Placement_9"), SubResource("Placement_10"), SubResource("Placement_11"), SubResource("Placement_12")])
+placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8"), SubResource("Placement_9"), SubResource("Placement_10"), SubResource("Placement_11"), SubResource("Placement_12"), SubResource("Placement_13"), SubResource("Placement_14"), SubResource("Placement_15"), SubResource("Placement_16")])
+wall_items = Dictionary[Vector3i, StringName]({
+Vector3i(11, 1, 0): &"wheat_sheaf",
+Vector3i(8, 5, 0): &"menu_board"
+})
 room_rows = PackedStringArray("", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),

@@ -168,7 +168,7 @@ func test_only_nonpaint_supported_front_finishes_are_collected() -> void:
 func test_all_named_exterior_items_count_once_in_their_family() -> void:
 	var grid: SimGrid = SimGrid.from_ascii(LAYOUT.rows)
 	assert_true(grid.set_segment(WallFaces.edge(_front_window(grid, 4)), SimGrid.Segment.WINDOW))
-	assert_eq(TUNING.item_categories.size(), 12, "ten street items and two patio furniture definitions are authored")
+	assert_eq(TUNING.item_categories.size(), 13, "eleven street items and two patio furniture definitions are authored")
 	var wall_count: int = 0
 	for id: StringName in TUNING.item_categories:
 		var definition: ItemDef = _content.item(id)
@@ -192,7 +192,7 @@ func test_all_named_exterior_items_count_once_in_their_family() -> void:
 		assert_eq(rows.size(), 1, "wide objects have one anchor: " + String(id))
 		if rows.size() == 1:
 			assert_eq(rows[0].category, TUNING.item_categories[id])
-	assert_eq(wall_count, 10, "every street item is still tested")
+	assert_eq(wall_count, 11, "every street item is still tested")
 
 
 func test_patio_tables_and_waiting_benches_count_once_and_chairs_stay_neutral() -> void:
