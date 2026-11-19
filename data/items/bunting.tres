@@ -21,6 +21,7 @@ capacity = 1
 quality_bonus = 0.0
 price = 30
 unlock_level = 1
+announce_unlock = false
 charm = 0
 theme_tags = Array[StringName]([])
 placeholder_color = Color(0.36, 0.52, 0.87, 1)

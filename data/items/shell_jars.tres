@@ -19,6 +19,7 @@ capacity = 1
 quality_bonus = 0.0
 price = 15
 unlock_level = 1
+announce_unlock = false
 charm = 1
 theme_tags = Array[StringName]([&"seafood"])
 placeholder_color = Color(0.7, 0.83, 0.77, 1)
