@@ -304,6 +304,7 @@ Each line ends with its PR number.
 ### Under the hood
 - A quirk's badge is data: `GuestQuirk.badge` is its picture, and one shared `GuestQuirkBadge` view draws it, so a new quirk adds a badge without view code. The three icons come from `tools/build_quirk_badges.py`; `tools/quirk_badges_review.tscn` is the review capture. (#687)
 - The roadmap's build queue is reset: the early game, the restaurant chain and new guests come first, then the rest of the location work. (#679)
+- The build queue now includes the chain goals work (the Ladle ladder, the goals line and naming your chain) and birthday bookings, after the guest quirks. (#689)
 - A design for guests with personality (`docs/GUESTS.md`): six new guest types tied to locations (tourists, the office crowd, walkers, surfers, farmers, foragers), small quirks like the guest who photographs every dish, and how reviews and the morning paper talk about them. (#637)
 - A design for chain goals: a ladder of nine goals across your restaurants, from a second shop to a Golden Ladle in every neighborhood, then a special edition of the Daily Ladle and free play, now decided (`docs/CITY_MAP.md` section 12, DESIGN D43). (#677)
 - `docs/GUESTS.md` records Jared's second round of guest decisions: quirk badges over seated guests, a review voice per guest type on good visits, the birthday table as a booking with a cake, and the foragers' mushroom gift. (#685)
