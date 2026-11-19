@@ -12,6 +12,7 @@ var band: int = -1
 var updates: int = 0
 var dot: MeshInstance3D
 var mark: Label3D
+var quirk_badge: GuestQuirkBadge
 var _material: StandardMaterial3D
 
 
@@ -46,6 +47,8 @@ func _init() -> void:
 	mark.outline_render_priority = 1
 	mark.hide()
 	add_child(mark)
+	quirk_badge = GuestQuirkBadge.new()
+	add_child(quirk_badge)
 
 
 func set_band(value: int) -> bool:
