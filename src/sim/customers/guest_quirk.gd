@@ -13,8 +13,8 @@ extends Resource
 @export var weight: float = 1.0
 ## Guest types that can have this quirk; empty means any type.
 @export var types: Array[StringName] = []
-## Always writes a review when served (the review-chance draw still happens,
-## so the review stream keeps its shape).
+## Always writes a review when served. The review-chance draw still happens;
+## the extra review's quote pick then shifts the review stream (deterministically).
 @export var always_reviews: bool = false
 ## Multiplies how long the guest stays at the table once their food arrives.
 @export_range(1.0, 3.0, 0.05) var linger_multiplier: float = 1.0

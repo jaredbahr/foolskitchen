@@ -60,8 +60,10 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 	if not is_finite(visit.review_chance_multiplier) or visit.review_chance_multiplier < 0.0:
 		return {}
 	var chance: float = clampf(tuning.review_chance * visit.review_chance_multiplier, 0.0, 1.0)
-	# The draw always happens, so a guest who always reviews (a Shutterbug)
-	# leaves the review stream with the same number of draws.
+	# The chance draw happens for every guest, as before. A served guest who
+	# always reviews (a Shutterbug) then writes one anyway, and its quote pick
+	# draws from this stream too, so later review draws shift. Seeded runs stay
+	# deterministic; a day with no such guest is unchanged.
 	if random.randf() >= chance and not (visit.always_reviews and visit.served):
 		return {}
 	var before: float = average()

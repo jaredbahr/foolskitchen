@@ -159,6 +159,63 @@ func test_guests_without_quirks_review_exactly_as_before() -> void:
 	assert_eq(visit.quirk_cause, &"")
 
 
+func test_the_spawner_gives_quirks_and_leaves_the_customers_stream_alone() -> void:
+	var always: GuestQuirkCatalogue = QUIRKS.duplicate(true) as GuestQuirkCatalogue
+	always.chance = 1.0
+	var plain: RestaurantSim = _spawning_sim(null)
+	var quirky: RestaurantSim = _spawning_sim(always)
+	for _index: int in 300:
+		plain.spawner.advance(plain)
+		quirky.spawner.advance(quirky)
+	assert_eq(quirky.rng.state, plain.rng.state, "the customers stream is byte-identical")
+	var plain_guests: Array[CustomerAgent] = plain.customers()
+	var quirky_guests: Array[CustomerAgent] = quirky.customers()
+	assert_eq(quirky_guests.size(), plain_guests.size())
+	assert_true(quirky_guests.size() > 10, "arrivals: %d" % quirky_guests.size())
+	var with_quirk: int = 0
+	for index: int in quirky_guests.size():
+		var guest: CustomerAgent = quirky_guests[index]
+		assert_eq(guest.customer_type_id, plain_guests[index].customer_type_id, "same arrival %d" % index)
+		assert_null(plain_guests[index].quirk)
+		if guest.party == null and not guest.is_critic():
+			assert_not_null(guest.quirk, "the spawner offered every solo arrival a quirk")
+		if guest.quirk != null:
+			with_quirk += 1
+	assert_true(with_quirk > 0)
+
+
+func test_about_one_guest_in_eight_through_the_named_stream() -> void:
+	GameState.new_run(652)
+	var sim: RestaurantSim = _sim()
+	sim.quirks = QUIRKS
+	sim.quirk_rng_provider = GameState.rng.bind(&"quirks")
+	sim.set_customer_level(QUIRKS.unlock_level)
+	assert_true(sim.world.clock.start_service())
+	var hits: int = 0
+	for index: int in 800:
+		var guest: CustomerAgent = _guest(sim, &"regular", 2000 + index)
+		if sim.try_give_quirk(guest):
+			hits += 1
+		sim.world.remove_agent(guest)
+	assert_true(hits > 70 and hits < 135, "about 100 of 800: %d" % hits)
+	GameState.new_run(1)
+
+
+func _spawning_sim(catalogue: GuestQuirkCatalogue) -> RestaurantSim:
+	var sim: RestaurantSim = _sim()
+	sim.configure_customer_types(TYPES, QUIRKS.unlock_level)
+	sim.use_rng(_random(6520))
+	if catalogue != null:
+		sim.quirks = catalogue
+		sim.quirk_rng_provider = _counted_provider
+	sim.spawner.min_gap = 1
+	sim.spawner.max_gap = 1
+	assert_true(sim.world.clock.start_service())
+	sim.world.clock.phase_tick = 360
+	sim.spawner._remaining = -1  # Draw the first gap from the 1-tick range.
+	return sim
+
+
 func _counted_provider() -> RandomNumberGenerator:
 	_provider_calls += 1
 	return _random(700 + _provider_calls)
