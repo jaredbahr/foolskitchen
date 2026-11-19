@@ -146,7 +146,7 @@ static func _opening_week(main: Node) -> bool:
 ## the bigger lease once it is offered (owner level 3, the deposit, no loan);
 ## lay a 2x3 floor wing east of the dining room; place a four-seat table on
 ## the first spot the editor accepts with everything reachable (east first);
-## buy a fryer the same way and put fries on the menu; hire a cleaner (an
+## buy a fryer the same way and put fries on the menu; hire a second cook (an
 ## applicant, else a skill-3 one); accept any group booking on offer.
 static func _week_two(main: Node) -> bool:
 	var chains: GoalChainSequence = main.get("goal_chains") as GoalChainSequence
@@ -181,15 +181,19 @@ static func _week_two(main: Node) -> bool:
 		return true
 	if settings.recipe(&"fries") != null and not settings.is_enabled(&"fries"):
 		main.call("menu_set_enabled", &"fries", true)
+	# #648: Week 2 asks for a second cook (the cleaner moved to Week 3).
 	var roster: StaffRoster = main.get("staff_roster") as StaffRoster
+	var cooks: int = 0
 	for member: StaffMember in roster.members():
-		if member.role == &"cleaner":
-			return true
+		if member.role == &"cook":
+			cooks += 1
+	if cooks >= 2:
+		return true
 	for member: StaffMember in roster.candidates():
-		if member.role == &"cleaner":
+		if member.role == &"cook":
 			main.call("staff_hire", member.id)
 			return true
-	return _add_staff(main, &"cleaner", 3)
+	return _add_staff(main, &"cook", 3)
 
 
 static func _count_items(grid: SimGrid, id: StringName) -> int:
