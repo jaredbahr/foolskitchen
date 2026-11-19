@@ -294,7 +294,7 @@ func test_screen_lines_use_names_not_ids() -> void:
 	var woods: LotDef = db.lot(&"woodland_cabin")
 	assert_eq(PropertyText.price_line(woods), "$14,500 · move-in ready")
 	assert_eq(PropertyText.guest_line(woods, CUSTOMER_TYPES), "Guests: families and regulars")
-	assert_eq(PropertyText.perks_line(woods), "Perks: Porch in the woods")
+	assert_eq(PropertyText.perks_line(woods), "Perks: Foraged food")
 	for tag: StringName in LotDef.KNOWN_TAGS:
 		assert_true(PropertyText.TAG_PERKS.has(tag), "every known tag has a perk name")
 	assert_eq(PropertyText.plural("Family"), "families")
