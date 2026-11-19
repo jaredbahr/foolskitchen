@@ -12,6 +12,8 @@ signal settings_requested()
 signal goals_requested()
 ## The browse-only property market (FK-087 part 2), offered from Tier 3.
 signal property_requested()
+## The city screen (docs/CITY_MAP.md), offered with the property market.
+signal city_requested()
 signal lease_requested()
 ## The one-time morning cat adoption (#119); the session checks and charges it.
 signal cat_adoption_requested()
@@ -61,6 +63,8 @@ var _phase: int = SimClock.Phase.MORNING
 var _weather_kind: int = WeatherState.Kind.SUNNY
 var _forecast_rendered_kind: int = -1
 var _has_patio: bool = false
+var _covered_seats: int = 0
+var _forecast_rendered_covered: int = 0
 var _forecast_rendered_patio: bool = false
 var _status: Label
 var _rush_notice: Label
@@ -75,6 +79,7 @@ var _detail: VBoxContainer
 var _settings_button: Button
 var _goals_button: Button
 var _property_button: Button
+var _city_button: Button
 var _rows: Dictionary[StringName, Dictionary] = {}
 var _needs_rebuild: bool = true
 ## Food rows stay in Rows; drink rows are in DrinkRows (FK-083). Both sit in
@@ -195,9 +200,10 @@ func _on_cat_pressed() -> void:
 		cat_adoption_requested.emit()
 
 
-func set_weather(kind: int, has_patio: bool = false) -> void:
+func set_weather(kind: int, has_patio: bool = false, covered_seats: int = 0) -> void:
 	_weather_kind = kind
 	_has_patio = has_patio
+	_covered_seats = covered_seats
 	_refresh_forecast()
 
 
@@ -236,10 +242,12 @@ func _on_booking_decline_pressed() -> void:
 func _refresh_forecast() -> void:
 	var forecast: Label = %WeatherForecast
 	forecast.visible = _phase == SimClock.Phase.MORNING
-	if _forecast_rendered_kind != _weather_kind or _forecast_rendered_patio != _has_patio:
+	if _forecast_rendered_kind != _weather_kind or _forecast_rendered_patio != _has_patio \
+			or _forecast_rendered_covered != _covered_seats:
 		_forecast_rendered_kind = _weather_kind
 		_forecast_rendered_patio = _has_patio
-		forecast.text = WeatherText.forecast_for(_weather_kind, _has_patio)
+		_forecast_rendered_covered = _covered_seats
+		forecast.text = WeatherText.forecast_for(_weather_kind, _has_patio, _covered_seats)
 		IconStyle.decorate_label(forecast, WeatherText.icon_for(_weather_kind), IconCatalogue.PANEL_SIZE)
 
 
@@ -513,6 +521,10 @@ func _bind_nodes() -> void:
 	_property_button.text = PropertyText.TITLE
 	_property_button.tooltip_text = PropertyText.BUTTON_TOOLTIP
 	_property_button.pressed.connect(_on_property_pressed)
+	_city_button = %CityButton
+	_city_button.text = ChainText.BUTTON
+	_city_button.tooltip_text = ChainText.BUTTON_TOOLTIP
+	_city_button.pressed.connect(_on_city_pressed)
 
 
 ## Keep name and hours together, with forecast and the wage note beneath them.
@@ -658,6 +670,20 @@ func is_property_available() -> bool:
 
 func _on_property_pressed() -> void:
 	property_requested.emit()
+
+
+## Main decides (with the market: PropertyMarket.shown); hidden below Tier 3.
+func set_city_available(available: bool) -> void:
+	_bind_nodes()
+	_city_button.visible = available
+
+
+func is_city_available() -> bool:
+	return _city_button != null and _city_button.visible
+
+
+func _on_city_pressed() -> void:
+	city_requested.emit()
 
 
 func _rebuild_rows() -> void:

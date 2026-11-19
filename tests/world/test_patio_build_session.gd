@@ -108,7 +108,7 @@ func test_morning_status_refreshes_for_rain_sun_and_last_cell_undo() -> void:
 	assert_true(purchased, "the entry-adjacent patio cell must be buyable")
 	if not purchased:
 		return
-	assert_eq(_forecast(), "Rain today  |  Patio closed in rain")
+	assert_eq(_forecast(), "Rain today  |  Patio closed in rain (no cover)")
 	_world().weather.kind = WeatherState.Kind.CLOUDY
 	_main.call("_refresh_weather")
 	assert_eq(_forecast(), "Cloudy today  |  Patio open today")

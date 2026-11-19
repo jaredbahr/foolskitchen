@@ -219,6 +219,8 @@ var _cliff: NeighbourhoodCliff
 ## The day's weather on the street (WeatherState.Kind): rain wets it and keeps some people
 ## in; sunny leaves everything exactly as built.
 var _weather: int = WeatherState.Kind.SUNNY
+## A gloomy afternoon's early lamplight (WeatherLook.gloom), 0 on a fair day.
+var _gloom: float = 0.0
 var _wet: WeatherWet = WeatherWet.new()
 
 
@@ -388,7 +390,8 @@ func rebuild() -> void:
 	_build_planks()
 	_build_promenade_pattern()
 	road_prop.free()
-	if not patio.is_empty():
+	# A woodland's patio is the cabin's porch deck, which the forest draws (#596).
+	if not patio.is_empty() and not has_forest():
 		paving.set_body_tint(patio_color())
 		_build_patio_paving(paving, paving_box, patio)
 	paving.clear_body_tint()
@@ -1184,7 +1187,7 @@ func _light_neighbour(id: StringName) -> void:
 	var lamps: MeshInstance3D = _neighbour_lamps.get(id, null)
 	if lamps == null:
 		return
-	var level: float = 0.0 if neighbour_state(id) == NeighbourState.FOR_SALE else _night
+	var level: float = 0.0 if neighbour_state(id) == NeighbourState.FOR_SALE else _lamplight()
 	lamps.visible = level > 0.01
 	var material: StandardMaterial3D = lamps.material_override as StandardMaterial3D
 	material.albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
@@ -1834,28 +1837,51 @@ func set_night(level: float, late: float = 0.0, dark: float = 1.0) -> void:
 	_apply_night()
 
 
+## A gloomy afternoon's early lamplight (WeatherLook.gloom): the street's lamps, windows and
+## festoons come on dimly; the sky, sea and city keep the clock's time of day.
+func set_gloom(level: float) -> void:
+	var value: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
+	if is_equal_approx(value, _gloom):
+		return
+	_gloom = value
+	_apply_night()
+
+
+func gloom() -> float:
+	return _gloom
+
+
+## How lit the street's lamps and windows are: the night, or a gloomy afternoon's glow.
+func _lamplight() -> float:
+	return maxf(_night, _gloom)
+
+
 ## How lit a window tier is: tier 0 follows the night, tiers 1 and 2 go dark at their bedtimes
 ## in the late hours.
 func _window_level(tier: int) -> float:
 	match tier:
 		1:
-			return _night * (1.0 - smoothstep(0.3, 0.5, _late))
+			return _lamplight() * (1.0 - smoothstep(0.3, 0.5, _late))
 		2:
-			return _night * (1.0 - smoothstep(0.8, 0.95, _late))
+			return _lamplight() * (1.0 - smoothstep(0.8, 0.95, _late))
 		_:
-			return _night
+			return _lamplight()
 
 
 func _apply_night() -> void:
 	if _shore != null:
 		_shore.set_night(_night, _late)
 	if _forest != null:
+		_forest.set_gloom(_gloom)
 		_forest.set_night(_night, _late)
 	if _country != null:
+		_country.set_gloom(_gloom)
 		_country.set_night(_night, _late)
 	if _rooftop != null:
+		_rooftop.set_gloom(_gloom)
 		_rooftop.set_night(_night, _late, _dark)
 	if _cliff != null:
+		_cliff.set_gloom(_gloom)
 		_cliff.set_night(_night, _late, _dark)
 	for index: int in _window_nodes.size():
 		var level: float = _window_level(_window_tier(index))
@@ -1864,16 +1890,17 @@ func _apply_night() -> void:
 		_window_materials[index].emission_energy_multiplier = level * WINDOW_ENERGY
 	for id: StringName in _neighbour_lamps:
 		_light_neighbour(id)
+	var lamps: float = _lamplight()
 	if _bulb_material != null:
-		_bulb_material.emission_energy_multiplier = _night * LAMP_BULB_ENERGY
-		_bulb_material.albedo_color = LAMP_DAY.lerp(LAMP_NIGHT, _night)
+		_bulb_material.emission_energy_multiplier = lamps * LAMP_BULB_ENERGY
+		_bulb_material.albedo_color = LAMP_DAY.lerp(LAMP_NIGHT, lamps)
 	if _lamp_glow != null:
-		_lamp_glow.visible = _night > 0.01
-		_glow_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
+		_lamp_glow.visible = lamps > 0.01
+		_glow_material.albedo_color = Color(1.0, 1.0, 1.0, lamps)
 	if _halo_material != null:
-		_halo_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
+		_halo_material.albedo_color = Color(1.0, 1.0, 1.0, lamps)
 		for halo: MeshInstance3D in _lamp_halos:
-			halo.visible = _night > 0.01
+			halo.visible = lamps > 0.01
 
 
 ## The light tier of the index-th window mesh (empty tiers are skipped, so read it from the name).
@@ -2040,6 +2067,7 @@ func _effective_time() -> float:
 func _apply_time(seconds: float) -> void:
 	if not _configured:
 		return
+	_wet.set_sway_time(seconds)
 	if _life != null:
 		_life.apply(seconds)
 	if _shore != null:
@@ -2158,13 +2186,11 @@ func set_weather_light(sheen_color: Color, view_dir: Vector2, darken: float = We
 
 ## The materials the rain put on the street (for tests): empty on a dry day.
 func wet_state() -> Dictionary:
-	return {"kind": _weather, "swaps": _wet.swap_count(), "materials": _wet.wet_materials()}
+	return {"kind": _weather, "swaps": _wet.swap_count(), "materials": _wet.wet_materials(), "sway": _wet.sway_materials()}
 
 
 func _apply_weather() -> void:
-	if _weather == WeatherState.Kind.SUNNY and _wet.swap_count() == 0 and _wet.kind() == WeatherState.Kind.SUNNY:
-		_apply_place_weather()
-		return
+	# Every weather: the foliage sways in all of them, rain wets, cloud fades shadows.
 	_wet.apply(self, _weather)
 	_apply_place_weather()
 
@@ -2347,6 +2373,11 @@ func _build_forest() -> void:
 	_forest.lease = _local_cells(_lease)
 	_forest.first_lease = _local_cells(_first_lease)
 	_forest.building = _local_cells(_built_rect)
+	# The shop's own patio in front is the cabin's porch (#596).
+	for cell: Vector2i in _grid.cells():
+		if _grid.is_outdoor_floor(cell):
+			_forest.patio.append(_local_cells(Rect2i(cell, Vector2i.ONE)))
+	_forest.patio_top = _paving_top
 	_forest.build(_forest_root)
 	for id: StringName in _forest.stand_ids():
 		_forest.show_stand(id, stand_state(id))

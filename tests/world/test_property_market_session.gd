@@ -76,7 +76,7 @@ func test_tier_three_browses_lots_cheapest_first_without_buying() -> void:
 	(_menu().get_node("%PropertyButton") as Button).pressed.emit()
 	assert_true(_main.call("is_property_visible"))
 	assert_false(_main.call("is_menu_visible"), "the screen replaces the Menu")
-	assert_eq(_panel().lot_ids(), [&"town_fixer_upper", &"beachfront_boardwalk",
+	assert_eq(_panel().lot_ids(), [&"town_fixer_upper", &"beachfront_boardwalk", &"woodland_cabin",
 		&"seaside_cliff", &"skyscraper_rooftop"] as Array[StringName])
 	for id: StringName in _panel().lot_ids():
 		var card: Control = _panel().card_for(id)

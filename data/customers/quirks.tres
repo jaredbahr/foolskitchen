@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="GuestQuirkCatalogue" format=3]
+
+[ext_resource type="Script" path="res://src/sim/customers/guest_quirk_catalogue.gd" id="1_catalogue"]
+[ext_resource type="Script" path="res://src/sim/customers/guest_quirk.gd" id="2_quirk"]
+
+[sub_resource type="Resource" id="Shutterbug"]
+script = ExtResource("2_quirk")
+id = &"shutterbug"
+inspect_line = "Takes a photo of every dish."
+icon = &"camera"
+always_reviews = true
+happy_cause = &"photo_happy"
+
+[sub_resource type="Resource" id="Chatterbox"]
+script = ExtResource("2_quirk")
+id = &"chatterbox"
+inspect_line = "Loves a good chat. Will stay a while."
+icon = &"chat"
+linger_multiplier = 1.5
+review_bonus = 0.5
+happy_cause = &"chatty_happy"
+
+[sub_resource type="Resource" id="LunchBreak"]
+script = ExtResource("2_quirk")
+id = &"lunch_break"
+inspect_line = "On a lunch break. Quick food makes their day."
+icon = &"watch"
+types = Array[StringName]([&"regular", &"student", &"foodie", &"office"])
+patience_multiplier = 0.6
+fast_food_fraction = 0.5
+fast_food_bonus = 1.0
+happy_cause = &"quick_lunch"
+
+[resource]
+script = ExtResource("1_catalogue")
+quirks = Array[ExtResource("2_quirk")]([SubResource("Shutterbug"), SubResource("Chatterbox"), SubResource("LunchBreak")])

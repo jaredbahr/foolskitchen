@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_item"]
+[ext_resource type="PackedScene" path="res://assets/props/awning.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_item")
+view_scene = ExtResource("2_view")
+id = &"awning"
+display_name = "Patio awning"
+catalogue_room = &"dining"
+category = 6
+placement_layer = 1
+footprint = Vector2i(4, 4)
+solid = false
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+price = 80
+unlock_level = 1
+outdoor_only = true
+rain_cover = true
+paintable = false

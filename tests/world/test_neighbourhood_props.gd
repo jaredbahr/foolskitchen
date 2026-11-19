@@ -302,6 +302,9 @@ func test_main_drives_the_street_lamps_from_the_real_clock() -> void:
 	_main.set("owner_creation_requested", false)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# A dry day: the session rolls its own weather, and rain or cloud changes the lamps, walkers and shadows.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	Clock.set_speed(0)
 	_main.set_process(false)
 	await (Engine.get_main_loop() as SceneTree).process_frame
@@ -420,6 +423,9 @@ func test_a_dressing_recreated_at_night_has_its_lamps_on_at_once() -> void:
 	_main.set("owner_creation_requested", false)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# A dry day: the session rolls its own weather, and rain or cloud changes the lamps, walkers and shadows.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	Clock.set_speed(0)
 	_main.set_process(false)
 	await (Engine.get_main_loop() as SceneTree).process_frame

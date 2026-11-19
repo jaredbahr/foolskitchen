@@ -238,11 +238,14 @@ func _tree(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 	pen.box(Vector3(-0.25, 0.17, -0.25), Vector3(0.25, 0.22, 0.25), wood.lightened(0.16))
 	pen.box(Vector3(-0.2, 0.22, -0.2), Vector3(0.2, 0.235, 0.2), wood.darkened(0.45))
 	_drum(pen, 0.0, 0.0, 0.235, 0.5, 0.045, 0.035, 6, wood.darkened(0.25))
+	# The crown sways in the wind; the tub stays put.
+	pen.soup.sway = 1.0
 	var leaf: Color = street.hedge_colors[int(_r(item.seed_value, 3) * float(street.hedge_colors.size())) % street.hedge_colors.size()].lightened(0.14)
 	var spin: float = _r(item.seed_value, 4) * TAU
 	pen.lump(Vector3(0.0, 0.74, 0.0), 0.34, 0.3, 0.34, spin, leaf.lightened(0.05), leaf.darkened(0.2))
 	pen.lump(Vector3(0.08, 0.98, -0.04), 0.23, 0.2, 0.23, spin + 0.6, leaf.lightened(0.16), leaf.darkened(0.08))
 	pen.lump(Vector3(-0.17, 0.66, 0.11), 0.2, 0.17, 0.2, spin + 1.1, leaf, leaf.darkened(0.18))
+	pen.soup.sway = 0.0
 
 
 func _bench(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
@@ -428,6 +431,8 @@ func _planter(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 		pen.box(Vector3(x - 0.008, 0.02, 0.21), Vector3(x + 0.008, 0.3, 0.215), wood.darkened(0.25))
 	pen.box(Vector3(-0.42, 0.35, -0.18), Vector3(0.42, 0.37, 0.18), street.soil)
 	var grass: Color = street.hedge_colors[int(_r(item.seed_value, 3) * float(street.hedge_colors.size())) % street.hedge_colors.size()]
+	# The grasses and flowers stir a little; the box stays put.
+	pen.soup.sway = 0.35
 	for index: int in 7:
 		var x: float = -0.34 + 0.113 * float(index)
 		var z: float = -0.08 + 0.16 * float(index % 2)
@@ -437,6 +442,7 @@ func _planter(pen: NeighbourhoodBuildings.Pen, item: Placed) -> void:
 		var bloom: Color = street.bloom_colors[(item.seed_value + index) % street.bloom_colors.size()]
 		var x: float = -0.28 + 0.19 * float(index)
 		pen.lump(Vector3(x, 0.46 + 0.03 * float(index % 2), 0.1 - 0.18 * float(index % 2)), 0.05, 0.05, 0.05, float(index), bloom, bloom.darkened(0.2))
+	pen.soup.sway = 0.0
 
 
 ## An ice-cream tricycle (#596): a striped canopy on poles over a cool box, cones on top.

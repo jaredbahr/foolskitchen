@@ -96,9 +96,10 @@ func test_walkout_hint_formats_each_band_at_chosen_prices() -> void:
 	_panel.bind_menu(choices)
 	var cases: Dictionary[int, String] = {
 		100: "Everyone's happy with this price.",
-		102: "Hardly anyone will mind.",
-		108: "About 1 in 8 guests will think this is too expensive.",
-		134: "Most guests will walk out at this price.",
+		104: "Everyone's happy with this price.",
+		107: "Hardly anyone will mind.",
+		113: "About 1 in 8 guests will think this is too expensive.",
+		140: "Most guests will walk out at this price.",
 	}
 	for price: int in cases:
 		assert_true(choices.set_price(recipe.id, price))

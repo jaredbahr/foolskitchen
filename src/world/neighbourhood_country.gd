@@ -173,6 +173,7 @@ var _night: float = 0.0
 const WHEAT_REACH: Array[float] = [0.035, 0.045, 0.08]
 const WHEAT_PACE: Array[float] = [1.0, 1.15, 1.6]
 var _weather: int = WeatherState.Kind.SUNNY
+var _gloom: float = 0.0
 var _late: float = 0.0
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
@@ -1083,6 +1084,13 @@ func _wall_piece(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.S
 
 ## One length of hedgerow: two or three lumpy bushes, now and then hawthorn in blossom.
 func _hedge_piece(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup, a: Vector2, b: Vector2, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 0.35
+	_hedge_piece_body(pen, shadows, a, b, seed_value)
+	pen.soup.sway = keep
+
+
+func _hedge_piece_body(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup, a: Vector2, b: Vector2, seed_value: int) -> void:
 	var mid: Vector2 = (a + b) * 0.5
 	var along: Vector2 = (b - a).normalized()
 	var spin: float = atan2(along.y, along.x)
@@ -1423,6 +1431,13 @@ func _roll(pen: NeighbourhoodBuildings.Pen, centre: Vector3, axis: Vector3, radi
 
 ## A tuft of grass or reeds: a few thin leaning blades.
 func _tuft(pen: NeighbourhoodBuildings.Pen, at: Vector3, height: float, colour: Color, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 1.0
+	_tuft_body(pen, at, height, colour, seed_value)
+	pen.soup.sway = keep
+
+
+func _tuft_body(pen: NeighbourhoodBuildings.Pen, at: Vector3, height: float, colour: Color, seed_value: int) -> void:
 	for index: int in 4:
 		var angle: float = _r(seed_value + index, 111) * TAU
 		var lean: Vector3 = Vector3(cos(angle), 0.0, sin(angle)) * height * 0.35
@@ -1829,6 +1844,13 @@ func _forecourt_band(point: Vector2, margin: float) -> bool:
 
 ## An oak: a stout trunk and a broad crown of lumpy balls.
 func _oak(pen: NeighbourhoodBuildings.Pen, at: Vector2, size: float, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 1.0
+	_oak_body(pen, at, size, seed_value)
+	pen.soup.sway = keep
+
+
+func _oak_body(pen: NeighbourhoodBuildings.Pen, at: Vector2, size: float, seed_value: int) -> void:
 	var leaf: Color = skin.leaf_colors[int(_r(seed_value, 611) * 97.0) % skin.leaf_colors.size()]
 	var base: Vector3 = Vector3(at.x, FIELD_Y, at.y)
 	var soup: NeighbourhoodGround.Soup = pen.soup
@@ -2643,6 +2665,16 @@ func set_weather(kind: int) -> void:
 	_apply_night()
 
 
+## A gloomy afternoon's early lamplight (WeatherLook.gloom): the lamps and windows come on
+## dimly, everything else keeps the clock's time of day.
+func set_gloom(level: float) -> void:
+	var value: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
+	if is_equal_approx(value, _gloom):
+		return
+	_gloom = value
+	_apply_night()
+
+
 func set_night(level: float, late: float) -> void:
 	_night = level
 	_late = late
@@ -2652,16 +2684,16 @@ func set_night(level: float, late: float) -> void:
 func _apply_night() -> void:
 	if root == null:
 		return
-	_glass_material.emission_energy_multiplier = _night * 2.4 * (1.0 - 0.6 * smoothstep(0.7, 1.0, _late))
-	_glass_material.albedo_color = skin.window_glow.lerp(skin.ripple.darkened(0.35), 1.0 - _night)
-	_glow_material.set_shader_parameter(&"level", _night)
+	var lamps: float = maxf(_night, _gloom)
+	_glass_material.emission_energy_multiplier = lamps * 2.4 * (1.0 - 0.6 * smoothstep(0.7, 1.0, _late))
+	_glass_material.albedo_color = skin.window_glow.lerp(skin.ripple.darkened(0.35), 1.0 - lamps)
+	_glow_material.set_shader_parameter(&"level", lamps)
 	_headlamp_material.set_shader_parameter(&"level", _night)
 	_stream_material.set_shader_parameter(&"moon", _night * _late)
-	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
-	var lit: bool = _night > 0.05
+	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, lamps)
 	# Unlit glows still cost a blended pass: hide them by day.
-	_glow.visible = lit
-	_pools.visible = lit
+	_glow.visible = lamps > 0.05
+	_pools.visible = lamps > 0.05
 	for bird: Node3D in birds:
 		bird.visible = _night < NIGHT_HIDE and _weather != WeatherState.Kind.RAIN
 	_wheat_material.set_shader_parameter(&"reach", WHEAT_REACH[clampi(_weather, 0, 2)])

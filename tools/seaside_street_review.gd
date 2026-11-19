@@ -5,7 +5,7 @@ extends "res://src/world/main.gd"
 ## Use: bash tools/screenshot.sh --scene=res://tools/seaside_street_review.tscn
 ##   --speed=0 --frames=60 [--quarter=N]. Set SEASIDE_STREET_REVIEW_HOME=1 to stay
 ## on the home site's starter street instead, for a side-by-side comparison.
-## SEASIDE_STREET_STAGE=day|dusk|night shows the street at that time of day (default
+## SEASIDE_STREET_STAGE=day|afternoon|dusk|night shows the street at that time of day (default
 ## day, the first morning): the clock is set for display only and never runs.
 ## SEASIDE_STREET_BEACH=<zoom> frames the beach behind the shop (#588) at that zoom
 ## (the default view is about 15; 22 shows the beach and sea well).
@@ -26,6 +26,10 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_PERGOLA=1 stands the two made rain-cover pergolas (#380,
 ## assets/made/pergola/) over kit tables and chairs in front of the shop, with a guest
 ## for scale (review only: nothing joins the sim or the save).
+## SEASIDE_STREET_COVER=1 adds the real awning (#625) over the cliff terrace's second
+## table, beside the cottage's starter pergola, one table left bare, with the sim's own
+## placement rules (review only: nothing is saved or bought). SEASIDE_STREET_BUILD=1 also
+## opens Build mode, which fades the canopies.
 ## SEASIDE_STREET_LIGHTHOUSE=<zoom> frames a cliff top's lighthouse across the bay (#380,
 ## data/streets/cliff.tres) at that zoom.
 ## SEASIDE_STREET_PAN=<u>,<v> zooms the player's view all the way out and pans it as far
@@ -43,6 +47,8 @@ extends "res://src/world/main.gd"
 const SEASIDE: StringName = &"beachfront_boardwalk"
 ## The dusk stage's minute of the day: the sunset key frame (data/look/day_light.tres).
 const DUSK_MINUTE: float = 1230.0
+## The afternoon stage's minute: late afternoon, when a gloomy day's lamps have come on.
+const AFTERNOON_MINUTE: float = 1020.0
 const WARM_UP_FRAMES: int = 60
 
 var _timed_frames: int = 0
@@ -88,6 +94,8 @@ func _ready() -> void:
 	_show_plots(OS.get_environment("SEASIDE_STREET_PLOTS"))
 	if OS.get_environment("SEASIDE_STREET_PERGOLA") == "1":
 		_show_pergolas()
+	if OS.get_environment("SEASIDE_STREET_COVER") == "1":
+		_place_cover()
 	if OS.get_environment("SEASIDE_STREET_WALLS") == "up":
 		_walls_up()
 	_close_up()
@@ -219,6 +227,22 @@ func _show_pergolas() -> void:
 	guest.transform = Transform3D(frame.basis, frame * Vector3(door_u + 1.15, 0.0, z + 0.3))
 
 
+## Real rain cover on the cliff terrace, so the view draws what the game builds.
+func _place_cover() -> void:
+	var errors: PackedStringArray = []
+	for entry: Array in [[&"awning", Vector2i(9, 6)]]:
+		var definition: ItemDef = content.item(entry[0])
+		if definition == null or world.grid.place_def(definition, entry[1]) == null:
+			errors.append("%s at %s" % [entry[0], entry[1]])
+	if not errors.is_empty():
+		push_error("Rain cover review could not place: " + ", ".join(errors))
+	refresh_presentation()
+	if OS.get_environment("SEASIDE_STREET_BUILD") == "1":
+		for frame: int in 10:
+			await get_tree().process_frame
+		set_build_active(true)
+
+
 ## A kit model, centred on `at` (kit models stand on a back corner), at the furniture scale.
 func _centred(holder: Node3D, path: String, at: Vector3, basis: Basis) -> void:
 	var model: Node3D = (load(path) as PackedScene).instantiate() as Node3D
@@ -239,6 +263,10 @@ func _set_stage(stage: String) -> bool:
 	match stage:
 		"", "day":
 			return true
+		"afternoon":
+			clock.phase = SimClock.Phase.OPEN
+			clock.phase_tick = roundi((AFTERNOON_MINUTE - clock.display_open_minute)
+				/ float(clock.display_close_minute - clock.display_open_minute) * clock.open_ticks)
 		"dusk":
 			clock.phase = SimClock.Phase.OPEN
 			clock.phase_tick = roundi((DUSK_MINUTE - clock.display_open_minute)

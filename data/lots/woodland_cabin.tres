@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="LotDef" format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/lot_def.gd" id="1_lot"]
+[ext_resource type="Resource" path="res://data/layouts/lot_woodland_cabin.tres" id="2_layout"]
+
+[resource]
+script = ExtResource("1_lot")
+id = &"woodland_cabin"
+display_name = "Woodland Cabin"
+blurb = "A log cabin in a clearing on the forest track, with a porch for the walkers. The trees come right up to the door, until you buy the land and fell them."
+base_layout = ExtResource("2_layout")
+street_preset = "res://data/streets/woodland.tres"
+price = 14500
+daily_rent = 110
+expansion_price = 7500
+expanded_daily_rent = 150
+expansion_west = 2
+expansion_east = 4
+expansion_north = 3
+min_tier = 3
+min_reputation = 4.0
+guest_mix = Dictionary[StringName, float]({
+&"family": 0.45,
+&"regular": 0.4,
+&"foodie": 0.15
+})
+tags = Array[StringName]([&"woodland"])

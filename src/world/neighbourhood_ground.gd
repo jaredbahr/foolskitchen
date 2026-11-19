@@ -41,13 +41,28 @@ const SHORE_LANE_GAP: float = 1.8
 ## With a shore (#588), nothing of the meadow is planted this far past the lane's centre.
 const SHORE_CLEAR: float = 0.85
 
+## A mesh with foliage that sways in the wind (vertex alpha below 1) carries this meta.
+const SWAY_META: StringName = &"sway"
+
 ## One accumulating vertex-coloured triangle soup, turned into a single mesh.
 class Soup extends RefCounted:
 	var positions: PackedVector3Array = PackedVector3Array()
 	var normals: PackedVector3Array = PackedVector3Array()
 	var colors: PackedColorArray = PackedColorArray()
+	## How freely what is added now sways in the wind (0 stands still, 1 a leafy crown or a
+	## tuft of grass): written into the vertex alpha as 1 - sway (WeatherWet's foliage shader;
+	## the scenery's own opaque material ignores it), and the mesh is marked SWAY_META.
+	var sway: float = 0.0
+	var swaying: bool = false
+
+	func _tint(colour: Color) -> Color:
+		if sway <= 0.0:
+			return colour
+		swaying = true
+		return Color(colour.r, colour.g, colour.b, 1.0 - clampf(sway, 0.0, 1.0))
 
 	func add(template: Array, xf: Transform3D, colour: Color) -> void:
+		colour = _tint(colour)
 		var pos: PackedVector3Array = template[0]
 		var nrm: PackedVector3Array = template[1]
 		positions.append_array(xf * pos)
@@ -69,6 +84,7 @@ class Soup extends RefCounted:
 			var swap: Vector3 = b
 			b = c
 			c = swap
+		colour = _tint(colour)
 		for point: Vector3 in [a, b, c]:
 			positions.append(point)
 			normals.append(outward)
@@ -98,6 +114,8 @@ class Soup extends RefCounted:
 		arrays[Mesh.ARRAY_COLOR] = colors
 		var mesh: ArrayMesh = ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		if swaying:
+			mesh.set_meta(SWAY_META, true)
 		return mesh
 
 
@@ -395,6 +413,13 @@ func _split_around(strip: Rect2) -> Array[Rect2]:
 # --- planting ---------------------------------------------------------------
 
 func _hedges() -> void:
+	var keep: float = _soup.sway
+	_soup.sway = 0.35
+	_hedges_body()
+	_soup.sway = keep
+
+
+func _hedges_body() -> void:
 	var span: float = 30.0
 	var rows: Array[float] = [shift - 0.34, shift + BLOCK_V + 0.7, _lane_v - 1.18, _lane_v + 1.18 + 0.0]
 	for row_index: int in rows.size():
@@ -501,6 +526,13 @@ func _forest_edge() -> void:
 
 
 func _tree(at: Vector2, size: float, seed_value: int, ring: bool = false) -> void:
+	var keep: float = _soup.sway
+	_soup.sway = 1.0
+	_tree_body(at, size, seed_value, ring)
+	_soup.sway = keep
+
+
+func _tree_body(at: Vector2, size: float, seed_value: int, ring: bool = false) -> void:
 	var yaw: float = hash01(seed_value, 1, 51) * TAU
 	var pine: bool = hash01(seed_value, 2, 51) < (skin.ring_pine_share if ring else skin.pine_share)
 	var tone: float = hash01(seed_value, 3, 51)
@@ -529,6 +561,13 @@ func _tree(at: Vector2, size: float, seed_value: int, ring: bool = false) -> voi
 
 
 func _bush(at: Vector2, size: float, seed_value: int, squash: float, shadow: bool = true) -> void:
+	var keep: float = _soup.sway
+	_soup.sway = 0.7
+	_bush_body(at, size, seed_value, squash, shadow)
+	_soup.sway = keep
+
+
+func _bush_body(at: Vector2, size: float, seed_value: int, squash: float, shadow: bool = true) -> void:
 	var tone: float = hash01(seed_value, 4, 52)
 	var leaf: Color = _leaf(tone * 0.6 + 0.2)
 	var basis: Basis = Basis(Vector3.UP, hash01(seed_value, 5, 52) * TAU).scaled(Vector3(size, size * squash, size))

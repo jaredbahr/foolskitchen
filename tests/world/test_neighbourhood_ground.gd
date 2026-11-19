@@ -45,6 +45,9 @@ func _start() -> void:
 	_main.set("owner_creation_requested", false)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# A dry day: the session rolls its own weather, and rain or cloud changes the lamps, walkers and shadows.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	Clock.set_speed(0)
 	_main.set_process(false)
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig

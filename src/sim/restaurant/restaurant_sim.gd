@@ -105,6 +105,9 @@ var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
 var customer_types: CustomerTypeCatalogue = null
+## The active lot's guest mix and tags (configure_lot_guests); empty at home.
+var lot_guest_mix: Dictionary[StringName, float] = {}
+var lot_tags: Array[StringName] = []
 var customer_level: int = 1
 ## Accepted next-day party, installed by Main after the morning save section loads.
 var group_booking: GroupBooking = null
@@ -118,6 +121,11 @@ var _regular_cohort_index: int = 0
 ## The disguised food critic (#303). The session supplies the lazy named stream
 ## (GameState.rng(&"critic")); with no provider no critic ever appears.
 var critic: FoodCritic = FoodCritic.new()
+## Guest quirks (docs/GUESTS.md). The session supplies the catalogue and the
+## lazy named stream (GameState.rng(&"quirks")); the stream is only asked for
+## from the catalogue's unlock level, so earlier days keep their exact streams.
+var quirks: GuestQuirkCatalogue = null
+var quirk_rng_provider: Callable
 var critic_rng_provider: Callable
 ## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
 var critic_result: Dictionary = {}
@@ -643,6 +651,21 @@ func use_rng(random: RandomNumberGenerator) -> void:
 ## Session installs authored content after loading owner progression. Deep-copy
 ## resources so authoring changes cannot rewrite the current world's configuration.
 ## No random draw or guest is changed by configuration or level updates.
+## The active lot's guest mix and tags (#471). The home shop passes null and
+## keeps its reputation-weighted arrivals exactly; a lot's mix shares replace
+## them there, and its tags say which dishes count as local food.
+func configure_lot_guests(lot: LotDef) -> void:
+	lot_guest_mix = {}
+	lot_tags = []
+	if lot == null:
+		return
+	for kind: StringName in lot.guest_mix:
+		var share: float = lot.guest_mix[kind]
+		if is_finite(share) and share > 0.0:
+			lot_guest_mix[kind] = share
+	lot_tags = lot.tags.duplicate()
+
+
 func configure_customer_types(catalogue: CustomerTypeCatalogue, owner_level: int) -> bool:
 	if catalogue == null or not catalogue.is_valid() or owner_level < 1:
 		return false
@@ -1179,9 +1202,11 @@ func _price_walkout_chance(recipe: RecipeDef, budget_multiplier: float, preview_
 		return 0.0
 	var sensitivity: float = pricing_tuning.price_sensitivity
 	var maximum: float = pricing_tuning.max_price_walkout
-	if not is_finite(sensitivity) or not is_finite(maximum):
+	var grace: float = pricing_tuning.price_grace
+	if not is_finite(sensitivity) or not is_finite(maximum) or not is_finite(grace):
 		return 0.0
-	return clampf(((ratio - 1.0) / budget_multiplier) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
+	var over: float = maxf(0.0, ratio - 1.0 - clampf(grace, 0.0, 1.0))
+	return clampf((over / budget_multiplier) * maxf(sensitivity, 0.0), 0.0, clampf(maximum, 0.0, 1.0))
 
 
 ## Adds a guest using an independent random stream (also useful for scenarios).
@@ -1196,6 +1221,20 @@ func add_visitor(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerT
 	if visit == RecipeDef.FOOD:
 		return add_customer(entry, random, kind)
 	return _install_customer(entry, random, kind, true, visit)
+
+
+## An ordinary solo arrival may have a quirk: one chance draw (and one pick
+## on a hit) from the quirks stream. Critics, named regulars, party members
+## and guests below the unlock level never draw.
+func try_give_quirk(customer: CustomerAgent) -> bool:
+	if customer == null or quirks == null or not quirk_rng_provider.is_valid() \
+			or customer_level < quirks.unlock_level or customer.is_critic() \
+			or customer.regular_profile != null or customer.party != null \
+			or customer.quirk != null or world.clock.phase != SimClock.Phase.OPEN:
+		return false
+	var random: RandomNumberGenerator = quirk_rng_provider.call() as RandomNumberGenerator
+	var quirk: GuestQuirk = quirks.roll(random, customer.customer_type_id)
+	return quirk != null and customer.apply_quirk(quirk)
 
 
 ## The day's critic takes the place of an ordinary solo arrival once their
@@ -1546,6 +1585,7 @@ func record_departure(customer: CustomerAgent) -> void:
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
 		visit.difficulty_review_bonus = difficulty.review_bonus() if difficulty != null else 0.0
+		visit.local_dish_bonus = local_dish_bonus_for(customer, visit)
 		visit.ate_signature_dish = not effective_signature_recipe_id.is_empty() \
 			and visit.consumed_recipe_ids.has(effective_signature_recipe_id)
 		visit.sticky_floor = mishaps != null and cleanliness != null \
@@ -1578,6 +1618,16 @@ func record_departure(customer: CustomerAgent) -> void:
 			var happy: bool = ReputationBook.score_visit(visit, review_tuning, VIBE_TUNING, true) >= 4
 			dish_visit_completed.emit(visit.consumed_recipe_ids.duplicate(), happy)
 	customer_left.emit(customer, reason)
+
+
+## A local-food lover's raw bonus when a dish they ate is local here (#471).
+func local_dish_bonus_for(customer: CustomerAgent, visit: ReviewVisit) -> float:
+	if customer.local_dish_bonus <= 0.0 or visit.consumed_recipe_ids.is_empty():
+		return 0.0
+	for recipe: RecipeDef in menu:
+		if visit.consumed_recipe_ids.has(recipe.id) and CustomerType.is_local_dish(recipe, lot_tags):
+			return customer.local_dish_bonus
+	return 0.0
 
 
 ## Booked members are replaced by exactly one weighted booking review when the
