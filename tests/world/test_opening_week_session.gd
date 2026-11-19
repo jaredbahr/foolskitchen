@@ -261,18 +261,18 @@ func test_old_saves_past_day_seven_join_week_two_inside_its_window() -> void:
 	assert_eq(_state(main).start_day, 8, "with the days of its window that remain")
 	var hud: CanvasLayer = main.get_node("HUD") as CanvasLayer
 	assert_eq(hud.call("opening_week_title"), "Week 2")
-	# Past day 14 an old save has no chain at all.
-	for step: int in 6:
+	# Past day 21 an old save has no chain at all.
+	for step: int in 13:
 		_next_morning(main)
-	assert_eq(Clock.sim.day, 15)
+	assert_eq(Clock.sim.day, 22)
 	document = _document()
 	(document["data"] as Dictionary).erase("opening_week")
 	_write_document(document)
 	_remove_backup()
 	_close(main)
 	main = await _start(true)
-	assert_eq(Clock.sim.day, 15)
-	assert_false(_state(main).is_active(), "past Week 2's window there is no chain")
+	assert_eq(Clock.sim.day, 22)
+	assert_false(_state(main).is_active(), "past Week 3's window there is no chain")
 	hud = main.get_node("HUD") as CanvasLayer
 	assert_eq((hud.call("opening_week_lines") as Array).size(), 0, "no tracker")
 
@@ -343,7 +343,12 @@ func test_week_two_follows_the_morning_after_day_seven() -> void:
 	for step: int in 7:
 		_next_morning(main)
 	assert_eq(Clock.sim.day, 15)
-	assert_false(_state(main).is_active(), "Week 2 ends after day 14")
+	assert_eq(_state(main).current(main.get("goal_chains")).id, &"week_three", "Week 2 ends after day 14")
+	assert_eq(hud.call("opening_week_title"), "Week 3", "Week 3 takes over the tracker")
+	for step: int in 7:
+		_next_morning(main)
+	assert_eq(Clock.sim.day, 22)
+	assert_false(_state(main).is_active(), "Week 3 ends after day 21")
 	assert_eq(_state(main).status, OpeningWeek.Status.FINISHED)
 	assert_eq((hud.call("opening_week_lines") as Array).size(), 0, "the tracker goes away")
 	goals.call("_render")
