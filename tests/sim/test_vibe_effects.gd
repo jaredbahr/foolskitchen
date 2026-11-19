@@ -494,7 +494,8 @@ func test_vibe_crossing_four_stars_uses_positive_cause_without_extra_draws() -> 
 	var expected_rng: RandomNumberGenerator = _random(122012)
 	assert_true(expected_rng.randf() < tuning.review_chance)
 	var used: Dictionary[String, bool] = {}
-	var expected_quote: String = QUOTES.pick(&"lovely_place", expected_rng, used)
+	# A regular's good visit is written in the regular voice, drawn the same way.
+	var expected_quote: String = QUOTES.pick_lovely(&"regular_happy", expected_rng, used, {})
 	var arrival_state: int = sim.rng.state
 	var guest_state: int = guest.rng.state
 	sim.record_departure(guest)

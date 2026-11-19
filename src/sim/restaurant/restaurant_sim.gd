@@ -152,6 +152,8 @@ var review_tuning: ReviewTuning
 var review_quotes: ReviewQuotes
 var review_rng: RandomNumberGenerator
 var reviews_today: Array[Dictionary] = []
+## Quirk id -> served guests with that quirk today (the morning paper's brief).
+var quirks_today: Dictionary[StringName, int] = {}
 var booking_review_results: Dictionary[int, Dictionary] = {}
 var booking_report_lines: Array[String] = []
 var _booking_visits_today: Dictionary[int, Array] = {}
@@ -344,6 +346,7 @@ func start_day(career_tier: int = 1) -> void:
 	takeaways_today = 0
 	leave_reasons_today.clear()
 	reviews_today.clear()
+	quirks_today.clear()
 	booking_review_results.clear()
 	booking_report_lines.clear()
 	_booking_visits_today.clear()
@@ -1576,6 +1579,8 @@ func record_departure(customer: CustomerAgent) -> void:
 		lost_today += 1
 	world.log_event("Guest #%d left: %s" % [customer.id, reason])
 	log_today(DayLog.Kind.GUEST_LEFT, LeaveReasonText.label(reason).to_lower())
+	if customer.quirk != null and customer.paid:
+		quirks_today[customer.quirk.id] = int(quirks_today.get(customer.quirk.id, 0)) + 1
 	if review_book != null and review_tuning != null and review_quotes != null and review_rng != null:
 		var standard_price: int = 0
 		if customer.order != null:
