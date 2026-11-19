@@ -11,10 +11,9 @@ const SERVICE_TICKS: int = 6000
 const GUESTS: int = 6
 const LOTS: Array[StringName] = [&"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper",
 	&"beachfront_boardwalk", &"woodland_cabin"]
-## The lots whose starter building comes dressed (#641). The Woodland Cabin
-## gets its own starter decor in a follow-up (#678).
+## The lots whose starter building comes dressed (#641, #678).
 const DRESSED_LOTS: Array[StringName] = [&"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper",
-	&"beachfront_boardwalk"]
+	&"beachfront_boardwalk", &"woodland_cabin"]
 ## The lots that had a plain rectangle before #632 and keep it for older saves.
 const LEGACY_LOTS: Array[StringName] = [&"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper",
 	&"beachfront_boardwalk"]
@@ -435,8 +434,9 @@ func test_every_lot_hangs_all_its_starter_decor_and_old_shells_stay_bare() -> vo
 	var dressed: Dictionary[StringName, Array] = {
 		&"seaside_cliff": [&"lifebuoy", &"fishing_net", &"bunting", &"lamp_wall"],
 		&"skyscraper_rooftop": [&"skyline_print", &"lamp_pendant"],
-		&"town_fixer_upper": [&"flour_sacks", &"barrel", &"crockery_dresser"],
+		&"town_fixer_upper": [&"millstone", &"flour_sacks", &"crockery_dresser"],
 		&"beachfront_boardwalk": [&"surfboard", &"beach_sign"],
+		&"woodland_cabin": [&"crossed_paddles", &"lamp_wall", &"a_frame_sign", &"rug_round"],
 	}
 	for lot_id: StringName in DRESSED_LOTS:
 		var layout: ShopLayout = _layout(lot_id)

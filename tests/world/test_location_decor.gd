@@ -15,6 +15,8 @@ const CASES: Dictionary[StringName, Array] = {
 	&"skyline_print": [ItemDef.PlacementLayer.WALL, 2, 40, 3, 2],
 	&"surfboard": [ItemDef.PlacementLayer.WALL, 1, 45, 2, 2],
 	&"beach_sign": [ItemDef.PlacementLayer.WALL, 2, 30, 1, 2],
+	&"crossed_paddles": [ItemDef.PlacementLayer.WALL, 3, 55, 6, 2],
+	&"millstone": [ItemDef.PlacementLayer.NORMAL, 2, 90, 8, 2],
 	&"flour_sacks": [ItemDef.PlacementLayer.NORMAL, 1, 20, 1, 1],
 	&"barrel": [ItemDef.PlacementLayer.NORMAL, 1, 25, 2, 1],
 	&"shell_jars": [ItemDef.PlacementLayer.SURFACE_DECOR, 1, 15, 1, 1],
