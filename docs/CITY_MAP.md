@@ -260,7 +260,7 @@ None of this adds saved state, so old saves need no migration (section 10).
 - `codex` The morning site card shows each away shop's "Tonight" preview and its top alert.
 - `codex` A For Sale row on the city screen opens the lot card (it reuses `PropertyPanel`'s card) and buys from there.
 - `codex` The map remembers its list or map view per session, plus the `M` shortcut and its entry in `ShortcutsText`.
-- `claude` The illustrated map (T1, T4): art, pins and badges, and the neighbourhood patches.
+- `claude` The illustrated map (T1, T4): art, pins and badges, and the neighbourhood patches. Built in #642: `tools/build_city_map.py` draws `assets/made/city_map/` from `data/city/city_map.tres` (rerun it after moving a neighbourhood or road); the city screen lays pins over the drawing from `map_position` inside an `AspectRatioContainer`, so they stay on their spots at any window size. A shop's pin picture follows its state, roadworks and hoardings stand beside their area's name and say what opens it, and "Show list" swaps to the plain list.
 - `claude` Chain goals and the Ladle ladder (T7, T8): data, a saved `chain_goals` section with a migration test, and the awards night.
 - `claude` Travelling (T5) and the morning card's role (T6).
 

@@ -169,9 +169,9 @@ func test_pin_badges_and_positions() -> void:
 	assert_eq(ChainText.pin_badge(closed), "Closed")
 	closed.alerts = [ChainSummary.Alert.NO_MANAGER] as Array[ChainSummary.Alert]
 	assert_eq(ChainText.pin_badge(closed), "Needs you")
-	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 0, 1), Vector2(0.5, 0.57))
-	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 0, 2), Vector2(0.46, 0.57))
-	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 1, 2), Vector2(0.54, 0.57))
+	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 0, 1), Vector2(0.5, 0.61))
+	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 0, 2), Vector2(0.435, 0.61))
+	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 1, 2), Vector2(0.565, 0.61))
 	assert_eq(CityPanel.pin_position(Vector2(0.99, 0.99), 1, 2), Vector2(1.0, 1.0), "kept on the map")
 
 
@@ -185,6 +185,7 @@ func test_the_map_view_shows_once_the_art_is_in() -> void:
 	view.sites = [_site(&"home", ChainSummary.Status.HERE)] as Array[ChainSummary.Site]
 	view.lots = [_lot(&"pier", 3), _lot(&"cliff", 4)] as Array[LotDef]
 	view.career_tier = 3
+	panel.map_texture = null
 	panel.set_city(map, view)
 	assert_false((panel.get_node("%MapView") as Control).visible, "no art yet: the plain list")
 	assert_eq(panel.pins().size(), 0)

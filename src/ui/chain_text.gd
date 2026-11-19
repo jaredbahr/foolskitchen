@@ -18,6 +18,9 @@ const NO_MANAGER: String = "No manager"
 const FOR_SALE_BADGE: String = "For sale"
 const LOCKED_BADGE: String = "Locked"
 const MARKET: String = "See it on the market"
+const SHOW_LIST: String = "Show list"
+const SHOW_MAP: String = "Show map"
+const SELECT_HINT: String = "Tap a pin to see how it is doing."
 const NO_STARS: String = "No stars yet"
 const NO_TEAM: String = "No team yet"
 const MOOD_HAPPY: String = "Team: happy"
@@ -157,6 +160,11 @@ static func alerts_heading(count: int) -> String:
 	return "1 thing needs you" if count == 1 else "%d things need you" % count
 
 
+## The bottom bar's tail when more things need you than it lists.
+static func more_line(count: int) -> String:
+	return "and %d more" % count
+
+
 ## The short state word under a shop pin: "Here", "Managed", "Closed",
 ## "Renovating", or "Needs you" when it has an alert.
 static func pin_badge(site: ChainSummary.Site) -> String:
@@ -170,6 +178,21 @@ static func pin_badge(site: ChainSummary.Site) -> String:
 		ChainSummary.Status.RENOVATING:
 			return "Renovating"
 	return CLOSED
+
+
+## The art state under a shop pin (CityPin.HERE ...): the badge word as a key,
+## so the pin picture and its word never disagree.
+static func pin_state(site: ChainSummary.Site) -> StringName:
+	if not site.alerts.is_empty() and not site.is_active():
+		return CityPin.NEEDS
+	match site.status:
+		ChainSummary.Status.HERE:
+			return CityPin.HERE
+		ChainSummary.Status.MANAGED:
+			return CityPin.MANAGED
+		ChainSummary.Status.RENOVATING:
+			return CityPin.RENOVATING
+	return CityPin.CLOSED
 
 
 static func signed(amount: int) -> String:

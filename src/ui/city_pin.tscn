@@ -9,6 +9,7 @@ offset_bottom = 40.0
 theme = ExtResource("2_theme")
 theme_override_font_sizes/font_size = 14
 focus_mode = 0
+flat = true
 icon_alignment = 1
 vertical_icon_alignment = 0
 script = ExtResource("1_script")
