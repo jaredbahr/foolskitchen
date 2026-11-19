@@ -46,7 +46,8 @@ func advance(sim: RestaurantSim) -> void:
 		if sim.customer_types != null:
 			kind = CustomerTypePicker.choose(sim.customer_types, sim.customer_level,
 				sim.review_book.average(), rng, vibe.active_theme, vibe.arrival_theme_strength,
-				sim.day_parts_tuning if sim.evening_active else null)
+				sim.day_parts_tuning if sim.evening_active else null,
+				sim.lot_guest_mix, sim.world.clock.display_minutes())
 		if sim.customer_types == null or kind != null:
 			# Food-only menus have one kind and draw nothing here (FK-083).
 			var visit: StringName = choose_visit(sim.visit_kinds(), kind, sim, rng)
