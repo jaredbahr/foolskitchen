@@ -154,6 +154,19 @@ func _add_pin(layer: Control, id: StringName, kind: StringName, title: String, b
 	pin.pin_pressed.connect(_on_pin_pressed)
 
 
+## The market's lock line for a locked area's nearest lot (the cheapest to
+## open among its locked lots), so the patch says what is really missing.
+static func _area_lock(area: NeighbourhoodDef, view: View) -> String:
+	var nearest: LotDef = null
+	for lot: StringName in area.lots:
+		var definition: LotDef = CityMap.find_lot(view.lots, lot)
+		if definition == null or not PropertyMarket.locked(definition, view.career_tier, view.reputation):
+			continue
+		if nearest == null or definition.cost_to_open() < nearest.cost_to_open():
+			nearest = definition
+	return PropertyText.lock_line(nearest, view.career_tier, view.reputation) if nearest != null else ""
+
+
 static func _site_on(sites: Array[ChainSummary.Site], lot: StringName) -> ChainSummary.Site:
 	for site: ChainSummary.Site in sites:
 		if site.lot == lot:
@@ -208,7 +221,8 @@ func _make_area(area: NeighbourhoodDef, view: View, owned: Array[StringName]) ->
 	_add_label(box, "Name", area.display_name, AREA_FONT_SIZE)
 	var state: CityMap.AreaState = CityMap.area_state(area, view.lots, owned, view.career_tier, view.reputation)
 	box.set_meta(&"state", state)
-	var line: String = ChainText.area_line(state, CityMap.opening_tier(area, view.lots), area.coming_soon)
+	var line: String = ChainText.area_line(state, CityMap.opening_tier(area, view.lots), area.coming_soon,
+		view.career_tier, _area_lock(area, view))
 	if not line.is_empty():
 		_add_label(box, "State", line, LINE_FONT_SIZE)
 	if not area.blurb.is_empty():

@@ -116,12 +116,17 @@ static func go_label(site: ChainSummary.Site, refusal: String) -> String:
 	return DESIGN if site.renovation_days > 0 else GO
 
 
-## A neighbourhood's state under its name: "" when open, "Opens at Tier 4",
-## or "Coming soon: A cabin in the woods".
-static func area_line(state: CityMap.AreaState, opening_tier: int, coming_soon: String) -> String:
+## A neighbourhood's state under its name: "" when open, "Opens at Tier 4"
+## while the owner is below its lowest tier, else what its nearest lot still
+## needs (`lock`, the market's lock line, e.g. "Locked: needs 4.3 stars"), or
+## "Coming soon: A cabin in the woods".
+static func area_line(state: CityMap.AreaState, opening_tier: int, coming_soon: String,
+		career_tier: int = 0, lock: String = "") -> String:
 	match state:
 		CityMap.AreaState.LOCKED:
-			return "Opens at Tier %d" % opening_tier if opening_tier > 0 else "Locked for now"
+			if opening_tier > 0 and career_tier < opening_tier:
+				return "Opens at Tier %d" % opening_tier
+			return lock if not lock.is_empty() else "Locked for now"
 		CityMap.AreaState.COMING_SOON:
 			return "Coming soon: %s" % coming_soon
 	return ""

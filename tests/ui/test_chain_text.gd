@@ -101,6 +101,11 @@ func test_go_label() -> void:
 func test_area_lot_and_chain_lines() -> void:
 	assert_eq(ChainText.area_line(CityMap.AreaState.OPEN, 3, ""), "")
 	assert_eq(ChainText.area_line(CityMap.AreaState.LOCKED, 4, ""), "Opens at Tier 4")
+	assert_eq(ChainText.area_line(CityMap.AreaState.LOCKED, 4, "", 3, "Locked: needs Tier 4"), "Opens at Tier 4",
+		"below the area's tier: the tier is what is missing")
+	assert_eq(ChainText.area_line(CityMap.AreaState.LOCKED, 4, "", 4, "Locked: needs 4.3 stars"),
+		"Locked: needs 4.3 stars", "at its tier: say what is still missing, never 'Opens at Tier 4'")
+	assert_eq(ChainText.area_line(CityMap.AreaState.EMPTY, 1, ""), "", "an empty area says nothing")
 	assert_eq(ChainText.area_line(CityMap.AreaState.COMING_SOON, 0, "A cabin in the woods"),
 		"Coming soon: A cabin in the woods")
 	var lot: LotDef = _lot(&"pier", 4)
@@ -191,5 +196,32 @@ func test_the_map_view_shows_once_the_art_is_in() -> void:
 		kinds.append("%s:%s" % [pin.row_id, pin.kind])
 	assert_eq(kinds, ["old:area", "home:shop", "sea:area", "pier:for_sale", "cliff:locked"] as Array[String])
 	assert_eq(panel.pins()[1].text, "Shop home\nHere")
+	panel.get_parent().remove_child(panel)
+	panel.free()
+
+
+func test_a_locked_area_at_its_tier_says_what_is_missing() -> void:
+	var panel: CityPanel = (load("res://src/ui/city_panel.tscn") as PackedScene).instantiate() as CityPanel
+	(Engine.get_main_loop() as SceneTree).root.add_child(panel)
+	var map: CityMapDef = CityMapDef.new()
+	map.neighbourhoods = [_area(&"old", "Old", [&"home"]), _area(&"sky", "Sky", [&"tower", &"penthouse"])] \
+		as Array[NeighbourhoodDef]
+	var tower: LotDef = _lot(&"tower", 4)
+	tower.min_reputation = 4.3
+	var penthouse: LotDef = _lot(&"penthouse", 5)
+	penthouse.price = 90000
+	var view: CityPanel.View = CityPanel.View.new()
+	view.sites = [_site(&"home", ChainSummary.Status.HERE)] as Array[ChainSummary.Site]
+	view.lots = [tower, penthouse] as Array[LotDef]
+	view.career_tier = 4
+	view.reputation = 4.0
+	panel.set_city(map, view)
+	assert_eq(panel.row_for(&"sky").get_meta(&"state"), CityMap.AreaState.LOCKED)
+	assert_eq((panel.row_for(&"sky").get_node("State") as Label).text, "Locked: needs 4.3 stars (you have 4.0)",
+		"the nearest lot's lock, matching its own row")
+	assert_eq((panel.row_for(&"tower").get_node("Body/Line") as Label).text, "Locked: needs 4.3 stars (you have 4.0)")
+	view.career_tier = 3
+	panel.set_city(map, view)
+	assert_eq((panel.row_for(&"sky").get_node("State") as Label).text, "Opens at Tier 4")
 	panel.get_parent().remove_child(panel)
 	panel.free()
