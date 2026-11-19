@@ -1,0 +1,229 @@
+{
+  "issue": 596,
+  "furniture_scale": 1.1,
+  "assets": {
+    "lifebuoy": {
+      "triangles": 260,
+      "budget": 800,
+      "world_dimensions": [
+        0.44,
+        0.44,
+        0.142
+      ],
+      "materials": [
+        "carpetDarker",
+        "carpetWhite",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "lampWall.glb (wall mount)",
+        "pillow.glb (carpet, carpetWhite)"
+      ],
+      "ring": [
+        0.44,
+        0.11
+      ]
+    },
+    "fishing_net": {
+      "triangles": 744,
+      "budget": 800,
+      "world_dimensions": [
+        1.42,
+        0.7075,
+        0.107
+      ],
+      "materials": [
+        "carpetDarker",
+        "carpetWhite",
+        "metalDark",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "coatRack.glb (woodDark pegs)",
+        "lampWall.glb"
+      ],
+      "width": 1.34,
+      "drop": 0.51
+    },
+    "bunting": {
+      "triangles": 192,
+      "budget": 800,
+      "world_dimensions": [
+        1.45,
+        0.215,
+        0.03
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetWhite",
+        "metalDark"
+      ],
+      "nearest_kit": [
+        "#240 string_lights (metalDark string)",
+        "benchCushion.glb (carpet)"
+      ],
+      "width": 1.42
+    },
+    "flour_sacks": {
+      "triangles": 348,
+      "budget": 800,
+      "world_dimensions": [
+        0.4903,
+        0.3817,
+        0.3862
+      ],
+      "materials": [
+        "carpetBlue",
+        "carpetWhite",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "pillow.glb",
+        "cardboardBoxClosed.glb"
+      ]
+    },
+    "barrel": {
+      "triangles": 352,
+      "budget": 800,
+      "world_dimensions": [
+        0.4243,
+        0.4872,
+        0.4243
+      ],
+      "materials": [
+        "metalDark",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "trashcan.glb",
+        "kitchenCabinet.glb (wood)"
+      ]
+    },
+    "wheat_sheaf": {
+      "triangles": 412,
+      "budget": 800,
+      "world_dimensions": [
+        0.3789,
+        0.5763,
+        0.098
+      ],
+      "materials": [
+        "carpet",
+        "lamp",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "plantSmall3.glb",
+        "coatRack.glb"
+      ]
+    },
+    "skyline_print": {
+      "triangles": 464,
+      "budget": 800,
+      "world_dimensions": [
+        0.7,
+        0.46,
+        0.04
+      ],
+      "materials": [
+        "carpetBlue",
+        "carpetWhite",
+        "lamp",
+        "metal",
+        "metalDark"
+      ],
+      "nearest_kit": [
+        "#147 diner wall art (wallWindow frame)",
+        "televisionModern.glb"
+      ],
+      "size": [
+        0.7,
+        0.46
+      ]
+    },
+    "surfboard": {
+      "triangles": 236,
+      "budget": 800,
+      "world_dimensions": [
+        0.31,
+        0.7,
+        0.065
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetWhite",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "chairModernCushion.glb (carpetBlue)",
+        "coatRack.glb"
+      ],
+      "length": 0.7
+    },
+    "beach_sign": {
+      "triangles": 340,
+      "budget": 800,
+      "world_dimensions": [
+        0.9,
+        0.4,
+        0.0567
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetWhite",
+        "lamp",
+        "metalDark",
+        "wood"
+      ],
+      "nearest_kit": [
+        "#240 shop_name_sign",
+        "paneling.glb"
+      ]
+    },
+    "shell_jars": {
+      "triangles": 416,
+      "budget": 800,
+      "world_dimensions": [
+        0.1782,
+        0.146,
+        0.0831
+      ],
+      "materials": [
+        "carpet",
+        "carpetWhite",
+        "glass",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "bathroomMirror.glb (glass)",
+        "Food Kit cup"
+      ]
+    },
+    "pendant_cord": {
+      "triangles": 76,
+      "budget": 300,
+      "world_dimensions": [
+        0.06,
+        0.23,
+        0.06
+      ],
+      "materials": [
+        "metalDark"
+      ],
+      "nearest_kit": [
+        "lampSquareCeiling.glb (metalDark)",
+        "lampWall.glb"
+      ],
+      "length": 0.23
+    }
+  }
+}

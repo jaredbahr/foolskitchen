@@ -11,6 +11,10 @@ extends Resource
 @export var swatch_id: StringName = &""
 ## Authored furniture look; empty preserves the first/default look.
 @export var variant_id: StringName = &""
+## Starter decor (#596): placed by a lot's starter building. Its charm counts
+## half towards the vibe; saved, so it keeps the flag when moved. A new copy the
+## player buys never has it.
+@export var starter: bool = false
 ## Per-slot paint (#431); never authored in layout files, so not exported.
 var paint: PaintLook = PaintLook.new()
 

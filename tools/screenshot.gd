@@ -44,7 +44,7 @@ extends SceneTree
 ##   --milestone-review --speed=0 --frames=12,90  authored goals and close reward evidence
 ##   --collections-review --speed=0 --frames=240  unsaved placed-item/floor fixture,
 ##             real Main collection progress and native Goals rows after the toast clears
-##   --catalogue-review=rustic|modern --speed=0 --frames=90,120  furnishing fixture
+##   --catalogue-review=rustic|modern --speed=0 --frames=120,150  furnishing fixture
 ##   --diner-review --speed=0 --frames=12,90  six native comparisons, then seated diner fixture
 ##   --site-card-review --speed=0 --frames=12,30  the morning site card with three
 ##             sites (tools/site_card_review.gd): Tier 5, the fixer-upper bought;
@@ -78,6 +78,11 @@ extends SceneTree
 ## Ordinary captures record real moods, markers and seeds without a fixture.
 
 const MAX_CAPTURE_WAIT_FRAMES: int = 8
+## Catalogue review (--catalogue-review): Buy mode open with every card's real
+## preview drawn, then the furnished world with Buy mode closed. The thumbnail
+## cache draws about one card a frame, so the open shot waits for every card.
+const CATALOGUE_OPEN_FRAME: int = 120
+const CATALOGUE_CLOSED_FRAME: int = 150
 const MAX_OWNER_WARMUP_TICKS: int = 900
 const SETTINGS_CAPTURE_SIZE: Vector2i = Vector2i(1600, 900)
 const NEIGHBOURHOOD_REVIEW: Script = preload("res://tools/neighbourhood_review.gd")
@@ -1515,15 +1520,15 @@ static func catalogue_review_options(arguments: PackedStringArray) -> Dictionary
 			continue
 		if argument == "--speed=0":
 			speeds += 1
-		elif argument == "--frames=90,120":
+		elif argument == "--frames=%d,%d" % [CATALOGUE_OPEN_FRAME, CATALOGUE_CLOSED_FRAME]:
 			frames += 1
 		elif argument == "--scene=res://src/world/main.tscn":
 			scenes += 1
 		else:
-			result["error"] = "catalogue review requires paused Main frames 90,120 without other options"
+			result["error"] = "catalogue review requires paused Main frames %d,%d without other options" % [CATALOGUE_OPEN_FRAME, CATALOGUE_CLOSED_FRAME]
 			return result
 	if speeds != 1 or frames != 1 or scenes > 1:
-		result["error"] = "catalogue review requires one --speed=0 and one --frames=90,120"
+		result["error"] = "catalogue review requires one --speed=0 and one --frames=%d,%d" % [CATALOGUE_OPEN_FRAME, CATALOGUE_CLOSED_FRAME]
 	return result
 
 
@@ -1861,10 +1866,10 @@ static func catalogue_review_valid(state: Dictionary, frame: int, fixture: Dicti
 		return false
 	if fixture["profile"] == "rustic" and not _catalogue_rug_context_valid(state, fixture):
 		return false
-	if frame == 120:
+	if frame == CATALOGUE_CLOSED_FRAME:
 		return state["catalogue_visible"] == false and state["build_active"] == false \
 			and (fixture["profile"] != "rustic" or _catalogue_server_valid(state["server"]))
-	if frame != 90 or state["catalogue_visible"] != true or state["build_active"] != true \
+	if frame != CATALOGUE_OPEN_FRAME or state["catalogue_visible"] != true or state["build_active"] != true \
 			or state["category"] != String(profile["category"]) or state["onscreen_cards"] < 1:
 		return false
 	if not catalogue_tabs_valid(state, profile):
@@ -1987,9 +1992,9 @@ static func _vibe_result_finite(result: Dictionary) -> bool:
 
 
 ## Native content, cached view_state and Main must all agree with the fresh pure
-## evaluation. Hidden frame-120 controls retain values but need not be onscreen.
+## evaluation. Hidden closed-frame controls retain values but need not be onscreen.
 static func catalogue_vibe_valid(state: Dictionary, frame: int) -> bool:
-	if frame not in [90, 120]:
+	if frame not in [CATALOGUE_OPEN_FRAME, CATALOGUE_CLOSED_FRAME]:
 		return false
 	var expected: Dictionary = state.get("expected", {})
 	var actual: Dictionary = state.get("main", {})
@@ -2026,7 +2031,7 @@ static func catalogue_vibe_valid(state: Dictionary, frame: int) -> bool:
 	if meter.get("caption_color") != _staff_rgba(VibeMeter.SHARED_THEME.get_color("font_color", "Label")) \
 			or meter.get("fill_color") != _staff_rgba(fill.bg_color) or meter.get("background_color") != _staff_rgba(background.bg_color):
 		return false
-	if frame != 90:
+	if frame != CATALOGUE_OPEN_FRAME:
 		return true
 	var panel: Rect2 = _staff_rect(meter, "panel_bounds")
 	var window: Rect2 = _staff_rect(meter, "window_bounds")
@@ -2613,7 +2618,7 @@ func _process(_delta: float) -> bool:
 		if not String(_diner_fixture.get("error", "")).is_empty():
 			_fail_capture(String(_diner_fixture["error"]))
 			return true
-	if not _catalogue_profile.is_empty() and _frames == 96:
+	if not _catalogue_profile.is_empty() and _frames == CATALOGUE_OPEN_FRAME + 6:
 		if not bool(_main.call("set_build_active", false)):
 			_fail_capture("catalogue review could not return to the furnished world")
 			return true

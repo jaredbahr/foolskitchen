@@ -1,0 +1,143 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/world/prop_view.gd" id="1_view"]
+[ext_resource type="PackedScene" path="res://assets/kenney/furniture/bookcaseOpenLow.glb" id="2_shelf"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/plate.glb" id="3_plate"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/bowl.glb" id="4_bowl"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/mug.glb" id="5_mug"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/cup-saucer.glb" id="6_cup"]
+
+[node name="CrockeryDresser" type="Node3D"]
+script = ExtResource("1_view")
+footprint = Vector2i(2, 1)
+body_material_names = PackedStringArray("wood")
+
+[node name="ShelfLeft" type="Node3D" parent="."]
+position = Vector3(-0.22, 0, 0)
+
+[node name="Art" type="Node3D" parent="ShelfLeft"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfLeft/Art" instance=ExtResource("2_shelf")]
+
+[node name="ShelfRight" type="Node3D" parent="."]
+position = Vector3(0.22, 0, 0)
+
+[node name="Art" type="Node3D" parent="ShelfRight"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfRight/Art" instance=ExtResource("2_shelf")]
+
+[node name="TopPlate1" type="Node3D" parent="."]
+position = Vector3(-0.29, 0, 0.07)
+metadata/art_group = &"food"
+metadata/support = NodePath("../ShelfLeft")
+
+[node name="Art" type="Node3D" parent="TopPlate1"]
+rotation = Vector3(1.83, 3.141592653589793, 0)
+
+[node name="Model" parent="TopPlate1/Art" instance=ExtResource("3_plate")]
+
+[node name="TopPlate2" type="Node3D" parent="."]
+position = Vector3(-0.1, 0, 0.07)
+metadata/art_group = &"food"
+metadata/support = NodePath("../ShelfLeft")
+
+[node name="Art" type="Node3D" parent="TopPlate2"]
+rotation = Vector3(1.83, 3.141592653589793, 0)
+
+[node name="Model" parent="TopPlate2/Art" instance=ExtResource("3_plate")]
+
+[node name="TopStack1" type="Node3D" parent="."]
+position = Vector3(0.12, 0, 0.0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../ShelfRight")
+
+[node name="Art" type="Node3D" parent="TopStack1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopStack1/Art" instance=ExtResource("3_plate")]
+
+[node name="TopStack2" type="Node3D" parent="."]
+position = Vector3(0.12, 0, 0.0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../TopStack1")
+
+[node name="Art" type="Node3D" parent="TopStack2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopStack2/Art" instance=ExtResource("3_plate")]
+
+[node name="TopStack3" type="Node3D" parent="."]
+position = Vector3(0.12, 0, 0.0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../TopStack2")
+
+[node name="Art" type="Node3D" parent="TopStack3"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopStack3/Art" instance=ExtResource("3_plate")]
+
+[node name="TopMug" type="Node3D" parent="."]
+position = Vector3(0.32, 0, 0.0)
+metadata/art_group = &"food"
+metadata/support = NodePath("../ShelfRight")
+
+[node name="Art" type="Node3D" parent="TopMug"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="TopMug/Art" instance=ExtResource("5_mug")]
+
+[node name="ShelfBowl1" type="Node3D" parent="."]
+position = Vector3(-0.32, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfBowl1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfBowl1/Art" instance=ExtResource("4_bowl")]
+
+[node name="ShelfBowl2" type="Node3D" parent="."]
+position = Vector3(-0.13, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfBowl2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfBowl2/Art" instance=ExtResource("4_bowl")]
+
+[node name="ShelfCup1" type="Node3D" parent="."]
+position = Vector3(0.13, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfCup1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfCup1/Art" instance=ExtResource("6_cup")]
+
+[node name="ShelfMug1" type="Node3D" parent="."]
+position = Vector3(0.13, 0.155, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfMug1"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfMug1/Art" instance=ExtResource("5_mug")]
+
+[node name="ShelfCup2" type="Node3D" parent="."]
+position = Vector3(0.31, 0.143, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfCup2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfCup2/Art" instance=ExtResource("6_cup")]
+
+[node name="ShelfMug2" type="Node3D" parent="."]
+position = Vector3(0.31, 0.155, 0)
+metadata/art_group = &"food"
+
+[node name="Art" type="Node3D" parent="ShelfMug2"]
+rotation = Vector3(0, 3.141592653589793, 0)
+
+[node name="Model" parent="ShelfMug2/Art" instance=ExtResource("5_mug")]

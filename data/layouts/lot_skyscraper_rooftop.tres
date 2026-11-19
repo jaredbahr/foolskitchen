@@ -131,6 +131,25 @@ origin = Vector2i(14, 7)
 script = ExtResource("1_place")
 item_id = &"potted_plant"
 origin = Vector2i(19, 8)
+starter = true
+
+[sub_resource type="Resource" id="Placement_25"]
+script = ExtResource("1_place")
+item_id = &"lamp_pendant"
+origin = Vector2i(4, 4)
+starter = true
+
+[sub_resource type="Resource" id="Placement_26"]
+script = ExtResource("1_place")
+item_id = &"lamp_pendant"
+origin = Vector2i(10, 4)
+starter = true
+
+[sub_resource type="Resource" id="Placement_27"]
+script = ExtResource("1_place")
+item_id = &"lamp_pendant"
+origin = Vector2i(16, 4)
+starter = true
 
 [resource]
 script = ExtResource("2_layout")
@@ -138,7 +157,12 @@ id = &"lot_skyscraper_rooftop"
 save_layout_id = &"lot_skyscraper_rooftop_pavilion"
 display_name = "Skyline rooftop"
 rows = PackedStringArray("######################", "#........####........#", "#........####........#", "#....................#", "#....................#", "#....................#", "#....................#", "#....................#", "#....................#", "##########..##########", "          EE          ")
-placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8"), SubResource("Placement_9"), SubResource("Placement_10"), SubResource("Placement_11"), SubResource("Placement_12"), SubResource("Placement_13"), SubResource("Placement_14"), SubResource("Placement_15"), SubResource("Placement_16"), SubResource("Placement_17"), SubResource("Placement_18"), SubResource("Placement_19"), SubResource("Placement_20"), SubResource("Placement_21"), SubResource("Placement_22"), SubResource("Placement_23"), SubResource("Placement_24")])
+placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8"), SubResource("Placement_9"), SubResource("Placement_10"), SubResource("Placement_11"), SubResource("Placement_12"), SubResource("Placement_13"), SubResource("Placement_14"), SubResource("Placement_15"), SubResource("Placement_16"), SubResource("Placement_17"), SubResource("Placement_18"), SubResource("Placement_19"), SubResource("Placement_20"), SubResource("Placement_21"), SubResource("Placement_22"), SubResource("Placement_23"), SubResource("Placement_24"), SubResource("Placement_25"), SubResource("Placement_26"), SubResource("Placement_27")])
+wall_items = Dictionary[Vector3i, StringName]({
+Vector3i(9, 3, 0): &"menu_board",
+Vector3i(11, 3, 0): &"skyline_print"
+})
+starter_wall_items = Array[Vector3i]([Vector3i(9, 3, 0), Vector3i(11, 3, 0)])
 room_rows = PackedStringArray("", " KKKKKKKK    KKKKKKKK", " KKKKKKKK    KKKKKKKK", " KKKKKKKKKKKKKKKKKKKK", " K       K         KK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),
