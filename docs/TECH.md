@@ -589,10 +589,10 @@ Settings both have a What's new button, and "All release notes" calls
   `price_of(recipe)` falls back to the immutable `RecipeDef.standard_price`.
   Orders capture that price once, so later settings never reprice a ticket.
 - At order time an above-standard price has refusal probability
-  `clamp(max(price / standard - 1, 0) / budget * price_sensitivity, 0, max_price_walkout)`.
-  Every type accepts standard or cheaper prices. Regular's budget multiplier
-  is 1.0, preserving its existing formula.
-  The `EconomyTuning` defaults are 1.5 and 0.9. The guest uses its private RNG
+  `clamp(max(price / standard - 1 - price_grace, 0) / budget * price_sensitivity, 0, max_price_walkout)`.
+  Every type accepts standard or cheaper prices, and a rise within `price_grace`
+  (#672) costs no guests. Regular's budget multiplier is 1.0.
+  The `EconomyTuning` defaults are 1.5, 0.9 and a 0.05 grace. The guest uses its private RNG
   only when the chance is positive: standard/cheaper menus preserve the existing
   random stream. Refusal creates no ticket and gives `too_expensive` as a readable
   departure reason. Balance values are bounded safely; a zero standard avoids
