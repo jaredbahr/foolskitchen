@@ -57,7 +57,9 @@ static func valid(state: Dictionary) -> bool:
 	return state.get("visible") == true and state.get("menu_visible") == false \
 		and state.get("enabled") == ["town_fixer_upper"] \
 		and str((state.get("buy_labels", {}) as Dictionary).get("town_fixer_upper", "")).begins_with("Buy for") \
-		and state.get("lots") == ["town_fixer_upper", "beachfront_boardwalk", "seaside_cliff", "skyscraper_rooftop"] \
+		and state.get("lots") == ["town_fixer_upper", "beachfront_boardwalk", "woodland_cabin", "seaside_cliff",
+			"skyscraper_rooftop"] \
 		and (state.get("locked", []) as Array).has("skyscraper_rooftop") \
+		and (state.get("locked", []) as Array).has("woodland_cabin") \
 		and (state.get("locked", []) as Array).has("seaside_cliff") \
 		and (state.get("locked", []) as Array).has("beachfront_boardwalk")

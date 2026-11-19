@@ -1,14 +1,18 @@
 extends TestCase
 ## Every location has its own starter building (#596, D39): the Seaside Cliff's
 ## kitchen cottage, the Skyline Rooftop's glass pavilion, Old Mill Street's
-## L-shaped mill hall and granary, and the Beachfront Boardwalk's wide kiosk.
-## Each opens and serves on day one, and a site saved on a lot's earlier
-## rectangle keeps loading on that rectangle.
+## L-shaped mill hall and granary, the Beachfront Boardwalk's wide kiosk and
+## the Woodland Cabin's log cabin with its porch. Each opens and serves on day
+## one, and a site saved on a lot's earlier rectangle keeps loading on that
+## rectangle.
 
 const STARTING_STOCK: int = 100
 const SERVICE_TICKS: int = 6000
 const GUESTS: int = 6
 const LOTS: Array[StringName] = [&"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper",
+	&"beachfront_boardwalk", &"woodland_cabin"]
+## The lots that had a plain rectangle before #632 and keep it for older saves.
+const LEGACY_LOTS: Array[StringName] = [&"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper",
 	&"beachfront_boardwalk"]
 
 var _content: ContentDB
@@ -280,7 +284,7 @@ func test_the_boardwalk_kiosk_has_a_takeaway_counter_and_a_back_archway_to_the_p
 
 
 func test_a_site_saved_on_a_lots_old_rectangle_keeps_it() -> void:
-	for lot_id: StringName in LOTS:
+	for lot_id: StringName in LEGACY_LOTS:
 		var lot: LotDef = _content.lot(lot_id)
 		assert_eq(lot.legacy_layouts.size(), 1, "%s keeps its first shell" % lot_id)
 		var legacy: ShopLayout = lot.legacy_layouts[0]
@@ -417,3 +421,49 @@ func test_the_kiosk_serves_a_drinks_guest_at_its_counter_on_day_one() -> void:
 			break
 	assert_eq(_paid, guests.size(), "every drinks guest is served (left: %s)" % _left)
 	assert_eq(at_counter.size(), guests.size(), "each one orders at the kiosk counter")
+
+
+func test_the_woodland_cabin_is_square_with_a_porch_a_back_kitchen_and_a_stove_nook() -> void:
+	var layout: ShopLayout = _layout(&"woodland_cabin")
+	var sim: RestaurantSim = _sim(layout)
+	var grid: SimGrid = sim.world.grid
+	var footprint: ShopFootprint = ShopFootprint.from_layout(layout)
+	var building: Rect2i = footprint.building
+	assert_true(absi(building.size.x - building.size.y) <= 2, "a roughly square cabin: %s" % building)
+	# The kitchen is the back of the cabin, behind a thin wall with the pass in it.
+	var pass_item: PlacedItem = _items(grid, &"pass_counter")[0]
+	for cell: Vector2i in grid.cells():
+		if grid.terrain(cell) == SimGrid.Terrain.FLOOR and not grid.is_outdoor_floor(cell):
+			var kitchen: bool = grid.room(cell) == SimGrid.Room.KITCHEN
+			assert_eq(kitchen, cell.y <= pass_item.origin.y, "%s: kitchen at the back, dining in front" % cell)
+	# The woodstove nook: an empty, walled alcove off the kitchen, on a stone hearth.
+	var nook: Array[Vector2i] = [Vector2i(10, 1), Vector2i(11, 1), Vector2i(12, 1), Vector2i(10, 2), Vector2i(11, 2), Vector2i(12, 2)]
+	for cell: Vector2i in nook:
+		assert_eq(grid.room(cell), SimGrid.Room.KITCHEN)
+		assert_null(grid.item_at(cell), "the nook %s is left empty" % cell)
+		assert_eq(String(layout.floor_finishes[cell][0]), "small_tile", "a hearth in the nook")
+	for y: int in [1, 2]:
+		assert_eq(grid.segment(Vector3i(10, y, SimGrid.EDGE_WEST)), SimGrid.Segment.WALL, "the nook is walled off")
+	assert_true(grid.is_walkable(Vector2i(11, 3)), "the nook opens onto the kitchen")
+	# The porch: patio cells along the front on both sides of the door, its tables
+	# out there and the rest of the seats in the small dining room.
+	var door: Vector2i = grid.entries()[0]
+	var west: int = 0
+	var east: int = 0
+	for cell: Vector2i in layout.patio_cells:
+		assert_true(grid.is_outdoor_floor(cell))
+		assert_true(cell.y >= building.end.y, "the porch is in front of the cabin")
+		if cell.x < door.x:
+			west += 1
+		else:
+			east += 1
+	assert_true(west > 0 and east > 0, "the porch runs both sides of the door")
+	var outside: int = 0
+	var reachable: Dictionary[Vector2i, bool] = RoomRules.guest_reachable(grid)
+	for seat: Vector2i in _seats(grid):
+		assert_true(reachable.has(seat), "guests reach the seat %s" % seat)
+		if grid.is_outdoor_floor(seat):
+			outside += 1
+	assert_eq(outside, 6, "three porch tables")
+	assert_eq(_seats(grid).size() - outside, 8, "four tables inside")
+	assert_eq(_content.lot(&"woodland_cabin").tags, [&"woodland"] as Array[StringName])
