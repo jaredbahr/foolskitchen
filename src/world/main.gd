@@ -2445,6 +2445,7 @@ func _on_build_changed() -> void:
 		shown_report = build_report(world.clock.day)
 		_show_evening_report(shown_report)
 	_was_build_active = active
+	($ShopView as ShopView).set_canopies_faded(active)
 	_update_build_controls()
 
 
@@ -6877,7 +6878,8 @@ func _refresh_weather() -> void:
 		return
 	$HUD.set_weather(world.weather.kind)
 	if _menu_panel != null:
-		_menu_panel.set_weather(world.weather.kind, shop_editor != null and not shop_editor.bought_patio().is_empty())
+		_menu_panel.set_weather(world.weather.kind, shop_editor != null and not shop_editor.bought_patio().is_empty(),
+			PatioRules.covered_seat_count(world.grid))
 	var view: ShopView = $ShopView as ShopView
 	if view.weather_view != null:
 		view.weather_view.refresh()

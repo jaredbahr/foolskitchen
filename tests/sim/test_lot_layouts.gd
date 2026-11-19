@@ -134,6 +134,48 @@ func test_every_lot_serves_guests_on_a_sunny_first_day() -> void:
 		sim.customer_left.disconnect(_on_left)
 
 
+func test_the_cliff_cottage_starts_with_a_pergola_and_the_legacy_shell_does_not() -> void:
+	var cottage: SimGrid = _sim(_layout(&"seaside_cliff")).world.grid
+	var pergolas: Array[PlacedItem] = _items(cottage, &"pergola")
+	assert_eq(pergolas.size(), 1)
+	var legacy: ShopLayout = _content.lot(&"seaside_cliff").layout_for_id(&"lot_seaside_cliff")
+	assert_eq(_items(_sim(legacy).world.grid, &"pergola").size(), 0, "the old shell is unchanged")
+
+
+func test_a_rainy_first_day_at_the_cliff_seats_guests_under_the_pergola() -> void:
+	var sim: RestaurantSim = _sim(_layout(&"seaside_cliff"))
+	var grid: SimGrid = sim.world.grid
+	sim.world.weather.kind = WeatherState.Kind.RAIN
+	sim.spawner.min_gap = 100000
+	sim.spawner.max_gap = 100000
+	sim.start_day()
+	var open_seats: Array[Vector2i] = []
+	for seat: Vector2i in _seats(grid):
+		if PatioRules.seat_is_open(grid, seat, WeatherState.Kind.RAIN):
+			open_seats.append(seat)
+			assert_true(grid.is_rain_covered(seat))
+	assert_eq(open_seats.size(), 2, "one covered starter table")
+	_paid = 0
+	_left.clear()
+	sim.customer_paid.connect(_on_paid)
+	sim.customer_left.connect(_on_left)
+	var entry: Vector2i = grid.entries()[0]
+	for index: int in 2:
+		var random: RandomNumberGenerator = RandomNumberGenerator.new()
+		random.seed = 6250 + index
+		var guest: CustomerAgent = sim.add_customer(entry, random)
+		guest.food_patience = 5000
+		guest.queue_patience = 5000
+	assert_true(sim.world.clock.start_service())
+	for tick: int in SERVICE_TICKS:
+		sim.advance()
+		if sim.customers().is_empty():
+			break
+	assert_eq(_paid, 2, "rain still serves the covered seats (left: %s)" % [_left])
+	sim.customer_paid.disconnect(_on_paid)
+	sim.customer_left.disconnect(_on_left)
+
+
 func test_the_cliff_cottage_is_all_kitchen_with_every_seat_on_the_terrace() -> void:
 	var layout: ShopLayout = _layout(&"seaside_cliff")
 	var grid: SimGrid = _sim(layout).world.grid

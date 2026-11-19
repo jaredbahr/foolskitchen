@@ -648,6 +648,8 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': blocking cells must be unique, inside the footprint, and separate from work and seat cells" % definition.id)
 		if not definition.catalogue_room.is_empty() and not ItemDef.CATALOGUE_ROOMS.has(definition.catalogue_room):
 			errors.append("item '%s': unknown catalogue room '%s'" % [definition.id, definition.catalogue_room])
+		if definition.rain_cover and (not definition.outdoor_only or definition.placement_layer != ItemDef.PlacementLayer.FLOOR_DECOR):
+			errors.append("item '%s': rain cover must be outdoor-only floor decor" % definition.id)
 		if definition.serve_across and definition.category != ItemDef.Category.TABLE:
 			errors.append("item '%s': only a table or counter can be served across" % definition.id)
 		if definition.paintable and definition.paint_slot != &"body":

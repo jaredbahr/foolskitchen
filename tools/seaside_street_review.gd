@@ -26,9 +26,10 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_PERGOLA=1 stands the two made rain-cover pergolas (#380,
 ## assets/made/pergola/) over kit tables and chairs in front of the shop, with a guest
 ## for scale (review only: nothing joins the sim or the save).
-## SEASIDE_STREET_COVER=1 places the real rain-cover items (#625) over the cliff terrace:
-## a pergola over one table and an awning over another, one table left bare, with the
-## sim's own placement rules (review only: nothing is saved or bought).
+## SEASIDE_STREET_COVER=1 adds the real awning (#625) over the cliff terrace's second
+## table, beside the cottage's starter pergola, one table left bare, with the sim's own
+## placement rules (review only: nothing is saved or bought). SEASIDE_STREET_BUILD=1 also
+## opens Build mode, which fades the canopies.
 ## SEASIDE_STREET_LIGHTHOUSE=<zoom> frames a cliff top's lighthouse across the bay (#380,
 ## data/streets/cliff.tres) at that zoom.
 ## SEASIDE_STREET_PAN=<u>,<v> zooms the player's view all the way out and pans it as far
@@ -227,13 +228,17 @@ func _show_pergolas() -> void:
 ## Real rain cover on the cliff terrace, so the view draws what the game builds.
 func _place_cover() -> void:
 	var errors: PackedStringArray = []
-	for entry: Array in [[&"pergola", Vector2i(4, 6)], [&"awning", Vector2i(9, 6)]]:
+	for entry: Array in [[&"awning", Vector2i(9, 6)]]:
 		var definition: ItemDef = content.item(entry[0])
 		if definition == null or world.grid.place_def(definition, entry[1]) == null:
 			errors.append("%s at %s" % [entry[0], entry[1]])
 	if not errors.is_empty():
 		push_error("Rain cover review could not place: " + ", ".join(errors))
 	refresh_presentation()
+	if OS.get_environment("SEASIDE_STREET_BUILD") == "1":
+		for frame: int in 10:
+			await get_tree().process_frame
+		set_build_active(true)
 
 
 ## A kit model, centred on `at` (kit models stand on a back corner), at the furniture scale.

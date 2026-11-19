@@ -433,6 +433,23 @@ func test_invalid_floor_layer_definitions_are_reported_without_changing_resource
 	assert_false(definition.solid)
 
 
+func test_rain_cover_must_be_outdoor_only_floor_decor() -> void:
+	var cover: ItemDef = ItemDef.new()
+	cover.id = &"test_cover"
+	cover.category = ItemDef.Category.DECOR
+	cover.placement_layer = ItemDef.PlacementLayer.FLOOR_DECOR
+	cover.solid = false
+	cover.rain_cover = true
+	cover.outdoor_only = true
+	assert_eq(ContentDB.validate_definitions([], [], [cover]), PackedStringArray())
+	var indoor: ItemDef = cover.duplicate(true) as ItemDef
+	indoor.outdoor_only = false
+	assert_true(_has_error(ContentDB.validate_definitions([], [], [indoor]), "rain cover must be outdoor-only"))
+	var normal: ItemDef = cover.duplicate(true) as ItemDef
+	normal.placement_layer = ItemDef.PlacementLayer.NORMAL
+	assert_true(_has_error(ContentDB.validate_definitions([], [], [normal]), "rain cover must be outdoor-only"))
+
+
 func test_recipe_menu_sections_validate_without_changing_shared_content() -> void:
 	var definition: RecipeDef = _recipe()
 	assert_eq(ContentDB.validate_definitions([], [definition], [_station()]), PackedStringArray())

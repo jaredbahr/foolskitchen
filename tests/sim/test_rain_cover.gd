@@ -152,6 +152,35 @@ func test_the_save_round_trips_cover_and_an_old_save_still_loads() -> void:
 			"the restored cover still keeps the seats open")
 
 
+func test_a_turned_pergola_covers_the_cells_it_occupies() -> void:
+	var sim: RestaurantSim = _plain(WeatherState.Kind.RAIN)
+	var grid: SimGrid = sim.world.grid
+	var turned: PlacedItem = grid.place_def(PERGOLA, Vector2i(2, 6), 1)
+	assert_not_null(turned)
+	assert_eq(turned.cells.size(), 16)
+	for cell: Vector2i in turned.cells:
+		assert_true(grid.is_rain_covered(cell), str(cell))
+	assert_false(grid.is_rain_covered(Vector2i(1, 6)))
+	assert_false(grid.is_rain_covered(Vector2i(6, 6)))
+	assert_false(grid.is_rain_covered(Vector2i(2, 10)))
+
+
+func test_the_forecast_says_what_is_open_in_rain() -> void:
+	var rain: int = WeatherState.Kind.RAIN
+	assert_eq(WeatherText.forecast_for(rain, true), "Rain today  |  Patio closed in rain (no cover)")
+	assert_eq(WeatherText.forecast_for(rain, true, 1), "Rain today  |  1 covered patio seat stays open")
+	assert_eq(WeatherText.forecast_for(rain, true, 4), "Rain today  |  4 covered patio seats stay open")
+	assert_eq(WeatherText.forecast_for(rain), "Rain today", "no patio, no patio line")
+	assert_eq(WeatherText.forecast_for(WeatherState.Kind.SUNNY, true, 4), "Sunny today  |  Patio open today")
+	var sim: RestaurantSim = _plain(rain)
+	var grid: SimGrid = sim.world.grid
+	assert_not_null(grid.place_def(OUTDOOR_TABLE, Vector2i(2, 7)))
+	assert_not_null(grid.place_def(OUTDOOR_TABLE, Vector2i(8, 7)))
+	assert_eq(PatioRules.covered_seat_count(grid), 0)
+	assert_not_null(grid.place_def(AWNING, Vector2i(1, 6)))
+	assert_eq(PatioRules.covered_seat_count(grid), 2, "only the table under the awning counts")
+
+
 func _plain(kind: int) -> RestaurantSim:
 	var grid: SimGrid = SimGrid.from_ascii(PackedStringArray([
 		"##############", "#............#", "#............#", "#............#", "#............#",
