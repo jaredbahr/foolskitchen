@@ -286,6 +286,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- Early-game audit 2 (`docs/EARLY_GAME_AUDIT_2.md`): what days 1 to 10 look like at Normal and Easy, the dull stretches, money traps and reward cadence, and a ranked list of fixes. The hand-run `tools/early_game_audit.gd` plays a new game day by day and prints guests, money, unlocks, goals, cards and news for each day. (#651)
 - The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
