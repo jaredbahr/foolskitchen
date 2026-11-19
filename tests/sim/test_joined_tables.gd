@@ -3,6 +3,7 @@ extends TestCase
 
 const TABLE: ItemDef = preload("res://data/items/cloth_table.tres")
 const CHAIR: ItemDef = preload("res://data/items/chair.tres")
+const TABLE_4: ItemDef = preload("res://data/items/table_4.tres")
 const OUTSIDE_SEATS: Array[Vector2i] = [Vector2i(3, 3), Vector2i(5, 3), Vector2i(7, 3),
 	Vector2i(3, 5), Vector2i(5, 5), Vector2i(7, 5)]
 
@@ -377,3 +378,18 @@ func _unit_start() -> Vector2i:
 				return candidate
 	fail("isolated joined booking fixture ran out of distinct guest starts")
 	return SimGrid.NO_CELL
+
+
+func test_a_single_four_seat_table_can_take_a_booking_of_four() -> void:
+	# #650: a booking no longer needs tables pushed together.
+	var grid: SimGrid = SimGrid.new(Vector2i(10, 10))
+	grid.set_terrain(Vector2i.ZERO, SimGrid.Terrain.ENTRY)
+	assert_not_null(grid.place_def(TABLE, Vector2i(5, 5)))
+	assert_not_null(grid.place_def(CHAIR, Vector2i(5, 4), 2))
+	assert_not_null(grid.place_def(CHAIR, Vector2i(5, 6), 0))
+	assert_true(DiningSeats.booking_capacity(grid, 4) < 4, "two seats cannot take a party of four")
+	var four: SimGrid = SimGrid.new(Vector2i(10, 10))
+	four.set_terrain(Vector2i.ZERO, SimGrid.Terrain.ENTRY)
+	assert_not_null(four.place_def(TABLE_4, Vector2i(4, 4)))
+	assert_eq(DiningSeats.largest_usable_capacity(four, Vector2i.ZERO), 4)
+	assert_eq(DiningSeats.booking_capacity(four, 4), 4, "one four-seat table, one booking of four")

@@ -38,7 +38,7 @@ func test_tuning_and_party_limits_keep_walkins_at_six_and_bookings_at_ten() -> v
 	assert_eq(TUNING.reserved_queue_grace_minutes, 30)
 	assert_eq(TUNING.unlock_level, 2)
 	assert_almost_eq(TUNING.offer_chance, 0.25)
-	assert_eq(TUNING.min_party_size, 6)
+	assert_eq(TUNING.min_party_size, 4, "a four-seat table can take a booking (#650)")
 	assert_eq(TUNING.max_party_size, 10)
 	assert_eq(Party.MAX_SIZE, 6)
 	assert_false(Party.new([1, 2, 3, 4, 5, 6, 7] as Array[int]).is_valid())
@@ -48,7 +48,7 @@ func test_tuning_and_party_limits_keep_walkins_at_six_and_bookings_at_ten() -> v
 	assert_false(Party.new([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as Array[int], true).is_valid())
 	for seed: int in range(1, 51):
 		var booking: GroupBooking = _offer(seed)
-		assert_true(int(booking.offer["party_size"]) >= 6 and int(booking.offer["party_size"]) <= 10)
+		assert_true(int(booking.offer["party_size"]) >= 4 and int(booking.offer["party_size"]) <= 10)
 		assert_eq(booking.offer["guest_seeds"].size(), int(booking.offer["party_size"]))
 
 
@@ -94,18 +94,18 @@ func test_offers_fit_seating_and_unaccepted_oversized_offers_expire() -> void:
 	var menu: Array[StringName] = [&"burger"]
 	var too_small: GroupBooking = GroupBooking.new(_certain_tuning())
 	_provider_calls = 0
-	assert_true(too_small.plan_offer(1, 2, menu, 660, 1260, _provider(1), 5).is_empty())
+	assert_true(too_small.plan_offer(1, 2, menu, 660, 1260, _provider(1), 3).is_empty())
 	assert_eq(_provider_calls, 0)
-	for capacity: int in range(6, 10):
+	for capacity: int in range(4, 10):
 		for seed_value: int in range(32):
 			var model: GroupBooking = GroupBooking.new(_certain_tuning())
 			var offer: Dictionary = model.plan_offer(1, 2, menu, 660, 1260,
 				_provider(seed_value), capacity)
 			var size: int = int(offer.get("party_size", 0))
-			assert_true(size >= 6 and size <= capacity)
+			assert_true(size >= 4 and size <= capacity)
 			assert_eq(offer["guest_seeds"].size(), size)
 			var draws: int = _provider_calls
-			assert_true(model.plan_offer(1, 2, menu, 660, 1260, _provider(99), 5).is_empty())
+			assert_true(model.plan_offer(1, 2, menu, 660, 1260, _provider(99), 3).is_empty())
 			assert_true(model.accept_offer(1).is_empty())
 			assert_eq(_provider_calls, draws)
 
