@@ -87,7 +87,9 @@ class Piece:
         self.bm = bmesh.new()
         self.slots = []
 
-    def add(self, part, token):
+    def add(self, part, token, fixed=False):
+        """`fixed` keeps the part's own winding (an open shell, or a funnel whose faces
+        point inwards) instead of letting finish() recompute it."""
         if token not in self.slots:
             self.slots.append(token)
         index = self.slots.index(token)
@@ -96,6 +98,7 @@ class Piece:
             new = self.bm.faces.new([mapping[v] for v in face.verts])
             new.material_index = index
             new.smooth = False
+            new.tag = fixed
         part.free()
         return self
 
@@ -103,7 +106,7 @@ class Piece:
         bmesh.ops.scale(self.bm, vec=Vector((1.0 / FURNITURE_SCALE,) * 3), verts=self.bm.verts)
         # Every part is a closed solid (or a ring of open tubes that meet), so the
         # outward winding can be recomputed in one pass; Godot culls back faces.
-        bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
+        bmesh.ops.recalc_face_normals(self.bm, faces=[face for face in self.bm.faces if not face.tag])
         mesh = bpy.data.meshes.new(self.name)
         self.bm.normal_update()
         self.bm.to_mesh(mesh)
@@ -631,33 +634,50 @@ def display_case():
 
 
 def gramophone():
-    """A gramophone: a little wooden cabinet on four legs with a turntable, a crank and
-    a big flaring brass horn leaning forward over it."""
+    """A gramophone: a tall little cabinet on four legs with a turntable, a crank and a
+    dark brass horn that rises from the back corner and flares up and out towards the
+    viewer at 45 degrees, its dark throat showing in the mouth."""
     gram = Piece("Gramophone")
-    for x in (-.14, .14):
-        for y in (-.14, .14):
-            gram.add(box((x - .02, y - .02, 0.0), (x + .02, y + .02, .1)), "woodDark")
-    gram.add(box((-.18, -.18, .1), (.18, .18, .3), bevel=.012), "wood")
-    gram.add(box((-.2, -.2, .3), (.2, .2, .325)), "woodDark")
-    gram.add(box((-.15, .174, .15), (.15, .186, .26)), "woodDark")
-    gram.add(box((-.012, .184, .2), (.012, .19, .22)), "lamp")
-    # Turntable, record and tone arm.
-    gram.add(cylinder((-.02, .03), .125, .125, .325, .338, sides=12), "metalDark")
-    gram.add(cylinder((-.02, .03), .105, .105, .338, .346, sides=12), "metalMedium")
-    gram.add(cylinder((-.02, .03), .03, .03, .346, .352, sides=8), "carpet")
-    gram.add(rod((.12, .1, .36), (-.01, .05, .36), .008), "lamp")
+    for x in (-.15, .15):
+        for y in (-.15, .15):
+            gram.add(box((x - .02, y - .02, 0.0), (x + .02, y + .02, .2)), "woodDark")
+    # The turntable box, a deep red cabinet with a dark front panel and a brass knob.
+    gram.add(box((-.2, -.2, .2), (.2, .2, .4), bevel=.012), "carpetDarker")
+    gram.add(box((-.15, .192, .235), (.15, .206, .365)), "woodDark")
+    gram.add(box((-.012, .204, .29), (.012, .212, .31)), "lamp")
+    gram.add(box((-.22, -.22, .4), (.22, .22, .425)), "woodDark")
+    # Turntable, record and tone arm on the front half of the lid.
+    gram.add(cylinder((-.02, .07), .115, .115, .425, .438, sides=12), "metalMedium")
+    gram.add(cylinder((-.02, .07), .1, .1, .438, .447, sides=12), "metalDark")
+    gram.add(cylinder((-.02, .07), .028, .028, .447, .453, sides=8), "carpet")
+    gram.add(rod((.13, .12, .462), (-.0, .08, .462), .008), "lamp")
     # Crank on the right side.
-    gram.add(rod((.18, 0.0, .2), (.255, 0.0, .2), .008), "lamp")
-    gram.add(rod((.255, 0.0, .2), (.255, 0.0, .13), .008), "lamp")
-    gram.add(cylinder((.255, 0.0), .018, .018, .105, .135, sides=6), "woodDark")
-    # The horn: a short brass elbow, then a trumpet flare tipped forward over the front.
-    gram.add(cylinder((-.02, -.08), .035, .035, .325, .4, sides=8), "lamp")
-    steps, length, bell = 8, .34, .17
-    profile = [(0.03 + (bell - .03) * (k / steps) ** 2.4, length * k / steps) for k in range(steps + 1)]
-    tilt = Matrix.Translation((-.02, -.08, .4)) @ Matrix.Rotation(-math.radians(58), 4, "X")
-    gram.add(transformed(lathe(profile, sides=12, cap_bottom=False, cap_top=False), tilt), "lamp")
-    gram.add(transformed(lathe([(bell, length - .008), (bell + .006, length)], sides=12, cap_bottom=False, cap_top=False), tilt), "woodDark")
-    gram.add(transformed(lathe([(bell * .93, length - .03)], sides=12, cap_bottom=False, cap_top=True), tilt), "woodDark")
+    gram.add(rod((.22, 0.0, .3), (.29, 0.0, .3), .008), "lamp")
+    gram.add(rod((.29, 0.0, .3), (.29, 0.0, .22), .008), "lamp")
+    gram.add(cylinder((.29, 0.0), .018, .018, .195, .225, sides=6), "woodDark")
+    # The horn: a brass neck from the back corner, then a flaring hollow bell. Its axis is
+    # 45 degrees up and swung 40 degrees from the front towards the right, so the viewer
+    # sees its side and its open mouth, not a flat disc.
+    nx, ny, nz = -.1, -.1, .56
+    gram.add(cylinder((nx, ny), .034, .034, .425, nz, sides=8), "woodDark")
+    gram.add(cylinder((nx, ny), .042, .042, .425, .45, sides=8), "lamp")
+    steps, length, bell, wall = 6, .4, .185, .014
+    outer = [(0.032 + (bell - .032) * (k / steps) ** 2.2, length * k / steps) for k in range(steps + 1)]
+    inner = [(max(r - wall, .012), z) for r, z in outer]
+    yaw, tilt = math.radians(40), math.radians(45)
+    axis = Vector((math.sin(yaw) * math.cos(tilt), math.cos(yaw) * math.cos(tilt), math.sin(tilt)))
+    aim = Matrix.Translation((nx, ny, nz)) @ Vector((0, 0, 1)).rotation_difference(axis).to_matrix().to_4x4()
+    sides = 10
+
+    def reversed_lathe(profile):
+        shell = lathe(profile, sides=sides, cap_bottom=False, cap_top=False)
+        bmesh.ops.reverse_faces(shell, faces=list(shell.faces))
+        return shell
+
+    gram.add(transformed(lathe(outer, sides=sides, cap_bottom=False, cap_top=False), aim), "woodDark", fixed=True)
+    gram.add(transformed(lathe([(bell, length), (bell - wall, length)], sides=sides, cap_bottom=False, cap_top=False), aim), "lamp", fixed=True)
+    gram.add(transformed(reversed_lathe(inner), aim), "metalDark", fixed=True)
+    gram.add(transformed(lathe([(inner[0][0], 0.0)], sides=sides, cap_bottom=False, cap_top=True), aim), "metalDark", fixed=True)
     gram.finish()
     return {}
 
@@ -668,8 +688,8 @@ def jukebox_neon():
     juke = Piece("NeonJukebox")
     hw, hd = 0.2, 0.16
     juke.add(box((-hw - .01, -hd - .01, 0.0), (hw + .01, hd + .01, .05), bevel=.008), "metalDark")
-    juke.add(box((-hw, -hd, .05), (hw, hd, .32), bevel=.012), "carpet")
-    juke.add(slab(arch_outline(hw, .32, .52, hw, 8), -hd, hd), "carpet")
+    juke.add(box((-hw, -hd, .05), (hw, hd, .32), bevel=.012), "wood")
+    juke.add(slab(arch_outline(hw, .32, .52, hw, 8), -hd, hd), "wood")
     # Chrome arch frame and the lit window in front.
     juke.add(slab(arch_outline(hw - .02, .34, .52, hw - .02, 8), hd, hd + .01), "metal")
     juke.add(slab(arch_outline(hw - .045, .365, .52, hw - .045, 8), hd + .01, hd + .018), "lamp")
@@ -695,44 +715,50 @@ def jukebox_neon():
 
 
 def chef_statue():
-    """A silly-grand statue of a chef on a plinth, cast in gold: a big belly, a towering
-    toque, a curled moustache, one fist on his hip and a ladle raised to the sky."""
+    """A silly-grand statue of a chef on a plinth, cast in gold: a sturdy body in a pale
+    apron, a round pale face with a curled moustache, a tall puffy white toque (a narrow
+    band flaring wider than the head, like a mushroom), one fist on his hip and a silver
+    ladle raised high."""
     chef = Piece("ChefStatue")
-    gold, dark = "lamp", "metalDark"
-    chef.add(box((-.2, -.2, 0.0), (.2, .2, .07)), "metalDark")
-    chef.add(box((-.165, -.165, .07), (.165, .165, .2)), "metal")
-    chef.add(box((-.075, .163, .105), (.075, .172, .155)), gold)
+    gold, pale, white, dark, silver = "wood", "lamp", "carpetWhite", "metalDark", "metal"
+    # Plinth with a gold plaque.
+    chef.add(box((-.21, -.21, 0.0), (.21, .21, .06)), dark)
+    chef.add(box((-.17, -.17, .06), (.17, .17, .17)), silver)
+    chef.add(box((-.075, .168, .09), (.075, .177, .14)), pale)
+    chef.add(box((-.19, -.19, .17), (.19, .19, .19)), dark)
     # Legs and shoes.
     for x in (-.065, .065):
-        chef.add(cylinder((x, 0.0), .045, .04, .2, .31, sides=8, bottom=False), gold)
-        chef.add(box((x - .05, -.07, .2), (x + .05, .09, .235)), dark)
-    # Coat: a big belly and chest, a dark belt and buttons.
-    chef.add(lathe([(.1, .3), (.165, .36), (.178, .43), (.15, .5), (.115, .56), (.07, .61)], sides=8, cap_bottom=False), gold)
-    chef.add(lathe([(.175, .415), (.181, .43), (.175, .445)], sides=8, cap_bottom=False, cap_top=False), dark)
-    for z, y in ((.47, .17), (.53, .15)):
-        chef.add(_on_front(cylinder((0, 0), .017, .017, 0.0, .014, sides=6, bottom=False), 0.0, y - .006, z), dark)
-    # Head: round, with a big moustache, a nose and two eyes.
-    chef.add(lathe([(.03, .6), (.095, .625), (.12, .68), (.095, .74), (.045, .76)], sides=8, cap_bottom=False), gold)
-    chef.add(box((-.024, .108, .675), (.024, .155, .715)), gold)
+        chef.add(cylinder((x, 0.0), .05, .045, .19, .31, sides=8, bottom=False), gold)
+        chef.add(box((x - .055, -.06, .19), (x + .055, .11, .225)), dark)
+    # Body: a sturdy coat, flat-fronted, with a pale apron (skirt and bib) on the front.
+    chef.add(lathe([(.11, .3), (.16, .34), (.172, .43), (.15, .52), (.11, .585)], sides=8, phase=math.pi / 8, cap_bottom=False), gold)
+    chef.add(slab([(-.125, .315), (.125, .315), (.105, .46), (-.105, .46)], .13, .17), pale)
+    chef.add(slab([(-.06, .46), (.06, .46), (.045, .575), (-.045, .575)], .122, .156), pale)
+    chef.add(box((-.085, .165, .36), (-.025, .18, .405)), gold)
+    chef.add(box((-.11, .166, .452), (.11, .176, .467)), dark)
+    # Head: round, a pale face with a big moustache, a nose and two eyes.
+    chef.add(lathe([(.045, .58), (.11, .605), (.125, .66), (.11, .72), (.06, .745)], sides=10, cap_bottom=False), pale)
+    chef.add(box((-.024, .118, .648), (.024, .165, .69)), pale)
     for sign in (-1, 1):
-        chef.add(transformed(box((-.065, 0.0, -.016), (.065, .04, .016)),
-                             Matrix.Translation((sign * .07, .112, .672)) @ Matrix.Rotation(sign * math.radians(-16), 4, "Y")), dark)
-        chef.add(box((sign * .125 - .02, .1, .672), (sign * .125 + .02, .13, .72)), dark)
-        chef.add(box((sign * .052 - .014, .108, .725), (sign * .052 + .014, .122, .745)), dark)
-    # Toque: a band and a puffy top.
-    chef.add(cylinder((0, 0), .1, .102, .752, .79, sides=8, bottom=False), gold)
-    chef.add(lathe([(.105, .785), (.13, .82), (.13, .865), (.095, .905), (.05, .92)], sides=8, cap_bottom=False), gold)
+        chef.add(transformed(box((-.055, 0.0, -.017), (.055, .04, .017)),
+                             Matrix.Translation((sign * .062, .118, .636)) @ Matrix.Rotation(sign * math.radians(-22), 4, "Y")), dark)
+        chef.add(box((sign * .05 - .015, .115, .7), (sign * .05 + .015, .13, .722)), dark)
+    # Toque: a short white band, then a puffy top flaring wider than the head.
+    chef.add(cylinder((0, 0), .11, .115, .735, .8, sides=10, bottom=False), white)
+    chef.add(lathe([(.12, .795), (.17, .835), (.195, .895), (.188, .955), (.14, 1.005), (.07, 1.025)], sides=10, cap_bottom=False), white)
     # Left arm: fist on hip.
-    chef.add(rod((-.145, 0.0, .56), (-.235, .03, .48), .03, sides=6), gold)
-    chef.add(rod((-.235, .03, .48), (-.15, .12, .41), .03, sides=6), gold)
-    chef.add(box((-.17, .1, .39), (-.12, .15, .44)), gold)
-    # Right arm raised, holding a ladle.
-    chef.add(rod((.135, 0.0, .56), (.235, .02, .65), .03, sides=6), gold)
-    chef.add(box((.205, -.015, .64), (.275, .055, .71)), gold)
-    chef.add(rod((.24, .02, .69), (.25, .02, .85), .012, sides=6), "carpetWhite")
-    chef.add(transformed(lathe([(.01, .0), (.05, .02), (.06, .06), (.062, .075)], sides=8, cap_top=True),
-                         Matrix.Translation((.25, .02, .85))), "carpetWhite")
-    chef.add(transformed(cylinder((0, 0), .052, .052, .0, .002, sides=8, bottom=False), Matrix.Translation((.25, .02, .9255))), dark)
+    chef.add(rod((-.15, 0.0, .54), (-.25, .02, .46), .034, sides=6), gold)
+    chef.add(rod((-.25, .02, .46), (-.16, .13, .4), .034, sides=6), gold)
+    chef.add(box((-.185, .105, .375), (-.13, .16, .43)), gold)
+    # Right arm up, holding a silver ladle high over the toque.
+    chef.add(rod((.15, 0.0, .54), (.27, .0, .62), .034, sides=6), gold)
+    chef.add(rod((.27, .0, .62), (.3, .0, .78), .034, sides=6), gold)
+    chef.add(box((.27, -.03, .77), (.33, .03, .83)), gold)
+    handle_top = (.36, 0.0, 1.1)
+    chef.add(rod((.3, 0.0, .82), handle_top, .014, sides=6), silver)
+    tilt = Matrix.Translation(handle_top) @ Matrix.Rotation(math.radians(-35), 4, "Y")
+    chef.add(transformed(lathe([(.014, -.01), (.06, .01), (.08, .05), (.082, .08)], sides=8, cap_top=False), tilt), silver)
+    chef.add(transformed(lathe([(.074, .076)], sides=8, cap_bottom=False, cap_top=True), tilt), dark)
     chef.finish()
     return {}
 

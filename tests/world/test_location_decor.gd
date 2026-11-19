@@ -97,7 +97,7 @@ func test_the_crockery_dresser_is_two_kit_bookcases_with_kit_crockery() -> void:
 	assert_true(food >= 6, "plates, bowls, cups and mugs on its shelves")
 
 
-func test_premium_pieces_follow_the_charm_curve_and_only_the_jukebox_glows() -> void:
+func test_premium_pieces_follow_the_charm_curve_and_only_the_deluxe_jukebox_glows() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
 	var last_price: int = 0
@@ -110,7 +110,7 @@ func test_premium_pieces_follow_the_charm_curve_and_only_the_jukebox_glows() -> 
 		last_price = definition.price
 		last_charm = definition.charm
 		assert_eq(definition.glow_color.a > 0.0, id == &"jukebox_neon", "%s glow" % id)
-		assert_false(definition.plays_music, "%s is decor, not the music jukebox" % id)
+		assert_eq(definition.plays_music, id == &"jukebox_neon", "only the deluxe jukebox plays music (%s)" % id)
 	# The plain jukebox keeps its id, level and music.
 	var plain: ItemDef = content.item(&"jukebox")
 	assert_true(plain.plays_music)

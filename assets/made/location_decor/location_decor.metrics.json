@@ -275,19 +275,19 @@
       ]
     },
     "gramophone": {
-      "triangles": 554,
+      "triangles": 624,
       "budget": 800,
       "world_dimensions": [
-        0.473,
-        0.7294,
-        0.5016
+        0.528,
+        0.9698,
+        0.4906
       ],
       "materials": [
         "carpet",
+        "carpetDarker",
         "lamp",
         "metalDark",
         "metalMedium",
-        "wood",
         "woodDark"
       ],
       "nearest_kit": [
@@ -305,13 +305,13 @@
         0.358
       ],
       "materials": [
-        "carpet",
         "carpetBlue",
         "carpetDarker",
         "carpetWhite",
         "lamp",
         "metal",
-        "metalDark"
+        "metalDark",
+        "wood"
       ],
       "nearest_kit": [
         "assets/props/jukebox.tscn (arch window)",
@@ -320,18 +320,19 @@
       ]
     },
     "chef_statue": {
-      "triangles": 686,
+      "triangles": 702,
       "budget": 800,
       "world_dimensions": [
-        0.5708,
-        0.9275,
-        0.4
+        0.681,
+        1.2126,
+        0.42
       ],
       "materials": [
         "carpetWhite",
         "lamp",
         "metal",
-        "metalDark"
+        "metalDark",
+        "wood"
       ],
       "nearest_kit": [
         "Mini Characters (scale)",

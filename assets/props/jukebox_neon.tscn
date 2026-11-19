@@ -6,6 +6,7 @@
 [node name="NeonJukebox" type="Node3D"]
 script = ExtResource("1_view")
 footprint = Vector2i(1, 1)
+body_material_names = PackedStringArray("wood")
 
 [node name="Body" type="Node3D" parent="."]
 

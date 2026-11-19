@@ -3,7 +3,9 @@ extends RefCounted
 ## The jukebox's music style (#294). A style is one of the item's looks
 ## (data/variants/jukebox_*.tres): its id names the music loop, its display name
 ## is what the player reads, and its theme tag is the theme it lifts. Only one
-## jukebox counts toward vibe and plays: the first one guests can see.
+## jukebox counts toward vibe and plays: the one with the most charm among those
+## guests can see (so the deluxe jukebox beats the basic one), the first placed
+## when charm ties. Every item with `plays_music` is a jukebox.
 
 
 ## The theme a look stands for: its first tag in the vibe's own order, or empty.
@@ -29,17 +31,23 @@ static func loop_id(definition: ItemDef, variant_id: StringName) -> StringName:
 	return look.id if look != null and definition.plays_music else &""
 
 
-## The one jukebox that counts: the first placed one (by item order) that guests
-## can see, using the same rule as every other decor item. Null when none.
-static func counted_item(grid: SimGrid) -> PlacedItem:
+## The one jukebox that counts: among the placed ones guests can see (the same rule
+## as every other decor item), the one with the most charm, the first placed (by
+## item order) when charm ties. Null when none. `guests` may pass the guest floor the
+## caller already worked out.
+static func counted_item(grid: SimGrid, guests: Dictionary[Vector2i, bool] = {}) -> PlacedItem:
 	if grid == null:
 		return null
 	var gated: bool = not grid.entries().is_empty()
-	var guests: Dictionary[Vector2i, bool] = RoomRules.guest_floor(grid) if gated else {}
+	if gated and guests.is_empty():
+		guests = RoomRules.guest_floor(grid)
+	var best: PlacedItem = null
+	var best_charm: int = -1
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if placed.removed or definition == null or not definition.plays_music:
 			continue
-		if not gated or VibeInputs.guest_room_item(grid, placed, guests):
-			return placed
-	return null
+		if definition.charm > best_charm and (not gated or VibeInputs.guest_room_item(grid, placed, guests)):
+			best = placed
+			best_charm = definition.charm
+	return best

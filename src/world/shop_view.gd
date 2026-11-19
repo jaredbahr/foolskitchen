@@ -1790,7 +1790,7 @@ func _build_item(item: PlacedItem) -> void:
 		if definition.sits_on_surface():
 			_surface_decor[item.id] = node
 		add_child(node)
-		# A lamp, or any glowing piece standing on the floor (the neon jukebox),
+		# A lamp, or any glowing piece standing on the floor (the deluxe jukebox),
 		# follows the shop lights: soft by day, full at night.
 		if definition.catalogue_room == &"lighting" or definition.glow_color.a > 0.0:
 			node.set_meta(DayNightView.LAMP_META, true)

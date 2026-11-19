@@ -27,10 +27,10 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 	# to the door (furniture ignored). A grid without a street entry (a test
 	# grid) counts everything.
 	var guests: Dictionary[Vector2i, bool] = {}
-	var jukebox_counted: bool = false
 	var gated: bool = not grid.entries().is_empty()
 	if gated:
 		guests = RoomRules.guest_floor(grid)
+	var counted_jukebox: PlacedItem = Jukebox.counted_item(grid, guests)
 	for placed: PlacedItem in grid.items():
 		var definition: ItemDef = placed.def as ItemDef
 		if placed.removed or definition == null or definition.id.is_empty() \
@@ -40,11 +40,10 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 			return null
 		if gated and definition.category == ItemDef.Category.DECOR and not guest_room_item(grid, placed, guests):
 			continue
-		# Only the first jukebox guests can see lifts the vibe (#294).
-		if definition.plays_music:
-			if jukebox_counted:
-				continue
-			jukebox_counted = true
+		# Only one jukebox lifts the vibe (#294): the one with the most charm
+		# among those guests can see, the first placed on a tie.
+		if definition.plays_music and placed != counted_jukebox:
+			continue
 		var item: VibeModel.Item = VibeModel.Item.new()
 		item.definition_id = definition.id
 		item.music_theme = Jukebox.style_theme(definition, placed.variant_id, VIBE_THEMES)

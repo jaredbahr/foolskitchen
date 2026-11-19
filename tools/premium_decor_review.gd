@@ -1,7 +1,7 @@
 extends "res://src/world/main.gd"
 ## Explicit, unsaved display fixture for the premium decor tier (#206), not a
 ## balance claim. A fresh seed-1 shop at owner level 13 buys, through the real
-## Buy command, the dessert display case, gramophone, neon jukebox and chef
+## Buy command, the dessert display case, gramophone, deluxe jukebox and chef
 ## statue in a row of the dining room. PREMIUM_STAGE picks the lighting:
 ## day (sunny morning, the default), night (closed), or service (the shop
 ## open for a few minutes so guests sit near the pieces). PREMIUM_ZOOM sets

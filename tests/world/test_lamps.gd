@@ -125,7 +125,7 @@ func test_lamps_raise_the_lamp_part_of_vibe() -> void:
 
 
 
-func test_the_neon_jukebox_glows_like_a_lamp_without_counting_for_lamp_vibe() -> void:
+func test_the_deluxe_jukebox_glows_like_a_lamp_without_counting_for_lamp_vibe() -> void:
 	(_main.get("shop_editor") as ShopEditor).set_owner_level(12)
 	var sim: RestaurantSim = _main.get("sim")
 	var before: float = sim.vibe_result.lamp_points
@@ -134,7 +134,7 @@ func test_the_neon_jukebox_glows_like_a_lamp_without_counting_for_lamp_vibe() ->
 		if bool(_main.call("shop_buy", &"jukebox_neon", cell, 0)):
 			placed = true
 			break
-	assert_true(placed, "the neon jukebox places on a free floor cell")
+	assert_true(placed, "the deluxe jukebox places on a free floor cell")
 	_main.call("refresh_presentation")
 	var lamps: Array = _main.call("lamp_visuals")
 	assert_eq(lamps.size(), 1, "its glow follows the shop lights")
