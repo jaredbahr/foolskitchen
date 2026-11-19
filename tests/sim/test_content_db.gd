@@ -589,13 +589,13 @@ func test_fryer_and_oven_recipes_have_data_owned_prices_levels_sections_and_step
 		assert_false(recipe.is_drink())
 
 
-func test_diner_classics_use_existing_stations_and_unlock_across_levels_two_to_four() -> void:
+func test_diner_classics_use_existing_stations_and_unlock_across_the_levels() -> void:
 	var db: ContentDB = _starter_db()
 	var specs: Dictionary[StringName, Array] = {
-		&"club_sandwich": [2, RecipeDef.Section.MAINS, &"stove"],
-		&"hot_dog": [2, RecipeDef.Section.MAINS, &"stove"],
+		&"club_sandwich": [5, RecipeDef.Section.MAINS, &"stove"],
+		&"hot_dog": [5, RecipeDef.Section.MAINS, &"stove"],
 		&"pizza_slice": [3, RecipeDef.Section.MAINS, &"oven"],
-		&"taco": [3, RecipeDef.Section.MAINS, &"stove"],
+		&"taco": [7, RecipeDef.Section.MAINS, &"stove"],
 		&"ice_cream_sundae": [4, RecipeDef.Section.DESSERTS, &""],
 	}
 	for id: StringName in specs:

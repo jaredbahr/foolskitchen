@@ -22,8 +22,8 @@ func after_each() -> void:
 
 
 func test_both_tanks_load_as_high_charm_cosy_seafood_decor() -> void:
-	for entry: Array in [[TANK, &"aquarium", "Aquarium", 180, 3, Vector2i(2, 1)],
-			[LARGE, &"aquarium_large", "Large aquarium", 320, 5, Vector2i(3, 1)]]:
+	for entry: Array in [[TANK, &"aquarium", "Aquarium", 180, 7, Vector2i(2, 1)],
+			[LARGE, &"aquarium_large", "Large aquarium", 320, 9, Vector2i(3, 1)]]:
 		var definition: ItemDef = entry[0]
 		assert_eq(definition.id, entry[1])
 		assert_eq(definition.display_name, entry[2])

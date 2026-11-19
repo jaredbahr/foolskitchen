@@ -15,10 +15,10 @@ func _ready() -> void:
 		push_error("Seafood review requires a floor or menu stage")
 		return
 	Economy.add_cash(2000, Ledger.OTHER)
-	owner_progress.award_bonus(owner_progress.threshold_for(5))
-	shop_editor.set_owner_level(5)
-	menu_settings.set_owner_level(5)
-	_build_catalogue.set_owner_level(5)
+	owner_progress.award_bonus(owner_progress.threshold_for(9))
+	shop_editor.set_owner_level(9)  # #647: the seafood branch unlocks at levels 6 to 9
+	menu_settings.set_owner_level(9)
+	_build_catalogue.set_owner_level(9)
 	$HUD.set_owner_progress(owner_progress.level, owner_progress.xp_into_level(), owner_progress.xp_in_level())
 	if not shop_buy(&"fryer", Vector2i(11, 3), 0) or not shop_buy(&"freezer", Vector2i(13, 3), 0) \
 			or not shop_buy(&"fridge", Vector2i(11, 1), 2) or not shop_buy(&"storage_shelf", Vector2i(3, 1), 2):
@@ -40,6 +40,6 @@ func _ready() -> void:
 	if stage == "menu" and (not set_menu_visible(true) or not _menu_panel.select_recipe(&"seafood_stew")):
 		push_error("Seafood review could not show its menu branch and stew detail")
 		return
-	print("SEAFOOD_REVIEW ", JSON.stringify({"stage": stage, "fixture": "seed126; extra $2000; ownerlevel5; savesdisabled",
+	print("SEAFOOD_REVIEW ", JSON.stringify({"stage": stage, "fixture": "seed126; extra $2000; ownerlevel9; savesdisabled",
 		"floor_style": String(style.id), "floor_pattern": int(style.pattern), "floor_cells": cells.size(),
 		"enabled_dishes": menu_settings.enabled_count(), "use_saves": use_saves}))
