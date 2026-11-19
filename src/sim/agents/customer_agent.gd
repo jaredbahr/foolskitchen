@@ -98,6 +98,10 @@ var repeat_guest_key: String = ""
 var budget_multiplier: float = 1.0
 var quality_weight: float = 0.0
 var review_chance_multiplier: float = 1.0
+## Raw stars for eating a local dish (the type's local_dish_bonus, #471).
+var local_dish_bonus: float = 0.0
+## This visit's quirk (docs/GUESTS.md), or null. Lasts one visit; never saved.
+var quirk: GuestQuirk = null
 ## Chance of adding a drink to a meal (from the type; 0 for an untyped guest).
 var drink_add_chance: float = 0.0
 ## Chance a coffee-only guest adds a pastry (from the type).
@@ -163,6 +167,7 @@ func configure_type(kind: CustomerType) -> bool:
 	restroom_chance = kind.restroom_chance
 	quality_weight = kind.quality_weight
 	review_chance_multiplier = kind.review_chance_multiplier
+	local_dish_bonus = kind.local_dish_bonus
 	queue_patience = _type_patience(queue_patience, kind.patience_multiplier)
 	food_patience = _type_patience(food_patience, kind.patience_multiplier)
 	return true
@@ -189,6 +194,21 @@ func disguise_as_critic(tells: Array[StringName], tuning: CriticTuning) -> bool:
 	repeat_guest_key = ""
 	if tells.has(FoodCritic.LINGERS):
 		eat_ticks = roundi(float(eat_ticks) * tuning.linger_multiplier)
+	return true
+
+
+## Gives a just-arrived ordinary guest a quirk and applies its effects once.
+## A critic, a named regular or a guest who already has one is refused.
+func apply_quirk(value: GuestQuirk) -> bool:
+	if value == null or not value.is_valid() or quirk != null or is_critic() \
+			or regular_profile != null or state != State.ARRIVING:
+		return false
+	quirk = value
+	if value.linger_multiplier != 1.0:
+		eat_ticks = maxi(1, roundi(float(eat_ticks) * value.linger_multiplier))
+	if value.patience_multiplier != 1.0:
+		queue_patience = maxi(1, roundi(float(queue_patience) * value.patience_multiplier))
+		food_patience = maxi(1, roundi(float(food_patience) * value.patience_multiplier))
 	return true
 
 
@@ -480,7 +500,22 @@ func review_visit(standard_price: int, dirt_fraction: float = 0.0) -> ReviewVisi
 	visit.restroom_was_busy = restroom_was_busy
 	visit.waited_seated = waited_seated
 	visit.petted_cat = petted_cat
+	if quirk != null:
+		_add_quirk_terms(visit)
 	return visit
+
+
+## A quirk's review terms. A speed quirk's bonus and quote need fast food.
+func _add_quirk_terms(visit: ReviewVisit) -> void:
+	visit.always_reviews = quirk.always_reviews
+	if not visit.served:
+		return
+	visit.quirk_bonus = quirk.review_bonus
+	var fast: bool = quirk.was_fast(visit.food_wait_fraction)
+	if fast:
+		visit.quirk_bonus += quirk.fast_food_bonus
+	if quirk.fast_food_fraction <= 0.0 or fast:
+		visit.quirk_cause = quirk.happy_cause
 
 
 ## Waiting for a table or for the meal, inside and not off at the restroom.

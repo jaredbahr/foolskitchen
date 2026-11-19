@@ -1,7 +1,7 @@
 # Fool's Kitchen: The City Map (design proposal)
 
-Status: **proposal, waiting on Jared's taste calls** (2026-11-19). Builds on D24, D28, D31, D33, D39 and D40.
-Code names below are the ones the build plan would add. Nothing here is built yet.
+Status: **decided** (Jared's taste calls, 2026-11-19; see "Decided" below). Builds on D24, D28, D31, D33, D39 and D40.
+Code names below are the ones the build plan adds. The model, the chain summary and a plain list screen are phase 2 (#639, #645 and the city screen PR).
 
 ## For Jared: the short version
 
@@ -9,10 +9,12 @@ Code names below are the ones the build plan would add. Nothing here is built ye
 1. A new **City** screen: an illustrated map of the town. Each neighbourhood shows your shops, the lots for sale and the areas you can't get into yet.
 2. Tap one of your shops to see how it's doing: yesterday's takings, its manager, stars, Golden Ladles, team mood and anything that needs you. In the morning you can **go and work there** from the map. Switching still happens only in the morning.
 3. Away sites stay a fixed, predictable sum (D24). The map can show tonight's result ahead of time ("Expected tonight: about +$84"), so managing feels like a plan you can see, not a gamble.
-4. **Chain goals** run alongside the shops: own shops in more neighbourhoods, keep them managed, and collect **Golden Ladles across the city**. A big Ladle total opens free play, with a little awards night.
+4. **Chain goals** run alongside the shops: own shops in more neighbourhoods, keep them managed, and collect **Golden Ladles across the city**. A Golden Ladle in every neighbourhood opens free play, with a little awards night.
 5. Today's Property screen becomes the map's **estate agent**: tap a For Sale sign and the same lot card opens. The plain list stays for anyone who prefers it.
 
-**Decisions for you** (details and options in "Taste calls" below)
+**Decided** (Jared, 2026-11-19; full list in "Decided" below): a paper map on the desk; plain, cosy names; both seaside lots in The Seafront; roadworks for areas waiting on a tier and "coming soon" boards for areas with no lot yet; a van ride plus a joke commute card; keep the morning card and add "See the map"; a Golden Ladle in every neighbourhood, then an awards night; the player names the chain.
+
+**The questions as they were put** (details and options in "Taste calls" below)
 - **T1. The map's look:** a paper map on the desk, a parody phone app, or a tiny 3D model town.
 - **T2. Neighbourhood names:** plain and cosy, punny, or named after the food.
 - **T3. Which neighbourhoods, and where each lot goes.** Both seaside lots go in one Seafront?
@@ -25,6 +27,27 @@ Code names below are the ones the build plan would add. Nothing here is built ye
 The model, the engine work and a plain list version of the screen need none of these calls. They are phase 2 in the build plan.
 
 ---
+
+## Decided (Jared, 2026-11-19)
+
+Relayed by the director on 2026-11-19. Each line is the option picked from section 11.
+
+| # | Call | Picked |
+|---|---|---|
+| T1 | The map's look | **A. A paper map on the owner's desk**: a hand-drawn, illustrated town with pins, coffee rings and doodles. |
+| T2 | Neighbourhood names | **A. Plain and cosy**: Old Town, Millbrook, The Seafront, Skyline, Pinewood (as shipped in `data/city/city_map.tres`). |
+| T3 | Neighbourhoods and lots | **A. As tabled**: five neighbourhoods, both seaside lots in The Seafront. The Woodland Cabin (`woodland_cabin`, coming from the director) goes in Pinewood, which then stops being "coming soon". |
+| T4 | Locked areas | **The recommendation**: roadworks (cones, a "Road closed" sign, a digger) for an area waiting on a tier; "coming soon" hoardings with a painted preview for an area with no lot yet. |
+| T5 | Travelling | **B + C**: a skippable two-second van ride along the map road, then a jokey commute line. |
+| T6 | The morning card | **A**: keep the morning site card and add "See the map". |
+| T7 | The free-play goal | **B + C**: a Golden Ladle in every neighbourhood (that has a lot), then a little awards night opens free play. |
+| T8 | Chain name | **The recommendation, A**: the player names the chain; the default is "Fool's Kitchen Group". |
+
+**Art is the director's** (the paper map illustration, pins, badges, the van sprite). The screen is built so the art drops in: a background texture slot, a pin scene and a van path per road.
+
+**The D-row, as added to `docs/DESIGN.md` (D41):**
+
+> | D41 | The city map | The chain's home is a **City** screen, a hand-drawn paper map of the town on the owner's desk (pins, coffee rings, doodles), opened from the morning Menu from Tier 3 and from the morning site card's "See the map" (the card stays). Neighbourhoods, with plain cosy names: Old Town (home shop), Millbrook (Old Mill Street), The Seafront (Beachfront Boardwalk and Seaside Cliff), Skyline (Skyline Rooftop; later the downtown club) and Pinewood (the Woodland Cabin). An area waiting on a tier shows roadworks; one with no lot yet shows "coming soon" hoardings. Each shop's pin shows its state and opens its card (yesterday's money, manager, stars, Golden Ladles, team mood, tonight's away result, alerts); in the morning "Work here today" switches site with a skippable two-second van ride along the map road and a jokey commute line. Lots for sale open the property market's card. Chain goals lead to **a Golden Ladle in every neighbourhood** that has a lot, then a little awards night opens free play; the player names the chain (default "Fool's Kitchen Group"). Ladles stay in-person only: the critic visits the active site (docs/CITY_MAP.md) | 2026-11-19 |
 
 ## 1. Why, and what it is for
 
@@ -90,7 +113,7 @@ The design rules it keeps:
 | **Millbrook** | Old Mill Street (`town_fixer_upper`) | country lane | Tier 3 |
 | **The Seafront** | Beachfront Boardwalk (`beachfront_boardwalk`), Seaside Cliff (`seaside_cliff`) | promenade; cliff path | Tier 3 |
 | **Skyline** | Skyline Rooftop (`skyscraper_rooftop`); later the downtown club (D39) | city pavement, lift lobby | Tier 4 |
-| **Pinewood** | Woodland Cabin (#608, no lot yet) | forest track | locked: "Coming soon" |
+| **Pinewood** | Woodland Cabin (#665; #608 adds its foraging) | forest track | open from Tier 3 and 4.0 stars |
 
 Notes:
 - Each lot belongs to exactly one neighbourhood, and the home lot is always in one. The data check enforces both (section 8).

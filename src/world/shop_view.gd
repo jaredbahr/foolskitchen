@@ -82,6 +82,21 @@ func _sync_ceiling(node: ItemVisual, definition: ItemDef) -> void:
 		node.prop.visible = wall_mode == WallMode.UP
 
 
+## Build mode fades rain-cover canopies (#625); the shop running keeps them solid.
+func set_canopies_faded(faded: bool) -> void:
+	_canopies_faded = faded
+	if world == null:
+		return
+	for item: PlacedItem in world.grid.items():
+		if item_nodes.has(item.id):
+			_sync_canopy(item_nodes[item.id], item.def as ItemDef)
+
+
+func _sync_canopy(node: ItemVisual, definition: ItemDef) -> void:
+	if definition != null and definition.rain_cover:
+		node.set_canopy_faded(_canopies_faded)
+
+
 ## Chairs up after close (#208): the model's resting transform, and how far
 ## (in cells) an upturned chair moves in over its table's edge.
 const CHAIR_REST_META: StringName = &"chair_rest_transform"
@@ -131,6 +146,7 @@ const CUTAWAY_DEAD_BAND_CELLS: float = 0.5
 @export var floor_material: ShaderMaterial
 
 var wall_mode: WallMode = WallMode.CUTAWAY
+var _canopies_faded: bool = false
 var _camera_quarter: int = 0
 ## The camera focus cell for the cutaway; NO_CELL until Main supplies one.
 var _focus_cell: Vector2i = SimGrid.NO_CELL
@@ -1791,6 +1807,7 @@ func _build_item(item: PlacedItem) -> void:
 		tank.set_cloudy(_tank_cloudy(item.id))
 	_apply_stock_slots(node, definition)
 	_sync_ceiling(node, definition)
+	_sync_canopy(node, definition)
 	_sync_item_selection()
 
 

@@ -26,8 +26,8 @@ expansion_north = 2
 min_tier = 3
 min_reputation = 4.2
 guest_mix = Dictionary[StringName, float]({
-&"family": 0.45,
-&"foodie": 0.4,
+&"tourist": 0.6,
+&"foodie": 0.25,
 &"regular": 0.15
 })
 upstairs_allowed = false

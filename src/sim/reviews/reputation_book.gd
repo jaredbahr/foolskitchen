@@ -60,7 +60,11 @@ func record_visit(visit: ReviewVisit, tuning: ReviewTuning, quotes: ReviewQuotes
 	if not is_finite(visit.review_chance_multiplier) or visit.review_chance_multiplier < 0.0:
 		return {}
 	var chance: float = clampf(tuning.review_chance * visit.review_chance_multiplier, 0.0, 1.0)
-	if random.randf() >= chance:
+	# The chance draw happens for every guest, as before. A served guest who
+	# always reviews (a Shutterbug) then writes one anyway, and its quote pick
+	# draws from this stream too, so later review draws shift. Seeded runs stay
+	# deterministic; a day with no such guest is unchanged.
+	if random.randf() >= chance and not (visit.always_reviews and visit.served):
 		return {}
 	var before: float = average()
 	var stars: int = score_visit(visit, tuning, vibe_tuning)
@@ -188,8 +192,12 @@ static func score_visit(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: V
 	# Restrooms (FK-101): both terms are exactly zero in a shop that has none
 	# and is below the seat threshold.
 	var restroom: float = _bounded(visit.restroom_bonus, 1.0) - _bounded(visit.restroom_penalty, 4.0)
-	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom + difficulty_bonus,
-		1.0, 5.0))
+	# Exactly zero unless a local-food lover ate a local dish (#471).
+	var local: float = _bounded(visit.local_dish_bonus, 1.0)
+	# Exactly zero for a guest without a quirk (docs/GUESTS.md).
+	var quirk: float = _bounded(visit.quirk_bonus, 1.0)
+	return roundi(clampf(5.0 - penalty + vibe_bonus + quality_bonus + restroom + difficulty_bonus + local
+		+ quirk, 1.0, 5.0))
 
 
 static func _bounded(value: float, maximum: float) -> float:
@@ -225,6 +233,8 @@ static func cause_of(visit: ReviewVisit, tuning: ReviewTuning, vibe_tuning: Vibe
 	if best == causes.size() - 1:
 		return &"restroom_busy" if visit.restroom_was_busy else &"no_restroom"
 	if score_visit(visit, tuning, vibe_tuning, include_closing) >= 4 or largest < tuning.positive_penalty_threshold:
+		if not visit.quirk_cause.is_empty():
+			return visit.quirk_cause
 		if visit.petted_cat:
 			return &"petted_cat"
 		if visit.waited_seated:

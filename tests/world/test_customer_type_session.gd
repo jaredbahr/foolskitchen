@@ -53,7 +53,7 @@ func test_default_main_spawns_authored_mix_on_exact_named_customers_stream() -> 
 	var main: Node = await _start(false)
 	var sim: RestaurantSim = main.get("sim") as RestaurantSim
 	assert_not_null(sim.customer_types)
-	assert_eq(sim.customer_types.types.size(), 4, "the playable default enables all authored types")
+	assert_eq(sim.customer_types.types.size(), 6, "the playable default enables all authored types")
 	assert_eq(sim.customer_level, 1)
 	assert_eq(sim.rng, GameState.rng(&"customers"))
 	assert_eq(sim.spawner.rng, GameState.rng(&"customers"))
@@ -119,7 +119,7 @@ func test_morning_refresh_and_reload_use_restored_owner_level() -> void:
 	var loaded: RestaurantSim = restored.get("sim") as RestaurantSim
 	assert_eq((restored.get("owner_progress") as OwnerProgress).level, 4)
 	assert_eq(loaded.customer_level, 4, "world replacement configures after saved progression restores")
-	assert_eq(loaded.customer_types.types.size(), 4)
+	assert_eq(loaded.customer_types.types.size(), 6)
 	assert_eq(loaded.rng, GameState.rng(&"customers"))
 	assert_eq(loaded.customers().size(), 0, "morning loads do not manufacture guests")
 
@@ -151,7 +151,7 @@ func test_main_explicit_regular_catalogue_retains_legacy_arrival_draw_order() ->
 		assert_eq(guest.cell, entry)
 		assert_eq(guest.rng.seed, private_seed)
 		assert_eq(sim.rng.state, oracle.state)
-	assert_eq(TYPES.types.size(), 4, "the fixture never edits shared authored content")
+	assert_eq(TYPES.types.size(), 6, "the fixture never edits shared authored content")
 
 
 func _one_tick_gaps(sim: RestaurantSim) -> void:
