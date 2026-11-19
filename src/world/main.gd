@@ -2837,6 +2837,7 @@ func refresh_presentation() -> void:
 	_refresh_weather()
 	_refresh_day_light()
 	if sound != null:
+		sound.set_lot(site_book.lot_id(site_book.active_id) if site_book != null else &"")
 		sound.refresh(_music_light, _report != null and _report.visible)
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return

@@ -92,6 +92,8 @@ static func group_for(definition: ItemDef) -> StringName:
 		ItemDef.Category.STATION, ItemDef.Category.STORAGE, ItemDef.Category.PASS, ItemDef.Category.DOOR, \
 				ItemDef.Category.RESTROOM:
 			return &"equipment"
+	if definition.rain_cover:
+		return &"accents"
 	return &"rugs" if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR else &"accents"
 
 
@@ -124,6 +126,8 @@ static func does(definition: ItemDef) -> String:
 			return "The way in"
 		ItemDef.Category.RESTROOM:
 			return "Hangs on a restroom wall" if definition.hangs_on_wall() else RESTROOM_TEXT.get(definition.station_type, "Restroom fixture")
+	if definition.rain_cover:
+		return "Rain cover for the patio: seats under it stay open when it rains. Tables and chairs go underneath"
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR and definition.exterior_band == ExteriorSupport.Band.GROUND:
