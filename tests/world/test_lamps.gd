@@ -16,6 +16,9 @@ func before_each() -> void:
 	_main.set("use_saves", false)
 	(Engine.get_main_loop() as SceneTree).root.add_child(_main)
 	_main.call("start")
+	# A dry day: the session rolls its own weather, and rain or cloud changes the lamps, walkers and shadows.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	Economy.add_cash(5000, Ledger.OTHER)
 	(_main.get("shop_editor") as ShopEditor).set_owner_level(4)
 
