@@ -44,7 +44,7 @@ KIT_SOURCES = {
     "wood": "kitchenCabinet.glb", "woodDark": "kitchenCabinet.glb", "metal": "kitchenCabinet.glb",
     "metalDark": "wall.glb", "metalMedium": "chairDesk.glb", "carpetWhite": "bathroomCabinetDrawer.glb",
     "carpetBlue": "chairModernCushion.glb", "carpet": "bedBunk.glb", "lamp": "ceilingFan.glb",
-    "glass": "bathroomMirror.glb",
+    "glass": "bathroomMirror.glb", "carpetDarker": "books.glb",
 }
 
 
@@ -226,11 +226,13 @@ def disc(center, radius, y0, y1, sides=8, phase=0.0):
 
 def lifebuoy():
     ring = Piece("Lifebuoy")
-    major, minor = 0.13, 0.045
+    major, minor = 0.165, 0.055
     centre = (0.0, minor, 0.0)
+    # Red and white quarters: the kit's deeper `carpetDarker` red reads as a real
+    # lifebuoy; its brighter `carpet` is a salmon pink (Jared, #596 review).
     for quarter in range(4):
         u0 = math.pi / 4 + quarter * math.pi / 2
-        ring.add(torus_arc(centre, major, minor, u0, u0 + math.pi / 2, 4), "carpet" if quarter % 2 == 0 else "carpetWhite")
+        ring.add(torus_arc(centre, major, minor, u0, u0 + math.pi / 2, 4), "carpetDarker" if quarter % 2 == 0 else "carpetWhite")
     # Two thin rope wraps over the white quarters.
     for u in (0.0, math.pi):
         x = major * math.cos(u)
@@ -243,7 +245,8 @@ def lifebuoy():
 
 def fishing_net():
     net = Piece("FishingNet")
-    width, drop = 0.86, 0.42
+    # Three wall faces wide: big enough to read at the game's camera distance.
+    width, drop = 1.34, 0.48
     top = drop + 0.06
     net.add(rod((-width / 2 - .04, .03, top), (width / 2 + .04, .03, top), .022, sides=6), "woodDark")
     for x in (-width / 2 + .02, width / 2 - .02):
@@ -259,18 +262,18 @@ def fishing_net():
     xs = [-width / 2 + i * width / (columns - 1) for i in range(columns)]
     for x in xs:
         bottom = sag(x, 4)
-        net.add(rod((x, .05, top - .02), (x, .05, bottom), .006), "woodDark")
+        net.add(rod((x, .05, top - .02), (x, .05, bottom), .011), "woodDark")
     for row in range(1, 5):
         pts = [(x, .052, sag(x, row)) for x in xs]
         for a, b in zip(pts, pts[1:]):
-            net.add(rod(a, b, .006), "woodDark")
-    # Cork floats along the bottom edge.
+            net.add(rod(a, b, .011), "woodDark")
+    # Thick cords and big red and white floats, so the net reads at game distance.
     for i, x in enumerate(xs[1:-1:2]):
         z = sag(x, 4)
-        net.add(transformed(cylinder((0, 0), .03, .03, -.022, .022, sides=8), Matrix.Translation((x, .055, z)) @ Matrix.Rotation(math.pi / 2, 4, "Y")),
-                "carpet" if i % 2 == 0 else "carpetWhite")
+        net.add(transformed(cylinder((0, 0), .052, .052, -.032, .032, sides=8), Matrix.Translation((x, .055, z)) @ Matrix.Rotation(math.pi / 2, 4, "Y")),
+                "carpetDarker" if i % 2 == 0 else "carpetWhite")
     # A coil of rope looped over the right end of the pole.
-    net.add(torus_arc((width / 2 - .1, .07, top - .1), .085, .026, 0.0, math.tau, 12, minor_sides=4), "wood")
+    net.add(torus_arc((width / 2 - .13, .07, top - .13), .11, .032, 0.0, math.tau, 12, minor_sides=4), "wood")
     net.finish()
     return {"width": width, "drop": round(top - sag(0.0, 4), 3)}
 
@@ -325,6 +328,8 @@ def flour_sacks():
     for part, token in _sack(0.3, 0.17, 0.14):
         lying = Matrix.Translation((-0.16, 0.13, 0.085)) @ Matrix.Rotation(math.pi / 2, 4, "Y")
         sacks.add(transformed(part, lying), token)
+    # A size up, so the stack reads from the game's camera (still one cell).
+    bmesh.ops.scale(sacks.bm, vec=Vector((1.22, 1.22, 1.22)), verts=sacks.bm.verts)
     sacks.finish()
     return {}
 
@@ -342,6 +347,7 @@ def barrel():
         x, y = math.cos(a), math.sin(a)
         cask.add(rod((0.142 * x, 0.142 * y, 0.01), (0.176 * x, 0.176 * y, 0.2), .004), "woodDark")
         cask.add(rod((0.176 * x, 0.176 * y, 0.2), (0.142 * x, 0.142 * y, 0.39), .004), "woodDark")
+    bmesh.ops.scale(cask.bm, vec=Vector((1.2, 1.2, 1.2)), verts=cask.bm.verts)
     cask.finish()
     return {}
 
@@ -416,7 +422,8 @@ def skyline_print():
 
 def surfboard():
     board = Piece("Surfboard")
-    length, half_width, thick = 0.86, 0.13, 0.035
+    # Short enough to stand on the street front below the eaves (from 0.6 m up).
+    length, half_width, thick = 0.70, 0.14, 0.035
 
     def half(t):
         # Widest a little behind the middle, a soft pin tail (t = 0) and a pointed nose (t = 1).
@@ -499,6 +506,22 @@ def shell_jars():
     return {}
 
 
+# ---------------------------------------------------------------- lamp cord
+
+PENDANT_CORD = 0.23
+
+
+def pendant_cord():
+    """The cord a ceiling pendant (`lamp_pendant`) hangs from, with a small ceiling
+    rose at the top, so the shade no longer floats (#596 review)."""
+    cord = Piece("PendantCord")
+    cord.add(cylinder((0, 0), .007, .007, 0.0, PENDANT_CORD - .012, sides=6), "metalDark")
+    cord.add(cylinder((0, 0), .016, .016, 0.0, .012, sides=8), "metalDark")
+    cord.add(cylinder((0, 0), .03, .026, PENDANT_CORD - .014, PENDANT_CORD, sides=8), "metalDark")
+    cord.finish()
+    return {"length": PENDANT_CORD}
+
+
 # ---------------------------------------------------------------- export
 
 def clear_scene():
@@ -527,6 +550,7 @@ ASSETS = [
     ("surfboard", surfboard, 800, ["chairModernCushion.glb (carpetBlue)", "coatRack.glb"]),
     ("beach_sign", beach_sign, 800, ["#240 shop_name_sign", "paneling.glb"]),
     ("shell_jars", shell_jars, 800, ["bathroomMirror.glb (glass)", "Food Kit cup"]),
+    ("pendant_cord", pendant_cord, 300, ["lampSquareCeiling.glb (metalDark)", "lampWall.glb"]),
 ]
 
 

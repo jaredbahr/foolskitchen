@@ -449,13 +449,14 @@ side by side with Food Kit plates, bowls, cups and mugs on and in them.
 
 | Asset under `location_decor/` | Place | Based on | Triangles | World size (w x h x d) |
 |---|---|---|---:|---|
-| `lifebuoy.glb` | cliff | `pillow` cloth colours, `coatRack` peg | 260 | 0.35 x 0.35 x 0.12 |
-| `fishing_net.glb` (net, cork floats, rope coil on a pole) | cliff | `coatRack` pole, `lampWall` brackets | 744 | 0.94 x 0.64 x 0.10 |
+| `lifebuoy.glb` (red `carpetDarker` and white quarters; also hangs on a street-facing wall) | cliff | `books` red, `pillow` white, `coatRack` peg | 260 | 0.44 x 0.44 x 0.14 |
+| `fishing_net.glb` (three faces wide: net, cork floats, rope coil on a pole) | cliff | `coatRack` pole, `lampWall` brackets | 744 | 1.42 x 0.70 x 0.10 |
 | `bunting.glb` (street front, over a door or window) | cliff | #240 string lights' string, `benchCushion` cloth | 192 | 1.45 x 0.22 x 0.03 |
-| `flour_sacks.glb` | mill | `pillow`, `cardboardBoxClosed` | 348 | 0.40 x 0.31 x 0.32 |
-| `barrel.glb` | mill | `trashcan` proportions, `kitchenCabinet` wood | 352 | 0.35 x 0.41 x 0.35 |
+| `flour_sacks.glb` | mill | `pillow`, `cardboardBoxClosed` | 348 | 0.49 x 0.38 x 0.39 |
+| `barrel.glb` | mill | `trashcan` proportions, `kitchenCabinet` wood | 352 | 0.42 x 0.49 x 0.42 |
 | `wheat_sheaf.glb` | mill | `plantSmall3`, `coatRack` peg | 412 | 0.38 x 0.58 x 0.10 |
 | `skyline_print.glb` | rooftop | #147 diner wall art frame, `televisionModern` | 464 | 0.70 x 0.46 x 0.04 |
-| `surfboard.glb` (stands on its tail) | boardwalk | `chairModernCushion` blue | 236 | 0.29 x 0.86 x 0.07 |
+| `surfboard.glb` (stands on its tail) | boardwalk | `chairModernCushion` blue | 236 | 0.31 x 0.70 x 0.07 |
 | `beach_sign.glb` (two painted arrow planks) | boardwalk | #240 shop name sign, `paneling` | 340 | 0.90 x 0.40 x 0.06 |
 | `shell_jars.glb` (sits on a counter or table) | boardwalk | `bathroomMirror` glass, Food Kit cup | 416 | 0.18 x 0.15 x 0.08 |
+| `pendant_cord.glb` (the cord and ceiling rose the kit `lampSquareCeiling` pendant hangs from) | any | `lampSquareCeiling` metal | 76 | 0.06 x 0.23 x 0.06 |

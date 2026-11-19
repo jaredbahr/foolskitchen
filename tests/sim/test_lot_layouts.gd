@@ -383,17 +383,24 @@ func test_the_kiosk_serves_a_drinks_guest_at_its_counter_on_day_one() -> void:
 ## #604, and the old rectangles (legacy saves) stay bare.
 func test_every_lot_hangs_all_its_starter_decor_and_old_shells_stay_bare() -> void:
 	var dressed: Dictionary[StringName, Array] = {
-		&"seaside_cliff": [&"lifebuoy", &"fishing_net", &"bunting"],
+		&"seaside_cliff": [&"lifebuoy", &"fishing_net", &"bunting", &"lamp_wall"],
 		&"skyscraper_rooftop": [&"skyline_print", &"lamp_pendant"],
-		&"town_fixer_upper": [&"flour_sacks", &"barrel", &"wheat_sheaf", &"crockery_dresser"],
-		&"beachfront_boardwalk": [&"surfboard", &"beach_sign", &"shell_jars"],
+		&"town_fixer_upper": [&"flour_sacks", &"barrel", &"crockery_dresser"],
+		&"beachfront_boardwalk": [&"surfboard", &"beach_sign"],
 	}
 	for lot_id: StringName in LOTS:
 		var layout: ShopLayout = _layout(lot_id)
 		var sim: RestaurantSim = _sim(layout)
 		var editor: ShopEditor = _editor(sim, layout)
-		assert_false(layout.wall_items.is_empty(), "%s hangs starter decor" % lot_id)
 		assert_eq(editor.decor.count(), layout.wall_items.size(), "%s: every starter wall item hangs" % lot_id)
+		# Starter decor (#596) is flagged, so its charm counts half.
+		assert_eq(editor.decor.starter_anchors().size(), layout.wall_items.size(), "%s: every hung piece is starter decor" % lot_id)
+		var starters: int = 0
+		for placed: PlacedItem in sim.world.grid.items():
+			if (placed.def as ItemDef).category == ItemDef.Category.DECOR:
+				assert_true(placed.starter, "%s: its %s is starter decor" % [lot_id, (placed.def as ItemDef).id])
+				starters += 1
+		assert_true(starters + layout.wall_items.size() >= 3, "%s has at least three starter pieces" % lot_id)
 		var present: Array[StringName] = []
 		for placed: PlacedItem in sim.world.grid.items():
 			present.append((placed.def as ItemDef).id)
@@ -406,3 +413,31 @@ func test_every_lot_hangs_all_its_starter_decor_and_old_shells_stay_bare() -> vo
 	var mill: RestaurantSim = _sim(_layout(&"town_fixer_upper"))
 	for cell: Vector2i in [Vector2i(12, 1), Vector2i(13, 1), Vector2i(14, 1), Vector2i(12, 2), Vector2i(13, 2), Vector2i(14, 2)]:
 		assert_true(mill.world.grid.items_at(cell).is_empty(), "the bread-oven nook %s stays empty for #604" % cell)
+
+
+func test_starter_decor_sets_a_modest_vibe_at_every_lot() -> void:
+	# Starter decor counts half (#596), so a new site starts at a modest vibe
+	# and the player's own decor still earns the rest.
+	var tuning: VibeTuning = load("res://data/balance/vibe.tres") as VibeTuning
+	for lot_id: StringName in LOTS:
+		var layout: ShopLayout = _layout(lot_id)
+		var sim: RestaurantSim = _sim(layout)
+		var editor: ShopEditor = _editor(sim, layout)
+		var inputs: VibeModel.Inputs = VibeInputs.capture(sim.world.grid, _content, [] as Array[RecipeDef], &"", &"",
+			editor.decor_vibe_items(), {} as Dictionary[int, float], editor.decor_vibe_scales())
+		var result: VibeModel.Result = VibeModel.evaluate(inputs, tuning)
+		assert_true(result.valid, String(lot_id))
+		assert_true(result.score >= 15.0 and result.score <= 25.0, "%s starts at vibe %.1f" % [lot_id, result.score])
+
+
+func test_the_cliff_terrace_sees_its_net_and_lifebuoy_but_not_its_street_signs() -> void:
+	var layout: ShopLayout = _layout(&"seaside_cliff")
+	var editor: ShopEditor = _editor(_sim(layout), layout)
+	var seen: Array[StringName] = []
+	for definition: ItemDef in editor.decor_vibe_items():
+		seen.append(definition.id)
+	for id: StringName in [&"fishing_net", &"lifebuoy", &"lamp_wall"]:
+		assert_true(seen.has(id), "terrace guests see the %s" % id)
+	assert_false(seen.has(&"bunting"), "bunting is curb appeal, not vibe")
+	assert_false(seen.has(&"a_frame_sign"))
+	assert_eq(seen.count(&"lamp_wall"), 1, "the kitchen lantern is out of the guests' sight")

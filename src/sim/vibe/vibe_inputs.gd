@@ -5,6 +5,9 @@ extends RefCounted
 
 
 const VIBE_THEMES: Array[StringName] = VibeTuning.KNOWN_THEMES
+## Starter decor (#596), the pieces a lot's building comes with, earns this
+## share of its charm, so a new shop starts with a little vibe, not a lot.
+const STARTER_CHARM_SHARE: float = 0.5
 
 
 ## Null means an unavailable or invalid source; VibeModel evaluates it neutrally.
@@ -12,7 +15,8 @@ const VIBE_THEMES: Array[StringName] = VibeTuning.KNOWN_THEMES
 ## No resource, placement, reservation, menu selection or random stream mutates.
 static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 		wall_swatch: StringName = &"", floor_swatch: StringName = &"",
-		wall_items: Array[ItemDef] = [], charm_factors: Dictionary[int, float] = {}) -> VibeModel.Inputs:
+		wall_items: Array[ItemDef] = [], charm_factors: Dictionary[int, float] = {},
+		wall_charm_scales: Array[float] = []) -> VibeModel.Inputs:
 	if grid == null or content == null:
 		return null
 	var inputs: VibeModel.Inputs = VibeModel.Inputs.new()
@@ -49,6 +53,8 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 		item.charm = float(definition.charm)
 		# A cloudy fish tank (#125) earns part of its charm until cleaned.
 		item.charm_scale = charm_factors.get(placed.id, 1.0)
+		if placed.starter:
+			item.charm_scale *= STARTER_CHARM_SHARE
 		item.category = definition.category
 		item.theme_tags = definition.variant_tags(placed.variant_id)
 		item.cells = placed.cells.duplicate()
@@ -61,13 +67,16 @@ static func capture(grid: SimGrid, content: ContentDB, menu: Array[RecipeDef],
 		inputs.items.append(item)
 	# Wall decor (D26) the guests can see (ShopEditor.decor_vibe_items): decor
 	# charm and themes like any decor, but it takes no floor space.
-	for definition: ItemDef in wall_items:
+	for index: int in wall_items.size():
+		var definition: ItemDef = wall_items[index]
 		if definition == null or definition.id.is_empty() or definition.charm < 0 \
 				or not definition.hangs_on_wall() or not definition.placement_layer_valid():
 			return null
 		var hung: VibeModel.Item = VibeModel.Item.new()
 		hung.definition_id = definition.id
 		hung.charm = float(definition.charm)
+		# `wall_charm_scales` parallels `wall_items` (starter decor, #596).
+		hung.charm_scale = clampf(wall_charm_scales[index], 0.0, 1.0) if index < wall_charm_scales.size() else 1.0
 		hung.category = definition.category
 		hung.theme_tags = definition.theme_tags.duplicate()
 		hung.floor_decor = true

@@ -9,7 +9,7 @@ const BUDGET: int = 800
 ## id: [layer, footprint width, price, unlock level, charm]
 const CASES: Dictionary[StringName, Array] = {
 	&"lifebuoy": [ItemDef.PlacementLayer.WALL, 1, 30, 2, 2],
-	&"fishing_net": [ItemDef.PlacementLayer.WALL, 2, 40, 2, 2],
+	&"fishing_net": [ItemDef.PlacementLayer.WALL, 3, 40, 2, 2],
 	&"bunting": [ItemDef.PlacementLayer.WALL, 3, 30, 1, 0],
 	&"wheat_sheaf": [ItemDef.PlacementLayer.WALL, 1, 20, 1, 1],
 	&"skyline_print": [ItemDef.PlacementLayer.WALL, 2, 40, 3, 2],
@@ -60,8 +60,11 @@ func test_made_decor_is_buyable_everywhere_with_its_own_model() -> void:
 func test_made_models_stay_small() -> void:
 	var report: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(METRICS))
 	var assets: Dictionary = report.get("assets", {})
-	assert_eq(assets.size(), CASES.size())
-	for id: StringName in CASES:
+	# Every decor item, plus the cord the ceiling pendant now hangs from.
+	assert_eq(assets.size(), CASES.size() + 1)
+	var ids: Array[StringName] = CASES.keys()
+	ids.append(&"pendant_cord")
+	for id: StringName in ids:
 		assert_true(assets.has(String(id)), String(id))
 		if assets.has(String(id)):
 			assert_true(int(assets[String(id)]["triangles"]) < BUDGET, "%s stays under %d triangles" % [id, BUDGET])

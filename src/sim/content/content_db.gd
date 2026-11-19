@@ -639,8 +639,10 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("item '%s': invalid placement layer; floor decor must be non-solid decor without blocking, work or seat cells, and wall decor also one face deep and at most 4 faces wide" % definition.id)
 		if definition.wall_mount == ItemDef.WallMount.EXTERIOR and not definition.hangs_on_wall():
 			errors.append("item '%s': an exterior mount needs wall decor" % definition.id)
-		if definition.allow_exterior and (not definition.hangs_on_wall() or definition.wall_mount != ItemDef.WallMount.WINDOW):
-			errors.append("item '%s': only window decor can add an exterior mount" % definition.id)
+		# Window decor and ordinary inside-face decor (a lifebuoy, #596) may also
+		# hang on the street front; an exterior-only item already does.
+		if definition.allow_exterior and (not definition.hangs_on_wall() or definition.wall_mount == ItemDef.WallMount.EXTERIOR):
+			errors.append("item '%s': only window or inside wall decor can add an exterior mount" % definition.id)
 		if definition.shows_restaurant_name and (not definition.hangs_on_wall() or definition.wall_mount != ItemDef.WallMount.EXTERIOR \
 				or definition.exterior_band != ExteriorSupport.Band.HEADER or not definition.unique_per_shop):
 			errors.append("item '%s': a restaurant sign needs a unique exterior header mount" % definition.id)

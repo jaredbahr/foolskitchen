@@ -24,3 +24,4 @@ charm = 2
 theme_tags = Array[StringName]([&"seafood", &"cafe"])
 placeholder_color = Color(0.36, 0.52, 0.87, 1)
 paintable = false
+allow_exterior = true

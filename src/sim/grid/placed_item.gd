@@ -19,6 +19,8 @@ var swatch_id: StringName = &""
 var variant_id: StringName = &""
 ## Per-slot materials and the other slots' colours (#431). Cosmetic, like swatch_id.
 var paint: PaintLook = PaintLook.new()
+## Starter decor (#596): came with the lot's building (ShopPlacement.starter).
+var starter: bool = false
 var origin: Vector2i = Vector2i.ZERO
 var quarter_turns: int = 0
 var solid: bool = true

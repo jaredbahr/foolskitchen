@@ -637,10 +637,14 @@ func to_dict() -> Dictionary:
 	var placements: Array[Dictionary] = []
 	for placed: PlacedItem in _sim.world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef
-		placements.append({"def_id": String(definition.id),
+		var row: Dictionary = {"def_id": String(definition.id),
 			"origin": [placed.origin.x, placed.origin.y], "quarter_turns": placed.quarter_turns,
 			"swatch_id": String(placed.swatch_id), "variant_id": String(placed.variant_id),
-			"paint": placed.paint.to_rows()})
+			"paint": placed.paint.to_rows()}
+		# Starter decor (#596) is marked only when set, so other rows stay as they were.
+		if placed.starter:
+			row["starter"] = true
+		placements.append(row)
 	var segments: Array[Dictionary] = []
 	for edge: Vector3i in _sim.world.grid.segment_edges():
 		var kind: WallKindDef = _content.wall_kind_for(_sim.world.grid.segment(edge)) if _content != null else null
@@ -665,6 +669,11 @@ func to_dict() -> Dictionary:
 	# geometry without adding a section or an action save.
 	if not _save_layout_id.is_empty():
 		snapshot["layout_id"] = String(_save_layout_id)
+	var starters: Array[Array] = []
+	for anchor: Vector3i in decor.starter_anchors():
+		starters.append([anchor.x, anchor.y, anchor.z])
+	if not starters.is_empty():
+		snapshot["starter_wall_items"] = starters
 	return snapshot
 
 
@@ -788,6 +797,8 @@ static func from_dict(data: Dictionary, template_layout: ShopLayout, content: Co
 		# is from before slots and keeps its flat body coat (PaintLook.legacy).
 		placement.paint = PaintLook.from_rows(row["paint"], definition, content) if row.has("paint") \
 			else PaintLook.legacy(definition, placement.swatch_id)
+		# Starter decor (#596); older rows have no flag and count fully.
+		placement.starter = row.get("starter", false) == true
 		if preview.place_def(definition, placement.origin, placement.quarter_turns) == null:
 			errors.append("Saved item does not fit on the layout's floor")
 			return null
@@ -999,6 +1010,7 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 	layout.wall_menu_sections = {}
 	layout.wall_item_mounts = {}
 	layout.wall_item_swatches = {}
+	layout.starter_wall_items = []
 	var limit: int = preview.size.x * preview.size.y * 4
 	var saved: Variant = data.get("wall_finishes", [])
 	if saved is Array:
@@ -1049,6 +1061,14 @@ static func _decode_walls(data: Dictionary, preview: SimGrid, content: ContentDB
 		if extended:
 			layout.wall_item_mounts[anchor] = mount
 			layout.wall_item_swatches[anchor] = swatch
+	# Starter decor (#596): [x, y, dir] anchors of items that still hang.
+	var starters: Variant = data.get("starter_wall_items", [])
+	if starters is Array:
+		for value: Variant in (starters as Array).slice(0, limit):
+			var row: Array = value if value is Array else []
+			var anchor: Vector3i = _saved_face(row, 3, ExteriorSupport.MAX_KEY_DIRECTION)
+			if layout.wall_items.has(anchor) and not layout.starter_wall_items.has(anchor):
+				layout.starter_wall_items.append(anchor)
 
 
 ## A saved face key [x, y, dir, ...] of `size` values, or NO_FACE.
@@ -1090,6 +1110,8 @@ func _load_walls(layout: ShopLayout) -> void:
 				if definition.paintable and mount == ItemDef.WallMount.EXTERIOR else &""
 			var section: int = layout.wall_menu_sections.get(anchor, -1)
 			decor.add(definition.id, anchor, definition.footprint.x, mount == ItemDef.WallMount.WINDOW, mount, swatch, section)
+			if layout.starter_wall_items.has(anchor):
+				decor.set_starter(anchor, true)
 
 
 ## Invalid or removed palette entries revert to authored colours on old saves.
@@ -1709,6 +1731,8 @@ func rehang(anchor: Vector3i, to_anchor: Vector3i, exact: Exact = null) -> bool:
 	var added: bool = decor.add(hung.def_id, to_anchor, hung.width, mount == ItemDef.WallMount.WINDOW, mount, hung.swatch_id, hung.menu_section)
 	if not added:
 		decor.add(hung.def_id, anchor, hung.width, hung.window, hung.mount, hung.swatch_id, hung.menu_section)
+	# Starter decor (#596) keeps its flag wherever it hangs.
+	decor.set_starter(to_anchor if added else anchor, hung.starter)
 	_applying = false
 	last_anchor = to_anchor if added else anchor
 	last_cash_change = 0
@@ -1762,22 +1786,44 @@ func paint_hung(anchor: Vector3i, swatch_id: StringName) -> bool:
 
 
 ## Hung decor guests can see (D26), as definitions: items on the wall faces of
-## the guest rooms, for the vibe (decor charm and themes, like floor decor).
+## the guest rooms or facing a guest patio, for the vibe (decor charm and
+## themes, like floor decor).
 func decor_vibe_items() -> Array[ItemDef]:
 	var out: Array[ItemDef] = []
+	for anchor: Vector3i in _decor_vibe_anchors():
+		out.append(hung_definition(anchor))
+	return out
+
+
+## Each decor_vibe_items() entry's share of its charm, in the same order:
+## starter decor (#596) counts VibeInputs.STARTER_CHARM_SHARE, the rest fully.
+func decor_vibe_scales() -> Array[float]:
+	var out: Array[float] = []
+	for anchor: Vector3i in _decor_vibe_anchors():
+		out.append(VibeInputs.STARTER_CHARM_SHARE if decor.item(anchor).starter else 1.0)
+	return out
+
+
+func _decor_vibe_anchors() -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
 	if _sim == null or _sim.world == null or _content == null:
 		return out
 	var guests: Dictionary[Vector2i, bool] = _guest_cells(_sim.world.grid)
 	for anchor: Vector3i in decor.anchors():
 		var definition: ItemDef = hung_definition(anchor)
-		if definition == null or decor.item(anchor).mount == ItemDef.WallMount.EXTERIOR:
+		if definition == null:
+			continue
+		# Street-front pieces (signs, awnings) are curb appeal. Indoor decor hung
+		# outside counts only where it faces a guest patio or terrace (#596).
+		var outside: bool = decor.item(anchor).mount == ItemDef.WallMount.EXTERIOR
+		if outside and (definition.wall_mount == ItemDef.WallMount.EXTERIOR or guests.is_empty()):
 			continue
 		var seen: bool = guests.is_empty()
 		for face: Vector3i in decor.item(anchor).faces():
 			if guests.has(WallFaces.cell(face)):
 				seen = true
 		if seen:
-			out.append(definition)
+			out.append(anchor)
 	return out
 
 

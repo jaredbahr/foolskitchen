@@ -55,13 +55,14 @@ display_name = "Seaside cliff"
 rows = PackedStringArray("################", "#..............#", "#..............#", "#..............#", "##..#####..#####", "  EE            ")
 placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7")])
 wall_items = Dictionary[Vector3i, StringName]({
-Vector3i(3, 1, 0): &"lamp_wall",
 Vector3i(9, 1, 0): &"lamp_wall",
-Vector3i(11, 1, 0): &"lifebuoy",
-Vector3i(12, 1, 0): &"fishing_net",
+Vector3i(15, 5, 0): &"lamp_wall",
+Vector3i(11, 5, 0): &"fishing_net",
+Vector3i(8, 5, 0): &"lifebuoy",
 Vector3i(4, 5, 20): &"a_frame_sign",
 Vector3i(4, 5, 4): &"bunting"
 })
+starter_wall_items = Array[Vector3i]([Vector3i(9, 1, 0), Vector3i(15, 5, 0), Vector3i(11, 5, 0), Vector3i(8, 5, 0), Vector3i(4, 5, 20), Vector3i(4, 5, 4)])
 room_rows = PackedStringArray("", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK", " KKKKKKKKKKKKKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(6, 2),

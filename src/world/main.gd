@@ -1709,7 +1709,7 @@ func _recompute_vibe() -> void:
 	_recompute_curb_appeal()
 	var inputs: VibeModel.Inputs = VibeInputs.capture(world.grid, content, menu_settings.enabled_recipes(),
 		shop_editor.wall_vibe_swatch(), shop_editor.floor_vibe_swatch(), shop_editor.decor_vibe_items(),
-		sim.aquarium.charm_factors(world.grid, Clock.sim.day))
+		sim.aquarium.charm_factors(world.grid, Clock.sim.day), shop_editor.decor_vibe_scales())
 	var placed_ids: Array[StringName] = []
 	for placed: PlacedItem in world.grid.items():
 		var definition: ItemDef = placed.def as ItemDef

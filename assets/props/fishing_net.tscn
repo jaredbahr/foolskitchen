@@ -5,10 +5,10 @@
 
 [node name="FishingNet" type="Node3D"]
 script = ExtResource("1_view")
-footprint = Vector2i(2, 1)
+footprint = Vector2i(3, 1)
 
 [node name="WallMount" type="Node3D" parent="."]
-position = Vector3(0, 0.52, 0.2)
+position = Vector3(0, 0.56, 0.197)
 
 [node name="Art" type="Node3D" parent="WallMount"]
 

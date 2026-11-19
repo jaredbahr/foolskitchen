@@ -17,7 +17,7 @@
 # --loan-review --speed=0 --frames=12,90 captures an explicit loss fixture's bank report, then next-morning Loan HUD.
 # --milestone-review --speed=0 --frames=12,90 captures Goals, then an explicit close-data reward fixture.
 # --collections-review --speed=0 --frames=240 captures real derived collection ticks in Goals after the toast clears.
-# --catalogue-review=rustic|modern --speed=0 --frames=90,120 captures real previews, then the furnishing fixture.
+# --catalogue-review=rustic|modern --speed=0 --frames=120,150 captures real previews, then the furnishing fixture.
 # --diner-review --speed=0 --frames=12,90 captures six native comparisons, then real seated diner guests.
 # --walls=place --speed=0 --frames=12 holds a dragged wall run (ghost + cost); --walls=room --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows a built room, Walls Up or Cutaway.
 # --expand=drag --speed=0 --frames=12 holds a dragged floor rectangle on the lot (ghost + cost + lot outline); --expand=shop --open --fast=10 --speed=1 --frames=150 [--quarter=0] shows the finished L-shaped shop.
