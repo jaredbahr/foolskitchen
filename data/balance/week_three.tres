@@ -5,14 +5,14 @@
 
 [sub_resource type="Resource" id="goal_1"]
 script = ExtResource("2_goal")
-id = &"second_cook"
-title = "Hire a second cook"
-description = "In Staff, hire another cook so the kitchen keeps up with a bigger room. They count once there are two cooks on the team at opening."
+id = &"hire_cleaner"
+title = "Hire a cleaner"
+description = "In Staff, hire a cleaner: clean tables and floors help the stars. They count once they are still on the team at opening."
 condition = 11
-target = 2.0
+target = 1.0
 reward_cash = 80
 reward_xp = 10
-role = &"cook"
+role = &"cleaner"
 
 [sub_resource type="Resource" id="goal_2"]
 script = ExtResource("2_goal")

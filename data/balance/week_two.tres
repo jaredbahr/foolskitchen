@@ -47,14 +47,14 @@ station_type = &"fryer"
 
 [sub_resource type="Resource" id="goal_5"]
 script = ExtResource("2_goal")
-id = &"hire_cleaner"
-title = "Hire a cleaner"
-description = "In Staff, hire a cleaner to keep the floor and tables clean. They count once they are still on the team at opening."
+id = &"second_cook"
+title = "Hire a second cook"
+description = "In Staff, hire another cook so the kitchen keeps up with the bigger room. They count once there are two cooks on the team at opening."
 condition = 11
-target = 1.0
+target = 2.0
 reward_cash = 60
 reward_xp = 5
-role = &"cleaner"
+role = &"cook"
 
 [sub_resource type="Resource" id="goal_6"]
 script = ExtResource("2_goal")
