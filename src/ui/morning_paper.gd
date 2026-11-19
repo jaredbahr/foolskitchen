@@ -49,7 +49,7 @@ static func build(day: int, yesterday: DayReport, weather_kind: int, notes: Arra
 	# A template that opens with {dish} still opens with a capital ("The menu ...").
 	filled = filled.left(1).to_upper() + filled.substr(1)
 	return {"masthead": MASTHEAD, "headline": filled,
-		"notes": _briefs(yesterday, weather_kind, notes, dish)}
+		"notes": _briefs(yesterday, weather_kind, notes, dish, quirk_brief(day, yesterday))}
 
 
 static func best_dish(dishes: Dictionary, content: ContentDB) -> String:
@@ -102,8 +102,32 @@ static func _headline_group(day: int, yesterday: DayReport, history: Dictionary)
 	return &"quiet"
 
 
+## One line about yesterday's most-seen guest quirk, or "". The quirk is the
+## most-seen (a tie goes to the lower quirk id) and the line is picked from the
+## day number, so neither draws from any stream. Lines live in the paper's
+## headline data as `brief_<quirk id>`.
+static func quirk_brief(day: int, yesterday: DayReport) -> String:
+	if yesterday == null:
+		return ""
+	var best: StringName = &""
+	var best_count: int = 0
+	for key: Variant in yesterday.quirk_counts:
+		var id: StringName = StringName(str(key))
+		var count: int = int(yesterday.quirk_counts[key])
+		var lines: PackedStringArray = HEADLINES.groups.get(StringName("brief_%s" % id), PackedStringArray())
+		if count <= 0 or lines.is_empty():
+			continue
+		if count > best_count or (count == best_count and String(id) < String(best)):
+			best = id
+			best_count = count
+	if best.is_empty():
+		return ""
+	var group: PackedStringArray = HEADLINES.groups[StringName("brief_%s" % best)]
+	return group[posmod(day, group.size())]
+
+
 static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String],
-		dish: String = "") -> Array[String]:
+		dish: String = "", quirk_line: String = "") -> Array[String]:
 	var available: Array[String] = []
 	if weather_kind in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
 		available.append(WeatherText.forecast_for(weather_kind))
@@ -112,6 +136,8 @@ static func _briefs(yesterday: DayReport, weather_kind: int, notes: Array[String
 	available.append_array(notes)
 	if not dish.is_empty():
 		available.append("%s was yesterday’s favorite." % dish)
+	# Lowest priority: it only fills a free slot, never pushes out another note.
+	available.append(quirk_line)
 	var briefs: Array[String] = []
 	for line: String in available:
 		var brief: String = line.strip_edges()

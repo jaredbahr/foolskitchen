@@ -4,6 +4,8 @@ extends RefCounted
 ## waiting divided by that guest's patience budget, not time remaining.
 
 var served: bool = false
+## The guest's customer type id, for the good-visit review voice (quotes only).
+var type_id: StringName = &""
 ## Detached identities of meals actually finished during this visit. Payment or
 ## an order alone is not evidence that the guest consumed a dish.
 var consumed_recipe_ids: Array[StringName] = []
