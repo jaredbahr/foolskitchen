@@ -447,7 +447,7 @@ def doodles(c: Canvas) -> None:
     c.poly(arc(fx, fy, 22, 11, 0, 360, 14), (252, 238, 206, 230), pencil, 3)
     c.poly([(fx + 20, fy), (fx + 36, fy - 10), (fx + 36, fy + 10)], (252, 238, 206, 230), pencil, 3)
     c.ellipse(fx - 10, fy - 3, 2, 2, pencil)
-    sx, sy = 150, 130
+    sx, sy = 112, 112
     c.ellipse(sx, sy, 20, 20, (252, 222, 120, 230), pencil, 3)
     for k in range(10):
         a = math.radians(k * 36)

@@ -88,7 +88,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-size_flags_stretch_ratio = 3.0
+size_flags_stretch_ratio = 5.0
 mouse_filter = 2
 alignment_vertical = 0
 
@@ -123,11 +123,28 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 
-[node name="Detail" type="VBoxContainer" parent="Panel/Content/MapPage"]
+[node name="Side" type="VBoxContainer" parent="Panel/Content/MapPage"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 2.0
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Detail" type="VBoxContainer" parent="Panel/Content/MapPage/Side"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="AlertsBar" type="PanelContainer" parent="Panel/Content/MapPage/Side"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Lines" type="VBoxContainer" parent="Panel/Content/MapPage/Side/AlertsBar"]
+unique_name_in_owner = true
+layout_mode = 2
 mouse_filter = 2
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
@@ -152,17 +169,6 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
-
-[node name="AlertsBar" type="PanelContainer" parent="Panel/Content"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-mouse_filter = 2
-
-[node name="Lines" type="VBoxContainer" parent="Panel/Content/AlertsBar"]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
 
 [connection signal="pressed" from="Panel/Content/Header/Close" to="." method="_on_close_pressed"]
 [connection signal="pressed" from="Panel/Content/Header/ViewToggle" to="." method="_on_view_toggle_pressed"]

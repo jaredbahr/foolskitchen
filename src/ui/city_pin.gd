@@ -104,7 +104,7 @@ func _style() -> void:
 	icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	# A neighbourhood's hit area takes the size the map gives it, whatever its text.
-	autowrap_mode = TextServer.AUTOWRAP_OFF if kind == AREA else TextServer.AUTOWRAP_WORD_SMART
+	autowrap_mode = TextServer.AUTOWRAP_OFF
 	clip_text = kind == AREA
 	var hover: StyleBoxFlat = StyleBoxFlat.new()
 	hover.set_corner_radius_all(10)

@@ -71,7 +71,7 @@ func _panel(screen: Vector2i, texture: Texture2D = null) -> CityPanel:
 
 
 func _settle() -> void:
-	for _i: int in 3:
+	for _i: int in 8:
 		await (Engine.get_main_loop() as SceneTree).process_frame
 
 
@@ -131,6 +131,16 @@ func _real_panel(screen: Vector2i, tier: int, empty_pinewood: bool) -> CityPanel
 	cliff.name = "Seaside Cliff"
 	cliff.alerts = [ChainSummary.Alert.NO_MANAGER] as Array[ChainSummary.Alert]
 	view.sites.append(cliff)
+	var mill: ChainSummary.Site = _site(&"mill", ChainSummary.Status.MANAGED)
+	mill.lot = &"town_fixer_upper"
+	mill.name = "Old Mill Street"
+	view.sites.append(mill)
+	if tier >= 5:
+		var cabin: ChainSummary.Site = _site(&"cabin", ChainSummary.Status.RENOVATING)
+		cabin.lot = &"woodland_cabin"
+		cabin.name = "Woodland Cabin"
+		cabin.renovation_days = 3
+		view.sites.append(cabin)
 	for path: String in ["town_fixer_upper", "beachfront_boardwalk", "seaside_cliff", "skyscraper_rooftop", "woodland_cabin"]:
 		view.lots.append(load("res://data/lots/%s.tres" % path) as LotDef)
 	view.career_tier = tier
@@ -148,8 +158,18 @@ func _assert_pins_on_the_map(panel: CityPanel, where: String) -> void:
 	for pin: CityPin in panel.pins():
 		if pin.kind == CityPin.AREA:
 			continue
-		assert_true(paper.encloses(Rect2(pin.global_position - canvas.global_position, pin.size)),
-			"%s's picture and label are inside the map at %s" % [pin.row_id, where])
+		var rect: Rect2 = Rect2(pin.global_position - canvas.global_position, CityPanel.pin_ink_size(pin))
+		assert_true(paper.encloses(rect), "%s's picture and label are inside the map at %s" % [pin.row_id, where])
+		# A lot pin stays by its own neighbourhood's banner, never in another's patch.
+		for banner: CityPin in panel.pins():
+			if banner.kind == CityPin.AREA and banner.row_id == pin.get_meta(&"area", &""):
+				var gap: Vector2 = (rect.get_center() - (banner.global_position - canvas.global_position + banner.size / 2.0)).abs()
+				assert_true(gap.x < canvas.size.x * 0.25 and gap.y < canvas.size.y * 0.35, "%s stays by its own area at %s" % [pin.row_id, where])
+		# ...and clear of every name banner (a neighbourhood's pin is its banner).
+		for other: CityPin in panel.pins():
+			if other.kind == CityPin.AREA:
+				assert_false(rect.intersects(Rect2(other.global_position - canvas.global_position, other.size)),
+					"%s's label clears the %s banner at %s" % [pin.row_id, other.row_id, where])
 
 
 ## No sign (picture and tag together) covers a name banner, a pin's label or another sign.
@@ -160,7 +180,7 @@ func _assert_signs_are_clear(panel: CityPanel, where: String) -> void:
 	for index: int in range(signs.size()):
 		assert_true(Rect2(Vector2.ZERO, canvas.size).encloses(signs[index]), "sign %d is on the map at %s" % [index, where])
 		for pin: CityPin in panel.pins():
-			var rect: Rect2 = Rect2(pin.global_position - canvas.global_position, pin.size)
+			var rect: Rect2 = Rect2(pin.global_position - canvas.global_position, CityPanel.pin_ink_size(pin))
 			assert_false(signs[index].intersects(rect), "sign %d clears %s (%s) at %s" % [index, pin.row_id, pin.kind, where])
 		for other: int in range(index + 1, signs.size()):
 			assert_false(signs[index].intersects(signs[other]), "signs %d and %d do not overlap at %s" % [index, other, where])
@@ -204,6 +224,11 @@ func test_the_card_sits_beside_the_map_on_a_wide_screen_and_under_it_on_a_phone(
 	assert_true(detail.global_position.x >= canvas.global_position.x + canvas.size.x - 1.0, "the card is right of the map")
 	assert_true(detail.get_child(0).size.x >= CityPanel.SIDE_CARD_WIDTH - 1.0, "and wide enough to read")
 	assert_true(canvas.size.x > 700.0, "the map keeps its size at 1600x900")
+	var bar: Control = wide.get_node("%AlertsBar") as Control
+	assert_true(bar.visible, "the alerts are listed")
+	assert_true(bar.global_position.x >= canvas.global_position.x + canvas.size.x - 1.0, "the alerts sit in the right column")
+	assert_true(bar.global_position.y >= detail.global_position.y + detail.size.y - 1.0, "under the card")
+	assert_true(canvas.size.y > 500.0, "the map grows into the height the bottom bar freed")
 	_holder.get_parent().remove_child(_holder)
 	_holder.free()
 	var phone: CityPanel = _real_panel(Vector2i(390, 844), 3, false)
@@ -215,6 +240,12 @@ func test_the_card_sits_beside_the_map_on_a_wide_screen_and_under_it_on_a_phone(
 	await _settle()
 	assert_true(detail.global_position.y >= canvas.global_position.y + canvas.size.y - 1.0, "the card is under the map")
 	assert_true(canvas.size.x > 300.0, "the map still fits the phone's width")
+	var phone_bar: Control = phone.get_node("%AlertsBar") as Control
+	assert_true(phone_bar.global_position.y >= detail.global_position.y + detail.size.y - 1.0, "the alerts follow the card")
+	assert_true(phone_bar.global_position.y < canvas.global_position.y + canvas.size.y + 400.0, "packed from the top, no blank gap")
+	phone.pin_pressed_for_review(&"")
+	await _settle()
+	assert_true(detail.global_position.y < canvas.global_position.y + canvas.size.y + 20.0, "the hint sits right under the map")
 
 
 func test_the_list_toggle_swaps_the_map_and_the_list() -> void:

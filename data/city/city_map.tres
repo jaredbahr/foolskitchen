@@ -18,7 +18,7 @@ id = &"millbrook"
 display_name = "Millbrook"
 blurb = "Hedgerows, a mill stream and the best flour in town, down the lane past the last bus stop."
 lots = Array[StringName]([&"town_fixer_upper"])
-map_position = Vector2(0.2, 0.32)
+map_position = Vector2(0.2, 0.26)
 
 [sub_resource type="Resource" id="Resource_seafront"]
 script = ExtResource("2_area")
@@ -26,7 +26,7 @@ id = &"seafront"
 display_name = "The Seafront"
 blurb = "Ice cream on the boardwalk, gulls on the railings and a café up on the cliff."
 lots = Array[StringName]([&"beachfront_boardwalk", &"seaside_cliff"])
-map_position = Vector2(0.25, 0.66)
+map_position = Vector2(0.25, 0.62)
 
 [sub_resource type="Resource" id="Resource_skyline"]
 script = ExtResource("2_area")
@@ -48,13 +48,13 @@ map_position = Vector2(0.62, 0.14)
 script = ExtResource("3_road")
 from = &"old_town"
 to = &"millbrook"
-bends = PackedVector2Array(0.38, 0.4, 0.28, 0.36)
+bends = PackedVector2Array(0.38, 0.37, 0.29, 0.3)
 
 [sub_resource type="Resource" id="Resource_road_sea"]
 script = ExtResource("3_road")
 from = &"old_town"
 to = &"seafront"
-bends = PackedVector2Array(0.45, 0.56, 0.37, 0.6)
+bends = PackedVector2Array(0.45, 0.55, 0.36, 0.59)
 
 [sub_resource type="Resource" id="Resource_road_sky"]
 script = ExtResource("3_road")
