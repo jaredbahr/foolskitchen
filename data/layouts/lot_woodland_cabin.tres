@@ -67,13 +67,26 @@ script = ExtResource("1_place")
 item_id = &"patio_table_2"
 origin = Vector2i(11, 13)
 
+[sub_resource type="Resource" id="Placement_12"]
+script = ExtResource("1_place")
+item_id = &"rug_round"
+origin = Vector2i(11, 7)
+swatch_id = &"oat"
+starter = true
+
 [resource]
 script = ExtResource("2_layout")
 id = &"lot_woodland_cabin"
 save_layout_id = &"lot_woodland_cabin_log_cabin"
 display_name = "Woodland Cabin"
 rows = PackedStringArray("##############", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "#............#", "####..########", "    EE        ")
-placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8"), SubResource("Placement_9"), SubResource("Placement_10"), SubResource("Placement_11")])
+placements = Array[ExtResource("1_place")]([SubResource("Placement_0"), SubResource("Placement_1"), SubResource("Placement_2"), SubResource("Placement_3"), SubResource("Placement_4"), SubResource("Placement_5"), SubResource("Placement_6"), SubResource("Placement_7"), SubResource("Placement_8"), SubResource("Placement_9"), SubResource("Placement_10"), SubResource("Placement_11"), SubResource("Placement_12")])
+wall_items = Dictionary[Vector3i, StringName]({
+Vector3i(1, 8, 3): &"crossed_paddles",
+Vector3i(3, 12, 0): &"lamp_wall",
+Vector3i(6, 12, 20): &"a_frame_sign"
+})
+starter_wall_items = Array[Vector3i]([Vector3i(1, 8, 3), Vector3i(3, 12, 0), Vector3i(6, 12, 20)])
 room_rows = PackedStringArray("", " KKKKKKKKKKKK", " KKKKKKKKKKKK", " KKKKKKKKKKKK")
 staff_spawns = Dictionary[StringName, Vector2i]({
 &"cook": Vector2i(4, 2),
