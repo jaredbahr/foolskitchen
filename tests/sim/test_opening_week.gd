@@ -353,16 +353,17 @@ func test_week_three_is_authored_and_points_at_tier_three() -> void:
 	assert_eq(WEEK_THREE.id, &"week_three")
 	assert_eq(WEEK_THREE.title, "Week 3")
 	assert_eq([WEEK_THREE.days, WEEK_THREE.shown_goals], [7, 3])
-	assert_eq(_ids(WEEK_THREE.goals), [&"second_cook", &"oven_dish", &"waiting_bench", &"a_frame_sign",
+	assert_eq(_ids(WEEK_THREE.goals), [&"second_cook", &"oven_dish", &"waiting_bench",
 		&"eight_five_star", &"serve_35", &"four_star_day"] as Array[StringName])
 	for goal: OpeningGoal in WEEK_THREE.goals:
 		assert_true(goal.reward_xp > 0 and goal.reward_xp <= 20, "%s: a little XP" % goal.id)
-	assert_eq(WEEK_THREE.total_cash(), 590, "about the size of the first two weeks")
+	assert_eq(WEEK_THREE.total_cash(), 550, "about the size of the first two weeks")
 	assert_eq(WEEK_THREE.by_id(&"second_cook").role, &"cook")
 	assert_eq(WEEK_THREE.by_id(&"second_cook").target, 2.0, "the starter cook plus one")
 	assert_eq(WEEK_THREE.by_id(&"oven_dish").station_type, &"oven")
 	assert_eq(WEEK_THREE.by_id(&"waiting_bench").item_ids, [&"waiting_bench"] as Array[StringName])
-	assert_eq(WEEK_THREE.by_id(&"a_frame_sign").item_ids, [&"a_frame_sign"] as Array[StringName])
+	assert_eq(WEEK_THREE.by_id(&"waiting_bench").condition, OpeningGoal.Condition.ITEMS_OWNED,
+		"a bench owned before Week 3 counts, so the goal can never stick")
 	var tiers: CareerTierTuning = load("res://data/balance/career_tiers.tres") as CareerTierTuning
 	var four_star: OpeningGoal = WEEK_THREE.by_id(&"four_star_day")
 	for tier: CareerTier in tiers.tiers:
@@ -370,7 +371,7 @@ func test_week_three_is_authored_and_points_at_tier_three() -> void:
 			assert_eq(four_star.target, tier.min_reputation, "the calm day asks for Tier 3's rating")
 	assert_eq(four_star.leave_reasons, [&"waited_too_long"] as Array[StringName])
 	# Items and dishes named by the goals exist and unlock by Tier 2's levels.
-	for id: StringName in [&"waiting_bench", &"a_frame_sign", &"oven"]:
+	for id: StringName in [&"waiting_bench", &"oven"]:
 		var item: ItemDef = load("res://data/items/%s.tres" % id) as ItemDef
 		assert_not_null(item, "%s exists" % id)
 		if item != null:
@@ -388,6 +389,27 @@ func test_each_week_three_goal_triggers_from_its_own_condition() -> void:
 	assert_true(cooks.observe(OpeningGoal.Condition.STAFF_ROLE, 1.0, WEEK_THREE, &"second_cook").is_empty(),
 		"the starter cook alone is not a second cook")
 	assert_true(cooks.observe(OpeningGoal.Condition.CALM_DAY_STARS, 3.9, WEEK_THREE, &"four_star_day").is_empty())
+
+
+func test_an_early_finish_of_week_two_starts_week_three_the_next_morning() -> void:
+	var state: OpeningWeek = _week_two()
+	for goal: OpeningGoal in WEEK_TWO.goals:
+		state.observe(goal.condition, goal.target, WEEK_TWO, goal.id)
+	assert_true(state.end_if_due(11, WEEK_TWO), "every Week 2 goal done on day 11")
+	assert_true(state.advance(12, CHAINS), "Week 3 starts the very next morning")
+	assert_eq(state.current(CHAINS), WEEK_THREE)
+	assert_eq([state.start_day, state.last_day(WEEK_THREE)], [12, 18])
+
+
+func test_items_owned_needs_its_items_and_counts_what_is_there() -> void:
+	var goal: OpeningGoal = WEEK_THREE.by_id(&"waiting_bench").duplicate() as OpeningGoal
+	assert_true(goal.is_valid())
+	goal.item_ids = []
+	assert_false(goal.is_valid(), "an owned-items goal names its items")
+	var state: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
+	state.advance(15, CHAINS)
+	assert_true(state.observe(OpeningGoal.Condition.ITEMS_OWNED, 0.0, WEEK_THREE, &"waiting_bench").is_empty())
+	assert_eq(state.observe(OpeningGoal.Condition.ITEMS_OWNED, 2.0, WEEK_THREE, &"waiting_bench").size(), 1)
 
 
 func _week_two() -> OpeningWeek:
