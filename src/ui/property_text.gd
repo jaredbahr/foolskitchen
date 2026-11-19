@@ -23,6 +23,7 @@ const EMPTY: String = "No lots are on the market."
 const TAG_PERKS: Dictionary[StringName, String] = {
 	&"seaside": "Fresh catch",
 	&"rooftop": "Rooftop bar",
+	&"woodland": "Porch in the woods",
 }
 const UPSTAIRS_PERK: String = "Room for an upstairs"
 ## The top guest type at or above this share reads "Mostly ...".

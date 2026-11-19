@@ -55,9 +55,10 @@ func test_lots_load_with_their_own_layouts() -> void:
 		ids.append(lot.id)
 		layouts[lot.base_layout] = true
 		sizes[lot.size_cells()] = true
-	assert_eq(ids, [&"beachfront_boardwalk", &"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper"])
-	assert_eq(layouts.size(), 4, "each lot has its own layout")
-	assert_eq(sizes.size(), 4, "each lot is a different size")
+	assert_eq(ids, [&"beachfront_boardwalk", &"seaside_cliff", &"skyscraper_rooftop", &"town_fixer_upper",
+		&"woodland_cabin"])
+	assert_eq(layouts.size(), 5, "each lot has its own layout")
+	assert_eq(sizes.size(), 5, "each lot is a different size")
 	var fixer: LotDef = db.lot(&"town_fixer_upper")
 	assert_true(fixer.is_fixer_upper())
 	assert_eq(fixer.renovation_days, 3)
@@ -65,6 +66,14 @@ func test_lots_load_with_their_own_layouts() -> void:
 	assert_true(fixer.size_cells() > db.lot(&"seaside_cliff").size_cells(), "the fixer-upper is the big one")
 	assert_eq(db.lot(&"skyscraper_rooftop").tags, [&"rooftop"] as Array[StringName])
 	assert_eq(db.lot(&"seaside_cliff").tags, [&"seaside"] as Array[StringName])
+	# The Woodland Cabin (#596) sits between the boardwalk and the cliff.
+	var woods: LotDef = db.lot(&"woodland_cabin")
+	assert_eq(woods.tags, [&"woodland"] as Array[StringName])
+	assert_eq(woods.street_preset, "res://data/streets/woodland.tres")
+	assert_true(woods.price > db.lot(&"beachfront_boardwalk").price and woods.price < db.lot(&"seaside_cliff").price)
+	assert_true(woods.daily_rent > db.lot(&"beachfront_boardwalk").daily_rent
+		and woods.daily_rent < db.lot(&"seaside_cliff").daily_rent)
+	assert_eq(woods.min_tier, 3)
 	assert_true(db.lot(&"skyscraper_rooftop").daily_rent > db.lot(&"seaside_cliff").daily_rent)
 	for lot: LotDef in db.lots():
 		assert_true(lot.expansion_price > 0 and lot.expanded_daily_rent >= lot.daily_rent, "every lot can expand")
@@ -217,7 +226,7 @@ func test_a_bad_lot_file_fails_the_whole_load() -> void:
 	assert_eq(db.lots().size(), 0, "nothing is published from a failed load")
 	assert_null(db.recipe(&"burger"))
 	assert_eq(db.load_all(), PackedStringArray(), "the restored lot loads again")
-	assert_eq(db.lots().size(), 4)
+	assert_eq(db.lots().size(), 5)
 
 
 func test_listing_is_cheapest_to_open_first() -> void:
@@ -225,7 +234,8 @@ func test_listing_is_cheapest_to_open_first() -> void:
 	var ids: Array[StringName] = []
 	for lot: LotDef in PropertyMarket.listing(db.lots()):
 		ids.append(lot.id)
-	assert_eq(ids, [&"town_fixer_upper", &"beachfront_boardwalk", &"seaside_cliff", &"skyscraper_rooftop"])
+	assert_eq(ids, [&"town_fixer_upper", &"beachfront_boardwalk", &"woodland_cabin", &"seaside_cliff",
+		&"skyscraper_rooftop"])
 	var cheap_fixer: LotDef = _good_lot(&"b_fixer")
 	cheap_fixer.price = 0
 	cheap_fixer.fixer_price = 700
@@ -281,6 +291,10 @@ func test_screen_lines_use_names_not_ids() -> void:
 	assert_eq(PropertyText.perks_line(seaside), "Perks: Fresh catch")
 	assert_eq(PropertyText.perks_line(rooftop), "Perks: Rooftop bar")
 	assert_eq(PropertyText.perks_line(fixer), "Perks: Room for an upstairs")
+	var woods: LotDef = db.lot(&"woodland_cabin")
+	assert_eq(PropertyText.price_line(woods), "$14,500 · move-in ready")
+	assert_eq(PropertyText.guest_line(woods, CUSTOMER_TYPES), "Guests: families and regulars")
+	assert_eq(PropertyText.perks_line(woods), "Perks: Porch in the woods")
 	for tag: StringName in LotDef.KNOWN_TAGS:
 		assert_true(PropertyText.TAG_PERKS.has(tag), "every known tag has a perk name")
 	assert_eq(PropertyText.plural("Family"), "families")

@@ -277,6 +277,7 @@ static func lot_refusal(tags: Array[StringName]) -> String:
 		match tag:
 			&"seaside": labels.append("Seaside")
 			&"rooftop": labels.append("Rooftop")
+			&"woodland": labels.append("Woodland")
 	if labels.is_empty():
 		return "Only available at a matching lot"
 	return "Only available at a lot with: %s" % " or ".join(labels)
