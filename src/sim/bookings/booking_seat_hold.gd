@@ -162,8 +162,9 @@ func _choose_group(world: SimWorld, party_size: int) -> Dictionary:
 		if seen.has(group_id):
 			continue
 		seen[group_id] = true
+		# A single table can be held too (#650): bookings start at four guests.
 		var members: Array[int] = PartySeating.table_group_members(table, world.grid)
-		if members.size() < 2:
+		if members.is_empty():
 			continue
 		var seats: Array[Vector2i] = _usable_seats(world, table)
 		if seats.size() < party_size:
@@ -193,7 +194,7 @@ func _candidate_before(left: Dictionary, right: Dictionary) -> bool:
 
 
 func _valid_group(group_id: int, saved_members: Variant, world: SimWorld, party_size: int) -> bool:
-	if not saved_members is Array or saved_members.size() < 2:
+	if not saved_members is Array or saved_members.is_empty():
 		return false
 	var grid: SimGrid = world.grid
 	var leader: PlacedItem = grid.item(group_id)

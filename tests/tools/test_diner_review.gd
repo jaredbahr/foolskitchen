@@ -77,7 +77,7 @@ func test_cli_accepts_exactly_two_paused_main_frames_and_rejects_other_modes() -
 	assert_false(REVIEW.options(PackedStringArray(["--speed=0"]))["enabled"])
 	assert_false(String(CAPTURE.loan_review_options(PackedStringArray(["--loan-review", "--speed=0", "--frames=12,90", "--diner-review"]))["error"]).is_empty())
 	assert_false(String(CAPTURE.milestone_review_options(PackedStringArray(["--milestone-review", "--speed=0", "--frames=12,90", "--diner-review"]))["error"]).is_empty())
-	assert_false(String(CAPTURE.catalogue_review_options(PackedStringArray(["--catalogue-review=modern", "--speed=0", "--frames=90,120", "--diner-review"]))["error"]).is_empty())
+	assert_false(String(CAPTURE.catalogue_review_options(PackedStringArray(["--catalogue-review=modern", "--speed=0", "--frames=120,150", "--diner-review"]))["error"]).is_empty())
 
 
 func test_comparison_reads_six_real_models_refs_bounds_and_mini_without_mutation() -> void:

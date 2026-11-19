@@ -30,6 +30,8 @@ class Hung extends RefCounted:
 	var swatch_id: StringName = &""
 	## -1 picks the first nonempty menu section when the board is drawn.
 	var menu_section: int = -1
+	## Starter decor (#596): came with the lot's building; its charm counts half.
+	var starter: bool = false
 
 	func _init(definition_id: StringName = &"", anchor_face: Vector3i = WallFaces.NO_FACE, faces: int = 1,
 			in_window: bool = false, actual_mount: int = -1, swatch: StringName = &"", section: int = -1) -> void:
@@ -43,7 +45,9 @@ class Hung extends RefCounted:
 		menu_section = section if def_id == MENU_BOARD_ID and WallDecor.valid_menu_section(section) else -1
 
 	func copy() -> Hung:
-		return Hung.new(def_id, anchor, width, window, mount, swatch_id, menu_section)
+		var result: Hung = Hung.new(def_id, anchor, width, window, mount, swatch_id, menu_section)
+		result.starter = starter
+		return result
 
 	## Where it still hangs on `grid` ("" when it does).
 	func problem_on(grid: SimGrid) -> String:
@@ -126,6 +130,30 @@ func set_menu_section(anchor: Vector3i, section: int) -> bool:
 		revision += 1
 		changed.emit()
 	return true
+
+
+## Marks the item at `anchor` as starter decor (#596) or not. False when
+## nothing hangs there.
+func set_starter(anchor: Vector3i, value: bool) -> bool:
+	var hung: Hung = item(anchor)
+	if hung == null:
+		return false
+	if hung.starter != value:
+		var changed_item: Hung = hung.copy()
+		changed_item.starter = value
+		_items[anchor] = changed_item
+		revision += 1
+		changed.emit()
+	return true
+
+
+## Anchors of the starter decor (#596), sorted.
+func starter_anchors() -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	for anchor: Vector3i in anchors():
+		if _items[anchor].starter:
+			out.append(anchor)
+	return out
 
 
 ## Takes an item down; returns it, or null when nothing hangs there.

@@ -78,8 +78,8 @@ func _tank_view(tank: PlacedItem) -> AquariumView:
 
 func test_the_aquarium_unlocks_at_level_three_and_draws_swimming_fish() -> void:
 	_start()
-	assert_null(_buy(2), "locked below level 3")
-	var tank: PlacedItem = _buy(3)
+	assert_null(_buy(6), "locked below level 7")
+	var tank: PlacedItem = _buy(7)
 	assert_not_null(tank)
 	var view: AquariumView = _tank_view(tank)
 	assert_not_null(view, "the tank is drawn by its wrapper")
@@ -93,7 +93,7 @@ func test_the_aquarium_unlocks_at_level_three_and_draws_swimming_fish() -> void:
 
 func test_four_mornings_later_the_tank_is_cloudy_with_less_charm_and_cleaning_brings_it_back() -> void:
 	_start()
-	var tank: PlacedItem = _buy(3)
+	var tank: PlacedItem = _buy(7)
 	var clear: float = _vibe().decor_points
 	for morning: int in TUNING.cloudy_after_days - 1:
 		_next_morning()
@@ -113,7 +113,7 @@ func test_four_mornings_later_the_tank_is_cloudy_with_less_charm_and_cleaning_br
 
 func test_selling_a_cloudy_tank_then_undo_keeps_it_cloudy() -> void:
 	_start()
-	var tank: PlacedItem = _buy(3)
+	var tank: PlacedItem = _buy(7)
 	for morning: int in TUNING.cloudy_after_days:
 		_next_morning()
 	assert_true(_sim().aquarium.is_cloudy(tank.id, Clock.sim.day))
@@ -130,7 +130,7 @@ func test_selling_a_cloudy_tank_then_undo_keeps_it_cloudy() -> void:
 
 func test_during_a_busy_service_the_owner_on_floor_walks_over_and_cleans_it() -> void:
 	_start()
-	var tank: PlacedItem = _buy(3)
+	var tank: PlacedItem = _buy(7)
 	for morning: int in TUNING.cloudy_after_days:
 		_next_morning()
 	assert_true(_sim().aquarium.is_cloudy(tank.id, Clock.sim.day))
@@ -155,7 +155,7 @@ func test_during_a_busy_service_the_owner_on_floor_walks_over_and_cleans_it() ->
 
 func test_the_morning_save_keeps_a_cloudy_tank_cloudy() -> void:
 	_start(true)
-	var tank: PlacedItem = _buy(3)
+	var tank: PlacedItem = _buy(7)
 	for morning: int in TUNING.cloudy_after_days:
 		_next_morning()
 	assert_true(_sim().aquarium.is_cloudy(tank.id, Clock.sim.day))
