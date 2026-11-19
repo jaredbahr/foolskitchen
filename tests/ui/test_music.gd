@@ -47,7 +47,7 @@ func test_every_track_loads_and_is_mapped() -> void:
 			assert_true(track is AudioStreamOggVorbis, "%s %d loads" % [context, i])
 			assert_true(track.get_length() > 60.0, "%s %d is a whole track" % [context, i])
 	assert_true(MusicTracks.track_for(&"nothing") == null, "unmapped contexts have none")
-	assert_eq(MusicTracks.all_tracks().size(), 7, "the bar and evening share one Smoky Vamp stream")
+	assert_eq(MusicTracks.all_tracks().size(), 8, "the bar and evening share one Smoky Vamp stream, plus the cliff shanty")
 	assert_eq(MusicTracks.track_count(MusicTracks.SERVICE_DAY), 2, "daytime service has two tracks")
 
 
@@ -79,7 +79,7 @@ func test_themes_have_the_expected_playable_loop_imports() -> void:
 			var sidecar: ConfigFile = ConfigFile.new()
 			assert_eq(sidecar.load(track.resource_path + ".import"), OK)
 			assert_eq(sidecar.get_value("params", "loop", false), true, track.resource_path)
-	for reserved: String in ["hazy_breakbeat.ogg", "sleek_groove.ogg", "buoyant_sea_shanty.ogg"]:
+	for reserved: String in ["hazy_breakbeat.ogg", "sleek_groove.ogg"]:
 		for track: AudioStream in MusicTracks.all_tracks():
 			assert_false(track.resource_path.ends_with(reserved), reserved + " is still reserved")
 
@@ -243,3 +243,33 @@ func test_playlist_tracks_play_once_and_others_loop() -> void:
 		assert_true((track as AudioStreamOggVorbis).loop, "the shared import is untouched")
 	var title: AudioStreamOggVorbis = Sfx.music_stream_for(MusicTracks.track_for(MusicTracks.TITLE)) as AudioStreamOggVorbis
 	assert_true(title.loop, "the title loops")
+
+
+func test_seaside_cliff_plays_the_shanty_whatever_the_theme_and_no_other_lot_does() -> void:
+	var shanty: AudioStream = MusicTracks.track_for(MusicTracks.SITE_CLIFF)
+	assert_true(shanty.resource_path.ends_with("buoyant_sea_shanty.ogg"))
+	for theme: StringName in [&"", &"bar", &"diner", &"cafe", &"seafood"]:
+		for light: float in [0.0, 1.0]:
+			assert_eq(MusicTracks.service_context(true, light, theme, &"seaside_cliff"), MusicTracks.SITE_CLIFF)
+	assert_eq(MusicTracks.service_context(false, 0.0, &"bar", &"seaside_cliff"), &"", "silent when closed")
+	for lot: StringName in [&"", &"home", &"beachfront_boardwalk", &"skyscraper_rooftop", &"town_fixer_upper"]:
+		for theme: StringName in [&"", &"bar", &"diner", &"cafe", &"seafood"]:
+			assert_ne(MusicTracks.service_context(true, 0.0, theme, lot), MusicTracks.SITE_CLIFF, "%s %s" % [lot, theme])
+			assert_ne(MusicTracks.service_context(true, 1.0, theme, lot), MusicTracks.SITE_CLIFF)
+	for theme: StringName in MusicTracks.BY_THEME:
+		if theme != MusicTracks.SITE_CLIFF:
+			assert_false(MusicTracks.BY_THEME[theme].has(shanty), "no vibe theme plays the shanty")
+	for context: StringName in MusicTracks.BY_CONTEXT:
+		assert_false(MusicTracks.BY_CONTEXT[context].has(shanty))
+	Sfx.set_music_context(MusicTracks.SITE_CLIFF, 3)
+	assert_true(Sfx.music_track() == shanty, "one song for the day, whatever its number")
+	Sfx.set_music_context(&"")
+
+
+func test_the_sound_director_picks_the_shanty_only_for_the_cliff_lot() -> void:
+	var director: SoundDirector = SoundDirector.new()
+	director.set_lot(&"seaside_cliff")
+	assert_eq(MusicTracks.service_context(true, 0.5, &"diner", director._lot_id), MusicTracks.SITE_CLIFF)
+	director.set_lot(&"home")
+	assert_eq(MusicTracks.service_context(true, 0.5, &"diner", director._lot_id), &"diner")
+	director.free()
