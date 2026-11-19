@@ -111,7 +111,11 @@ func test_a_closed_away_site_without_a_manager() -> void:
 		if lot.id == &"seaside_cliff":
 			rent = lot.rent(false)
 	assert_true(rent > 0)
-	assert_eq(cliff.tonight, -(rent + 55), "rent and the cook's and server's wages")
+	var wages: int = 0
+	for member: Dictionary in _sections()["staff"]["members"]:
+		wages += int(member["wage"])
+	assert_eq(wages, 55, "the fixture's cook and server")
+	assert_eq(cliff.tonight, -(rent + wages), "rent and the cook's and server's wages")
 	assert_eq(cliff.alerts, [ChainSummary.Alert.NO_MANAGER] as Array[ChainSummary.Alert])
 
 
@@ -183,6 +187,33 @@ func _booking_due(day: int) -> Dictionary:
 	return JSON.parse_string(JSON.stringify(booking.to_dict()))
 
 
+func test_a_worker_who_is_leaving_counts_as_unhappy() -> void:
+	# Mood 0 means they are leaving: it is the lowest, never "unset".
+	var sections: Dictionary = _sections()
+	sections["staff"]["members"][0]["growth"]["mood"] = 0.0
+	sections["staff"]["members"][0]["growth"]["quit_day"] = float(DAY + 1)
+	var book: SiteBook = SiteBook.new()
+	assert_true(book.add_site(&"seaside_cliff", &"seaside_cliff", "Cliff", 3, sections))
+	var cliff: ChainSummary.Site = _by_id(_build(book), &"seaside_cliff")
+	assert_eq(cliff.floor_staff, 2)
+	assert_eq(cliff.lowest_mood, 0)
+	assert_almost_eq(cliff.mood, 1.5)
+	assert_true(cliff.alerts.has(ChainSummary.Alert.UNHAPPY_TEAM))
+	var happy: ChainSummary.Site = _by_id(_build(_book()), &"home")
+	assert_eq(happy.lowest_mood, 3)
+	assert_false(happy.alerts.has(ChainSummary.Alert.UNHAPPY_TEAM))
+
+
+func test_the_recent_mean_is_the_managers_figure() -> void:
+	var history: Dictionary = _sections()["business_history"]
+	var decoded: BusinessHistory = BusinessHistory.new()
+	assert_true(decoded.restore(history))
+	assert_almost_eq(AwaySites.recent_mean(decoded.summaries(), TUNING.history_days), 42.0)
+	assert_eq(ChainSummary.recent_mean(history, TUNING), 42)
+	assert_true(is_nan(AwaySites.recent_mean([] as Array[Dictionary], 7)))
+	assert_eq(ChainSummary.recent_mean({}, TUNING), 0)
+
+
 func test_a_live_capture_reads_like_a_saved_one() -> void:
 	# A live capture holds StringNames and ints; the summary decodes it in
 	# saved-file shape, as a load would.
@@ -202,7 +233,7 @@ func test_the_summary_is_deterministic() -> void:
 		assert_eq(first[index].alerts, second[index].alerts)
 
 
-func test_chain_income_and_series() -> void:
+func test_chain_takings_net_and_series() -> void:
 	var ledger: Ledger = Ledger.new()
 	ledger.record(3, 200, Ledger.SALE, "", &"home")
 	ledger.record(4, 250, Ledger.SALE, "", &"home")
@@ -211,13 +242,16 @@ func test_chain_income_and_series() -> void:
 	ledger.record(4, 36, Ledger.AWAY_SITE_INCOME, "", &"beachfront_boardwalk")
 	ledger.record(4, -95, Ledger.AWAY_SITE_RENT, "", &"seaside_cliff")
 	var sites: Array[StringName] = [&"home", &"beachfront_boardwalk", &"seaside_cliff"]
-	assert_eq(ChainStats.site_income(ledger, 4, &"home"), 265, "takings: sales and tips, gross")
-	assert_eq(ChainStats.site_income(ledger, 4, &"beachfront_boardwalk"), 36, "net away earnings")
-	assert_eq(ChainStats.site_income(ledger, 4, &"seaside_cliff"), 0, "a closed site's rent is not income")
-	assert_eq(ChainStats.chain_income(ledger, 4, sites), 301)
+	assert_eq(ChainStats.site_takings(ledger, 4, &"home"), 265, "takings: sales and tips, gross")
+	assert_eq(ChainStats.site_takings(ledger, 4, &"beachfront_boardwalk"), 36, "net away earnings")
+	assert_eq(ChainStats.site_takings(ledger, 4, &"seaside_cliff"), 0, "a closed site's rent is not takings")
+	assert_eq(ChainStats.chain_takings(ledger, 4, sites), 301)
+	assert_eq(ChainStats.site_net(ledger, 4, &"home"), 185, "wages come off the net")
+	assert_eq(ChainStats.site_net(ledger, 4, &"seaside_cliff"), -95, "a closed site's rent does too")
+	assert_eq(ChainStats.chain_net(ledger, 4, sites), 126)
 	assert_eq(ChainStats.site_series(ledger, 4, 3, &"home"), [0, 200, 265] as Array[int], "oldest first")
 	assert_eq(ChainStats.site_series(ledger, 1, 3, &"home"), [0, 0, 0] as Array[int], "days before day 1")
-	assert_eq(ChainStats.chain_total(ledger, 4, 7, sites), 501)
+	assert_eq(ChainStats.chain_takings_total(ledger, 4, 7, sites), 501)
 
 
 func test_chain_totals_from_the_summary() -> void:
