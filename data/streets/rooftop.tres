@@ -180,3 +180,4 @@ ground = SubResource("Resource_vxod5")
 buildings = SubResource("Resource_j1pk1")
 rooftop = SubResource("Resource_roof")
 wall_style = &"concrete"
+weather_cool = 0.35

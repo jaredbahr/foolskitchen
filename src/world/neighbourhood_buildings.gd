@@ -1005,6 +1005,13 @@ func _front_fence(pen: Pen, p: Plan, door_u: float, z: float) -> void:
 
 ## A hedge of chunky segments along a street-local line, each its own height and tone.
 func _hedge_line(pen: Pen, from: Vector2, to: Vector2, seed_value: int, line: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 0.35
+	_hedge_line_body(pen, from, to, seed_value, line)
+	pen.soup.sway = keep
+
+
+func _hedge_line_body(pen: Pen, from: Vector2, to: Vector2, seed_value: int, line: int) -> void:
 	var length: float = from.distance_to(to)
 	if length < 0.1:
 		return

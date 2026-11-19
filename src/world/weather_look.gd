@@ -40,8 +40,9 @@ static func _index(kind: int) -> int:
 	return clampi(kind, WeatherState.Kind.SUNNY, WeatherState.Kind.RAIN)
 
 
-## The light of `look` under the weather `kind`. Sunny returns `look` itself.
-static func apply(look: DayLight.Look, kind: int) -> DayLight.Look:
+## The light of `look` under the weather `kind`. Sunny returns `look` itself. `cool` (0..1,
+## the street's StreetPreset.weather_cool) scales how far the light and sky cool to blue.
+static func apply(look: DayLight.Look, kind: int, cool: float = 1.0) -> DayLight.Look:
 	var index: int = _index(kind)
 	if index == WeatherState.Kind.SUNNY or look == null:
 		return look
@@ -51,16 +52,16 @@ static func apply(look: DayLight.Look, kind: int) -> DayLight.Look:
 	# stays as readable as a clear one and the lamps and windows carry it.
 	var day_level: float = clampf(look.sky_horizon.get_luminance() / 0.32, 0.0, 1.0)
 	var weight: float = lerpf(0.35, 1.0, day_level)
-	var grey: Color = RAIN_COOL if rainy else OVERCAST
+	var grey: Color = OVERCAST.lerp(RAIN_COOL, clampf(cool, 0.0, 1.0)) if rainy else OVERCAST
 	result.key_color = look.key_color.lerp(grey * look.key_color.get_luminance() / maxf(grey.get_luminance(), 0.001), KEY_GREY[index])
 	result.key_energy = look.key_energy * lerpf(1.0, KEY_SHARE[index], weight)
 	# A high, diffuse sun: the light falls a little more steeply, so shadows stay short.
 	result.key_pitch = lerpf(look.key_pitch, minf(look.key_pitch, -55.0), 0.5)
 	result.fill_energy = look.fill_energy * FILL_GAIN[index]
-	result.ambient_color = look.ambient_color.lerp(RAIN_COOL, AMBIENT_COOL[index] * weight)
+	result.ambient_color = look.ambient_color.lerp(RAIN_COOL, AMBIENT_COOL[index] * weight * clampf(cool, 0.0, 1.0))
 	result.ambient_energy = look.ambient_energy * AMBIENT_GAIN[index]
-	var top: Color = RAIN_SKY_TOP if rainy else CLOUDY_SKY_TOP
-	var horizon: Color = RAIN_SKY_HORIZON if rainy else CLOUDY_SKY_HORIZON
+	var top: Color = CLOUDY_SKY_TOP.lerp(RAIN_SKY_TOP, clampf(cool, 0.0, 1.0)) if rainy else CLOUDY_SKY_TOP
+	var horizon: Color = CLOUDY_SKY_HORIZON.lerp(RAIN_SKY_HORIZON, clampf(cool, 0.0, 1.0)) if rainy else CLOUDY_SKY_HORIZON
 	# The grey sky follows the day's own brightness, so dusk and night stay dark.
 	result.sky_top = look.sky_top.lerp(top * day_level, SKY_GREY[index])
 	result.sky_horizon = look.sky_horizon.lerp(horizon * day_level, SKY_GREY[index])
@@ -68,6 +69,19 @@ static func apply(look: DayLight.Look, kind: int) -> DayLight.Look:
 	result.glow = look.glow
 	result.interior_energy = look.interior_energy
 	return result
+
+
+## A dark, wet afternoon brings the lamps and windows on early (WeatherState.Kind): their
+## level from about 15:00, rising to this share by 17:00 (the night then takes over).
+const GLOOM: Array[float] = [0.0, 0.18, 0.55]
+const GLOOM_FROM: float = 900.0
+const GLOOM_FULL: float = 1020.0
+
+
+## How lit the lamps and windows are on a gloomy afternoon at `minute` (0 on a sunny day and
+## before the afternoon). A pure function of the weather and the clock.
+static func gloom(kind: int, minute: float) -> float:
+	return GLOOM[_index(kind)] * smoothstep(GLOOM_FROM, GLOOM_FULL, minute)
 
 
 static func shadow_opacity(kind: int) -> float:
