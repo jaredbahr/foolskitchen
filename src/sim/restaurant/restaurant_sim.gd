@@ -121,6 +121,11 @@ var _regular_cohort_index: int = 0
 ## The disguised food critic (#303). The session supplies the lazy named stream
 ## (GameState.rng(&"critic")); with no provider no critic ever appears.
 var critic: FoodCritic = FoodCritic.new()
+## Guest quirks (docs/GUESTS.md). The session supplies the catalogue and the
+## lazy named stream (GameState.rng(&"quirks")); the stream is only asked for
+## from the catalogue's unlock level, so earlier days keep their exact streams.
+var quirks: GuestQuirkCatalogue = null
+var quirk_rng_provider: Callable
 var critic_rng_provider: Callable
 ## Today's critic verdict (stars, cause, quote), or {} when none has reviewed.
 var critic_result: Dictionary = {}
@@ -1214,6 +1219,20 @@ func add_visitor(entry: Vector2i, random: RandomNumberGenerator, kind: CustomerT
 	if visit == RecipeDef.FOOD:
 		return add_customer(entry, random, kind)
 	return _install_customer(entry, random, kind, true, visit)
+
+
+## An ordinary solo arrival may have a quirk: one chance draw (and one pick
+## on a hit) from the quirks stream. Critics, named regulars, party members
+## and guests below the unlock level never draw.
+func try_give_quirk(customer: CustomerAgent) -> bool:
+	if customer == null or quirks == null or not quirk_rng_provider.is_valid() \
+			or customer_level < quirks.unlock_level or customer.is_critic() \
+			or customer.regular_profile != null or customer.party != null \
+			or customer.quirk != null or world.clock.phase != SimClock.Phase.OPEN:
+		return false
+	var random: RandomNumberGenerator = quirk_rng_provider.call() as RandomNumberGenerator
+	var quirk: GuestQuirk = quirks.roll(random, customer.customer_type_id)
+	return quirk != null and customer.apply_quirk(quirk)
 
 
 ## The day's critic takes the place of an ordinary solo arrival once their
