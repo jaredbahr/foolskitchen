@@ -6,7 +6,7 @@ extends SceneTree
 ## offer. Never run by CI.
 ##
 ## godot --headless --path . --script tools/early_game_audit.gd -- \
-##     [--days=10] [--seed=1] [--player=engaged|passive] [--difficulty=normal|easy]
+##     [--days=10] [--seed=1] [--player=engaged|passive] [--difficulty=normal|easy|hard]
 
 
 func _initialize() -> void:

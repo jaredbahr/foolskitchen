@@ -19,8 +19,8 @@ static func run_cli(tree: SceneTree, args: PackedStringArray) -> int:
 			player = arg.get_slice("=", 1)
 		elif arg.begins_with("--difficulty="):
 			mode_id = StringName(arg.get_slice("=", 1))
-	if player not in ["engaged", "passive"] or mode_id not in [&"normal", &"easy"] or days < 1:
-		printerr("Usage: --days=N --seed=N --player=engaged|passive --difficulty=normal|easy")
+	if player not in ["engaged", "passive"] or mode_id not in [&"normal", &"easy", &"hard"] or days < 1:
+		printerr("Usage: --days=N --seed=N --player=engaged|passive --difficulty=normal|easy|hard")
 		return 2
 	return run(tree, days, seed_value, player, mode_id)
 
@@ -55,6 +55,9 @@ static func run(tree: SceneTree, days: int, seed_value: int, player: String, mod
 			printerr("Morning set-up failed on day %d" % (day_index + 1))
 		if day_index > 0 and player == "engaged":
 			_week_three(main)
+		# Hard buys nothing by itself: order the forecast through the Stock cart.
+		if mode_id == &"hard" and not BalanceProbe._place_hard_stock_order(main):
+			printerr("Hard stock order failed on day %d" % (day_index + 1))
 		var morning: Dictionary = {"day": Clock.sim.day, "cash_open": Economy.cash,
 			"weekday": Clock.sim.day, "goals_shown": _goals_shown(main),
 			"weekly": (main.get("weekly_challenge") as WeeklyChallengeState).to_dict(),
@@ -109,8 +112,8 @@ static func run(tree: SceneTree, days: int, seed_value: int, player: String, mod
 
 
 ## Follows Week 3's goals once that chain runs (if the data has it), as cash
-## allows: a second cook, an oven and a pizza slice, a waiting bench, an
-## A-frame sign. Prices drop back to standard to chase the 4-star day.
+## allows: a second cook, an oven and a pizza slice, a waiting bench.
+## Prices drop back to standard to chase the 4-star day.
 static func _week_three(main: Node) -> void:
 	var state: OpeningWeek = main.get("opening_week") as OpeningWeek
 	var chain: OpeningWeekSet = state.current(main.get("goal_chains") as GoalChainSequence) if state != null else null
@@ -137,10 +140,8 @@ static func _week_three(main: Node) -> void:
 		ProbeSetups._buy_first_fit(main, &"oven")
 	if settings.recipe(&"pizza_slice") != null and not settings.is_enabled(&"pizza_slice"):
 		main.call("menu_set_enabled", &"pizza_slice", true)
-	if ProbeSetups._count_items(sim.world.grid, &"waiting_bench") < 1 and not state.is_completed(&"waiting_bench"):
+	if ProbeSetups._count_items(sim.world.grid, &"waiting_bench") < 1:
 		ProbeSetups._buy_first_fit(main, &"waiting_bench")
-	if not state.is_completed(&"a_frame_sign"):
-		ProbeSetups._buy_first_fit(main, &"a_frame_sign")
 
 
 static func _goals_shown(main: Node) -> Array:
