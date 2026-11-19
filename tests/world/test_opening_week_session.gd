@@ -480,6 +480,33 @@ func test_a_cleaner_on_the_team_at_week_three_opening_pays() -> void:
 	assert_true(_state(main).is_completed(&"hire_cleaner"))
 
 
+# --- Week 3 (early-game audit 2) ---------------------------------------------
+
+func test_a_bench_bought_before_week_three_pays_at_its_first_opening() -> void:
+	var main: Node = await _start(false)
+	assert_true(_buy_anywhere(main, &"waiting_bench"), "a bench bought in the Opening week")
+	_to_week_three(main)
+	assert_eq(_bonus_entries(), [] as Array[int], "nothing pays before opening")
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_true(_state(main).is_completed(&"waiting_bench"), "a bench already owned counts")
+	assert_eq(_bonus_entries(), [40] as Array[int])
+
+
+func test_a_second_cook_pays_but_the_starter_cook_alone_does_not() -> void:
+	var main: Node = await _start(false)
+	_to_week_three(main)
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_false(_state(main).is_completed(&"second_cook"), "one cook is not two")
+	main.call("run_ticks", 3)
+	assert_true(Clock.sim.next_day())
+	assert_true(_add_member(main, &"cook", &"test_cook_2"))
+	_quiet_service(main)
+	assert_true(Clock.sim.start_service())
+	assert_true(_state(main).is_completed(&"second_cook"))
+
+
 func test_a_seated_group_counts_when_it_pays() -> void:
 	var main: Node = await _start(false)
 	_to_week_two(main)
