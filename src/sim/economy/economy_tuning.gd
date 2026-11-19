@@ -46,6 +46,9 @@ extends Resource
 
 ## Over-standard prices may make a guest refuse the dish at order time.
 @export_range(0.0, 10.0, 0.05) var price_sensitivity: float = 1.5
+## A rise up to this share above the standard price is shrugged off; the walkout
+## chance grows only past it, so a small rise costs few guests (#649).
+@export_range(0.0, 1.0, 0.01) var price_grace: float = 0.05
 @export_range(0.0, 1.0, 0.01) var max_price_walkout: float = 0.9
 
 
