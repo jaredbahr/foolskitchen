@@ -394,15 +394,18 @@ func test_main_lights_the_windows_from_the_clock_and_darkens_some_late() -> void
 	var world: SimWorld = _main.get("world") as SimWorld
 	var dressing: NeighbourhoodDressing = (_main.get_node("ShopView") as ShopView).neighbourhood_dressing
 	assert_not_null(dressing)
+	# A dry day: the session rolls its own weather, and a cloudy or rainy afternoon lights the windows early by design.
+	world.weather.kind = WeatherState.Kind.SUNNY
 	world.clock.phase = SimClock.Phase.MORNING
 	_main.call("refresh_presentation")
 	for tier: Dictionary in dressing.window_state()["tiers"]:
 		assert_false(tier["visible"], "windows are dark in the morning")
 	world.clock.phase = SimClock.Phase.OPEN
+	# Halfway through opening hours (11:00 to 21:00) is 16:00, inside the gloomy-afternoon ramp.
 	world.clock.phase_tick = world.clock.open_ticks / 2
 	_main.call("refresh_presentation")
 	for tier: Dictionary in dressing.window_state()["tiers"]:
-		assert_false(tier["visible"], "windows are dark at midday")
+		assert_false(tier["visible"], "windows are dark mid-afternoon on a dry day")
 	world.clock.phase = SimClock.Phase.CLOSED
 	world.clock.phase_tick = 0
 	_main.call("refresh_presentation")

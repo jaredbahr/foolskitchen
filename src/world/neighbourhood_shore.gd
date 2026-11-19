@@ -272,6 +272,13 @@ func _dunes(ground: NeighbourhoodBuildings.Pen, props: NeighbourhoodBuildings.Pe
 
 ## Marram grass: five thin blades leaning out from one root.
 func _tuft(pen: NeighbourhoodBuildings.Pen, at: Vector3, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 1.0
+	_tuft_body(pen, at, seed_value)
+	pen.soup.sway = keep
+
+
+func _tuft_body(pen: NeighbourhoodBuildings.Pen, at: Vector3, seed_value: int) -> void:
 	var colour: Color = skin.grass_colors[int(_r(seed_value, 23) * float(skin.grass_colors.size())) % skin.grass_colors.size()]
 	var tall: float = 0.2 + _r(seed_value, 24) * 0.14
 	for blade: int in 5:

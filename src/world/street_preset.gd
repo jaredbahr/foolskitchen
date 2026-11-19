@@ -34,6 +34,9 @@ const STARTER: String = "res://data/streets/starter.tres"
 ## The shop's default wall finish on this street (#611, a WallStyleDef id): every
 ## wall face starts in it and Build can still change any face. Empty is plain paint.
 @export var wall_style: StringName = &""
+## How far a cloudy or rainy day's light cools here (WeatherLook): 1 the full grey-blue,
+## less keeps a warmer grey (the city rooftop's pale concrete went cold and blue).
+@export_range(0.0, 1.0) var weather_cool: float = 1.0
 
 
 ## The starter street, the one every site had before presets (#422, #423).
