@@ -248,6 +248,97 @@
         "paneling.glb"
       ]
     },
+    "display_case": {
+      "triangles": 645,
+      "budget": 800,
+      "world_dimensions": [
+        0.96,
+        0.62,
+        0.42
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetDarker",
+        "carpetWhite",
+        "glass",
+        "lamp",
+        "metal",
+        "metalDark",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "bookcaseOpenLow.glb (cabinet body)",
+        "bathroomMirror.glb (glass)",
+        "Food Kit cake"
+      ]
+    },
+    "gramophone": {
+      "triangles": 554,
+      "budget": 800,
+      "world_dimensions": [
+        0.473,
+        0.7294,
+        0.5016
+      ],
+      "materials": [
+        "carpet",
+        "lamp",
+        "metalDark",
+        "metalMedium",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "radio.glb (retro audio)",
+        "lampRoundFloor.glb (metal stem)",
+        "sideTable.glb (legs)"
+      ]
+    },
+    "jukebox_neon": {
+      "triangles": 640,
+      "budget": 800,
+      "world_dimensions": [
+        0.42,
+        0.725,
+        0.358
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetDarker",
+        "carpetWhite",
+        "lamp",
+        "metal",
+        "metalDark"
+      ],
+      "nearest_kit": [
+        "assets/props/jukebox.tscn (arch window)",
+        "speaker.glb",
+        "lampWall.glb (warm light)"
+      ]
+    },
+    "chef_statue": {
+      "triangles": 686,
+      "budget": 800,
+      "world_dimensions": [
+        0.5708,
+        0.9275,
+        0.4
+      ],
+      "materials": [
+        "carpetWhite",
+        "lamp",
+        "metal",
+        "metalDark"
+      ],
+      "nearest_kit": [
+        "Mini Characters (scale)",
+        "Food Kit (chef hat)",
+        "kitchenCabinet.glb (plinth)"
+      ]
+    },
     "pendant_cord": {
       "triangles": 76,
       "budget": 300,

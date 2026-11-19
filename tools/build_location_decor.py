@@ -1,4 +1,6 @@
-"""Build the location starter decor (#596, "Location interiors"): twelve small pieces.
+"""Build the location starter decor (#596, "Location interiors"): twelve small pieces,
+and the four premium showpieces (#206): `display_case`, `gramophone`, `jukebox_neon`,
+`chef_statue`.
 
 python tools/build_location_decor.py   (any Python with the `bpy` module)
 or: blender --background --factory-startup --python tools/build_location_decor.py
@@ -139,7 +141,7 @@ def transformed(bm, matrix):
     return bm
 
 
-def cylinder(center, r_bottom, r_top, z0, z1, sides=8, caps=True, phase=0.0):
+def cylinder(center, r_bottom, r_top, z0, z1, sides=8, caps=True, phase=0.0, bottom=True):
     """A vertical (truncated) cone or cylinder around `center` (x, y)."""
     cx, cy = center
     ring = [(math.cos(phase + i * math.tau / sides), math.sin(phase + i * math.tau / sides)) for i in range(sides)]
@@ -147,7 +149,9 @@ def cylinder(center, r_bottom, r_top, z0, z1, sides=8, caps=True, phase=0.0):
     vertices += [(cx + r_top * c, cy + r_top * s, z1) for c, s in ring]
     faces = [(i, (i + 1) % sides, (i + 1) % sides + sides, i + sides) for i in range(sides)]
     if caps:
-        faces += [tuple(range(sides - 1, -1, -1)), tuple(range(sides, 2 * sides))]
+        if bottom:
+            faces.append(tuple(range(sides - 1, -1, -1)))
+        faces.append(tuple(range(sides, 2 * sides)))
     return poly(vertices, faces)
 
 
@@ -557,6 +561,182 @@ def crossed_paddles():
     return {}
 
 
+# ---------------------------------------------------------------- premium showpieces (#206)
+# Centred on the cell(s) they stand in (x, y = 0 at the middle), front at +Y, floor at z = 0.
+
+def arch_outline(half, z0, centre, rise, steps=8):
+    """A rounded-top outline for `slab`: straight sides from z0 up to `centre`, then a
+    half-round top `rise` high."""
+    pts = [(-half, z0), (half, z0)]
+    for k in range(steps + 1):
+        a = k * math.pi / steps
+        pts.append((half * math.cos(a), centre + rise * math.sin(a)))
+    return [(round(x, 5), round(z, 5)) for x, z in pts]
+
+
+def _on_front(part, x, y, z):
+    """Turn a z-axis part so its axis points at +Y (towards the viewer), placed at (x, y, z)."""
+    return transformed(part, Matrix.Translation((x, y, z)) @ Matrix.Rotation(-math.pi / 2, 4, "X"))
+
+
+def display_case():
+    """A bakery display case: a cream cabinet under a lit glass case of cakes on two
+    stepped shelves (the upper one set back, so both rows show from the game's camera),
+    one counter-length (two cells) wide, a hand taller than a counter."""
+    case = Piece("DisplayCase")
+    hw, hd = 0.47, 0.2
+    # Cabinet: toe-kick, body, a pink band with two panels, top rail.
+    case.add(box((-hw + .03, -hd + .03, 0.0), (hw - .03, hd - .03, .04)), "metalDark")
+    case.add(box((-hw, -hd, .04), (hw, hd, .27), bevel=.012), "wood")
+    case.add(box((-hw - .003, hd - .012, .15), (hw + .003, hd + .004, .21)), "carpet")
+    for x in (-hw / 2, hw / 2):
+        case.add(box((x - .19, hd - .008, .055), (x + .19, hd + .004, .13)), "woodDark")
+    case.add(box((-hw - .01, -hd - .01, .27), (hw + .01, hd + .01, .295)), "metalDark")
+    # Inside: a pink backdrop, a full-depth lower shelf and a set-back upper shelf.
+    case.add(box((-hw + .02, hd - .035, .295), (hw - .02, hd - .015, .6)), "carpetWhite")
+    case.add(box((-hw + .02, -hd + .02, .295), (hw - .02, hd - .02, .309)), "metal")
+    case.add(box((-hw + .02, -.01, .43), (hw - .02, hd - .02, .444)), "metal")
+
+    def cake(x, y, z, r, body, icing, tall=.05, cherry=True):
+        case.add(cylinder((x, y), r, r, z, z + tall, sides=8, bottom=False), body)
+        case.add(cylinder((x, y), r * 1.03, r * 1.03, z + tall, z + tall + .018, sides=8, bottom=False), icing)
+        if cherry:
+            case.add(cylinder((x, y), .012, .005, z + tall + .018, z + tall + .04, sides=5, bottom=False), "carpetDarker")
+
+    low, up, front = .309, .444, -.07
+    cake(-.31, front, low, .085, "wood", "carpetWhite")
+    cake(0.0, front, low, .09, "carpetDarker", "carpet", tall=.055)
+    cake(.31, front, low, .085, "wood", "carpetBlue")
+    cake(-.31, .09, up, .06, "woodDark", "carpet", tall=.045)
+    cake(-.15, .09, up, .06, "wood", "carpetWhite", tall=.045)
+    # A plate of little tarts on the upper shelf.
+    case.add(box((.02, .02, up), (.4, .15, up + .012)), "metal")
+    for k, token in enumerate(("carpet", "lamp", "carpetWhite", "carpet")):
+        case.add(cylinder((.07 + k * .09, .085), .03, .03, up + .012, up + .05, sides=6, bottom=False), token)
+    # Glass, a light bar at the back of the roof, slim corner posts and a roof frame
+    # round an open glass top, so the cakes show from above.
+    case.add(box((-hw + .01, -hd + .005, .295), (hw - .01, -hd + .012, .6)), "glass")
+    case.add(box((-hw + .005, -hd + .01, .295), (-hw + .012, hd - .01, .6)), "glass")
+    case.add(box((hw - .012, -hd + .01, .295), (hw - .005, hd - .01, .6)), "glass")
+    case.add(box((-hw + .03, hd - .06, .585), (hw - .03, hd - .03, .6)), "lamp")
+    for x0, x1 in ((-hw, -hw + .02), (hw - .02, hw)):
+        for y0, y1 in ((-hd, -hd + .02), (hd - .02, hd)):
+            case.add(box((x0, y0, .295), (x1, y1, .62)), "metalDark")
+    case.add(box((-hw, -hd, .6), (hw, -hd + .02, .62)), "metalDark")
+    case.add(box((-hw, hd - .02, .6), (hw, hd, .62)), "metalDark")
+    case.add(box((-hw, -hd, .6), (-hw + .02, hd, .62)), "metalDark")
+    case.add(box((hw - .02, -hd, .6), (hw, hd, .62)), "metalDark")
+    case.finish()
+    return {}
+
+
+def gramophone():
+    """A gramophone: a little wooden cabinet on four legs with a turntable, a crank and
+    a big flaring brass horn leaning forward over it."""
+    gram = Piece("Gramophone")
+    for x in (-.14, .14):
+        for y in (-.14, .14):
+            gram.add(box((x - .02, y - .02, 0.0), (x + .02, y + .02, .1)), "woodDark")
+    gram.add(box((-.18, -.18, .1), (.18, .18, .3), bevel=.012), "wood")
+    gram.add(box((-.2, -.2, .3), (.2, .2, .325)), "woodDark")
+    gram.add(box((-.15, .174, .15), (.15, .186, .26)), "woodDark")
+    gram.add(box((-.012, .184, .2), (.012, .19, .22)), "lamp")
+    # Turntable, record and tone arm.
+    gram.add(cylinder((-.02, .03), .125, .125, .325, .338, sides=12), "metalDark")
+    gram.add(cylinder((-.02, .03), .105, .105, .338, .346, sides=12), "metalMedium")
+    gram.add(cylinder((-.02, .03), .03, .03, .346, .352, sides=8), "carpet")
+    gram.add(rod((.12, .1, .36), (-.01, .05, .36), .008), "lamp")
+    # Crank on the right side.
+    gram.add(rod((.18, 0.0, .2), (.255, 0.0, .2), .008), "lamp")
+    gram.add(rod((.255, 0.0, .2), (.255, 0.0, .13), .008), "lamp")
+    gram.add(cylinder((.255, 0.0), .018, .018, .105, .135, sides=6), "woodDark")
+    # The horn: a short brass elbow, then a trumpet flare tipped forward over the front.
+    gram.add(cylinder((-.02, -.08), .035, .035, .325, .4, sides=8), "lamp")
+    steps, length, bell = 8, .34, .17
+    profile = [(0.03 + (bell - .03) * (k / steps) ** 2.4, length * k / steps) for k in range(steps + 1)]
+    tilt = Matrix.Translation((-.02, -.08, .4)) @ Matrix.Rotation(-math.radians(58), 4, "X")
+    gram.add(transformed(lathe(profile, sides=12, cap_bottom=False, cap_top=False), tilt), "lamp")
+    gram.add(transformed(lathe([(bell, length - .008), (bell + .006, length)], sides=12, cap_bottom=False, cap_top=False), tilt), "woodDark")
+    gram.add(transformed(lathe([(bell * .93, length - .03)], sides=12, cap_bottom=False, cap_top=True), tilt), "woodDark")
+    gram.finish()
+    return {}
+
+
+def jukebox_neon():
+    """A retro jukebox: a rose cabinet with a round-topped lit window, chrome trim, neon
+    tubes round the arch and a speaker grille. Its glow is the item's `glow_color`."""
+    juke = Piece("NeonJukebox")
+    hw, hd = 0.2, 0.16
+    juke.add(box((-hw - .01, -hd - .01, 0.0), (hw + .01, hd + .01, .05), bevel=.008), "metalDark")
+    juke.add(box((-hw, -hd, .05), (hw, hd, .32), bevel=.012), "carpet")
+    juke.add(slab(arch_outline(hw, .32, .52, hw, 8), -hd, hd), "carpet")
+    # Chrome arch frame and the lit window in front.
+    juke.add(slab(arch_outline(hw - .02, .34, .52, hw - .02, 8), hd, hd + .01), "metal")
+    juke.add(slab(arch_outline(hw - .045, .365, .52, hw - .045, 8), hd + .01, hd + .018), "lamp")
+    # Records seen through the window.
+    for k in range(3):
+        z = .4 + k * .085
+        juke.add(box((-.1, hd + .018, z), (.1, hd + .026, z + .012)), "carpetDarker")
+        juke.add(box((-.07, hd + .018, z + .02), (.07, hd + .028, z + .05), bevel=.004), "carpetWhite")
+    # A blue neon tube over the arch and down both sides.
+    juke.add(torus_arc((0.0, hd + .014, .52), hw - .004, .009, 0.0, math.pi, 8, minor_sides=4), "carpetBlue")
+    for x in (-hw + .004, hw - .004):
+        juke.add(rod((x, hd + .014, .52), (x, hd + .014, .34), .009), "carpetBlue")
+    # Lower front: a speaker grille, a coin panel and two lit buttons.
+    juke.add(box((-.15, hd + .001, .075), (.15, hd + .012, .17), bevel=.004), "carpetWhite")
+    for z in (.1, .125, .15):
+        juke.add(box((-.13, hd + .012, z - .004), (.13, hd + .018, z + .004)), "metalDark")
+    juke.add(box((-.08, hd + .001, .2), (.08, hd + .014, .295), bevel=.004), "metalDark")
+    for x in (-.04, .04):
+        juke.add(_on_front(cylinder((0, 0), .014, .014, 0.0, .01, sides=6), x, hd + .014, .265), "lamp")
+    juke.add(box((-.03, hd + .014, .222), (.03, hd + .02, .232)), "carpetDarker")
+    juke.finish()
+    return {}
+
+
+def chef_statue():
+    """A silly-grand statue of a chef on a plinth, cast in gold: a big belly, a towering
+    toque, a curled moustache, one fist on his hip and a ladle raised to the sky."""
+    chef = Piece("ChefStatue")
+    gold, dark = "lamp", "metalDark"
+    chef.add(box((-.2, -.2, 0.0), (.2, .2, .07)), "metalDark")
+    chef.add(box((-.165, -.165, .07), (.165, .165, .2)), "metal")
+    chef.add(box((-.075, .163, .105), (.075, .172, .155)), gold)
+    # Legs and shoes.
+    for x in (-.065, .065):
+        chef.add(cylinder((x, 0.0), .045, .04, .2, .31, sides=8, bottom=False), gold)
+        chef.add(box((x - .05, -.07, .2), (x + .05, .09, .235)), dark)
+    # Coat: a big belly and chest, a dark belt and buttons.
+    chef.add(lathe([(.1, .3), (.165, .36), (.178, .43), (.15, .5), (.115, .56), (.07, .61)], sides=8, cap_bottom=False), gold)
+    chef.add(lathe([(.175, .415), (.181, .43), (.175, .445)], sides=8, cap_bottom=False, cap_top=False), dark)
+    for z, y in ((.47, .17), (.53, .15)):
+        chef.add(_on_front(cylinder((0, 0), .017, .017, 0.0, .014, sides=6, bottom=False), 0.0, y - .006, z), dark)
+    # Head: round, with a big moustache, a nose and two eyes.
+    chef.add(lathe([(.03, .6), (.095, .625), (.12, .68), (.095, .74), (.045, .76)], sides=8, cap_bottom=False), gold)
+    chef.add(box((-.024, .108, .675), (.024, .155, .715)), gold)
+    for sign in (-1, 1):
+        chef.add(transformed(box((-.065, 0.0, -.016), (.065, .04, .016)),
+                             Matrix.Translation((sign * .07, .112, .672)) @ Matrix.Rotation(sign * math.radians(-16), 4, "Y")), dark)
+        chef.add(box((sign * .125 - .02, .1, .672), (sign * .125 + .02, .13, .72)), dark)
+        chef.add(box((sign * .052 - .014, .108, .725), (sign * .052 + .014, .122, .745)), dark)
+    # Toque: a band and a puffy top.
+    chef.add(cylinder((0, 0), .1, .102, .752, .79, sides=8, bottom=False), gold)
+    chef.add(lathe([(.105, .785), (.13, .82), (.13, .865), (.095, .905), (.05, .92)], sides=8, cap_bottom=False), gold)
+    # Left arm: fist on hip.
+    chef.add(rod((-.145, 0.0, .56), (-.235, .03, .48), .03, sides=6), gold)
+    chef.add(rod((-.235, .03, .48), (-.15, .12, .41), .03, sides=6), gold)
+    chef.add(box((-.17, .1, .39), (-.12, .15, .44)), gold)
+    # Right arm raised, holding a ladle.
+    chef.add(rod((.135, 0.0, .56), (.235, .02, .65), .03, sides=6), gold)
+    chef.add(box((.205, -.015, .64), (.275, .055, .71)), gold)
+    chef.add(rod((.24, .02, .69), (.25, .02, .85), .012, sides=6), "carpetWhite")
+    chef.add(transformed(lathe([(.01, .0), (.05, .02), (.06, .06), (.062, .075)], sides=8, cap_top=True),
+                         Matrix.Translation((.25, .02, .85))), "carpetWhite")
+    chef.add(transformed(cylinder((0, 0), .052, .052, .0, .002, sides=8, bottom=False), Matrix.Translation((.25, .02, .9255))), dark)
+    chef.finish()
+    return {}
+
+
 # ---------------------------------------------------------------- lamp cord
 
 PENDANT_CORD = 0.23
@@ -603,6 +783,10 @@ ASSETS = [
     ("shell_jars", shell_jars, 800, ["bathroomMirror.glb (glass)", "Food Kit cup"]),
     ("millstone", millstone, 800, ["bookcaseOpenLow.glb (woodDark chocks)", "kitchenCabinet.glb (metal)"]),
     ("crossed_paddles", crossed_paddles, 800, ["coatRack.glb (wood)", "paneling.glb"]),
+    ("display_case", display_case, 800, ["bookcaseOpenLow.glb (cabinet body)", "bathroomMirror.glb (glass)", "Food Kit cake"]),
+    ("gramophone", gramophone, 800, ["radio.glb (retro audio)", "lampRoundFloor.glb (metal stem)", "sideTable.glb (legs)"]),
+    ("jukebox_neon", jukebox_neon, 800, ["assets/props/jukebox.tscn (arch window)", "speaker.glb", "lampWall.glb (warm light)"]),
+    ("chef_statue", chef_statue, 800, ["Mini Characters (scale)", "Food Kit (chef hat)", "kitchenCabinet.glb (plinth)"]),
     ("pendant_cord", pendant_cord, 300, ["lampSquareCeiling.glb (metalDark)", "lampWall.glb"]),
 ]
 
