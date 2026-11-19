@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/ui/city_panel.gd" id="1_script"]
 [ext_resource type="Theme" path="res://src/ui/theme/main_theme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://assets/made/city_map/paper_map.png" id="3_map"]
 
 [node name="CityPanel" type="Control"]
 visible = false
@@ -14,6 +15,7 @@ grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
+map_texture = ExtResource("3_map")
 
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -40,16 +42,30 @@ mouse_filter = 2
 theme_override_font_sizes/font_size = 26
 text = "The City"
 
+[node name="ViewToggle" type="Button" parent="Panel/Content/Header"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 0
+text = "Show list"
+
 [node name="Close" type="Button" parent="Panel/Content/Header"]
 layout_mode = 2
 focus_mode = 0
 mouse_filter = 0
 text = "Close"
 
-[node name="Chain" type="Label" parent="Panel/Content"]
+[node name="ChainStrip" type="PanelContainer" parent="Panel/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
+
+[node name="Chain" type="Label" parent="Panel/Content/ChainStrip"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
 autowrap_mode = 3
 
 [node name="Intro" type="Label" parent="Panel/Content"]
@@ -57,6 +73,57 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
+
+[node name="MapPage" type="VBoxContainer" parent="Panel/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="MapView" type="AspectRatioContainer" parent="Panel/Content/MapPage"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+alignment_vertical = 0
+
+[node name="Canvas" type="Control" parent="Panel/Content/MapPage/MapView"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="Panel/Content/MapPage/MapView/Canvas"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Overlays" type="Control" parent="Panel/Content/MapPage/MapView/Canvas"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Pins" type="Control" parent="Panel/Content/MapPage/MapView/Canvas"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Detail" type="VBoxContainer" parent="Panel/Content/MapPage"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/Content"]
 layout_mode = 2
@@ -74,31 +141,6 @@ size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="MapView" type="Control" parent="Panel/Content/Scroll/Rows"]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(0, 360)
-layout_mode = 2
-mouse_filter = 2
-
-[node name="Background" type="TextureRect" parent="Panel/Content/Scroll/Rows/MapView"]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-mouse_filter = 2
-expand_mode = 1
-stretch_mode = 5
-
-[node name="Pins" type="Control" parent="Panel/Content/Scroll/Rows/MapView"]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-mouse_filter = 2
-
 [node name="List" type="VBoxContainer" parent="Panel/Content/Scroll/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -106,4 +148,16 @@ size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
 
+[node name="AlertsBar" type="PanelContainer" parent="Panel/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Lines" type="VBoxContainer" parent="Panel/Content/AlertsBar"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
 [connection signal="pressed" from="Panel/Content/Header/Close" to="." method="_on_close_pressed"]
+[connection signal="pressed" from="Panel/Content/Header/ViewToggle" to="." method="_on_view_toggle_pressed"]

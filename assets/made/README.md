@@ -460,3 +460,14 @@ side by side with Food Kit plates, bowls, cups and mugs on and in them.
 | `beach_sign.glb` (two painted arrow planks) | boardwalk | #240 shop name sign, `paneling` | 340 | 0.90 x 0.40 x 0.06 |
 | `shell_jars.glb` (sits on a counter or table) | boardwalk | `bathroomMirror` glass, Food Kit cup | 416 | 0.18 x 0.15 x 0.08 |
 | `pendant_cord.glb` (the cord and ceiling rose the kit `lampSquareCeiling` pendant hangs from) | any | `lampSquareCeiling` metal | 76 | 0.06 x 0.23 x 0.06 |
+
+## City map (#642)
+The illustrated paper map for the city screen (docs/CITY_MAP.md T1 and T4), drawn flat in the UI's own cream and dark-brown inks with the Kenney look: chunky outlines, flat fills, hard shadows from the upper left. Everything is generated and committed; no outside art, fonts or textures. Rebuild with `python3 tools/build_city_map.py` (Pillow, a fixed seed, so the output is the same every run). The script reads each neighbourhood's name and position and each road from `data/city/city_map.tres`, so run it again after moving one.
+
+| Asset | What it is |
+|---|---|
+| `city_map/paper_map.png` (1500 x 1000, 3:2) | The desk, the paper, the neighbourhood patches, roads, hand-lettered names (a small stroke font wobbled by the seed), compass, a coffee ring and a few doodles. Shows no state: pins and signs go over it. |
+| `city_map/pin_here.png`, `pin_managed.png`, `pin_closed.png`, `pin_renovating.png`, `pin_needs.png` (160 px) | One of your shops on the map, with its state: a flag, an Open sign, a shutter and cobweb, scaffolding, a red speech bubble. |
+| `city_map/pin_for_sale.png`, `pin_locked.png` (160 px) | A lot's estate-agent board, and a padlocked, chained board. |
+| `city_map/roadworks.png` | Cones, a "Road closed" barrier and a digger, for an area waiting on a tier. |
+| `city_map/hoarding.png` | A "Coming soon" fence with a painted preview, for an area with no lot yet. |
