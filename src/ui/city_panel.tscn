@@ -68,7 +68,38 @@ focus_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 1
 
-[node name="List" type="VBoxContainer" parent="Panel/Content/Scroll"]
+[node name="Rows" type="VBoxContainer" parent="Panel/Content/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="MapView" type="Control" parent="Panel/Content/Scroll/Rows"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="Panel/Content/Scroll/Rows/MapView"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Pins" type="Control" parent="Panel/Content/Scroll/Rows/MapView"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="List" type="VBoxContainer" parent="Panel/Content/Scroll/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3

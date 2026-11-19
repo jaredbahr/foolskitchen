@@ -13,12 +13,22 @@ signal site_chosen(site_id: StringName)
 signal market_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
+const PIN_SCENE: PackedScene = preload("res://src/ui/city_pin.tscn")
+## How far apart, in map units, the lots of one neighbourhood sit beside it.
+const PIN_SPREAD: float = 0.08
+## How far below its neighbourhood's label a lot pin sits, in map units.
+const PIN_DROP: float = 0.07
 ## The Property screen's tones, so the screens read as one.
 const MUTED_COLOR: Color = Color("766b60")
 const ALERT_COLOR: Color = Color("a83e35")
 const AREA_FONT_SIZE: int = 22
 const NAME_FONT_SIZE: int = 20
 const LINE_FONT_SIZE: int = 16
+
+## The paper map (docs/CITY_MAP.md T1; the director's art). While null the
+## screen is the plain list; once set, the map view shows above the list with
+## a pin per neighbourhood and lot, placed from NeighbourhoodDef.map_position.
+@export var map_texture: Texture2D
 
 var _site_ids: Array[StringName] = []
 var _area_ids: Array[StringName] = []
@@ -72,12 +82,83 @@ func set_city(map: CityMapDef, view: View) -> void:
 					var state: CityMap.LotState = CityMap.lot_state(definition, false, view.career_tier, view.reputation)
 					if state != CityMap.LotState.UNLISTED:
 						list.add_child(_make_lot(definition, state, view))
+	_build_map(map, view, owned)
 	# A site on a lot no neighbourhood lists (the data check prevents it):
 	# still shown, so it can always be reached.
 	for site: ChainSummary.Site in view.sites:
 		if not shown.has(site.id):
 			list.add_child(_make_site(site, view.refusals.get(site.id, "")))
 			_site_ids.append(site.id)
+
+
+## Where a lot pin sits: below its neighbourhood's label, the area's lots
+## spread side by side (`index` of `count`), kept on the map. Map units.
+static func pin_position(area_position: Vector2, index: int, count: int) -> Vector2:
+	var offset: float = (float(index) - float(maxi(count, 1) - 1) / 2.0) * PIN_SPREAD
+	return Vector2(clampf(area_position.x + offset, 0.0, 1.0), clampf(area_position.y + PIN_DROP, 0.0, 1.0))
+
+
+## The pins on the map view, for tests and the art pass.
+func pins() -> Array[CityPin]:
+	var found: Array[CityPin] = []
+	for child: Node in (%Pins as Control).get_children():
+		if child is CityPin and not child.is_queued_for_deletion():
+			found.append(child as CityPin)
+	return found
+
+
+func _build_map(map: CityMapDef, view: View, owned: Array[StringName]) -> void:
+	var pins_layer: Control = %Pins as Control
+	for child: Node in pins_layer.get_children():
+		pins_layer.remove_child(child)
+		child.queue_free()
+	var map_view: Control = %MapView as Control
+	(%Background as TextureRect).texture = map_texture
+	map_view.visible = map_texture != null and map != null
+	if not map_view.visible:
+		return
+	for area: NeighbourhoodDef in map.neighbourhoods:
+		if area == null:
+			continue
+		_add_pin(pins_layer, area.id, CityPin.AREA, area.display_name, "", area.map_position)
+		var shown: Array[Array] = []
+		for lot: StringName in area.lots:
+			var site: ChainSummary.Site = _site_on(view.sites, lot)
+			if site != null:
+				shown.append([site.id, CityPin.SHOP, site.name, ChainText.pin_badge(site)])
+				continue
+			var definition: LotDef = CityMap.find_lot(view.lots, lot)
+			var state: CityMap.LotState = CityMap.lot_state(definition, owned.has(lot), view.career_tier, view.reputation)
+			if state == CityMap.LotState.FOR_SALE:
+				shown.append([lot, CityPin.FOR_SALE, definition.display_name, ChainText.FOR_SALE_BADGE])
+			elif state == CityMap.LotState.LOCKED:
+				shown.append([lot, CityPin.LOCKED, definition.display_name, ChainText.LOCKED_BADGE])
+		for index: int in range(shown.size()):
+			var entry: Array = shown[index]
+			_add_pin(pins_layer, entry[0], entry[1], entry[2], entry[3],
+				pin_position(area.map_position, index, shown.size()))
+
+
+func _add_pin(layer: Control, id: StringName, kind: StringName, title: String, badge: String, at: Vector2) -> void:
+	var pin: CityPin = PIN_SCENE.instantiate() as CityPin
+	pin.name = "Pin_%s" % id
+	layer.add_child(pin)
+	pin.set_pin(id, kind, title, badge)
+	# Anchored at its map position, so it follows the map view's size.
+	pin.anchor_left = at.x
+	pin.anchor_right = at.x
+	pin.anchor_top = at.y
+	pin.anchor_bottom = at.y
+	pin.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	pin.grow_vertical = Control.GROW_DIRECTION_BOTH
+	pin.pin_pressed.connect(_on_pin_pressed)
+
+
+static func _site_on(sites: Array[ChainSummary.Site], lot: StringName) -> ChainSummary.Site:
+	for site: ChainSummary.Site in sites:
+		if site.lot == lot:
+			return site
+	return null
 
 
 ## Site ids in screen order, for tests and capture evidence.
@@ -225,6 +306,13 @@ func _add_label(parent: Control, node_name: String, text: String, font_size: int
 	label.add_theme_font_size_override(&"font_size", font_size)
 	parent.add_child(label)
 	return label
+
+
+## A pin brings its row into view in the list below the map.
+func _on_pin_pressed(row_id: StringName) -> void:
+	var row: Control = row_for(row_id)
+	if row != null:
+		(get_node("Panel/Content/Scroll") as ScrollContainer).ensure_control_visible(row)
 
 
 func _on_go_pressed(site_id: StringName) -> void:

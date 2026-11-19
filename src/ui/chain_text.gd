@@ -14,6 +14,9 @@ const CLOSED: String = "Closed"
 const GO: String = "Work here today"
 const DESIGN: String = "Design here today"
 const NO_MANAGER: String = "No manager"
+## Pin badges on the map view.
+const FOR_SALE_BADGE: String = "For sale"
+const LOCKED_BADGE: String = "Locked"
 const MARKET: String = "See it on the market"
 const NO_STARS: String = "No stars yet"
 const NO_TEAM: String = "No team yet"
@@ -147,6 +150,21 @@ static func alerts_heading(count: int) -> String:
 	if count <= 0:
 		return ""
 	return "1 thing needs you" if count == 1 else "%d things need you" % count
+
+
+## The short state word under a shop pin: "Here", "Managed", "Closed",
+## "Renovating", or "Needs you" when it has an alert.
+static func pin_badge(site: ChainSummary.Site) -> String:
+	if not site.alerts.is_empty() and not site.is_active():
+		return "Needs you"
+	match site.status:
+		ChainSummary.Status.HERE:
+			return "Here"
+		ChainSummary.Status.MANAGED:
+			return "Managed"
+		ChainSummary.Status.RENOVATING:
+			return "Renovating"
+	return CLOSED
 
 
 static func signed(amount: int) -> String:

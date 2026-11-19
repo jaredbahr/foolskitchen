@@ -154,3 +154,42 @@ func test_the_panel_lists_areas_sites_and_lots_in_map_order() -> void:
 	assert_eq(chosen, [&"pier"] as Array[StringName])
 	panel.get_parent().remove_child(panel)
 	panel.free()
+
+
+func test_pin_badges_and_positions() -> void:
+	assert_eq(ChainText.pin_badge(_site(&"home", ChainSummary.Status.HERE)), "Here")
+	assert_eq(ChainText.pin_badge(_site(&"a", ChainSummary.Status.MANAGED)), "Managed")
+	assert_eq(ChainText.pin_badge(_site(&"b", ChainSummary.Status.RENOVATING)), "Renovating")
+	var closed: ChainSummary.Site = _site(&"c", ChainSummary.Status.CLOSED)
+	assert_eq(ChainText.pin_badge(closed), "Closed")
+	closed.alerts = [ChainSummary.Alert.NO_MANAGER] as Array[ChainSummary.Alert]
+	assert_eq(ChainText.pin_badge(closed), "Needs you")
+	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 0, 1), Vector2(0.5, 0.57))
+	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 0, 2), Vector2(0.46, 0.57))
+	assert_eq(CityPanel.pin_position(Vector2(0.5, 0.5), 1, 2), Vector2(0.54, 0.57))
+	assert_eq(CityPanel.pin_position(Vector2(0.99, 0.99), 1, 2), Vector2(1.0, 1.0), "kept on the map")
+
+
+func test_the_map_view_shows_once_the_art_is_in() -> void:
+	var panel: CityPanel = (load("res://src/ui/city_panel.tscn") as PackedScene).instantiate() as CityPanel
+	(Engine.get_main_loop() as SceneTree).root.add_child(panel)
+	var map: CityMapDef = CityMapDef.new()
+	map.neighbourhoods = [_area(&"old", "Old", [&"home"]), _area(&"sea", "Sea", [&"pier", &"cliff"])] \
+		as Array[NeighbourhoodDef]
+	var view: CityPanel.View = CityPanel.View.new()
+	view.sites = [_site(&"home", ChainSummary.Status.HERE)] as Array[ChainSummary.Site]
+	view.lots = [_lot(&"pier", 3), _lot(&"cliff", 4)] as Array[LotDef]
+	view.career_tier = 3
+	panel.set_city(map, view)
+	assert_false((panel.get_node("%MapView") as Control).visible, "no art yet: the plain list")
+	assert_eq(panel.pins().size(), 0)
+	panel.map_texture = ImageTexture.create_from_image(Image.create(8, 8, false, Image.FORMAT_RGB8))
+	panel.set_city(map, view)
+	assert_true((panel.get_node("%MapView") as Control).visible)
+	var kinds: Array[String] = []
+	for pin: CityPin in panel.pins():
+		kinds.append("%s:%s" % [pin.row_id, pin.kind])
+	assert_eq(kinds, ["old:area", "home:shop", "sea:area", "pier:for_sale", "cliff:locked"] as Array[String])
+	assert_eq(panel.pins()[1].text, "Shop home\nHere")
+	panel.get_parent().remove_child(panel)
+	panel.free()

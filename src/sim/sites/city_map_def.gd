@@ -18,6 +18,8 @@ const HOME_LOT: StringName = NeighbourhoodDef.HOME_LOT
 
 ## In map order (the order the list view shows them).
 @export var neighbourhoods: Array[NeighbourhoodDef] = []
+## The roads between neighbourhoods, at most one per pair (CityRoadDef).
+@export var roads: Array[CityRoadDef] = []
 
 
 
@@ -43,6 +45,15 @@ func neighbourhood_for_lot(lot: StringName) -> NeighbourhoodDef:
 	for area: NeighbourhoodDef in neighbourhoods:
 		if area != null and area.has_lot(lot):
 			return area
+	return null
+
+
+## The road between two neighbourhoods (either way round), or null.
+func road(a: StringName, b: StringName) -> CityRoadDef:
+	for candidate: CityRoadDef in roads:
+		if candidate != null and ((candidate.from == a and candidate.to == b)
+				or (candidate.from == b and candidate.to == a)):
+			return candidate
 	return null
 
 
@@ -81,8 +92,9 @@ func reachable(listed: Array[StringName], owned_lots: Array[StringName]) -> Arra
 ## unique valid id, a unique trimmed name of 1 to 40 characters that is not a
 ## lot's name, a blurb of at most 160, a map position inside 0..1, and either
 ## lots (each listed once, each the home lot or a known lot) or a coming-soon
-## line, never both; and every lot, plus the home lot, stands in exactly one
-## neighbourhood.
+## line, never both; every lot, plus the home lot, stands in exactly one
+## neighbourhood; and each road joins two different known neighbourhoods, at
+## most once per pair, with its bends on the map.
 func validate(lots: Dictionary[StringName, String]) -> PackedStringArray:
 	var errors: PackedStringArray = PackedStringArray()
 	if neighbourhoods.is_empty():
@@ -135,6 +147,7 @@ func validate(lots: Dictionary[StringName, String]) -> PackedStringArray:
 				errors.append("%s lists unknown lot '%s'" % [label, String(lot)])
 				continue
 			placed[lot] = int(placed.get(lot, 0)) + 1
+	_validate_roads(errors, seen_ids)
 	var lot_ids: PackedStringArray = PackedStringArray()
 	for lot: StringName in known:
 		lot_ids.append(String(lot))
@@ -146,6 +159,30 @@ func validate(lots: Dictionary[StringName, String]) -> PackedStringArray:
 		elif count > 1:
 			errors.append("Lot '%s' is in %d neighbourhoods" % [lot, count])
 	return errors
+
+
+func _validate_roads(errors: PackedStringArray, areas: Dictionary[StringName, bool]) -> void:
+	var pairs: Dictionary[String, bool] = {}
+	for index: int in range(roads.size()):
+		var entry: CityRoadDef = roads[index]
+		if entry == null:
+			errors.append("Road %d is empty" % index)
+			continue
+		var label: String = "Road '%s' to '%s'" % [String(entry.from), String(entry.to)]
+		if not areas.has(entry.from) or not areas.has(entry.to):
+			errors.append("%s names an unknown neighbourhood" % label)
+		elif entry.from == entry.to:
+			errors.append("%s goes nowhere" % label)
+		var ends: Array[String] = [String(entry.from), String(entry.to)]
+		ends.sort()
+		var key: String = "/".join(ends)
+		if pairs.has(key):
+			errors.append("%s is listed twice" % label)
+		pairs[key] = true
+		for bend: Vector2 in entry.bends:
+			if not _on_map(bend):
+				errors.append("%s bends off the map (positions run 0 to 1)" % label)
+				break
 
 
 ## Ids follow SiteBook's rules: 1 to 40 of a-z, 0-9 and "_".

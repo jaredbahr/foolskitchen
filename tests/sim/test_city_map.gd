@@ -188,3 +188,52 @@ func test_covered_and_reachable_neighbourhoods_in_map_order() -> void:
 	assert_eq(map.reachable(CityMap.lot_ids(lots), [HOME] as Array[StringName]), [&"a", &"b", &"c"] as Array[StringName])
 	assert_eq(map.reachable([] as Array[StringName], [] as Array[StringName]), [] as Array[StringName],
 		"the home lot counts only while owned")
+
+
+func _road(from: StringName, to: StringName, bends: PackedVector2Array = PackedVector2Array()) -> CityRoadDef:
+	var road: CityRoadDef = CityRoadDef.new()
+	road.from = from
+	road.to = to
+	road.bends = bends
+	return road
+
+
+func test_the_shipped_roads_join_every_neighbourhood() -> void:
+	var map: CityMapDef = CityMap.load_default()
+	for id: StringName in map.ids():
+		var joined: bool = false
+		for other: StringName in map.ids():
+			joined = joined or map.road(id, other) != null
+		assert_true(joined, "%s has a road" % id)
+
+
+func test_road_validation() -> void:
+	var map: CityMapDef = _map([_area(&"a", "Alpha", [HOME]), _area(&"b", "Beta", [] as Array[StringName], "Soon")])
+	map.roads = [_road(&"a", &"ghost"), _road(&"a", &"a"), _road(&"a", &"b", PackedVector2Array([Vector2(2, 0)])),
+		_road(&"b", &"a")] as Array[CityRoadDef]
+	var errors: String = " ".join(map.validate({} as Dictionary[StringName, String]))
+	assert_true(errors.contains("Road 'a' to 'ghost' names an unknown neighbourhood"))
+	assert_true(errors.contains("Road 'a' to 'a' goes nowhere"))
+	assert_true(errors.contains("Road 'a' to 'b' bends off the map"))
+	assert_true(errors.contains("Road 'b' to 'a' is listed twice"), "one road per pair, either way round")
+
+
+func test_van_path_follows_the_road_either_way() -> void:
+	var a: NeighbourhoodDef = _area(&"a", "Alpha", [HOME])
+	a.map_position = Vector2(0.1, 0.1)
+	var b: NeighbourhoodDef = _area(&"b", "Beta", [&"lot_b"])
+	b.map_position = Vector2(0.9, 0.9)
+	var c: NeighbourhoodDef = _area(&"c", "Gamma", [&"lot_c"])
+	c.map_position = Vector2(0.5, 0.2)
+	var map: CityMapDef = _map([a, b, c])
+	map.roads = [_road(&"a", &"b", PackedVector2Array([Vector2(0.3, 0.5), Vector2(0.7, 0.6)]))] as Array[CityRoadDef]
+	assert_eq(CityMap.van_path(map, &"a", &"b"), PackedVector2Array([Vector2(0.1, 0.1), Vector2(0.3, 0.5),
+		Vector2(0.7, 0.6), Vector2(0.9, 0.9)]))
+	assert_eq(CityMap.van_path(map, &"b", &"a"), PackedVector2Array([Vector2(0.9, 0.9), Vector2(0.7, 0.6),
+		Vector2(0.3, 0.5), Vector2(0.1, 0.1)]), "the road's bends reversed")
+	assert_eq(CityMap.van_path(map, &"a", &"c"), PackedVector2Array([Vector2(0.1, 0.1), Vector2(0.5, 0.2)]),
+		"no road: straight across")
+	assert_eq(CityMap.van_path(map, &"a", &"a").size(), 0, "no ride to where you are")
+	assert_eq(CityMap.van_path(map, &"a", &"ghost").size(), 0)
+	assert_eq(map.road(&"b", &"a"), map.roads[0])
+	assert_null(map.road(&"a", &"c"))

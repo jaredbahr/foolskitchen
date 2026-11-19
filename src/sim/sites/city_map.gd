@@ -70,6 +70,30 @@ static func opening_tier(area: NeighbourhoodDef, lots: Array[LotDef]) -> int:
 	return lowest
 
 
+## The van's route between two neighbourhoods (docs/CITY_MAP.md T5), in
+## map coordinates (0 to 1): the start neighbourhood's position, the road's
+## bends in travel order (reversed when the road is drawn the other way), then
+## the end's position. Straight when no road joins them. Empty when either
+## neighbourhood is unknown or they are the same one (no ride).
+static func van_path(map: CityMapDef, from_area: StringName, to_area: StringName) -> PackedVector2Array:
+	var path: PackedVector2Array = PackedVector2Array()
+	if map == null or from_area == to_area:
+		return path
+	var start: NeighbourhoodDef = map.neighbourhood(from_area)
+	var end: NeighbourhoodDef = map.neighbourhood(to_area)
+	if start == null or end == null:
+		return path
+	path.append(start.map_position)
+	var drawn: CityRoadDef = map.road(from_area, to_area)
+	if drawn != null:
+		var bends: PackedVector2Array = drawn.bends.duplicate()
+		if drawn.from != from_area:
+			bends.reverse()
+		path.append_array(bends)
+	path.append(end.map_position)
+	return path
+
+
 ## Each lot's id to its display name, for CityMapDef.validate.
 static func lot_names(lots: Array[LotDef]) -> Dictionary[StringName, String]:
 	var names: Dictionary[StringName, String] = {}

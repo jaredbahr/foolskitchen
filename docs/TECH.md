@@ -4210,7 +4210,16 @@ too, so every path that closes the market closes it; `chain_summary()` feeds
 it (`SaveSystem.capture_sections(SiteSections.PER_SITE)` for the active
 site, the close's own rent multiplier); Go calls `switch_site` after
 `can_switch_site` (a refusal is logged and the list refreshed), and the
-market link opens `set_property_visible`. No saved state.
+market link opens `set_property_visible`. **Art slots (D41, the director's
+art):** `CityPanel.map_texture` (the paper map) shows `%MapView` above the
+list once set, with a `CityPin` (`src/ui/city_pin.tscn`, an `icons` texture
+per kind: area, shop, for_sale, locked) anchored at each neighbourhood's
+`map_position` and its lots spread below it (`CityPanel.pin_position`);
+a pin scrolls the list to its row. `CityMapDef.roads` are `CityRoadDef`s
+(`from`, `to`, `bends` in map units; one per pair, validated), and
+`CityMap.van_path(map, from, to)` gives the van's polyline (bends reversed
+when travelling the road backwards, straight with no road, empty for no
+ride). No saved state.
 
 **Later parts.** Moving furniture between sites (part 5; staff transfer is built, #473),
 bar gambling income (part 7), upstairs (part 8).
