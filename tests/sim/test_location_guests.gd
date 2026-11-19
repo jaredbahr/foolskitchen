@@ -153,6 +153,41 @@ func test_tourists_enjoy_local_dishes_only() -> void:
 	assert_true(sim.lot_tags.is_empty())
 
 
+func test_the_spawner_draws_the_lot_mix_and_the_lunch_window() -> void:
+	var lunch: Dictionary[StringName, int] = _spawned(ROOFTOP, 360)
+	var later: Dictionary[StringName, int] = _spawned(ROOFTOP, 1980)
+	assert_true(lunch.get(&"office", 0) > 50, "lunch arrivals: %s" % lunch)
+	# At level 1 (foodies locked) the expected office share is 0.45 / 0.65 at
+	# lunch and 0.09 / 0.29 later: about 69% against 31%.
+	assert_true(later.get(&"office", 0) * 3 < lunch.get(&"office", 0) * 2,
+		"far fewer later: %s vs %s" % [later, lunch])
+	assert_eq(lunch.get(&"student", 0) + lunch.get(&"family", 0), 0, "only the rooftop's mix")
+	var home: Dictionary[StringName, int] = _spawned(null, 360)
+	assert_eq(home.get(&"office", 0) + home.get(&"tourist", 0), 0, "never at home: %s" % home)
+
+
+## Real spawner arrivals over `count` gaps at a fixed open tick (360 is 12:00
+## and 1980 is 16:30 on the default 11:00 to 21:00 clock).
+func _spawned(lot: LotDef, open_tick: int, count: int = 150) -> Dictionary[StringName, int]:
+	var sim: RestaurantSim = _sim()
+	sim.configure_customer_types(TYPES, 1)
+	sim.configure_lot_guests(lot)
+	sim.use_rng(_random(651 + open_tick))
+	sim.spawner.min_gap = 1
+	sim.spawner.max_gap = 1
+	assert_true(sim.world.clock.start_service())
+	sim.world.clock.phase_tick = open_tick
+	var counts: Dictionary[StringName, int] = {}
+	var seen: Dictionary[int, bool] = {}
+	for _index: int in count * 2:
+		sim.spawner.advance(sim)
+		for guest: CustomerAgent in sim.customers():
+			if not seen.has(guest.id):
+				seen[guest.id] = true
+				counts[guest.customer_type_id] = counts.get(guest.customer_type_id, 0) + 1
+	return counts
+
+
 func _draws(mix: Dictionary[StringName, float], minute: int, count: int) -> Dictionary[StringName, int]:
 	var random: RandomNumberGenerator = _random(9471 + minute)
 	var counts: Dictionary[StringName, int] = {}
