@@ -286,6 +286,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The city's neighbourhoods are now data (`data/city/city_map.tres`): Old Town, Millbrook, The Seafront, Skyline and a coming-soon Pinewood (placeholder names), each listing the lots that stand in it, with checks that every lot sits in exactly one, and the rules for what each lot and neighbourhood shows on the coming city map (`CityMap`). Nothing in the game uses it yet. (#639)
 - The roadmap's build queue is reset around the location work: rain cover first, then each place's own food, seating and growth. (#633)
 - Content validation catches item and ingredient tags that no lot declares. (#584)
 - GitHub Actions usage is down: the Checks and Visual review captures workflows no longer run again on every push to `main`, because the pull request run already covered the change.
