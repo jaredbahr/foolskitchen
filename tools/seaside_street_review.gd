@@ -5,7 +5,7 @@ extends "res://src/world/main.gd"
 ## Use: bash tools/screenshot.sh --scene=res://tools/seaside_street_review.tscn
 ##   --speed=0 --frames=60 [--quarter=N]. Set SEASIDE_STREET_REVIEW_HOME=1 to stay
 ## on the home site's starter street instead, for a side-by-side comparison.
-## SEASIDE_STREET_STAGE=day|dusk|night shows the street at that time of day (default
+## SEASIDE_STREET_STAGE=day|afternoon|dusk|night shows the street at that time of day (default
 ## day, the first morning): the clock is set for display only and never runs.
 ## SEASIDE_STREET_BEACH=<zoom> frames the beach behind the shop (#588) at that zoom
 ## (the default view is about 15; 22 shows the beach and sea well).
@@ -47,6 +47,8 @@ extends "res://src/world/main.gd"
 const SEASIDE: StringName = &"beachfront_boardwalk"
 ## The dusk stage's minute of the day: the sunset key frame (data/look/day_light.tres).
 const DUSK_MINUTE: float = 1230.0
+## The afternoon stage's minute: late afternoon, when a gloomy day's lamps have come on.
+const AFTERNOON_MINUTE: float = 1020.0
 const WARM_UP_FRAMES: int = 60
 
 var _timed_frames: int = 0
@@ -261,6 +263,10 @@ func _set_stage(stage: String) -> bool:
 	match stage:
 		"", "day":
 			return true
+		"afternoon":
+			clock.phase = SimClock.Phase.OPEN
+			clock.phase_tick = roundi((AFTERNOON_MINUTE - clock.display_open_minute)
+				/ float(clock.display_close_minute - clock.display_open_minute) * clock.open_ticks)
 		"dusk":
 			clock.phase = SimClock.Phase.OPEN
 			clock.phase_tick = roundi((DUSK_MINUTE - clock.display_open_minute)

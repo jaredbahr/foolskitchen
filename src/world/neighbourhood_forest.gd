@@ -128,6 +128,7 @@ var _material: StandardMaterial3D
 var _shadow_material: StandardMaterial3D
 var _night: float = 0.0
 var _weather: int = WeatherState.Kind.SUNNY
+var _gloom: float = 0.0
 var _late: float = 0.0
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
@@ -841,6 +842,13 @@ func _chunk(at: Vector2) -> NeighbourhoodGround.Soup:
 
 ## A pine: a trunk and four stacked cones, darker low down, lighter at the tip.
 func _pine(soup: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value: int, detailed: bool) -> void:
+	var keep: float = soup.sway
+	soup.sway = 1.0
+	_pine_body(soup, at, size, seed_value, detailed)
+	soup.sway = keep
+
+
+func _pine_body(soup: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value: int, detailed: bool) -> void:
 	var yaw: float = _r(seed_value, 21) * TAU
 	var tone: Color = skin.pine_colors[int(_r(seed_value, 22) * 97.0) % skin.pine_colors.size()]
 	var base: Vector3 = Vector3(at.x, FLOOR_Y, at.y)
@@ -856,6 +864,13 @@ func _pine(soup: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value:
 
 ## A birch: a pale trunk and two lumpy rounded crowns.
 func _birch(soup: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value: int) -> void:
+	var keep: float = soup.sway
+	soup.sway = 1.0
+	_birch_body(soup, at, size, seed_value)
+	soup.sway = keep
+
+
+func _birch_body(soup: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value: int) -> void:
 	var yaw: float = _r(seed_value, 31) * TAU
 	var leaf: Color = skin.leaf_colors[int(_r(seed_value, 32) * 97.0) % skin.leaf_colors.size()]
 	var base: Vector3 = Vector3(at.x, FLOOR_Y, at.y)
@@ -1197,6 +1212,13 @@ func _log(pen: NeighbourhoodBuildings.Pen, a: Vector3, b: Vector3, radius: float
 
 ## A fern: fronds arching out from the middle.
 func _fern(pen: NeighbourhoodBuildings.Pen, at: Vector3, size: float, colour: Color, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 0.8
+	_fern_body(pen, at, size, colour, seed_value)
+	pen.soup.sway = keep
+
+
+func _fern_body(pen: NeighbourhoodBuildings.Pen, at: Vector3, size: float, colour: Color, seed_value: int) -> void:
 	var fronds: int = 6 + int(_r(seed_value, 101) * 3.0)
 	var spin: float = _r(seed_value, 102) * TAU
 	for index: int in fronds:
@@ -1213,6 +1235,13 @@ func _fern(pen: NeighbourhoodBuildings.Pen, at: Vector3, size: float, colour: Co
 
 ## A tuft of grass or reeds: a few thin leaning blades.
 func _tuft(pen: NeighbourhoodBuildings.Pen, at: Vector3, height: float, colour: Color, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 1.0
+	_tuft_body(pen, at, height, colour, seed_value)
+	pen.soup.sway = keep
+
+
+func _tuft_body(pen: NeighbourhoodBuildings.Pen, at: Vector3, height: float, colour: Color, seed_value: int) -> void:
 	for index: int in 4:
 		var angle: float = _r(seed_value + index, 111) * TAU
 		var lean: Vector3 = Vector3(cos(angle), 0.0, sin(angle)) * height * 0.35
@@ -1849,6 +1878,16 @@ func set_weather(kind: int) -> void:
 	_apply_night()
 
 
+## A gloomy afternoon's early lamplight (WeatherLook.gloom): the lamps, windows and the
+## campfire come on dimly, everything else keeps the clock's time of day.
+func set_gloom(level: float) -> void:
+	var value: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
+	if is_equal_approx(value, _gloom):
+		return
+	_gloom = value
+	_apply_night()
+
+
 func set_night(level: float, late: float) -> void:
 	_night = level
 	_late = late
@@ -1858,14 +1897,15 @@ func set_night(level: float, late: float) -> void:
 func _apply_night() -> void:
 	if root == null:
 		return
-	_glass_material.emission_energy_multiplier = _night * 2.6
-	_glass_material.albedo_color = skin.lamp_glow.lerp(skin.ripple, 1.0 - _night)
-	_bulb_material.set_shader_parameter(&"level", _night)
+	var lamps: float = maxf(_night, _gloom)
+	_glass_material.emission_energy_multiplier = lamps * 2.6
+	_glass_material.albedo_color = skin.lamp_glow.lerp(skin.ripple, 1.0 - lamps)
+	_bulb_material.set_shader_parameter(&"level", lamps)
 	_fly_material.set_shader_parameter(&"level", smoothstep(0.35, 0.9, _night))
 	_stream_material.set_shader_parameter(&"moon", _night * _late)
-	var lit: bool = _night > 0.05
+	var lit: bool = is_fire_lit()
 	# Unlit glows still cost a blended pass: hide them by day.
-	_bulb_glow.visible = lit
+	_bulb_glow.visible = lamps > 0.05
 	_fireflies.visible = _night > 0.35
 	for flame: Node3D in flames:
 		flame.visible = lit
@@ -1879,7 +1919,12 @@ func _apply_night() -> void:
 
 
 func is_fire_lit() -> bool:
-	return _night > 0.05
+	return _fire() > 0.05
+
+
+## How brightly the fire burns: by night, or on a gloomy afternoon (lit with the lanterns).
+func _fire() -> float:
+	return maxf(_night, _gloom)
 
 
 ## Moves everything to the street clock's `seconds`; skipped when nothing changed.
@@ -1894,10 +1939,10 @@ func apply(seconds: float) -> void:
 		var t: float = seconds * (7.0 + float(index)) + float(index) * 1.7
 		var flicker: float = 0.85 + 0.12 * sin(t) + 0.08 * sin(t * 2.3 + 0.5)
 		var sway: float = 0.12 * sin(seconds * 3.1 + float(index))
-		var scale: float = _night * flicker
+		var scale: float = _fire() * flicker
 		flames[index].basis = Basis(Vector3.UP, seconds * 0.7 + float(index)) * Basis(Vector3.BACK, sway) \
-			* Basis.from_scale(Vector3(maxf(_night, 0.05), maxf(scale, 0.05), maxf(_night, 0.05)))
-	_fire_glow_material.albedo_color = Color(1.0, 1.0, 1.0, _night * (0.9 + 0.1 * sin(seconds * 6.3) * sin(seconds * 2.9)))
+			* Basis.from_scale(Vector3(maxf(_fire(), 0.05), maxf(scale, 0.05), maxf(_fire(), 0.05)))
+	_fire_glow_material.albedo_color = Color(1.0, 1.0, 1.0, _fire() * (0.9 + 0.1 * sin(seconds * 6.3) * sin(seconds * 2.9)))
 	for index: int in chairs.size():
 		var rock: float = 0.035 * sin(seconds * 0.9 + float(index) * 2.1) * (0.6 + 0.4 * sin(seconds * 0.13 + float(index)))
 		chairs[index].transform = _chair_spots[index] * Transform3D(Basis(Vector3.RIGHT, rock), Vector3.ZERO)
