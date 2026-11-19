@@ -36,10 +36,13 @@ enum Condition {
 	## `max_turned_away` guests left for a reason in `leave_reasons` today;
 	## otherwise zero.
 	CALM_DAY_STARS,
+	## At opening, placed items whose id is in `item_ids`, however long they
+	## have been there (Week 3): one bought before the chain counts too.
+	ITEMS_OWNED,
 }
 
 ## The last condition, for range checks.
-const LAST_CONDITION: int = Condition.CALM_DAY_STARS
+const LAST_CONDITION: int = Condition.ITEMS_OWNED
 
 @export var id: StringName = &""
 ## Short line for the HUD tracker.
@@ -49,12 +52,12 @@ const LAST_CONDITION: int = Condition.CALM_DAY_STARS
 @export_enum("Price changed", "Decor placed", "Served today", "Drink on menu",
 	"Owner on floor", "Grow together", "Five-star reviews today", "Lease expanded",
 	"Floor added", "Item placed", "Dish at station", "Staff role", "Group seated",
-	"Calm day stars") var condition: int = Condition.PRICE_CHANGED
+	"Calm day stars", "Items owned") var condition: int = Condition.PRICE_CHANGED
 ## Every condition but CALM_DAY_STARS uses a whole-number target.
 @export var target: float = 1.0
 @export_range(0, 100000, 1) var reward_cash: int = 0
 @export_range(0, 100000, 1) var reward_xp: int = 0
-## ITEM_PLACED: the ItemDef ids that count.
+## ITEM_PLACED and ITEMS_OWNED: the ItemDef ids that count.
 @export var item_ids: Array[StringName] = []
 ## DISH_AT_STATION: the station type a dish must use (for example the fryer).
 @export var station_type: StringName = &""
@@ -74,7 +77,7 @@ func is_valid() -> bool:
 			or (reward_cash == 0 and reward_xp == 0):
 		return false
 	match condition:
-		Condition.ITEM_PLACED:
+		Condition.ITEM_PLACED, Condition.ITEMS_OWNED:
 			if item_ids.is_empty() or item_ids.has(&""):
 				return false
 		Condition.DISH_AT_STATION:
