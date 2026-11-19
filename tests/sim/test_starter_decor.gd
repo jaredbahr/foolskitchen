@@ -33,7 +33,7 @@ func after_each() -> void:
 
 func _editor_for(sim: RestaurantSim, layout: ShopLayout) -> ShopEditor:
 	var editor: ShopEditor = ShopEditor.new(sim, _content, ShopEditBooks.new(_any_spend, _no_cash), layout)
-	editor.set_owner_level(5)
+	editor.set_owner_level(9)  # location decor unlocks at levels 6 to 9
 	return editor
 
 
