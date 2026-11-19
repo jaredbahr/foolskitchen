@@ -26,7 +26,7 @@ id = &"seafront"
 display_name = "The Seafront"
 blurb = "Ice cream on the boardwalk, gulls on the railings and a café up on the cliff."
 lots = Array[StringName]([&"beachfront_boardwalk", &"seaside_cliff"])
-map_position = Vector2(0.3, 0.72)
+map_position = Vector2(0.25, 0.66)
 
 [sub_resource type="Resource" id="Resource_skyline"]
 script = ExtResource("2_area")
@@ -54,7 +54,7 @@ bends = PackedVector2Array(0.38, 0.4, 0.28, 0.36)
 script = ExtResource("3_road")
 from = &"old_town"
 to = &"seafront"
-bends = PackedVector2Array(0.45, 0.58, 0.36, 0.65)
+bends = PackedVector2Array(0.45, 0.56, 0.37, 0.6)
 
 [sub_resource type="Resource" id="Resource_road_sky"]
 script = ExtResource("3_road")

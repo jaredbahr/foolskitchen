@@ -35,6 +35,14 @@ const ICON_MAX: int = 96
 const COMPACT_WIDTH: float = 620.0
 ## Below this screen width the card fills the screen.
 const NARROW_WIDTH: float = 900.0
+## From this screen width the tapped pin's card sits beside the map (so the map
+## keeps its full size); below it the card sits under the map.
+const SIDE_WIDTH: float = 1000.0
+## The card's least width when it sits beside the map, px.
+const SIDE_CARD_WIDTH: float = 320.0
+## Pins and signs keep this far (a share of the map's width) inside the drawing,
+## which is the paper's own margin: nothing is drawn across the frame.
+const EDGE_MARGIN: float = 0.04
 const ROADWORKS_ART: Texture2D = preload("res://assets/made/city_map/roadworks.png")
 const HOARDING_ART: Texture2D = preload("res://assets/made/city_map/hoarding.png")
 ## The roadworks and hoarding picture's width, a share of the map's width.
@@ -100,16 +108,26 @@ func _strip_style(pad: float) -> StyleBoxFlat:
 	return style
 
 
-## On a narrow screen the card takes nearly all of it, so the map keeps its size.
+## On a narrow screen the panel takes nearly all of it; on a wide one it opens
+## out and the tapped pin's card sits beside the map, so the map keeps its size.
 func _fit_to_screen() -> void:
 	if not is_inside_tree():
 		return
 	var panel: Control = $Panel as Control
-	var narrow: bool = get_viewport_rect().size.x < NARROW_WIDTH
-	panel.anchor_left = 0.02 if narrow else 0.18
-	panel.anchor_right = 0.98 if narrow else 0.82
+	var width: float = get_viewport_rect().size.x
+	var narrow: bool = width < NARROW_WIDTH
+	var side: bool = width >= SIDE_WIDTH
+	panel.anchor_left = 0.02 if narrow else (0.05 if side else 0.18)
+	panel.anchor_right = 0.98 if narrow else (0.95 if side else 0.82)
 	panel.anchor_top = 0.02 if narrow else 0.08
 	panel.anchor_bottom = 0.98 if narrow else 0.97
+	(%MapPage as BoxContainer).vertical = not side
+	(%Detail as Control).custom_minimum_size = Vector2(SIDE_CARD_WIDTH if side else 0.0, 0.0)
+
+
+## True while the tapped pin's card sits beside the map (a wide screen).
+func card_is_beside() -> bool:
+	return not (%MapPage as BoxContainer).vertical
 
 
 func set_city(map: CityMapDef, view: View) -> void:
@@ -158,8 +176,8 @@ func set_city(map: CityMapDef, view: View) -> void:
 
 ## Where a lot pin sits: below its neighbourhood's label, the area's lots
 ## spread side by side (`index` of `count`), kept on the map. Map units.
-static func pin_position(area_position: Vector2, index: int, count: int) -> Vector2:
-	var offset: float = (float(index) - float(maxi(count, 1) - 1) / 2.0) * PIN_SPREAD
+static func pin_position(area_position: Vector2, index: int, count: int, spread: float = PIN_SPREAD) -> Vector2:
+	var offset: float = (float(index) - float(maxi(count, 1) - 1) / 2.0) * spread
 	return Vector2(clampf(area_position.x + offset, 0.0, 1.0), clampf(area_position.y + PIN_DROP, 0.0, 1.0))
 
 
@@ -212,8 +230,10 @@ func _build_map(map: CityMapDef, view: View, owned: Array[StringName]) -> void:
 				shown.append([lot, CityPin.LOCKED, definition.display_name, ChainText.LOCKED_BADGE, &""])
 		for index: int in range(shown.size()):
 			var entry: Array = shown[index]
-			_add_pin(pins_layer, entry[0], entry[1], entry[2], entry[3],
-				pin_position(area.map_position, index, shown.size()), entry[4]).set_meta(&"area", area.id)
+			var lot_pin: CityPin = _add_pin(pins_layer, entry[0], entry[1], entry[2], entry[3],
+				pin_position(area.map_position, index, shown.size()), entry[4])
+			lot_pin.set_meta(&"area", area.id)
+			lot_pin.set_meta(&"slot", [area.map_position, index, shown.size()])
 	_relayout()
 
 
@@ -286,63 +306,157 @@ func _relayout() -> void:
 		pin.set_compact(compact)
 		pin.add_theme_font_size_override(&"font_size", font)
 		pin.add_theme_constant_override(&"icon_max_width", icon)
-		pin.custom_minimum_size = Vector2(icon * 1.5, 0.0)
+		# As wide as its words need (a state word on a small map must not wrap).
+		var words: float = 0.0
+		for line: String in pin.text.split("\n"):
+			words = maxf(words, pin.get_theme_font(&"font").get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font).x)
+		pin.custom_minimum_size = Vector2(maxf(icon * 1.5, words + 8.0), 0.0)
 		pin.reset_size()
-		# The picture, not the whole button, sits on the pin's spot.
-		pin.position = at * size - Vector2(pin.size.x / 2.0, icon / 2.0)
+		# The picture, not the whole button, sits on the pin's spot. A pin never
+		# sits closer to its neighbour than its own width, and the whole pin (its
+		# words too) stays on the paper: it slides up from a bottom edge.
+		var slot: Array = pin.get_meta(&"slot", [Vector2.ZERO, 0, 1])
+		var spread: float = maxf(PIN_SPREAD, (pin.size.x + 6.0) / size.x)
+		at = pin_position(slot[0], slot[1], slot[2], spread)
+		# The picture sits just under its area's name banner, whatever the icon's size.
+		at.y = slot[0].y + (NAME_HEIGHT / 2.0) + (icon / 2.0 + 4.0) / size.y
+		var margin: float = size.x * EDGE_MARGIN
+		var top_left: Vector2 = at * size - Vector2(pin.size.x / 2.0, icon / 2.0)
+		top_left.x = clampf(top_left.x, margin, size.x - margin - pin.size.x)
+		top_left.y = clampf(top_left.y, margin, size.y - margin - pin.size.y)
+		pin.position = top_left
+		pin.set_meta(&"map_at", (top_left + Vector2(pin.size.x / 2.0, icon / 2.0)) / size)
+	var placed: Array[Rect2] = []
 	for picture: Node in (%Overlays as Control).get_children():
 		if picture is TextureRect:
-			_place_sign(picture as TextureRect, size, font)
+			placed.append(_place_sign(picture as TextureRect, size, font, placed))
 
 
 ## Puts a roadworks or hoarding picture (and its tag) beside its area's name
-## banner, on the first side that fits on the map without covering the name or
-## the area's own pins: roadworks right, above, left, below; a hoarding below,
-## above, right, left (an area with no lot has nothing under its name).
-func _place_sign(sign_rect: TextureRect, size: Vector2, font: int) -> void:
+## banner, on the first side where it covers no name banner, no pin and no sign
+## placed before it (`placed`): roadworks right, above, left, below; a hoarding
+## below, above, right, left (an area with no lot has nothing under its name).
+## A crowded corner tries the sides slid along the banner, then the nearest
+## clear spot on the map, then a smaller picture. Returns the rect it took.
+func _place_sign(sign_rect: TextureRect, size: Vector2, font: int, placed: Array[Rect2]) -> Rect2:
 	var compact: bool = size.x < COMPACT_WIDTH
-	var width: float = maxf(size.x * SIGN_WIDTH, 72.0)
-	var shape: Vector2 = Vector2(width, width * float(sign_rect.texture.get_height()) / float(sign_rect.texture.get_width()))
+	var full_width: float = maxf(size.x * SIGN_WIDTH, 72.0)
+	var ratio: float = float(sign_rect.texture.get_height()) / float(sign_rect.texture.get_width())
 	var tag: Label = sign_rect.get_node("Tag") as Label
 	tag.add_theme_font_size_override(&"font_size", font)
-	# Wrapped by hand: an autowrap label sizes its height a frame late.
-	tag.text = _wrapped(String(tag.get_meta(&"words", tag.text)), tag.get_theme_font(&"font"), font,
-		maxf(shape.x * 1.3, 110.0 if compact else 0.0) - 20.0)
-	tag.custom_minimum_size = Vector2.ZERO
-	tag.reset_size()
 	# A small map has no room for the tag: tapping the area's name shows the same line.
 	tag.visible = not compact
 	var area_id: StringName = StringName(sign_rect.get_meta(&"area", &""))
 	var banner: Rect2 = _banner_rect(area_id)
-	var whole: Vector2 = shape if compact else Vector2(maxf(shape.x, tag.size.x), shape.y + 2.0 + tag.size.y)
 	var coming: bool = bool(sign_rect.get_meta(&"coming", false))
+	var bounds: Rect2 = Rect2(Vector2.ZERO, size).grow(-size.x * EDGE_MARGIN)
+	# Everything a sign keeps clear of: every name banner and pin (the signs
+	# stand where nothing is lettered) and the signs already placed.
+	var taken: Array[Rect2] = placed.duplicate()
+	for pin: CityPin in pins():
+		taken.append(_pin_rect(pin, size))
+	var shape: Vector2 = Vector2.ZERO
+	var whole: Vector2 = Vector2.ZERO
+	var chosen: Vector2 = Vector2.ZERO
+	var least: float = INF
+	for shrink: float in [1.0, 0.85, 0.7, 0.6]:
+		var width: float = full_width * shrink
+		shape = Vector2(width, width * ratio)
+		# Wrapped by hand: an autowrap label sizes its height a frame late.
+		tag.text = _wrapped(String(tag.get_meta(&"words", tag.text)), tag.get_theme_font(&"font"), font,
+			maxf(full_width * 1.3, 110.0 if compact else 0.0) - 20.0)
+		tag.custom_minimum_size = Vector2.ZERO
+		tag.reset_size()
+		whole = shape if compact else Vector2(maxf(shape.x, tag.size.x), shape.y + 2.0 + tag.size.y)
+		var found: Array = _sign_spot(banner, whole, coming, bounds, taken)
+		chosen = found[0]
+		least = found[1]
+		if least == 0.0:
+			break
+	sign_rect.size = shape
+	sign_rect.position = chosen + Vector2((whole.x - shape.x) / 2.0, 0.0)
+	tag.position = Vector2((shape.x - tag.size.x) / 2.0, shape.y + 2.0)
+	return Rect2(chosen, whole)
+
+
+## Where a sign of size `whole` goes by `banner`: [top-left, px of overlap with
+## `taken`]. The sides in order, each slid along the banner by half and a whole
+## sign; with none clear, the nearest clear spot on the map.
+func _sign_spot(banner: Rect2, whole: Vector2, coming: bool, bounds: Rect2, taken: Array[Rect2]) -> Array:
 	var middle: float = banner.position.y + banner.size.y / 2.0 - whole.y / 2.0
 	var spots: Dictionary = {
 		&"right": Vector2(banner.end.x + 6.0, middle),
 		&"left": Vector2(banner.position.x - 6.0 - whole.x, middle),
 		&"above": Vector2(banner.end.x - whole.x, banner.position.y - 4.0 - whole.y),
 		&"below": Vector2(banner.position.x + (banner.size.x - whole.x) / 2.0, banner.end.y + 4.0),
+		&"below_left": Vector2(banner.position.x, banner.end.y + 4.0),
+		&"below_right": Vector2(banner.end.x - whole.x, banner.end.y + 4.0),
+		&"above_left": Vector2(banner.position.x, banner.position.y - 4.0 - whole.y),
 	}
-	var order: Array[StringName] = [&"right", &"above", &"left", &"below"]
+	var order: Array[StringName] = [&"right", &"above", &"left", &"below", &"below_right", &"below_left", &"above_left"]
 	if coming:
-		order = [&"below", &"above", &"right", &"left"]
-	var bounds: Rect2 = Rect2(Vector2.ZERO, size).grow(-size.x * 0.03)
-	var taken: Array[Rect2] = [banner]
-	for pin: CityPin in pins():
-		if pin.kind != CityPin.AREA and pin.get_meta(&"area", &"") == area_id:
-			taken.append(Rect2(pin.position, pin.size))
-	var chosen: Vector2 = spots[order[0]]
+		order = [&"below", &"above", &"right", &"left", &"below_right", &"below_left", &"above_left"]
+	var chosen: Vector2 = Vector2.ZERO
+	var least: float = INF
 	for spot: StringName in order:
-		var at: Vector2 = (spots[spot] as Vector2).clamp(bounds.position, bounds.end - whole)
-		var fits: bool = true
-		for other: Rect2 in taken:
-			fits = fits and not Rect2(at, whole).intersects(other)
-		if fits:
-			chosen = at
-			break
-	sign_rect.size = shape
-	sign_rect.position = chosen + Vector2((whole.x - shape.x) / 2.0, 0.0)
-	tag.position = Vector2((shape.x - tag.size.x) / 2.0, shape.y + 2.0)
+		var sideways: bool = String(spot).begins_with("left") or String(spot).begins_with("right")
+		for slide: float in [0.0, -0.5, 0.5, -1.0, 1.0]:
+			var base: Vector2 = spots[spot]
+			base += Vector2(0.0, slide * whole.y) if sideways else Vector2(slide * whole.x, 0.0)
+			var at: Vector2 = base.clamp(bounds.position, bounds.end - whole)
+			var covered: float = 0.0
+			for other: Rect2 in taken:
+				covered += Rect2(at, whole).intersection(other).get_area()
+			if covered < least:
+				least = covered
+				chosen = at
+			if covered == 0.0:
+				return [chosen, 0.0]
+	var nearest: float = INF
+	var y: float = bounds.position.y
+	while y <= bounds.end.y - whole.y:
+		var x: float = bounds.position.x
+		while x <= bounds.end.x - whole.x:
+			var candidate: Rect2 = Rect2(Vector2(x, y), whole)
+			var distance: float = candidate.get_center().distance_to(banner.get_center())
+			if distance < nearest and not _covers_any(candidate, taken):
+				nearest = distance
+				chosen = candidate.position
+				least = 0.0
+			x += 8.0
+		y += 8.0
+	return [chosen, least]
+
+
+## True when `rect` overlaps any of `others` (a pixel of air counts as touching).
+static func _covers_any(rect: Rect2, others: Array[Rect2]) -> bool:
+	for other: Rect2 in others:
+		if rect.grow(1.0).intersects(other):
+			return true
+	return false
+
+
+## A pin's rect on the map, in px: a neighbourhood's is its name banner.
+func _pin_rect(pin: CityPin, size: Vector2) -> Rect2:
+	if pin.kind == CityPin.AREA:
+		var half: Vector2 = pin.get_meta(&"half", Vector2(0.1, 0.04))
+		return Rect2((pin.get_meta(&"map_at", Vector2(0.5, 0.5)) - half) * size, half * 2.0 * size)
+	return Rect2(pin.position, pin.size)
+
+
+## Every sign on the map, the picture and its tag together, in map px, for tests.
+func sign_rects() -> Array[Rect2]:
+	var found: Array[Rect2] = []
+	for picture: Node in (%Overlays as Control).get_children():
+		if not picture is TextureRect:
+			continue
+		var art: TextureRect = picture as TextureRect
+		var whole: Rect2 = Rect2(art.position, art.size)
+		var tag: Label = art.get_node("Tag") as Label
+		if tag.visible:
+			whole = whole.merge(Rect2(art.position + tag.position, tag.size))
+		found.append(whole)
+	return found
 
 
 ## `words` broken into lines no wider than `width` px.
