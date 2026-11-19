@@ -100,7 +100,9 @@ func test_rain_wets_every_street_and_sunny_puts_back_exactly_what_was_built() ->
 	for path: String in PRESETS:
 		var dressing: NeighbourhoodDressing = _dressing(path)
 		var built: Dictionary = _snapshot(dressing)
-		assert_eq(int(dressing.wet_state()["swaps"]), 0, "%s: a new street is dry" % path)
+		var swaying: int = int(dressing.wet_state()["swaps"])
+		assert_true((dressing.wet_state()["materials"] as Array).is_empty(), "%s: a new street is dry" % path)
+		assert_false((dressing.wet_state()["sway"] as Array).is_empty(), "%s: its trees and grass sway" % path)
 		dressing.set_weather(WeatherState.Kind.RAIN)
 		var wet: Dictionary = dressing.wet_state()
 		assert_true(int(wet["swaps"]) > 0, "%s: the rain wets the street" % path)
@@ -118,7 +120,9 @@ func test_rain_wets_every_street_and_sunny_puts_back_exactly_what_was_built() ->
 				"%s: no puddle inside the shop" % path)
 		dressing.set_weather(WeatherState.Kind.CLOUDY)
 		dressing.set_weather(WeatherState.Kind.SUNNY)
-		assert_eq(int(dressing.wet_state()["swaps"]), 0, "%s: a sunny street is dry again" % path)
+		assert_eq(int(dressing.wet_state()["swaps"]), swaying, "%s: a sunny street is dry again" % path)
+		for material: ShaderMaterial in dressing.wet_state()["sway"]:
+			assert_eq(float(material.get_shader_parameter(&"wet")), 0.0, "%s: dry foliage" % path)
 		assert_eq(_snapshot(dressing), built, "%s: sunny shows exactly what was built" % path)
 		_free(dressing)
 
@@ -126,16 +130,57 @@ func test_rain_wets_every_street_and_sunny_puts_back_exactly_what_was_built() ->
 func test_cloudy_only_fades_the_baked_shadows() -> void:
 	await _host()
 	var dressing: NeighbourhoodDressing = _dressing("res://data/streets/starter.tres")
+	var swaying: int = int(dressing.wet_state()["swaps"])
 	dressing.set_weather(WeatherState.Kind.CLOUDY)
-	assert_true(int(dressing.wet_state()["swaps"]) > 0, "the baked shadows fade")
+	assert_true(int(dressing.wet_state()["swaps"]) > swaying, "the baked shadows fade")
 	for node: Node in dressing.find_children("*", "MeshInstance3D", true, false):
 		var mesh: MeshInstance3D = node as MeshInstance3D
 		if mesh.mesh == null:
 			continue
 		for surface: int in mesh.mesh.get_surface_count():
-			assert_false(mesh.get_active_material(surface) is ShaderMaterial and (mesh.get_active_material(surface) as ShaderMaterial).shader != null \
-				and (mesh.get_active_material(surface) as ShaderMaterial).shader.code.contains("uniform float wet"),
-				"nothing is wet on a dry cloudy day")
+			var material: ShaderMaterial = mesh.get_active_material(surface) as ShaderMaterial
+			if material != null and material.shader != null and material.shader.code.contains("uniform float wet"):
+				assert_eq(float(material.get_shader_parameter(&"wet")), 0.0, "nothing is wet on a dry cloudy day")
+	_free(dressing)
+
+
+func test_trees_and_grass_sway_gently_when_fair_and_in_gusts_in_the_rain() -> void:
+	await _host()
+	for path: String in ["res://data/streets/starter.tres", "res://data/streets/woodland.tres", "res://data/streets/country.tres",
+			"res://data/streets/cliff.tres", "res://data/streets/promenade.tres"]:
+		var dressing: NeighbourhoodDressing = _dressing(path)
+		var reach: Array[float] = []
+		for kind: int in [WeatherState.Kind.SUNNY, WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN]:
+			dressing.set_weather(kind)
+			var materials: Array = dressing.wet_state()["sway"]
+			assert_false(materials.is_empty(), "%s: foliage sways" % path)
+			var material: ShaderMaterial = materials[0]
+			assert_true(material.shader.code.contains("#define SWAY"))
+			reach.append(float(material.get_shader_parameter(&"sway_reach")))
+		assert_true(reach[0] > 0.0 and reach[0] < reach[1] and reach[1] < reach[2], "%s: gentle, stronger, gusty" % path)
+		dressing.set_review_time(5.0)
+		var at: float = float((dressing.wet_state()["sway"][0] as ShaderMaterial).get_shader_parameter(&"sway_time"))
+		assert_eq(at, 5.0, "%s: the wind follows the street's clock" % path)
+		dressing.set_weather(WeatherState.Kind.SUNNY)
+		_free(dressing)
+
+
+func test_a_gloomy_afternoon_brings_the_lamps_on_early_and_dimly() -> void:
+	assert_eq(WeatherLook.gloom(WeatherState.Kind.SUNNY, 1020.0), 0.0, "never on a fair day")
+	assert_eq(WeatherLook.gloom(WeatherState.Kind.RAIN, 780.0), 0.0, "not before the afternoon")
+	var cloudy: float = WeatherLook.gloom(WeatherState.Kind.CLOUDY, 1020.0)
+	var rain: float = WeatherLook.gloom(WeatherState.Kind.RAIN, 1020.0)
+	assert_true(cloudy > 0.0 and cloudy < rain and rain < 1.0, "a touch when cloudy, more in the rain, never a full night")
+	assert_true(WeatherLook.gloom(WeatherState.Kind.RAIN, 960.0) < rain, "it ramps up from about 15:00")
+	await _host()
+	var dressing: NeighbourhoodDressing = _dressing("res://data/streets/starter.tres")
+	dressing.set_night(0.0, 0.0, 0.0)
+	assert_false(bool(dressing.lamp_state()["glow_visible"]), "the lamps are off by day")
+	dressing.set_gloom(rain)
+	assert_true(bool(dressing.lamp_state()["glow_visible"]), "a gloomy afternoon lights them")
+	assert_almost_eq(float(dressing.lamp_state()["glow_alpha"]), rain, 0.0001, "dimly")
+	dressing.set_gloom(0.0)
+	assert_false(bool(dressing.lamp_state()["glow_visible"]))
 	_free(dressing)
 
 

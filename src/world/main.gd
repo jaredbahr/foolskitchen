@@ -34,6 +34,8 @@ const DEMAND_TUNING: DemandTuning = preload("res://data/balance/demand.tres")
 const WEEK_RHYTHM: WeekRhythm = preload("res://data/balance/week.tres")
 const SIGNATURE_TUNING: SignatureTuning = preload("res://data/balance/signature.tres")
 const DAY_LIGHT: DayLightTuning = preload("res://data/look/day_light.tres")
+## How far the shop's own lights come on, as a share of a gloomy afternoon's lamplight.
+const GLOOM_SHOP_SHARE: float = 0.6
 const CURB_APPEAL_TUNING: CurbAppealTuning = preload("res://data/balance/curb_appeal.tres")
 const REVIEW_TUNING: ReviewTuning = preload("res://data/balance/reviews.tres")
 const REVIEW_QUOTES: ReviewQuotes = preload("res://data/reviews/quotes.tres")
@@ -6820,21 +6822,25 @@ func _refresh_day_light() -> void:
 	# The weather shades the rig's light (cloudy, rain); the street's lamps and windows
 	# still follow the clock's own look below.
 	var kind: int = weather_kind()
-	var weathered: DayLight.Look = WeatherLook.apply(look, kind)
+	var view: ShopView = $ShopView as ShopView
+	var cool: float = view.street_preset.weather_cool if view.street_preset != null else 1.0
+	var weathered: DayLight.Look = WeatherLook.apply(look, kind, cool)
 	DayNightView.apply_rig(rig, weathered)
 	WeatherLook.apply_shadows(rig, kind)
-	DayNightView.apply_shop_light(rig, world.grid, look.interior_energy, DAY_LIGHT.interior_color)
-	var view: ShopView = $ShopView as ShopView
+	# A dark, wet afternoon brings the lamps and windows on early, dimly (from about 15:00).
+	var gloom: float = WeatherLook.gloom(kind, day_light_minute())
+	DayNightView.apply_shop_light(rig, world.grid, maxf(look.interior_energy, gloom * GLOOM_SHOP_SHARE), DAY_LIGHT.interior_color)
 	if view.wall_finish_view != null:
 		DayNightView.apply_glow(view.wall_finish_view.item_nodes, look.glow)
 	var camera: Node3D = $CameraRig as Node3D
 	var focus: Vector3 = camera.global_position if camera.is_inside_tree() else camera.position
-	DayNightView.apply_lamps(lamp_visuals(), look.interior_energy, focus)
+	DayNightView.apply_lamps(lamp_visuals(), maxf(look.interior_energy, gloom), focus)
 	if view.neighbourhood_dressing != null:
+		view.neighbourhood_dressing.set_gloom(gloom)
 		view.neighbourhood_dressing.set_night(DayNightView.street_night(look), DayNightView.street_late(day_light_minute(), float(world.clock.display_close_minute)),
 			DayNightView.street_dark(look))
 	if view.weather_view != null:
-		view.weather_view.set_light(weathered, DayNightView.street_night(look))
+		view.weather_view.set_light(weathered, maxf(DayNightView.street_night(look), gloom))
 	# Chairs go up after close, but never while editing in the evening, so
 	# Build and Paint always see and pick the furniture where it stands.
 	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active

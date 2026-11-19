@@ -224,6 +224,7 @@ var _pool_material: StandardMaterial3D
 var _pool_soup: NeighbourhoodGround.Soup
 var _night: float = 0.0
 var _weather: int = WeatherState.Kind.SUNNY
+var _gloom: float = 0.0
 var _late: float = 0.0
 ## 0 through the golden dusk, 1 once the sun has gone (set_night).
 var _dark: float = 1.0
@@ -1346,6 +1347,13 @@ func _finger_post(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.
 
 ## A windswept thorn by the stile, its trunk and crown leaning away from the sea.
 func _thorn(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 0.5
+	_thorn_body(pen, shadows)
+	pen.soup.sway = keep
+
+
+func _thorn_body(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) -> void:
 	var at: Vector2 = stile + Vector2(2.4, -1.6)
 	for tries: int in 8:
 		if _free_land(at, 0.6):
@@ -1424,6 +1432,13 @@ func _plants(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup)
 
 
 func _tuft(pen: NeighbourhoodBuildings.Pen, at: Vector3, height: float, colour: Color, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 1.0
+	_tuft_body(pen, at, height, colour, seed_value)
+	pen.soup.sway = keep
+
+
+func _tuft_body(pen: NeighbourhoodBuildings.Pen, at: Vector3, height: float, colour: Color, seed_value: int) -> void:
 	var wind: Vector3 = Vector3(WIND.x, 0.0, WIND.y)
 	for index: int in 4:
 		var angle: float = _r(seed_value + index, 111) * TAU
@@ -1447,6 +1462,13 @@ func _thrift(pen: NeighbourhoodBuildings.Pen, at: Vector2, size: float, seed_val
 
 ## A gorse bush: a dark spiny mound leaning from the wind, dotted with yellow flowers.
 func _gorse(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 0.5
+	_gorse_body(pen, shadows, at, size, seed_value)
+	pen.soup.sway = keep
+
+
+func _gorse_body(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup, at: Vector2, size: float, seed_value: int) -> void:
 	var lean: Vector3 = Vector3(WIND.x, 0.0, WIND.y) * size * 0.25
 	var centre: Vector3 = Vector3(at.x, FLOOR_Y + size * 0.55, at.y) + lean
 	var spin: float = atan2(WIND.y, WIND.x)
@@ -1969,6 +1991,16 @@ func wet_spot(across: float, u: float, radius: float) -> Vector2:
 	return Vector2(NAN, NAN)
 
 
+## A gloomy afternoon's early lamplight (WeatherLook.gloom): the lamps and windows come on
+## dimly, everything else keeps the clock's time of day.
+func set_gloom(level: float) -> void:
+	var value: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
+	if is_equal_approx(value, _gloom):
+		return
+	_gloom = value
+	_apply_night()
+
+
 func set_night(level: float, late: float, dark: float = 1.0) -> void:
 	_night = level
 	_late = late
@@ -1984,7 +2016,7 @@ func _apply_night() -> void:
 	if root == null:
 		return
 	# The lamps come on at dusk a little short of full, and fill in with the dark.
-	var lamps: float = _night * lerpf(DUSK_LAMPS, 1.0, _dark)
+	var lamps: float = maxf(_night * lerpf(DUSK_LAMPS, 1.0, _dark), _gloom)
 	var night: float = _night * _dark
 	_glow_material.set_shader_parameter(&"level", lamps)
 	_boat_glow.set_shader_parameter(&"level", lamps)
