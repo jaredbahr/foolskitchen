@@ -187,6 +187,9 @@ func test_normal_display_and_actual_walk_animation_advance_without_simulation_an
 
 func test_actors_use_existing_guest_models_and_no_neighbourhood_nodes_add_lights_physics_or_pick_targets() -> void:
 	await _start()
+	# Every walker's whole path is checked: on a dry day, as some stay in when it rains.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
 	assert_not_null(dressing)

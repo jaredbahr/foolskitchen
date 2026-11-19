@@ -168,6 +168,11 @@ var _shadow_material: StandardMaterial3D
 var _glow: MeshInstance3D
 var _pools: MeshInstance3D
 var _night: float = 0.0
+## How far the wheat's ears lean (country_wheat.gdshader) and how fast the gusts come, by
+## weather (sunny, cloudy, rain): a blustery rainy day bends the field.
+const WHEAT_REACH: Array[float] = [0.035, 0.045, 0.08]
+const WHEAT_PACE: Array[float] = [1.0, 1.15, 1.6]
+var _weather: int = WeatherState.Kind.SUNNY
 var _late: float = 0.0
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
@@ -2621,6 +2626,23 @@ func bird_transform(index: int, seconds: float) -> Transform3D:
 ## 0 by day, 1 from dusk; `late` rises after the shop closes. The lanterns and the
 ## cottages' windows light from dusk; the swallows and sheep's wandering stop at night
 ## and the tractor goes home.
+## The warm lights low enough to stand over the ground (lamps, lit windows), street-local.
+func lamp_spots() -> Array[Vector3]:
+	var result: Array[Vector3] = []
+	for at: Vector3 in _lights:
+		if at.y < 2.2:
+			result.append(at)
+	return result
+
+
+## The day's weather (WeatherState.Kind): wind in the rain sways the crops and trees more.
+func set_weather(kind: int) -> void:
+	if kind == _weather:
+		return
+	_weather = kind
+	_apply_night()
+
+
 func set_night(level: float, late: float) -> void:
 	_night = level
 	_late = late
@@ -2641,7 +2663,8 @@ func _apply_night() -> void:
 	_glow.visible = lit
 	_pools.visible = lit
 	for bird: Node3D in birds:
-		bird.visible = _night < NIGHT_HIDE
+		bird.visible = _night < NIGHT_HIDE and _weather != WeatherState.Kind.RAIN
+	_wheat_material.set_shader_parameter(&"reach", WHEAT_REACH[clampi(_weather, 0, 2)])
 	_applied_at = -1.0
 	apply(_seconds)
 
@@ -2659,7 +2682,7 @@ func apply(seconds: float) -> void:
 	_stream_material.set_shader_parameter(&"stream_time", seconds)
 	if wheel != null:
 		wheel.basis = Basis(Vector3.RIGHT, wheel_angle(seconds))
-	_wheat_material.set_shader_parameter(&"sway_time", seconds)
+	_wheat_material.set_shader_parameter(&"sway_time", seconds * WHEAT_PACE[clampi(_weather, 0, 2)])
 	if tractor != null:
 		var run: Vector3 = tractor_run(seconds)
 		tractor.visible = run.z > 0.5 and _late < NIGHT_HIDE

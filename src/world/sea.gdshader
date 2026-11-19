@@ -29,6 +29,11 @@ uniform vec3 moon_color : source_color = vec3(0.45, 0.55, 0.75);
 uniform float sunset = 0.0;
 uniform vec3 sunset_near : source_color = vec3(1.0, 0.66, 0.42);
 uniform vec3 sunset_far : source_color = vec3(0.98, 0.62, 0.72);
+// 0 on a fair day; 1 in the rain: the water goes grey-green and rougher, white horses break
+// all the way out, the swash runs higher, the sun's glints go and the rain dimples it.
+// 0.5 is a cloudy day's duller water. 0 draws exactly the fair sea.
+uniform float storm = 0.0;
+uniform vec3 storm_color : source_color = vec3(0.46, 0.53, 0.54);
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -43,8 +48,9 @@ float swash(float u, float t) {
 void fragment() {
 	float u = UV.x;
 	float d = shore_z - UV.y;
-	float t = sea_time;
-	float reach = swash(u, t);
+	float t = sea_time * (1.0 + 0.6 * storm);
+	float rough = smoothstep(0.5, 1.0, storm);
+	float reach = swash(u, t) * (1.0 + 0.45 * rough);
 	float past = d + reach;
 	vec3 colour;
 	vec3 glow = vec3(0.0);
@@ -62,6 +68,8 @@ void fragment() {
 		colour = d < band1 ? shallow : (d < band2 ? mid : deep);
 		// Far water darkens a touch more toward the edge of the world.
 		colour = mix(colour, deep * 0.9, smoothstep(14.0, 34.0, d));
+		// Rough weather: the water takes the grey sky, keeping its bands a little.
+		colour = mix(colour, storm_color * (0.7 + 0.6 * dot(colour, vec3(0.3, 0.5, 0.2))), storm * 0.72);
 		// The foam edge of the swash, and a fizzy second line just behind it.
 		float edge = 1.0 - step(0.15 + 0.05 * sin(u * 2.3 + t) + 0.03 * sin(u * 5.1), past);
 		float fizz_at = 0.42 + 0.1 * sin(u * 0.9 - t * 0.5);
@@ -72,13 +80,27 @@ void fragment() {
 		float roll = sin(wave);
 		float k = floor(wave / 6.2832);
 		float broken = step(0.55, sin(u * (0.7 + 0.25 * fract(k * 0.37)) + k * 2.4 + 0.8 * sin(u * 0.31)));
-		float crest = step(0.986, roll) * broken * step(0.9, d) * (1.0 - smoothstep(5.0, 10.0, d));
+		float crest = step(0.986 - 0.01 * rough, roll) * broken * step(0.9, d) * (1.0 - smoothstep(5.0 + 3.0 * rough, 10.0 + 6.0 * rough, d));
+		// White horses: short broken caps scattered over the open water, each on its own beat.
+		vec2 cap_at = vec2(u * 0.55, d * 1.3);
+		vec2 cap_cell = floor(cap_at);
+		vec2 cap_in = fract(cap_at);
+		float hc = hash(cap_cell + 41.0);
+		float caps = rough * step(0.95, hc) * step(0.35, sin(t * 0.9 + hc * 30.0)) * step(1.5, d)
+			* step(abs(cap_in.x - 0.5), 0.3 * (0.5 + 0.5 * hc)) * step(abs(cap_in.y - 0.5), 0.06);
 		// Glints: short sparkling dashes on the open water.
 		vec2 cell = floor(vec2(u * 0.9, d * 2.4));
 		float h = hash(cell);
-		float glint = step(0.975, h) * step(0.6, sin(t * 1.7 + h * 50.0)) * step(2.0, d);
+		float glint = step(0.975, h) * step(0.6, sin(t * 1.7 + h * 50.0)) * step(2.0, d) * (1.0 - storm);
+		// Rain on the water: tiny pale dimples that come and go.
+		vec2 drop_at = vec2(u * 3.0, d * 6.0);
+		vec2 drop_cell = floor(drop_at);
+		float hd = hash(drop_cell + floor(sea_time * 3.0 + hash(drop_cell) * 7.0) * 0.37);
+		float dimple = rough * step(0.96, hd) * step(length((fract(drop_at) - 0.5) * vec2(1.0, 2.0)), 0.3);
 		colour = mix(colour, foam, max(edge, fizz * 0.8));
-		colour = mix(colour, foam, crest * 0.5);
+		colour = mix(colour, foam, crest * (0.5 + 0.3 * rough));
+		colour = mix(colour, foam, caps * 0.65);
+		colour = mix(colour, mix(colour, foam, 0.5), dimple * 0.5);
 		colour = mix(colour, mix(shallow, foam, 0.6), glint);
 		// Sunset: the open water takes the warm sky, brightest far out, and the crests catch it.
 		glow += dusk_color * dusk * (0.24 * smoothstep(1.0, 20.0, d) + crest * 0.3 + glint * 0.7 + edge * 0.15);

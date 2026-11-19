@@ -6817,7 +6817,12 @@ func _refresh_day_light() -> void:
 	var look: DayLight.Look = day_light_look()
 	_music_light = look.interior_energy
 	var rig: Node3D = get_node_or_null(^"LightingRig") as Node3D
-	DayNightView.apply_rig(rig, look)
+	# The weather shades the rig's light (cloudy, rain); the street's lamps and windows
+	# still follow the clock's own look below.
+	var kind: int = weather_kind()
+	var weathered: DayLight.Look = WeatherLook.apply(look, kind)
+	DayNightView.apply_rig(rig, weathered)
+	WeatherLook.apply_shadows(rig, kind)
 	DayNightView.apply_shop_light(rig, world.grid, look.interior_energy, DAY_LIGHT.interior_color)
 	var view: ShopView = $ShopView as ShopView
 	if view.wall_finish_view != null:
@@ -6828,6 +6833,8 @@ func _refresh_day_light() -> void:
 	if view.neighbourhood_dressing != null:
 		view.neighbourhood_dressing.set_night(DayNightView.street_night(look), DayNightView.street_late(day_light_minute(), float(world.clock.display_close_minute)),
 			DayNightView.street_dark(look))
+	if view.weather_view != null:
+		view.weather_view.set_light(weathered, DayNightView.street_night(look))
 	# Chairs go up after close, but never while editing in the evening, so
 	# Build and Paint always see and pick the furniture where it stands.
 	var closed: bool = world.clock.phase == SimClock.Phase.CLOSED and not is_build_active() and not _paint_active
@@ -6848,6 +6855,11 @@ func lamp_visuals() -> Array[ItemVisual]:
 			if node.has_meta(DayNightView.LAMP_META):
 				lamps.append(node)
 	return lamps
+
+
+## The day's weather kind for the view (sunny before any weather is chosen).
+func weather_kind() -> int:
+	return world.weather.kind if world != null and world.weather != null else WeatherState.Kind.SUNNY
 
 
 func day_light_look() -> DayLight.Look:

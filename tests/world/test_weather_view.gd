@@ -159,7 +159,7 @@ func test_current_camera_pan_rebuilds_the_rain_upload_mask_in_the_same_frame() -
 	pan.free()
 
 
-func test_original_lights_sky_and_all_nonpavement_materials_remain_unchanged() -> void:
+func test_sunny_keeps_the_authored_light_and_weather_never_touches_the_shop_inside() -> void:
 	await _start()
 	var original: Node3D = LIGHTING.instantiate() as Node3D
 	var expected_lighting: Dictionary = _lighting_snapshot(original)
@@ -168,14 +168,23 @@ func test_original_lights_sky_and_all_nonpavement_materials_remain_unchanged() -
 	_main.call("refresh_presentation")
 	assert_eq(_lighting_snapshot(_main.get_node("LightingRig")), expected_lighting,
 		"the live interior rig equals the unchanged authored scene")
+	var key: DirectionalLight3D = _main.get_node("LightingRig/KeyLight") as DirectionalLight3D
+	assert_eq(key.shadow_opacity, 1.0)
 	var materials: Dictionary = _interior_material_snapshot()
+	var street: Dictionary = _street_material_snapshot()
 	var random: Dictionary = GameState.call("_capture_save")
 	for kind: int in [WeatherState.Kind.CLOUDY, WeatherState.Kind.RAIN, WeatherState.Kind.SUNNY]:
 		_world().weather.kind = kind as WeatherState.Kind
 		_main.call("refresh_presentation")
 		await _frames(2)
-		assert_eq(_lighting_snapshot(_main.get_node("LightingRig")), expected_lighting)
-		assert_eq(_interior_material_snapshot(), materials)
+		if kind == WeatherState.Kind.SUNNY:
+			assert_eq(_lighting_snapshot(_main.get_node("LightingRig")), expected_lighting, "sunny restores the light exactly")
+			assert_eq(key.shadow_opacity, 1.0)
+			assert_eq(_street_material_snapshot(), street, "sunny restores every street material exactly")
+		else:
+			assert_true(key.light_energy < float(expected_lighting["KeyLight"][2]), "an overcast sun is dimmer")
+			assert_true(key.shadow_opacity < 1.0, "an overcast sun casts fainter shadows")
+		assert_eq(_interior_material_snapshot(), materials, "the shop's own materials never change with the weather")
 		assert_eq(GameState.call("_capture_save"), random)
 
 
@@ -215,6 +224,30 @@ func test_weather_light_only_reaches_actual_outside_pavement_and_sunny_restores_
 	_main.call("refresh_presentation")
 	assert_eq(_pavement_colors(), pavement)
 	assert_false(_weather_view().outdoor_light.visible)
+
+
+func test_rain_falls_over_the_whole_view_with_puddles_and_splashes_outside_and_sunny_clears_it() -> void:
+	await _start()
+	_world().weather.kind = WeatherState.Kind.RAIN
+	_main.call("refresh_presentation")
+	_weather_view()._process(0.0)
+	var camera: Camera3D = _main.get_node("CameraRig/Camera3D") as Camera3D
+	var size: Vector2 = Vector2(1600, 900)
+	var covered: Rect2 = Rect2()
+	for index: int in _weather_view().rain_transforms.size():
+		var point: Vector2 = camera.unproject_position(_weather_view().rain.global_transform * _weather_view().rain_transforms[index].origin)
+		covered = Rect2(point, Vector2.ZERO) if index == 0 else covered.expand(point)
+	assert_true(covered.size.x > size.x * 0.9 and covered.size.y > size.y * 0.8, "the rain covers the whole view, not just the shop")
+	assert_true(_weather_view().rain_transforms.size() <= WeatherView.MAX_COLUMNS)
+	assert_true(_weather_view().puddles.mesh != null and _weather_view().puddles.visible, "the rain leaves puddles")
+	assert_true(_weather_view().splashes.multimesh.instance_count > 0, "the rain splashes on the paving")
+	var first: Array[Transform3D] = _weather_view().rain_transforms.duplicate()
+	_weather_view().refresh(true)
+	_weather_view()._process(0.0)
+	assert_eq(_weather_view().rain_transforms, first, "the rain is laid out the same way every time")
+	_world().weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
+	assert_false(_weather_view().rain.visible or _weather_view().puddles.visible or _weather_view().splashes.visible)
 
 
 func _start(on_root: bool = false) -> void:
@@ -309,7 +342,8 @@ func _interior_material_snapshot() -> Dictionary:
 	var result: Dictionary = {}
 	for node: Node in _view().find_children("*", "MeshInstance3D", true, false):
 		var mesh: MeshInstance3D = node as MeshInstance3D
-		if _weather_view().is_ancestor_of(mesh) or _pavement_ancestor(mesh) != null:
+		if _weather_view().is_ancestor_of(mesh) or _pavement_ancestor(mesh) != null \
+				or _view().neighbourhood_dressing.is_ancestor_of(mesh):
 			continue
 		assert_eq(mesh.layers & WeatherView.OUTDOOR_LAYER, 0)
 		var materials: Array = []
@@ -330,6 +364,20 @@ func _interior_material_snapshot() -> Dictionary:
 			else:
 				materials.append(material)
 		result[String(_view().get_path_to(mesh))] = [mesh.layers, mesh.material_override, materials]
+	return result
+
+
+## Every street mesh's active materials (the neighbourhood dressing): rain swaps them.
+func _street_material_snapshot() -> Dictionary:
+	var result: Dictionary = {}
+	var dressing: NeighbourhoodDressing = _view().neighbourhood_dressing
+	for node: Node in dressing.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		var materials: Array = [mesh.material_override]
+		var surface_count: int = mesh.mesh.get_surface_count() if mesh.mesh != null else 0
+		for index: int in surface_count:
+			materials.append(mesh.get_active_material(index))
+		result[String(dressing.get_path_to(mesh))] = materials
 	return result
 
 

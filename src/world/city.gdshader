@@ -37,6 +37,10 @@ uniform vec3 window_cool : source_color = vec3(0.8, 0.88, 1.0);
 uniform float window_energy = 1.1;
 // At night the streets' lights warm the bottom of the canyons.
 uniform vec3 street_glow : source_color = vec3(1.0, 0.7, 0.36);
+// Weather (0 fair, about 0.4 cloudy, 1 rain): the haze thickens toward a grey murk, most
+// over the deep streets and the far skyline. 0 draws exactly the fair city.
+uniform float murk = 0.0;
+uniform vec3 murk_day : source_color = vec3(0.62, 0.66, 0.7);
 
 varying vec3 local_pos;
 varying vec3 local_nrm;
@@ -108,7 +112,9 @@ void fragment() {
 	float haze = 1.0 - (1.0 - pow(depth, 1.15) * 0.9) * (1.0 - far * 0.75);
 	// A little night air over everything, so the city's roofs go blue, not brown.
 	haze = max(haze, 0.45 * smoothstep(0.5, 1.0, level));
+	haze = mix(haze, 1.0, murk * (0.12 + 0.5 * max(pow(depth, 0.8), far)));
 	vec3 tint = level < 0.5 ? mix(haze_day, haze_dusk, level * 2.0) : mix(haze_dusk, haze_night, level * 2.0 - 1.0);
+	tint = mix(tint, murk_day * (0.25 + 0.75 * (1.0 - smoothstep(0.4, 1.0, level))) * mix(vec3(1.0), tint * 1.4, 0.35), murk * 0.7);
 	tint = mix(tint, street_glow * 0.55, smoothstep(0.5, 1.0, level) * depth * depth * 0.6);
 	ALBEDO = base * (1.0 - haze);
 	ROUGHNESS = 1.0;

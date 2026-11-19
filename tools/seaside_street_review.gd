@@ -34,6 +34,9 @@ extends "res://src/world/main.gd"
 ## SEASIDE_STREET_PLOTS=mown|cleared shows a country street's land plots (#613,
 ## data/streets/country.tres) mown or cleared; <state>:<id> (for example mown:east)
 ## shows just that plot.
+## SEASIDE_STREET_WEATHER=sunny|cloudy|rain forces the day's weather for the capture (unsaved;
+## it applies to the home street too). SEASIDE_STREET_PANELS=0 takes the panels off the home
+## street's picture as well.
 ## SEASIDE_STREET_FRAMES=<n> times n frames after a 60-frame warm-up, with vsync off,
 ## and prints FRAME_TIME with the mean and median milliseconds (run --frames past 60+n).
 
@@ -57,6 +60,10 @@ func _ready() -> void:
 	if OS.get_environment("SEASIDE_STREET_REVIEW_HOME") == "1":
 		# The starter street takes the time of day too, for a day/dusk/night comparison.
 		_set_stage(OS.get_environment("SEASIDE_STREET_STAGE"))
+		_force_weather(OS.get_environment("SEASIDE_STREET_WEATHER"))
+		if OS.get_environment("SEASIDE_STREET_PANELS") == "0":
+			_hide_panels()
+		_start_timing()
 		return
 	var site: StringName = SEASIDE
 	if not OS.get_environment("SEASIDE_STREET_LOT").is_empty():
@@ -73,11 +80,7 @@ func _ready() -> void:
 	if not switch_site(site):
 		push_error("Seaside street review could not switch to the site: " + site_switch_refusal(site))
 		return
-	# The street is the subject: take the panels off the picture.
-	for panel: String in ["HUD", "Overlay", "Hints"]:
-		var node: Node = get_node_or_null(panel)
-		if node != null:
-			node.set("visible", false)
+	_hide_panels()
 	_show_for_sale(OS.get_environment("SEASIDE_STREET_FOR_SALE"))
 	if OS.get_environment("SEASIDE_STREET_EXPANDED") == "1":
 		_expand_lease()
@@ -90,10 +93,10 @@ func _ready() -> void:
 	_close_up()
 	_frame_beach()
 	_frame_lighthouse()
-	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
-	if _timed_frames > 0:
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	_start_timing()
 	if not _set_stage(OS.get_environment("SEASIDE_STREET_STAGE")):
+		return
+	if not _force_weather(OS.get_environment("SEASIDE_STREET_WEATHER")):
 		return
 	if OS.get_environment("SEASIDE_STREET_PLAN") == "1":
 		var summary: Array = []
@@ -102,6 +105,34 @@ func _ready() -> void:
 		print("PLAN ", " ".join(summary))
 	print("SEASIDE_STREET_REVIEW ", JSON.stringify({"site": String(site_book.active_id),
 		"street": String(($ShopView as ShopView).street_preset.id), "minute": day_light_minute()}))
+
+
+## The street is the subject: take the panels off the picture.
+func _hide_panels() -> void:
+	for panel: String in ["HUD", "Overlay", "Hints"]:
+		var node: Node = get_node_or_null(panel)
+		if node != null:
+			node.set("visible", false)
+
+
+func _start_timing() -> void:
+	_timed_frames = OS.get_environment("SEASIDE_STREET_FRAMES").to_int()
+	if _timed_frames > 0:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+
+
+## Forces the day's weather for the capture only: the review saves nothing.
+func _force_weather(which: String) -> bool:
+	var kinds: Dictionary[String, WeatherState.Kind] = {"sunny": WeatherState.Kind.SUNNY,
+		"cloudy": WeatherState.Kind.CLOUDY, "rain": WeatherState.Kind.RAIN}
+	if which.is_empty():
+		return true
+	if not kinds.has(which) or world == null or world.weather == null:
+		push_error("Unknown SEASIDE_STREET_WEATHER: " + which)
+		return false
+	world.weather.kind = kinds[which]
+	refresh_presentation()
+	return true
 
 
 func _show_for_sale(which: String) -> void:

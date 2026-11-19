@@ -43,6 +43,10 @@ const BALL_RADIUS: float = 0.16
 ## Guest looks for the people on the beach (the street's pedestrians use 1, 4 and 6).
 const BEACH_GUESTS: Array[int] = [2, 3, 5, 7, 8, 9, 10, 11]
 const NIGHT_HIDE: float = 0.5
+## In the rain only one gull in this many stays out.
+const RAIN_GULL_SHARE: int = 3
+## The sea's storm (sea.gdshader) by weather: fair, a duller cloudy sea, rough in the rain.
+const SEA_STORM: Array[float] = [0.0, 0.4, 1.0]
 
 ## One beach person: where and how they rest, and what part of the day they stay for.
 class Bather extends RefCounted:
@@ -89,6 +93,7 @@ var _lamp_material: StandardMaterial3D
 var _beam_material: StandardMaterial3D
 var _night: float = 0.0
 var _late: float = 0.0
+var _weather: int = WeatherState.Kind.SUNNY
 var _seconds: float = 0.0
 var _applied_at: float = -1.0
 var _lighthouse_lamp: Vector3 = Vector3.ZERO
@@ -855,6 +860,20 @@ func is_day() -> bool:
 	return _night < NIGHT_HIDE
 
 
+## The day's weather (WeatherState.Kind): in the rain the beach empties and its umbrellas
+## are furled, most gulls stay away and the sea runs grey and rough; a cloudy sea is duller.
+func set_weather(kind: int) -> void:
+	if kind == _weather:
+		return
+	_weather = kind
+	_apply_night()
+
+
+## True while the beach is open for the day: daylight and no rain.
+func beach_open() -> bool:
+	return is_day() and _weather != WeatherState.Kind.RAIN
+
+
 ## True while the sunset stragglers are still on the sand.
 func is_sunset() -> bool:
 	return not is_day() and _late < NIGHT_HIDE
@@ -863,24 +882,26 @@ func is_sunset() -> bool:
 func _apply_night() -> void:
 	if root == null:
 		return
+	var rainy: bool = _weather == WeatherState.Kind.RAIN
 	if day_props != null:
-		day_props.visible = is_day()
+		day_props.visible = beach_open()
 	if night_props != null:
-		night_props.visible = not is_day()
+		night_props.visible = not beach_open()
 	for bather: Bather in bathers:
-		bather.person.visible = is_day() or (is_sunset() and bather.stays_for_sunset)
+		bather.person.visible = not rainy and (is_day() or (is_sunset() and bather.stays_for_sunset))
 	_lamp_material.emission_energy_multiplier = _night * 2.4
 	_lamp_material.albedo_color = skin.lamp_glow.lerp(skin.hut_trim, 1.0 - _night)
 	_beam_material.albedo_color = Color(skin.lamp_glow, 0.35 * _night)
 	beam.visible = _night > 0.01
 	# The gulls roost once it is properly dark.
-	for gull: Node3D in gulls:
-		gull.visible = _late < NIGHT_HIDE
+	for index: int in gulls.size():
+		gulls[index].visible = _late < NIGHT_HIDE and (not rainy or index % RAIN_GULL_SHARE == 0)
 	for mast_lamp: MeshInstance3D in _boat_lamps:
 		mast_lamp.visible = _night > 0.01
 	if sea_material != null:
 		sea_material.set_shader_parameter(&"dusk", _night * (1.0 - _late))
 		sea_material.set_shader_parameter(&"moon", _night * _late)
+		sea_material.set_shader_parameter(&"storm", SEA_STORM[clampi(_weather, 0, 2)])
 	_applied_at = -1.0
 	apply(_seconds)
 
