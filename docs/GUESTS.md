@@ -14,15 +14,19 @@ Design for guest types, quirks and how reviews and the morning paper talk about 
 
 **Quirks (12, one guest in eight or so has one).** Small and readable, each with one icon and one testable effect: the **Shutterbug** (photographs every dish, always posts a review), the **Chatterbox** (stays longer, leaves happier), the **Lunch-breaker** (in a hurry, thrilled when it's quick), plus the window-seat lover, the dog walker, the birthday table, the sweet tooth, the big eater, the indecisive one, the early bird, the "maybe famous" guest in sunglasses and the critic in disguise (already in the game, #303).
 
-**Decisions for you** (each lists options; my pick is first):
-1. **T1. How often do quirks show up?** One in eight guests / one in four / one in sixteen.
-2. **T2. When do quirks start?** Owner level 3 / day 1 / level 5.
-3. **T3. How do you see a quirk?** A small icon over the guest plus a line when you inspect them / the inspect line only / a speech bubble when they arrive.
-4. **T4. Should a quirk ever cost you?** Small trade-offs both ways / only upsides.
-5. **T5. Tourists and regulars.** Tourists never become regulars / one in twenty "falls in love" and returns as a named regular.
-6. **T6. The office crowd at lunch.** A soft lunch window (mostly 11:30 to 2) / strictly lunch only.
-7. **T7. "Maybe famous" guest.** Draws a small crowd for an hour / just a funny review line / leave it out.
-8. **T8. Dogs inside.** Dogs only where there's outdoor seating / anywhere, with a water bowl item.
+**Decided** (Jared, 2026-11-19; the options he was offered are in the git history of this file):
+1. **T1.** One guest in eight has a quirk.
+2. **T2.** Quirks start at owner level 3.
+3. **T3.** A small icon over the guest plus a line in the inspect panel. The icons stay placeholder glyphs until the director draws them.
+4. **T4.** Small trade-offs both ways: the Chatterbox holds a seat longer, the Lunch-breaker walks out sooner.
+5. **T5.** One tourist in twenty "falls in love" and comes back as a named regular. Every other tourist is a one-time visitor.
+6. **T6.** A soft lunch window for the office crowd: mostly 11:30 to 2, a few at other times.
+7. **T7.** The "maybe famous" guest draws a small crowd: arrivals come about 15% faster for the next hour.
+8. **T8.** Dogs only where there's outdoor seating.
+
+**D-row for DESIGN.md** (ready to paste):
+
+`| D41 | Guests with personality | Each location draws its own crowd through its guest mix (the home shop keeps today's): tourists (Seaside Cliff), the office crowd (Skyline Rooftop), then walkers, surfers, farmers and foragers. From owner level 3, one guest in eight has a small quirk, shown by an icon over them and a line when inspected, with one effect each and small trade-offs both ways (a Chatterbox holds a seat longer, a Lunch-breaker walks out sooner). One tourist in twenty returns as a named regular. The office crowd mostly comes at lunch (a soft window). A "maybe famous" guest makes the next hour's arrivals about 15% faster. Dogs only where there's outdoor seating. Design: docs/GUESTS.md | 2026-11-19 |`
 
 **What I'm building now (separate PRs):** tourists and the office crowd (#471), with each location's guest mix now really shaping who walks in there (today the mix only shows on the property card), then the quirk data and three quirks end to end (Shutterbug, Chatterbox, Lunch-breaker) with their review quotes. The rest is filed as issues (see the last section).
 
@@ -54,12 +58,12 @@ Numbers are multipliers on today's baseline (Regular = 1.0). Party is min–max,
 | **Forager** | local and foraged dishes; quiet seats | 0.9 | 1.4 | 1–2 | 1.2 | Woodland 0.6 | issue (lot not built) |
 
 **Notes per type**
-- **Tourist.** One-time visitors: they never become regulars (T5). Less fussy about price (a higher budget). A dish tagged `seafood`, or one carrying one of the location's own tags (a boardwalk soft serve at a seaside lot), gives a small happiness bonus; when #626's Local tag lands, Local dishes count too. Review chance is a little higher: they post about their holiday.
+- **Tourist.** Mostly one-time visitors: one in twenty falls in love with the place and returns as a named regular (T5); the rest never join the regulars. Less fussy about price (a higher budget). A dish tagged `seafood`, or one carrying one of the location's own tags (a boardwalk soft serve at a seaside lot), gives a small happiness bonus; when #626's Local tag lands, Local dishes count too. Review chance is a little higher: they post about their holiday.
 - **Office crowd.** Mostly arrive in a lunch window (11:30–14:00 on the shop clock); outside it their arrival weight drops to a fifth (T6). Short queue and food patience, a good budget. A slow lunch is their biggest complaint.
 - **Walker.** Come up the cliff path in any weather: in rain their arrival weight holds while others drop. A hot drink with their meal is likely. Often bring a dog (the dog-walker quirk is twice as likely for them).
 - **Surfer.** Arrive in twos to fours, mostly in the afternoon, prefer the patio, order cold drinks and fries. Relaxed: patient but not big spenders.
 - **Farmer.** Early: weighted to the first two hours. Thrifty but hungry: one in three orders a second dish (the big-eater quirk is twice as likely for them). Low review chance: they've better things to do.
-- **Forager.** Patient, curious, love anything local or foraged (#608). Very rarely bring you a basket of mushrooms (a tiny free stock gift, issue later).
+- **Forager.** Patient, curious, love anything local or foraged (#608). Tied to the `woodland_cabin` lot once it lands. Very rarely bring you a basket of mushrooms (a tiny free stock gift, issue later).
 
 **How a lot's mix shapes arrivals (with #471).** Today `LotDef.guest_mix` only shows on the property card; arrivals everywhere use the reputation weights. With #471, at the home shop arrivals stay exactly as today. At any other location the lot's `guest_mix` share replaces the type's reputation weight, but a type still waits for its owner-level unlock, and the room's theme bonus and the evening multipliers still apply. The location types (tourists, office crowd and the later four) have zero reputation weight, so they never arrive at the home shop, which has no mix.
 
@@ -67,7 +71,7 @@ Numbers are multipliers on today's baseline (Regular = 1.0). Party is min–max,
 
 A quirk is a small personality on top of the type: one icon, one line in the inspect panel, one effect. At most one per guest. In a party only one member can have one (the birthday table belongs to the party). A regular, a critic or a booked guest never also gets a random quirk.
 
-**Rolling.** When an ordinary guest arrives, and once the owner level is at least the quirk unlock (T2), the `quirks` stream draws once: with the quirk chance (T1) the guest gets one, picked by weight among quirks that suit their type and the location. Below the unlock, no draw happens.
+**Rolling.** When an ordinary guest arrives, and once the owner level is at least 3 (T2), the `quirks` stream draws once: one guest in eight (T1) gets one, picked by weight among quirks that suit their type and the location. Below the unlock, no draw happens.
 
 | Quirk | What you see (T3) | Sim effect (testable) | Review line hook | Status |
 |---|---|---|---|---|
@@ -75,18 +79,18 @@ A quirk is a small personality on top of the type: one icon, one line in the ins
 | **Chatterbox**: tells the whole room about their week | speech-dots icon; leans across the table | Stays 50% longer at the table (holds the seat), +0.5 raw stars | 4–5 stars: `chatty_happy` quotes | building |
 | **Lunch-breaker**: on a strict lunch hour | watch icon; taps wrist | Patience x0.6; if food arrives inside half their food patience, +1 raw star | fast: `quick_lunch`; slow: their usual slow-food line | building |
 | **Window seat**: always asks for the window | window icon | Prefers a free seat next to a window; +0.5 raw stars when they get one | `window_happy` | issue |
-| **Dog walker**: brings a very good dog | paw icon; a dog sits by the chair (art) | Prefers outdoor seats (T8); +0.5 stars outdoors; leaves if only indoor seats and dogs-inside is off | `dog_happy` | issue |
+| **Dog walker**: brings a very good dog | paw icon; a dog sits by the chair (art) | Only where there's outdoor seating (T8): sits outside, +0.5 stars there; never rolled at a shop with no outdoor seats | `dog_happy` | issue |
 | **Birthday table**: a party celebrating | balloon icon over the table | Party orders one extra dessert or drink if on the menu; booking-style review weight 2 when served well | `birthday` | issue |
 | **Sweet tooth** | cupcake icon | Always adds a pastry when one is on the menu | `sweet` | issue |
 | **Big eater** | double plate icon | Orders a second dish (one more ticket, one more sale) | `big_eater` | issue |
 | **Indecisive** | question-mark icon | Takes twice as long to order (holds the server a little) | `indecisive` | issue |
 | **Early bird** | sunrise icon | Only rolled in the first hour; patience x1.3 | (ordinary lines) | issue |
-| **Maybe famous**: sunglasses indoors | sparkle icon | T7: the next hour's arrivals come 15% faster | `maybe_famous` | issue, needs T7 |
+| **Maybe famous**: sunglasses indoors | sparkle icon | The next hour's arrivals come 15% faster (T7) | `maybe_famous` | issue |
 | **Critic in disguise** | notebook, hat, orders the dearest dish | Already built (#303): a weighted review | `critic_good`, `critic_bad` | built |
 
-**Trade-offs (T4).** The Chatterbox holds a seat longer (fewer covers on a busy night) and the Lunch-breaker walks out sooner. That keeps quirks a little interesting to manage, never punishing.
+**Trade-offs (T4, decided).** The Chatterbox holds a seat longer (fewer covers on a busy night) and the Lunch-breaker walks out sooner. That keeps quirks a little interesting to manage, never punishing.
 
-**Showing them (T3, placeholder until art).** The inspect panel gets one plain line per quirk ("Takes a photo of every dish."). The day log notes the first of each quirk per day. The icon over the head reuses the regular-guest billboard (`regular_guest_indicator.gd`) with a short text glyph until the director draws icons.
+**Showing them (T3: icon plus inspect line; placeholder until art).** The inspect panel gets one plain line per quirk ("Takes a photo of every dish."). The day log notes the first of each quirk per day. The icon over the head reuses the regular-guest billboard (`regular_guest_indicator.gd`) with a short text glyph until the director draws icons.
 
 ## 4. Reviews and the paper
 
@@ -112,4 +116,4 @@ A quirk is a small personality on top of the type: one icon, one line in the ins
 
 ## 7. Filed as issues
 
-See the issue links in the PR. In short: walkers, surfers, farmers, foragers (one issue each, Codex, once their lot or data exists); window seat, sweet tooth, big eater, indecisive and early bird quirks (Codex); dog walker and birthday table (need T8 and art, director); maybe famous (needs T7); quirk icons over heads (art, director); morning-paper quirk briefs and type-flavoured review quotes (writing, director).
+See the issue links in the PR. In short: walkers, surfers, farmers, foragers (one issue each, Codex, once their lot or data exists); window seat, sweet tooth, big eater, indecisive and early bird quirks (Codex); tourists who fall in love and return as regulars (T5, Codex); dog walker and birthday table (art, director); maybe famous (T7 decided, Codex); quirk icons over heads (art, director); morning-paper quirk briefs and type-flavoured review quotes (writing, director).
