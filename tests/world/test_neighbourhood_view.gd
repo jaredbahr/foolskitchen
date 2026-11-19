@@ -85,6 +85,9 @@ func _start() -> void:
 	_main.set("owner_creation_requested", false)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# A dry day: the session rolls its own weather, and rain or cloud changes the lamps, walkers and shadows.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	Clock.set_speed(0)
 	_main.set_process(false)
 	var rig: CameraRig = _main.get_node("CameraRig") as CameraRig
@@ -273,9 +276,7 @@ func test_actual_static_triangles_avoid_maximum_lease_native_pads_and_service_pa
 
 func test_actual_pedestrian_and_car_meshes_stay_clear_of_the_lease_and_door_across_their_display_cycle() -> void:
 	await _start()
-	# Every walker's whole path is checked: on a dry day, as some stay in when it rains.
-	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
-	_main.call("refresh_presentation")
+	# Every walker's whole path is checked: the setup makes it a dry day, as some stay in when it rains.
 	var view: ShopView = _main.get_node("ShopView") as ShopView
 	var dressing: NeighbourhoodDressing = view.neighbourhood_dressing
 	assert_not_null(dressing)
