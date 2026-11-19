@@ -175,9 +175,9 @@ func test_bad_lots_are_reported() -> void:
 	var no_guests: LotDef = _good_lot()
 	no_guests.guest_mix = {}
 	cases.append([no_guests, "guest_mix is empty"])
-	var tourists: LotDef = _good_lot()
-	tourists.guest_mix = {&"tourist": 1.0}
-	cases.append([tourists, "unknown customer type 'tourist'"])
+	var unknown_type: LotDef = _good_lot()
+	unknown_type.guest_mix = {&"pirate": 1.0}
+	cases.append([unknown_type, "unknown customer type 'pirate'"])
 	var zero_share: LotDef = _good_lot()
 	zero_share.guest_mix = {&"foodie": 0.0}
 	cases.append([zero_share, "must be > 0"])
@@ -275,8 +275,8 @@ func test_screen_lines_use_names_not_ids() -> void:
 	assert_eq(PropertyText.expansion_line(rooftop), "Expand later for $15,000, then rent $300 a day")
 	assert_eq(PropertyText.expansion_line(rooftop, 0.9), "Expand later for $15,000, then rent $270 a day")
 	assert_eq(PropertyText.size_line(fixer), "%d floor tiles" % fixer.size_cells())
-	assert_eq(PropertyText.guest_line(rooftop, CUSTOMER_TYPES), "Guests: mostly foodies")
-	assert_eq(PropertyText.guest_line(seaside, CUSTOMER_TYPES), "Guests: families and foodies")
+	assert_eq(PropertyText.guest_line(rooftop, CUSTOMER_TYPES), "Guests: office crowd and foodies")
+	assert_eq(PropertyText.guest_line(seaside, CUSTOMER_TYPES), "Guests: mostly tourists")
 	assert_eq(PropertyText.guest_line(fixer, CUSTOMER_TYPES), "Guests: regulars and families")
 	assert_eq(PropertyText.perks_line(seaside), "Perks: Fresh catch")
 	assert_eq(PropertyText.perks_line(rooftop), "Perks: Rooftop bar")
