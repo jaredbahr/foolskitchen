@@ -302,6 +302,43 @@ func test_first_hold_tick_blocks_walkin_before_its_seat_acquisition() -> void:
 	assert_eq(guest.table_item_id, 0, "the ordinary customer did not reserve or start walking to the held group")
 
 
+func test_a_single_four_seat_table_is_held_against_walkins() -> void:
+	# #650: a party of four can book one four-seat table, and the hold keeps it.
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	layout.placements.clear()
+	for placement: ShopPlacement in LAYOUT.placements:
+		if content.item(placement.item_id).category != ItemDef.Category.TABLE:
+			layout.placements.append(placement.duplicate(true) as ShopPlacement)
+	layout.placements.append(_placement(&"table_4", Vector2i(4, 6)))
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(layout, content, 315, errors, null, false)
+	assert_eq(errors, [] as Array[String])
+	assert_eq(DiningSeats.booking_capacity(sim.world.grid, 4), 4, "the lone table can take a party of four")
+	var clock: SimClock = sim.world.clock
+	clock.day = 2
+	clock.display_open_minute = 600
+	clock.display_close_minute = 900
+	clock.open_ticks = 300
+	assert_true(clock.start_service())
+	clock.phase_tick = 14 # The next tick is the 10:15 T-75 hold boundary.
+	var booking_model: GroupBooking = _accepted_for_service_slot(690, 4)
+	sim.configure_booking(booking_model)
+	sim.spawner._remaining = 100000
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(95))
+	guest.state = CustomerAgent.State.QUEUED
+	sim.advance()
+	var booking_id: int = int(booking_model.booking["booking_id"])
+	var held_id: int = sim.world.booking_hold.group_for_booking(sim.world, booking_id)
+	assert_true(held_id > 0, "a single table is chosen and held")
+	assert_eq((booking_model.booking["held_group_members"] as Array).size(), 1)
+	assert_true(sim.world.booking_hold.blocks_group(sim.world, held_id), "walk-ins cannot take it")
+	assert_false(sim.world.booking_hold.blocks_group(sim.world, held_id, booking_id), "the booked party can")
+	assert_false(guest._book_table(sim.world, false), "the only table is held, so the walk-in waits")
+	assert_eq(guest.table_item_id, 0)
+
+
 func test_unreachable_lower_id_group_does_not_keep_the_hold_from_a_usable_group() -> void:
 	var content: ContentDB = ContentDB.new()
 	assert_eq(content.load_all(), PackedStringArray())
