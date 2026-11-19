@@ -528,7 +528,7 @@ func _plan_yard() -> void:
 		if cell.position.y >= front_row - 0.05:
 			porch_cells.append(cell)
 	if not porch_cells.is_empty():
-		_plan_patio_yard(lot, door)
+		_plan_patio_yard(door)
 		return
 	# The porch runs along the shop's front on the roomier side of the door; the fire
 	# pit sits out in the yard on the other side, and the woodpile past the porch's end.
@@ -575,7 +575,7 @@ func _plan_yard() -> void:
 ## The yard round the shop's own porch (its front patio cells, #596): the woodpile past
 ## the porch's far end from the door, the fire pit out past the other end, the lantern
 ## on the post by the door and no rocking chairs (the porch is the player's to furnish).
-func _plan_patio_yard(lot: Rect2, door: Rect2) -> void:
+func _plan_patio_yard(door: Rect2) -> void:
 	porch = porch_cells[0]
 	for cell: Rect2 in porch_cells:
 		porch = porch.merge(cell)
@@ -1530,7 +1530,7 @@ func _patio_porch(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.
 		var x1: float = maxf(edge, edge + into_path * 0.16)
 		pen.box(Vector3(x0, -0.04, r.position.y + 0.06), Vector3(x1, top * 0.5, r.end.y - 0.06), skin.timber)
 	# The tall post by the door steps, its arm and the lantern.
-	var post: Vector2 = Vector2(_lantern_at.x + (0.1 if _lantern_at.x < _door_u() else -0.1), _lantern_at.z + 0.04 - 0.04)
+	var post: Vector2 = Vector2(_lantern_at.x + (0.1 if _lantern_at.x < _door_u() else -0.1), _lantern_at.z)
 	pen.box(Vector3(post.x - 0.04, top, post.y - 0.04), Vector3(post.x + 0.04, top + PATIO_LANTERN_POST, post.y + 0.04), skin.timber_dark)
 	pen.box(Vector3(minf(post.x, _lantern_at.x) - 0.01, top + PATIO_LANTERN_POST - 0.06, post.y - 0.015),
 		Vector3(maxf(post.x, _lantern_at.x) + 0.01, top + PATIO_LANTERN_POST - 0.03, post.y + 0.015), skin.timber_dark)
