@@ -4,9 +4,9 @@ extends TestCase
 const TYPES: CustomerTypeCatalogue = preload("res://data/customers/types.tres")
 
 
-func test_four_authored_types_are_valid_and_regular_is_neutral() -> void:
+func test_authored_types_are_valid_and_regular_is_neutral() -> void:
 	assert_true(TYPES.is_valid())
-	assert_eq(TYPES.types.size(), 4)
+	assert_eq(TYPES.types.size(), 6)
 	var regular: CustomerType = TYPES.find_type(&"regular")
 	assert_not_null(regular)
 	if regular == null:

@@ -35,3 +35,6 @@ var restroom_was_busy: bool = false
 var waited_seated: bool = false
 ## This guest petted the shop cat while waiting (#119).
 var petted_cat: bool = false
+## Raw stars from a guest type that loves local food, when they ate a local
+## dish (tourists, #471). Zero for everyone else.
+var local_dish_bonus: float = 0.0
