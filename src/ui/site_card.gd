@@ -9,15 +9,21 @@ extends Control
 
 signal site_chosen(site_id: StringName)
 signal prompt_answered(accept: bool)
+## "See the map" (docs/CITY_MAP.md T6): main.gd opens the city screen.
+signal map_requested()
 
 const SHARED_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 ## The Property screen's muted tone, so the screens read as one.
 const MUTED_COLOR: Color = Color("766b60")
+## The card's width, px: this wide on a big screen, less on a phone.
+const PANEL_WIDTH: float = 560.0
+const SIDE_MARGIN: float = 12.0
 const NAME_FONT_SIZE: int = 20
 const LINE_FONT_SIZE: int = 16
 
 const TITLE: String = "Your restaurants"
 const INTRO: String = "Where will you work today?"
+const SEE_MAP: String = "See the map"
 const STAY: String = "Stay here"
 const GO: String = "Work here"
 const DESIGN: String = "Design here"
@@ -38,6 +44,9 @@ const NOT_UNTIL_TOMORROW: String = "From tomorrow"
 const NOT_NOW: String = "Not available"
 
 var _prompting: bool = false
+## Whether the morning list offers "See the map" (main.gd sets it: the city
+## screen opens from Tier 3). Never on the same-day purchase question.
+var map_available: bool = false
 
 var _ids: Array[StringName] = []
 
@@ -61,8 +70,20 @@ class Row extends RefCounted:
 
 
 func _ready() -> void:
+	_fit_width()
+	if not get_viewport().size_changed.is_connected(_fit_width):
+		get_viewport().size_changed.connect(_fit_width)
 	(get_node("Center/Panel/Content/Title") as Label).text = TITLE
 	(get_node("Center/Panel/Content/Intro") as Label).text = INTRO
+
+
+## The card is as wide as it likes up to PANEL_WIDTH, and never wider than a
+## narrow screen leaves it.
+func _fit_width() -> void:
+	if not is_inside_tree():
+		return
+	var panel: Control = get_node("Center/Panel") as Control
+	panel.custom_minimum_size.x = minf(PANEL_WIDTH, maxf(get_viewport_rect().size.x - 2.0 * SIDE_MARGIN, 0.0))
 
 
 ## "Yesterday's takings: $412" where the owner worked (gross), "Yesterday's
@@ -105,6 +126,27 @@ func set_rows(rows: Array[Row]) -> void:
 	for row: Row in rows:
 		list.add_child(_make_row(row, _ids.size()))
 		_ids.append(row.id)
+	if map_available:
+		list.add_child(_make_map_button())
+
+
+func _make_map_button() -> Control:
+	var footer: HBoxContainer = HBoxContainer.new()
+	footer.name = "Footer"
+	footer.alignment = BoxContainer.ALIGNMENT_END
+	footer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var button: Button = Button.new()
+	button.name = "SeeMap"
+	button.text = SEE_MAP
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(150.0, 0.0)
+	button.pressed.connect(_on_map_pressed)
+	footer.add_child(button)
+	return footer
+
+
+func _on_map_pressed() -> void:
+	map_requested.emit()
 
 
 ## The same-day question after buying a lot (#464): `question` as the title,

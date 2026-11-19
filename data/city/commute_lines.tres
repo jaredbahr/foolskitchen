@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="CommuteLines" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/sites/commute_lines.gd" id="1_lines"]
+
+[resource]
+script = ExtResource("1_lines")
+general = PackedStringArray("Stuck behind a bread van the whole way. You took notes.", "The van radio only plays polka. You know every word now.", "A pigeon raced you there. The pigeon won.", "Every red light. Every single one.", "You practiced your 'welcome in!' smile on the windshield.", "A duck crossed the road. You waited. The duck took its time.", "Parked so neatly that a stranger clapped.", "The van smells of onions. The van always smells of onions.", "You passed three rival restaurants. All empty. Probably.", "Took the scenic route. Not on purpose.", "Sang the menu out loud at a stop sign. Nobody heard. Hopefully.")

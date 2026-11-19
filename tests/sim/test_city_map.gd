@@ -250,4 +250,20 @@ func test_van_path_follows_the_road_either_way() -> void:
 	assert_eq(CityMap.van_path(map, &"a", &"a").size(), 0, "no ride to where you are")
 	assert_eq(CityMap.van_path(map, &"a", &"ghost").size(), 0)
 	assert_eq(map.road(&"b", &"a"), map.roads[0])
+	# A chain of roads is followed through the middle neighbourhood.
+	map.roads.append(_road(&"b", &"c", PackedVector2Array([Vector2(0.8, 0.4)])))
+	assert_eq(CityMap.van_path(map, &"a", &"c"), PackedVector2Array([Vector2(0.1, 0.1), Vector2(0.3, 0.5),
+		Vector2(0.7, 0.6), Vector2(0.9, 0.9), Vector2(0.8, 0.4), Vector2(0.5, 0.2)]), "a to c goes via b")
+	assert_eq(CityMap.road_route(map, &"c", &"a"), [&"c", &"b", &"a"] as Array[StringName])
 	assert_null(map.road(&"a", &"c"))
+
+
+func test_the_shipped_map_routes_pinewood_to_old_town_via_skyline() -> void:
+	var map: CityMapDef = CityMap.load_default()
+	assert_eq(CityMap.road_route(map, &"pinewood", &"old_town"), [&"pinewood", &"skyline", &"old_town"] as Array[StringName])
+	var path: PackedVector2Array = CityMap.van_path(map, &"pinewood", &"old_town")
+	assert_true(path.has(map.neighbourhood(&"skyline").map_position), "it passes through Skyline")
+	assert_eq(path[0], map.neighbourhood(&"pinewood").map_position)
+	assert_eq(path[path.size() - 1], map.neighbourhood(&"old_town").map_position)
+	assert_true(path.size() > 3, "along the roads' bends, not straight")
+	assert_eq(CityMap.road_route(map, &"seafront", &"millbrook"), [&"seafront", &"old_town", &"millbrook"] as Array[StringName])

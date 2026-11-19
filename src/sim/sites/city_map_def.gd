@@ -12,6 +12,7 @@ extends Resource
 
 const MAX_NAME_LENGTH: int = 40
 const MAX_BLURB_LENGTH: int = 160
+const MAX_COMMUTE_LINE_LENGTH: int = 120
 const MAX_ID_LENGTH: int = 40
 ## The starter shop's lot (SiteBook.HOME_LOT; see NeighbourhoodDef).
 const HOME_LOT: StringName = NeighbourhoodDef.HOME_LOT
@@ -133,6 +134,8 @@ func validate(lots: Dictionary[StringName, String]) -> PackedStringArray:
 			errors.append("%s needs a blurb" % label)
 		elif area.blurb.length() > MAX_BLURB_LENGTH:
 			errors.append("%s has a blurb over %d characters" % [label, MAX_BLURB_LENGTH])
+		if area.commute_line != area.commute_line.strip_edges() or area.commute_line.length() > MAX_COMMUTE_LINE_LENGTH:
+			errors.append("%s needs a trimmed commute line of at most %d characters" % [label, MAX_COMMUTE_LINE_LENGTH])
 		if area.coming_soon != area.coming_soon.strip_edges():
 			errors.append("%s has a coming-soon line with spaces at its ends" % label)
 		if not _on_map(area.map_position):

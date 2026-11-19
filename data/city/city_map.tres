@@ -11,6 +11,7 @@ display_name = "Old Town"
 blurb = "Where it all started: a little high street with a bakery, a florist and your first shop."
 lots = Array[StringName]([&"home"])
 map_position = Vector2(0.5, 0.45)
+commute_line = "Back on the high street. The florist waved."
 
 [sub_resource type="Resource" id="Resource_millbrook"]
 script = ExtResource("2_area")
@@ -19,6 +20,7 @@ display_name = "Millbrook"
 blurb = "Hedgerows, a mill stream and the best flour in town, down the lane past the last bus stop."
 lots = Array[StringName]([&"town_fixer_upper"])
 map_position = Vector2(0.2, 0.26)
+commute_line = "A tractor set the pace for the last mile."
 
 [sub_resource type="Resource" id="Resource_seafront"]
 script = ExtResource("2_area")
@@ -27,6 +29,7 @@ display_name = "The Seafront"
 blurb = "Ice cream on the boardwalk, gulls on the railings and a café up on the cliff."
 lots = Array[StringName]([&"beachfront_boardwalk", &"seaside_cliff"])
 map_position = Vector2(0.25, 0.62)
+commute_line = "A gull eyed your lunch all the way down the hill."
 
 [sub_resource type="Resource" id="Resource_skyline"]
 script = ExtResource("2_area")
@@ -35,6 +38,7 @@ display_name = "Skyline"
 blurb = "Glass towers, office lunches and a rooftop with the best view in town."
 lots = Array[StringName]([&"skyscraper_rooftop"])
 map_position = Vector2(0.76, 0.55)
+commute_line = "The elevator music was better than the van radio."
 
 [sub_resource type="Resource" id="Resource_pinewood"]
 script = ExtResource("2_area")
@@ -43,6 +47,7 @@ display_name = "Pinewood"
 blurb = "A log cabin in a pine clearing, a fire pit under the string lights and hikers who arrive very hungry."
 lots = Array[StringName]([&"woodland_cabin"])
 map_position = Vector2(0.62, 0.14)
+commute_line = "The road turned to gravel, then to mud, then to trees."
 
 [sub_resource type="Resource" id="Resource_road_mill"]
 script = ExtResource("3_road")
