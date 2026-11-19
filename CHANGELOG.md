@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Week 2 now asks you to hire a second cook instead of a cleaner (the cleaner moves to Week 3), and the bigger lease costs $40 a day instead of $60, so growing the shop pays. (#674)
 - A small price rise costs fewer guests: the first 5% over a dish's standard price is shrugged off, so a 10% rise turns away about half as many guests as before. The first Opening week goal now says to move a price and watch how guests react. (#672)
 - Some guests now have a little personality: from owner level 3, about one guest in eight has a quirk, shown when you inspect them. The **Shutterbug** photographs every dish and always posts a review, the **Chatterbox** stays at the table a while and leaves happier, and the **Lunch-breaker** is in a hurry but thrilled when lunch comes quickly. Each has their own review lines. (#652)
 - New guests for the places you can buy: **tourists** at the Seaside Cliff, who pay a little more, love seafood and local treats and never come back, and the **office crowd** at the Skyline Rooftop, who pour in at lunchtime, pay well and won't wait long. Each location's guest mix (the line on its property card) now really decides who walks in there, including at the Beachfront Boardwalk and Old Mill Street: their guests now follow each lot's fixed mix instead of your star rating, so foodies no longer visit there. Your first shop's guests are exactly as before. (#651)

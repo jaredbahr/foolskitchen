@@ -437,20 +437,20 @@ func test_a_fried_dish_on_the_menu_pays_at_opening() -> void:
 	assert_eq(_bonus_entries(), [WEEK_TWO.by_id(&"fried_dish").reward_cash] as Array[int])
 
 
-func test_a_cleaner_on_the_team_at_opening_pays_but_one_let_go_does_not() -> void:
+func test_a_second_cook_at_opening_pays_but_one_let_go_does_not() -> void:
 	var main: Node = await _start(false)
 	_to_week_two(main)
-	assert_true(_add_member(main, &"cleaner", &"test_cleaner"))
-	assert_true(main.call("staff_let_go", &"test_cleaner"), "let go again before opening")
+	assert_true(_add_member(main, &"cook", &"test_cook"))
+	assert_true(main.call("staff_let_go", &"test_cook"), "let go again before opening")
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	assert_false(_state(main).is_completed(&"hire_cleaner"), "the hire must still be there at opening")
+	assert_false(_state(main).is_completed(&"second_cook"), "the hire must still be there at opening")
 	main.call("run_ticks", 3)
 	assert_true(Clock.sim.next_day())
-	assert_true(_add_member(main, &"cleaner", &"test_cleaner_2"))
+	assert_true(_add_member(main, &"cook", &"test_cook_2"))
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	assert_true(_state(main).is_completed(&"hire_cleaner"))
+	assert_true(_state(main).is_completed(&"second_cook"), "the starter cook plus one")
 
 
 # --- Week 3 (early-game audit 2) ---------------------------------------------
@@ -466,18 +466,18 @@ func test_a_bench_bought_before_week_three_pays_at_its_first_opening() -> void:
 	assert_eq(_bonus_entries(), [40] as Array[int])
 
 
-func test_a_second_cook_pays_but_the_starter_cook_alone_does_not() -> void:
+func test_a_cleaner_on_the_team_at_week_three_opening_pays() -> void:
 	var main: Node = await _start(false)
 	_to_week_three(main)
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	assert_false(_state(main).is_completed(&"second_cook"), "one cook is not two")
+	assert_false(_state(main).is_completed(&"hire_cleaner"), "no cleaner yet")
 	main.call("run_ticks", 3)
 	assert_true(Clock.sim.next_day())
-	assert_true(_add_member(main, &"cook", &"test_cook_2"))
+	assert_true(_add_member(main, &"cleaner", &"test_cleaner_3"))
 	_quiet_service(main)
 	assert_true(Clock.sim.start_service())
-	assert_true(_state(main).is_completed(&"second_cook"))
+	assert_true(_state(main).is_completed(&"hire_cleaner"))
 
 
 func test_a_seated_group_counts_when_it_pays() -> void:
@@ -593,7 +593,7 @@ func test_closed_day_neither_pays_goals_nor_loses_the_weekly_calendar_on_reload(
 	assert_true(main.call("close_for_today"))
 	assert_eq(Clock.sim.phase, SimClock.Phase.CLOSED)
 	assert_false(_state(main).is_completed(&"calm_day"))
-	assert_false(_state(main).is_completed(&"hire_cleaner"))
+	assert_false(_state(main).is_completed(&"second_cook"))
 	assert_eq(_bonus_entries(), [] as Array[int])
 	assert_eq(Economy.ledger.day_totals(closed_day).get(Ledger.WEEKLY_CHALLENGE_BONUS, 0), 0,
 		"no-lost-guests reward requires a service day")
@@ -610,7 +610,7 @@ func test_closed_day_neither_pays_goals_nor_loses_the_weekly_calendar_on_reload(
 	weekly = main.get("weekly_challenge") as WeeklyChallengeState
 	assert_eq(weekly.to_dict(), expected, "the same active challenge loaded the next morning")
 	assert_false(_state(main).is_completed(&"calm_day"))
-	assert_false(_state(main).is_completed(&"hire_cleaner"))
+	assert_false(_state(main).is_completed(&"second_cook"))
 	roster = main.get("staff_roster") as StaffRoster
 	var candidate: StaffMember = roster.candidates()[0]
 	assert_eq(candidate.role, &"cook")
@@ -620,7 +620,7 @@ func test_closed_day_neither_pays_goals_nor_loses_the_weekly_calendar_on_reload(
 	assert_eq(weekly.status, WeeklyChallengeState.Status.COMPLETED)
 	assert_eq(Economy.ledger.day_totals(Clock.sim.day).get(Ledger.WEEKLY_CHALLENGE_BONUS, 0), weekly.reward_cash)
 	assert_true(_state(main).is_completed(&"calm_day"))
-	assert_true(_state(main).is_completed(&"hire_cleaner"))
+	assert_false(_state(main).is_completed(&"second_cook"), "one cook is not two")
 
 
 func test_week_two_progress_survives_the_morning_save_and_reload() -> void:

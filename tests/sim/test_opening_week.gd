@@ -148,7 +148,7 @@ func test_week_two_is_authored_and_pays_about_seven_hundred() -> void:
 	assert_eq(WEEK_TWO.days, 7)
 	assert_eq(WEEK_TWO.shown_goals, 3)
 	assert_eq(_ids(WEEK_TWO.goals), [&"bigger_lease", &"lay_floor", &"big_table", &"fried_dish",
-		&"hire_cleaner", &"seat_group", &"serve_30", &"calm_day"] as Array[StringName], "the approved order")
+		&"second_cook", &"seat_group", &"serve_30", &"calm_day"] as Array[StringName], "the approved order")
 	var rewards: Array[int] = []
 	for goal: OpeningGoal in WEEK_TWO.goals:
 		rewards.append(goal.reward_cash)
@@ -157,7 +157,8 @@ func test_week_two_is_authored_and_pays_about_seven_hundred() -> void:
 	assert_eq(WEEK_TWO.total_cash(), 700)
 	assert_eq(WEEK_TWO.by_id(&"big_table").item_ids, [&"table_4", &"round_table"] as Array[StringName])
 	assert_eq(WEEK_TWO.by_id(&"fried_dish").station_type, &"fryer")
-	assert_eq(WEEK_TWO.by_id(&"hire_cleaner").role, &"cleaner")
+	assert_eq(WEEK_TWO.by_id(&"second_cook").role, &"cook")
+	assert_eq(WEEK_TWO.by_id(&"second_cook").target, 2.0, "the starter cook plus one (#648)")
 	assert_eq(WEEK_TWO.by_id(&"calm_day").leave_reasons, [&"waited_too_long"] as Array[StringName])
 	assert_eq(WEEK_TWO.by_id(&"calm_day").target, 3.5)
 	assert_eq(WEEK_TWO.by_id(&"calm_day").max_turned_away, 0, "nobody gives up waiting (Jared)")
@@ -172,7 +173,7 @@ func test_each_week_two_goal_triggers_from_its_own_condition_and_pays_once() -> 
 		[&"lay_floor", OpeningGoal.Condition.FLOOR_ADDED, 6.0],
 		[&"big_table", OpeningGoal.Condition.ITEM_PLACED, 1.0],
 		[&"fried_dish", OpeningGoal.Condition.DISH_AT_STATION, 1.0],
-		[&"hire_cleaner", OpeningGoal.Condition.STAFF_ROLE, 1.0],
+		[&"second_cook", OpeningGoal.Condition.STAFF_ROLE, 2.0],
 		[&"seat_group", OpeningGoal.Condition.GROUP_SEATED, 2.0],
 		[&"serve_30", OpeningGoal.Condition.SERVED_TODAY, 30.0],
 		[&"calm_day", OpeningGoal.Condition.CALM_DAY_STARS, 3.5],
@@ -197,7 +198,7 @@ func test_week_two_thresholds() -> void:
 		[OpeningGoal.Condition.CALM_DAY_STARS, 3.4, &"calm_day"],
 		[OpeningGoal.Condition.CALM_DAY_STARS, 0.0, &"calm_day"],
 		[OpeningGoal.Condition.LEASE_EXPANDED, 0.0, &""],
-		[OpeningGoal.Condition.STAFF_ROLE, 0.0, &"hire_cleaner"],
+		[OpeningGoal.Condition.STAFF_ROLE, 1.0, &"second_cook"],
 		[OpeningGoal.Condition.ITEM_PLACED, 0.0, &"big_table"],
 		[OpeningGoal.Condition.ITEM_PLACED, -2.0, &"big_table"],
 	]
@@ -218,7 +219,7 @@ func test_goal_parameters_are_validated() -> void:
 	goal = WEEK_TWO.by_id(&"fried_dish").duplicate() as OpeningGoal
 	goal.station_type = &""
 	assert_false(goal.is_valid(), "a station goal names its station")
-	goal = WEEK_TWO.by_id(&"hire_cleaner").duplicate() as OpeningGoal
+	goal = WEEK_TWO.by_id(&"second_cook").duplicate() as OpeningGoal
 	goal.role = &""
 	assert_false(goal.is_valid(), "a staff goal names its role")
 	goal = WEEK_TWO.by_id(&"calm_day").duplicate() as OpeningGoal
@@ -353,13 +354,12 @@ func test_week_three_is_authored_and_points_at_tier_three() -> void:
 	assert_eq(WEEK_THREE.id, &"week_three")
 	assert_eq(WEEK_THREE.title, "Week 3")
 	assert_eq([WEEK_THREE.days, WEEK_THREE.shown_goals], [7, 3])
-	assert_eq(_ids(WEEK_THREE.goals), [&"second_cook", &"oven_dish", &"waiting_bench",
+	assert_eq(_ids(WEEK_THREE.goals), [&"hire_cleaner", &"oven_dish", &"waiting_bench",
 		&"eight_five_star", &"serve_35", &"four_star_day"] as Array[StringName])
 	for goal: OpeningGoal in WEEK_THREE.goals:
 		assert_true(goal.reward_xp > 0 and goal.reward_xp <= 20, "%s: a little XP" % goal.id)
 	assert_eq(WEEK_THREE.total_cash(), 550, "about the size of the first two weeks")
-	assert_eq(WEEK_THREE.by_id(&"second_cook").role, &"cook")
-	assert_eq(WEEK_THREE.by_id(&"second_cook").target, 2.0, "the starter cook plus one")
+	assert_eq(WEEK_THREE.by_id(&"hire_cleaner").role, &"cleaner", "Week 2's cleaner moved here (#648)")
 	assert_eq(WEEK_THREE.by_id(&"oven_dish").station_type, &"oven")
 	assert_eq(WEEK_THREE.by_id(&"waiting_bench").item_ids, [&"waiting_bench"] as Array[StringName])
 	assert_eq(WEEK_THREE.by_id(&"waiting_bench").condition, OpeningGoal.Condition.ITEMS_OWNED,
@@ -386,8 +386,8 @@ func test_each_week_three_goal_triggers_from_its_own_condition() -> void:
 		assert_eq(met.size(), 1, "%s triggers" % goal.id)
 	var cooks: OpeningWeek = OpeningWeek.legacy_for_day(15, CHAINS)
 	cooks.advance(15, CHAINS)
-	assert_true(cooks.observe(OpeningGoal.Condition.STAFF_ROLE, 1.0, WEEK_THREE, &"second_cook").is_empty(),
-		"the starter cook alone is not a second cook")
+	assert_true(cooks.observe(OpeningGoal.Condition.STAFF_ROLE, 0.0, WEEK_THREE, &"hire_cleaner").is_empty(),
+		"no cleaner yet")
 	assert_true(cooks.observe(OpeningGoal.Condition.CALM_DAY_STARS, 3.9, WEEK_THREE, &"four_star_day").is_empty())
 
 
