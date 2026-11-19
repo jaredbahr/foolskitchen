@@ -4156,5 +4156,27 @@ pool table, neon). Staff that add prestige (sommelier, pianist) come later.
 Golden Ladles (0 to 3) come from data thresholds and are awarded only on a
 good critic review, kept per site in `critic`.
 
+**Chain summary (docs/CITY_MAP.md section 4).** `ChainSummary.build(book,
+active_sections, active_name, ledger, today, home_rent, tuning,
+booking_tuning, lots, rent_multiplier)` (pure, `src/sim/sites`) gives one
+`ChainSummary.Site` per site in SiteBook order. The active site reads the
+caller's live capture of its per-site sections (normalised to saved-file JSON
+shape first), every other site its frozen copy, through the same decoders:
+status (HERE, MANAGED, CLOSED, RENOVATING), the valid manager (name, skill,
+`SiteManagerTuning.rate_for`), stars (`ReputationBook`, NAN before its first
+recorded day), Golden Ladles (`FoodCritic`), floor staff mood (mean and
+lowest; managers excluded), staffed, recorded days and their recent mean
+dish profit, yesterday's takings and away earnings (`SiteMorning`), and
+`tonight`, the sum of the movements `AwaySites.plan_close` plans for today
+(the same call the close makes, so it is exact unless something changes
+first). Alerts, most urgent first (the enum order): NOT_STAFFED, NO_MANAGER,
+MANAGER_NEEDS_A_DAY, LOSING_MONEY, BOOKING_LAPSES, UNHAPPY_TEAM (a floor
+worker at mood 1), READY_TO_OPEN (a bought lot, done renovating, with no
+recorded day). A frozen copy without a `staff` section counts as staffed (it
+loads the starter team). `ChainStats` (pure) adds them up: `site_income`
+(gross takings plus net away earnings), `chain_income`, `site_series`,
+`chain_total`, `total_ladles`, `mean_stars`, `status_counts`, `tonight_total`
+and `alerts` (most urgent first, then site order). No saved state.
+
 **Later parts.** Moving furniture between sites (part 5; staff transfer is built, #473),
 bar gambling income (part 7), upstairs (part 8).
