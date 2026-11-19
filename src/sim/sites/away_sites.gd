@@ -39,18 +39,27 @@ const WAGES_NOTE: String = "Wages while the restaurant was closed"
 static func earnings(rows: Array[Dictionary], skill: int, tuning: SiteManagerTuning) -> int:
 	if tuning == null or not tuning.is_valid():
 		return 0
+	var mean: float = recent_mean(rows, tuning.history_days)
+	if is_nan(mean):
+		return 0
+	return roundi(minf(tuning.rate_for(skill) * mean, mean))
+
+
+## The mean dish profit of the last `days` rows with a recorded dish profit
+## (fewer use what there is), NAN with none. The one figure a manager's
+## earnings scale, also shown on the chain view (ChainSummary).
+static func recent_mean(rows: Array[Dictionary], days: int) -> float:
 	var recorded: Array[int] = []
 	for row: Dictionary in rows:
 		if bool(row.get("dish_profit_recorded", false)):
 			recorded.append(int(row.get("dish_profit", 0)))
-	var count: int = mini(recorded.size(), tuning.history_days)
-	if count == 0:
-		return 0
+	var count: int = mini(recorded.size(), days)
+	if count <= 0:
+		return NAN
 	var total: int = 0
 	for index: int in range(recorded.size() - count, recorded.size()):
 		total += recorded[index]
-	var mean: float = float(total) / float(count)
-	return roundi(minf(tuning.rate_for(skill) * mean, mean))
+	return float(total) / float(count)
 
 
 ## The earnings read from a site's saved business_history section, or 0 when

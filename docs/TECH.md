@@ -4156,6 +4156,33 @@ pool table, neon). Staff that add prestige (sommelier, pianist) come later.
 Golden Ladles (0 to 3) come from data thresholds and are awarded only on a
 good critic review, kept per site in `critic`.
 
+**Chain summary (docs/CITY_MAP.md section 4).** `ChainSummary.build(book,
+active_sections, active_name, ledger, today, home_rent, tuning,
+booking_tuning, lots, rent_multiplier)` (pure, `src/sim/sites`) gives one
+`ChainSummary.Site` per site in SiteBook order. The active site reads the
+caller's live capture of its per-site sections (normalised to saved-file JSON
+shape first), every other site its frozen copy, through the same decoders:
+status (HERE, MANAGED, CLOSED, RENOVATING), the valid manager (name, skill,
+`SiteManagerTuning.rate_for`), stars (`ReputationBook`, NAN before its first
+recorded day), Golden Ladles (`FoodCritic`), floor staff mood (mean and
+lowest, mood 0 being someone leaving; managers excluded), staffed, recorded days and their recent mean
+dish profit (`AwaySites.recent_mean`, the same figure a manager's earnings
+scale), yesterday's takings and away earnings (`SiteMorning`), and
+`tonight`, the sum of the movements `AwaySites.plan_close` plans for today
+(the same call the close makes, so it is exact unless something changes
+first). Alerts, most urgent first (the enum order): NOT_STAFFED, NO_MANAGER,
+MANAGER_NEEDS_A_DAY, LOSING_MONEY, BOOKING_LAPSES, UNHAPPY_TEAM (a floor
+worker at mood 1 or 0), READY_TO_OPEN (a bought lot, done renovating, with no
+recorded day). A frozen copy without a `staff` section counts as staffed (it
+loads the starter team). `ChainStats` (pure) adds them up, in two figures never mixed:
+**takings** (`site_takings`, `chain_takings`, `site_series`,
+`chain_takings_total`: gross sales and tips where the owner worked, the tip
+jar included, plus a managed site's net away earnings) and **net**
+(`site_net`, `chain_net`: every movement booked to a site that day, equal to
+the active site's `DayReport.profit()`, which `test_chain_stats_session.gd`
+checks after a played day); also `total_ladles`, `mean_stars`, `status_counts`, `tonight_total`
+and `alerts` (most urgent first, then site order). No saved state.
+
 **City map (docs/CITY_MAP.md).** `data/city/city_map.tres` is a
 `CityMapDef` (`src/sim/sites/city_map_def.gd`): `neighbourhoods`, each a
 `NeighbourhoodDef` (`id`, `display_name`, `blurb`, `lots` (LotDef ids, plus

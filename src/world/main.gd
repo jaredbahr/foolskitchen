@@ -893,6 +893,8 @@ func _wire_session() -> bool:
 	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.effective_level()):
 		push_error("Cannot initialize customer preferences")
 		return false
+	# A lot's own guest mix decides who walks in there; the home shop has none (#471).
+	sim.configure_lot_guests(content.lot(site_book.lot_id(site_book.active_id)) if site_book != null else null)
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	# The lot's street may give its walls a default finish (a woodland's logs, #611).
@@ -5178,10 +5180,9 @@ func restock_forecast_targets(tomorrow: bool = false) -> Dictionary[StringName, 
 	var pastry_chance: float = 0.0
 	if sim.customer_types != null:
 		for kind: CustomerType in sim.customer_types.types:
-			if kind.unlock_level > owner_progress.effective_level():
-				continue
-			var weight: float = kind.weight_for_stars(reputation.average())
-			weight *= kind.theme_multiplier(sim.vibe_result.active_theme, sim.vibe_result.arrival_theme_strength)
+			var weight: float = CustomerTypePicker.arrival_weight(kind, owner_progress.effective_level(),
+				reputation.average(), sim.vibe_result.active_theme, sim.vibe_result.arrival_theme_strength,
+				sim.lot_guest_mix)
 			total += weight
 			drink_chance += weight * kind.drink_add_chance
 			pastry_chance += weight * kind.pastry_add_chance
@@ -8173,6 +8174,8 @@ func _observe_opening_at_open() -> void:
 		_observe_opening(OpeningGoal.Condition.GROW_TOGETHER, 1.0)
 	if lease_expanded:
 		_observe_opening(OpeningGoal.Condition.LEASE_EXPANDED, 1.0)
+	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.ITEMS_OWNED):
+		_observe_opening(OpeningGoal.Condition.ITEMS_OWNED, float(_items_counted(now, goal.item_ids)), goal.id)
 	var roles: Dictionary = now["roles"]
 	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.STAFF_ROLE):
 		_observe_opening(OpeningGoal.Condition.STAFF_ROLE, float(roles.get(goal.role, 0)), goal.id)
@@ -8383,7 +8386,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 	if sim != null:
 		var vibe: VibeModel.Result = sim.vibe_result
 		budget = CustomerTypePicker.average_budget(sim.customer_types, sim.customer_level,
-			sim.review_book.average(), vibe.active_theme, vibe.arrival_theme_strength)
+			sim.review_book.average(), vibe.active_theme, vibe.arrival_theme_strength, sim.lot_guest_mix)
 	for recipe: RecipeDef in content.recipes_for_lot(_site_lot_tags()):
 		var equipment: Array[Dictionary] = []
 		var required: Dictionary[StringName, bool] = {}

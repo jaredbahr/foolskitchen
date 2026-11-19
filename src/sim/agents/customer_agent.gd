@@ -98,6 +98,8 @@ var repeat_guest_key: String = ""
 var budget_multiplier: float = 1.0
 var quality_weight: float = 0.0
 var review_chance_multiplier: float = 1.0
+## Raw stars for eating a local dish (the type's local_dish_bonus, #471).
+var local_dish_bonus: float = 0.0
 ## Chance of adding a drink to a meal (from the type; 0 for an untyped guest).
 var drink_add_chance: float = 0.0
 ## Chance a coffee-only guest adds a pastry (from the type).
@@ -163,6 +165,7 @@ func configure_type(kind: CustomerType) -> bool:
 	restroom_chance = kind.restroom_chance
 	quality_weight = kind.quality_weight
 	review_chance_multiplier = kind.review_chance_multiplier
+	local_dish_bonus = kind.local_dish_bonus
 	queue_patience = _type_patience(queue_patience, kind.patience_multiplier)
 	food_patience = _type_patience(food_patience, kind.patience_multiplier)
 	return true
