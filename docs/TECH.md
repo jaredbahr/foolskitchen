@@ -4156,5 +4156,23 @@ pool table, neon). Staff that add prestige (sommelier, pianist) come later.
 Golden Ladles (0 to 3) come from data thresholds and are awarded only on a
 good critic review, kept per site in `critic`.
 
+**City map (docs/CITY_MAP.md).** `data/city/city_map.tres` is a
+`CityMapDef` (`src/sim/sites/city_map_def.gd`): `neighbourhoods`, each a
+`NeighbourhoodDef` (`id`, `display_name`, `blurb`, `lots` (LotDef ids, plus
+`NeighbourhoodDef.HOME_LOT` for the starter shop), `map_position` 0..1 and,
+for an area with no lots yet, `coming_soon`). `validate(lots)` (lot id to
+display name, `CityMap.lot_names`) refuses an empty blurb, an untrimmed coming-soon line, a lot in no or two
+neighbourhoods, a missing home lot, unknown lots, bad ids, duplicate names or a
+name equal to a lot's, off-map positions, long blurbs and an area that has
+both lots and a coming-soon line (or neither); `test_city_map.gd` checks the
+shipped file against `ContentDB`'s lots, so a new lot needs a neighbourhood.
+`CityMap` (pure, static) loads it (`load_default`; never `load()` the map from
+inside `CityMapDef`: the analyser loads the file, which points back at the
+script, and that cycle leaks at exit) and decides each pin and patch with the
+market's own rules: `lot_state` (OWNED, FOR_SALE, LOCKED, UNLISTED),
+`area_state` (OPEN, LOCKED, COMING_SOON, EMPTY when every lot is unlisted, such as the sold starter shop) and `opening_tier`;
+`CityMapDef.covered` and `reachable` list neighbourhoods for chain goals.
+Placeholder names until Jared's call (CITY_MAP.md T2, T3). No saved state.
+
 **Later parts.** Moving furniture between sites (part 5; staff transfer is built, #473),
 bar gambling income (part 7), upstairs (part 8).

@@ -162,6 +162,7 @@ var _pools: MeshInstance3D
 var _night: float = 0.0
 var _late: float = 0.0
 var _weather: int = WeatherState.Kind.SUNNY
+var _gloom: float = 0.0
 ## 0 through the golden dusk, 1 once the sun has gone (set_night).
 var _dark: float = 1.0
 var _seconds: float = 0.0
@@ -668,6 +669,13 @@ func _deck(pen: NeighbourhoodBuildings.Pen, deck: Rect2, index: int) -> void:
 ## Corten planter boxes in a run (along u when `along_u`, else along z), with soil,
 ## grasses, shrubs and flowers.
 func _planters(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup, run: Rect2, along_u: bool, seed_value: int) -> void:
+	var keep: float = pen.soup.sway
+	pen.soup.sway = 0.0
+	_planters_body(pen, shadows, run, along_u, seed_value)
+	pen.soup.sway = keep
+
+
+func _planters_body(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup, run: Rect2, along_u: bool, seed_value: int) -> void:
 	var length: float = run.size.x if along_u else run.size.y
 	var boxes: int = maxi(1, roundi(length / 1.3))
 	var each: float = length / float(boxes)
@@ -678,10 +686,13 @@ func _planters(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Sou
 			box = Rect2(run.position.x + each * float(index) + 0.03, run.position.y, each - 0.06, run.size.y)
 		else:
 			box = Rect2(run.position.x, run.position.y + each * float(index) + 0.03, run.size.x, each - 0.06)
+		pen.soup.sway = 0.0
 		pen.box(Vector3(box.position.x, DECK_TOP, box.position.y), Vector3(box.end.x, DECK_TOP + height, box.end.y), skin.planter)
 		var inner: Rect2 = box.grow(-0.035)
 		pen.flat(inner.position.x, inner.position.y, inner.end.x, inner.end.y, DECK_TOP + height - 0.04, skin.soil)
 		_shade_rect(shadows, box, DECK_TOP + height, 0.22)
+		# The grasses and shrubs stir a little; the box stays put.
+		pen.soup.sway = 0.3
 		var plants: int = maxi(2, int((box.size.x * box.size.y) * 9.0))
 		for plant: int in plants:
 			var s: int = seed_value * 131 + index * 17 + plant
@@ -713,6 +724,8 @@ func _potted_tree(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.
 	_drum(pen, base, 0.2, 0.25, 0.34, 10, pot, skin.soil)
 	_drum(pen, base + Vector3.UP * 0.34, 0.255, 0.255, 0.035, 10, pot.lightened(0.08), skin.soil)
 	pen.box(base + Vector3(-0.03, 0.34, -0.03), base + Vector3(0.03, 0.34 + 0.7 * size, 0.03), skin.trunk)
+	# The crown sways in the wind; the pot stays put.
+	pen.soup.sway = 0.5
 	var leaf: Color = skin.leaf_colors[(seed_value + 1) % skin.leaf_colors.size()]
 	var crown: Vector3 = base + Vector3.UP * (0.34 + 0.85 * size)
 	pen.lump(crown, 0.36 * size, 0.34 * size, 0.34 * size, _r(seed_value, 91), leaf.lightened(0.06), leaf.darkened(0.14))
@@ -720,6 +733,7 @@ func _potted_tree(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.
 		var angle: float = TAU * float(index) / 3.0 + _r(seed_value, 92) * 2.0
 		var offset: Vector3 = Vector3(cos(angle) * 0.22, -0.1 + 0.12 * float(index % 2), sin(angle) * 0.22) * size
 		pen.lump(crown + offset, 0.22 * size, 0.2 * size, 0.22 * size, angle, leaf.lightened(0.1 if index == 0 else 0.0), leaf.darkened(0.16))
+	pen.soup.sway = 0.0
 	_shade_disc(shadows, at + light_shift * 0.2, 0.3, 0.3)
 	_shade_disc(shadows, at + light_shift * (0.34 + 0.85 * size), 0.42 * size, 0.18)
 
@@ -1788,6 +1802,16 @@ func wet_spot(across: float, u: float, radius: float) -> Vector2:
 	return point
 
 
+## A gloomy afternoon's early lamplight (WeatherLook.gloom): the lamps and windows come on
+## dimly, everything else keeps the clock's time of day.
+func set_gloom(level: float) -> void:
+	var value: float = clampf(level, 0.0, 1.0) if is_finite(level) else 0.0
+	if is_equal_approx(value, _gloom):
+		return
+	_gloom = value
+	_apply_night()
+
+
 func set_night(level: float, late: float, dark: float = 1.0) -> void:
 	_night = level
 	_late = late
@@ -1809,11 +1833,12 @@ func _apply_night() -> void:
 	_city_material.set_shader_parameter(&"window_level", _night)
 	_city_material.set_shader_parameter(&"window_share", lerpf(DUSK_WINDOW_SHARE, 1.0, _dark))
 	_city_material.set_shader_parameter(&"late", _late)
-	_glass_material.emission_energy_multiplier = _night * 1.3
-	_glass_material.albedo_color = skin.lamp_glow.lerp(Color.WHITE, 1.0 - _night)
-	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, _night)
-	_pools.visible = _night > 0.05
-	_bulb_material.set_shader_parameter(&"level", _night)
+	var lamps: float = maxf(_night, _gloom)
+	_glass_material.emission_energy_multiplier = lamps * 1.3
+	_glass_material.albedo_color = skin.lamp_glow.lerp(Color.WHITE, 1.0 - lamps)
+	_pool_material.albedo_color = Color(1.0, 1.0, 1.0, lamps)
+	_pools.visible = lamps > 0.05
+	_bulb_material.set_shader_parameter(&"level", lamps)
 	_beacon_material.set_shader_parameter(&"level", smoothstep(0.2, 0.7, _night))
 	_street_material.set_shader_parameter(&"level", smoothstep(0.1, 0.6, _night) * lerpf(DUSK_STREET_SHARE, 1.0, _dark))
 	_traffic_material.set_shader_parameter(&"level", smoothstep(0.2, 0.7, _night))
@@ -1828,7 +1853,7 @@ func _apply_night() -> void:
 	_city_material.set_shader_parameter(&"murk", MURK[clampi(_weather, 0, 2)])
 	# Unlit glows still cost a blended pass: hide them by day.
 	var lit: bool = _night > 0.05
-	_bulb_glow.visible = lit
+	_bulb_glow.visible = lamps > 0.05
 	_beacons.visible = lit
 	_street_lights.visible = lit
 	_traffic.visible = lit
