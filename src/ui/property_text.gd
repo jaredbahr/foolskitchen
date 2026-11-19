@@ -23,6 +23,7 @@ const EMPTY: String = "No lots are on the market."
 const TAG_PERKS: Dictionary[StringName, String] = {
 	&"seaside": "Fresh catch",
 	&"rooftop": "Rooftop bar",
+	&"woodland": "Foraged food",
 }
 const UPSTAIRS_PERK: String = "Room for an upstairs"
 ## The top guest type at or above this share reads "Mostly ...".
@@ -61,7 +62,7 @@ static func guest_line(lot: LotDef, catalogue: CustomerTypeCatalogue) -> String:
 		var share: float = lot.guest_mix[id]
 		if kind == null or not is_finite(share) or share <= 0.0:
 			continue
-		shares.append([share, plural(kind.display_name)])
+		shares.append([share, group_name(kind)])
 		total += share
 	if shares.is_empty():
 		return ""
@@ -160,6 +161,13 @@ static func bought_line(lot: LotDef) -> String:
 
 
 ## "Foodie" -> "foodies", "Family" -> "families": a lower-case plural.
+## A type's group name in a sentence: its report name ("office crowd"), else
+## the plural of its display name ("foodies").
+static func group_name(kind: CustomerType) -> String:
+	var report: String = kind.report_name.strip_edges().to_lower()
+	return report if not report.is_empty() else plural(kind.display_name)
+
+
 static func plural(display_name: String) -> String:
 	var word: String = display_name.strip_edges().to_lower()
 	if word.length() > 1 and word.ends_with("y") and not "aeiou".contains(word[word.length() - 2]):

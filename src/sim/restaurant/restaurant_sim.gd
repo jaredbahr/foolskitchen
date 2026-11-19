@@ -105,6 +105,9 @@ var spawner: CustomerSpawner
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Opt-in catalogue. An unconfigured sim retains the exact Regular arrival stream.
 var customer_types: CustomerTypeCatalogue = null
+## The active lot's guest mix and tags (configure_lot_guests); empty at home.
+var lot_guest_mix: Dictionary[StringName, float] = {}
+var lot_tags: Array[StringName] = []
 var customer_level: int = 1
 ## Accepted next-day party, installed by Main after the morning save section loads.
 var group_booking: GroupBooking = null
@@ -643,6 +646,21 @@ func use_rng(random: RandomNumberGenerator) -> void:
 ## Session installs authored content after loading owner progression. Deep-copy
 ## resources so authoring changes cannot rewrite the current world's configuration.
 ## No random draw or guest is changed by configuration or level updates.
+## The active lot's guest mix and tags (#471). The home shop passes null and
+## keeps its reputation-weighted arrivals exactly; a lot's mix shares replace
+## them there, and its tags say which dishes count as local food.
+func configure_lot_guests(lot: LotDef) -> void:
+	lot_guest_mix = {}
+	lot_tags = []
+	if lot == null:
+		return
+	for kind: StringName in lot.guest_mix:
+		var share: float = lot.guest_mix[kind]
+		if is_finite(share) and share > 0.0:
+			lot_guest_mix[kind] = share
+	lot_tags = lot.tags.duplicate()
+
+
 func configure_customer_types(catalogue: CustomerTypeCatalogue, owner_level: int) -> bool:
 	if catalogue == null or not catalogue.is_valid() or owner_level < 1:
 		return false
@@ -1548,6 +1566,7 @@ func record_departure(customer: CustomerAgent) -> void:
 					break
 		var visit: ReviewVisit = customer.review_visit(standard_price, customer.arrival_dirt_fraction)
 		visit.difficulty_review_bonus = difficulty.review_bonus() if difficulty != null else 0.0
+		visit.local_dish_bonus = local_dish_bonus_for(customer, visit)
 		visit.ate_signature_dish = not effective_signature_recipe_id.is_empty() \
 			and visit.consumed_recipe_ids.has(effective_signature_recipe_id)
 		visit.sticky_floor = mishaps != null and cleanliness != null \
@@ -1580,6 +1599,16 @@ func record_departure(customer: CustomerAgent) -> void:
 			var happy: bool = ReputationBook.score_visit(visit, review_tuning, VIBE_TUNING, true) >= 4
 			dish_visit_completed.emit(visit.consumed_recipe_ids.duplicate(), happy)
 	customer_left.emit(customer, reason)
+
+
+## A local-food lover's raw bonus when a dish they ate is local here (#471).
+func local_dish_bonus_for(customer: CustomerAgent, visit: ReviewVisit) -> float:
+	if customer.local_dish_bonus <= 0.0 or visit.consumed_recipe_ids.is_empty():
+		return 0.0
+	for recipe: RecipeDef in menu:
+		if visit.consumed_recipe_ids.has(recipe.id) and CustomerType.is_local_dish(recipe, lot_tags):
+			return customer.local_dish_bonus
+	return 0.0
 
 
 ## Booked members are replaced by exactly one weighted booking review when the

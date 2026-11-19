@@ -893,6 +893,8 @@ func _wire_session() -> bool:
 	if not sim.configure_customer_types(customer_type_catalogue, owner_progress.effective_level()):
 		push_error("Cannot initialize customer preferences")
 		return false
+	# A lot's own guest mix decides who walks in there; the home shop has none (#471).
+	sim.configure_lot_guests(content.lot(site_book.lot_id(site_book.active_id)) if site_book != null else null)
 	sim.spawner.min_gap = TUNING.arrival_gap_min
 	sim.spawner.max_gap = TUNING.arrival_gap_max
 	# The lot's street may give its walls a default finish (a woodland's logs, #611).
@@ -2447,6 +2449,7 @@ func _on_build_changed() -> void:
 		shown_report = build_report(world.clock.day)
 		_show_evening_report(shown_report)
 	_was_build_active = active
+	($ShopView as ShopView).set_canopies_faded(active)
 	_update_build_controls()
 
 
@@ -2839,6 +2842,7 @@ func refresh_presentation() -> void:
 	_refresh_weather()
 	_refresh_day_light()
 	if sound != null:
+		sound.set_lot(site_book.lot_id(site_book.active_id) if site_book != null else &"")
 		sound.refresh(_music_light, _report != null and _report.visible)
 	if _inspect_panel == null or _debug_overlay == null or _debug_geometry == null:
 		return
@@ -5178,10 +5182,9 @@ func restock_forecast_targets(tomorrow: bool = false) -> Dictionary[StringName, 
 	var pastry_chance: float = 0.0
 	if sim.customer_types != null:
 		for kind: CustomerType in sim.customer_types.types:
-			if kind.unlock_level > owner_progress.effective_level():
-				continue
-			var weight: float = kind.weight_for_stars(reputation.average())
-			weight *= kind.theme_multiplier(sim.vibe_result.active_theme, sim.vibe_result.arrival_theme_strength)
+			var weight: float = CustomerTypePicker.arrival_weight(kind, owner_progress.effective_level(),
+				reputation.average(), sim.vibe_result.active_theme, sim.vibe_result.arrival_theme_strength,
+				sim.lot_guest_mix)
 			total += weight
 			drink_chance += weight * kind.drink_add_chance
 			pastry_chance += weight * kind.pastry_add_chance
@@ -6744,14 +6747,14 @@ func _prepare_morning_paper(yesterday: DayReport, hire_note: String = "") -> voi
 			history = recent[0]
 	var dishes: Dictionary = yesterday.dishes_sold if yesterday != null else history.get("dishes_sold", {})
 	var dish: String = MorningPaper.best_dish(dishes, content)
-	var notes: Array[String] = [hire_note, sim.rush_hour.morning_notice()]
+	var notes: Array[String] = [hire_note, sim.rush_hour.morning_notice(),
+		MorningPaper.tip_for(yesterday, difficulty.auto(&"prices"), hire_note)]
 	if group_booking != null and group_booking.has_active_booking() \
 			and int(group_booking.booking.get("service_day", -1)) == day:
 		var booking: Dictionary = group_booking.booking
 		notes.append("A table for %d is booked at %s today." % [
 			int(booking["party_size"]), Fmt.clock(int(booking["slot_minute"]))])
-	if not dish.is_empty():
-		notes.append("%s was yesterday’s favorite." % dish)
+	# MorningPaper adds yesterday's favourite dish after these notes.
 	_morning_paper_edition = MorningPaper.build(day, yesterday, world.weather.kind, notes,
 		GameState.rng(&"paper"), dish, history)
 	_morning_paper_edition["day"] = day
@@ -6882,7 +6885,8 @@ func _refresh_weather() -> void:
 		return
 	$HUD.set_weather(world.weather.kind)
 	if _menu_panel != null:
-		_menu_panel.set_weather(world.weather.kind, shop_editor != null and not shop_editor.bought_patio().is_empty())
+		_menu_panel.set_weather(world.weather.kind, shop_editor != null and not shop_editor.bought_patio().is_empty(),
+			PatioRules.covered_seat_count(world.grid))
 	var view: ShopView = $ShopView as ShopView
 	if view.weather_view != null:
 		view.weather_view.refresh()
@@ -8173,6 +8177,8 @@ func _observe_opening_at_open() -> void:
 		_observe_opening(OpeningGoal.Condition.GROW_TOGETHER, 1.0)
 	if lease_expanded:
 		_observe_opening(OpeningGoal.Condition.LEASE_EXPANDED, 1.0)
+	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.ITEMS_OWNED):
+		_observe_opening(OpeningGoal.Condition.ITEMS_OWNED, float(_items_counted(now, goal.item_ids)), goal.id)
 	var roles: Dictionary = now["roles"]
 	for goal: OpeningGoal in _chain_goals(OpeningGoal.Condition.STAFF_ROLE):
 		_observe_opening(OpeningGoal.Condition.STAFF_ROLE, float(roles.get(goal.role, 0)), goal.id)
@@ -8383,7 +8389,7 @@ func menu_recipe_details() -> Dictionary[StringName, Dictionary]:
 	if sim != null:
 		var vibe: VibeModel.Result = sim.vibe_result
 		budget = CustomerTypePicker.average_budget(sim.customer_types, sim.customer_level,
-			sim.review_book.average(), vibe.active_theme, vibe.arrival_theme_strength)
+			sim.review_book.average(), vibe.active_theme, vibe.arrival_theme_strength, sim.lot_guest_mix)
 	for recipe: RecipeDef in content.recipes_for_lot(_site_lot_tags()):
 		var equipment: Array[Dictionary] = []
 		var required: Dictionary[StringName, bool] = {}
