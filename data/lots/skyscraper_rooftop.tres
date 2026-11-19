@@ -22,9 +22,9 @@ expansion_north = 1
 min_tier = 4
 min_reputation = 4.3
 guest_mix = Dictionary[StringName, float]({
-&"foodie": 0.6,
-&"regular": 0.3,
-&"student": 0.1
+&"office": 0.45,
+&"foodie": 0.35,
+&"regular": 0.2
 })
 upstairs_allowed = false
 street_preset = "res://data/streets/rooftop.tres"
