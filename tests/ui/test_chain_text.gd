@@ -152,6 +152,5 @@ func test_the_panel_lists_areas_sites_and_lots_in_map_order() -> void:
 	panel.site_chosen.connect(chosen.append)
 	(panel.row_for(&"pier").get_node("Body/Top/Go") as Button).pressed.emit()
 	assert_eq(chosen, [&"pier"] as Array[StringName])
-	panel.site_chosen.disconnect(chosen.append)
 	panel.get_parent().remove_child(panel)
 	panel.free()

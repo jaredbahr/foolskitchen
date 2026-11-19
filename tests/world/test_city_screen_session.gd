@@ -84,7 +84,7 @@ func test_tier_three_lists_the_neighbourhoods_and_the_lots_without_changing_anyt
 	assert_not_null(fixer.get_node("Body/Top/Market"), "a lot for sale links to the market")
 	var rooftop: Control = _panel().row_for(&"skyscraper_rooftop")
 	assert_eq(rooftop.get_meta(&"state"), CityMap.LotState.LOCKED)
-	assert_eq((rooftop.get_node("Body/Line") as Label).text, "Locked: needs Tier 4")
+	assert_eq((rooftop.get_node("Body/Line") as Label).text, "Locked: needs Tier 4 and 4.3 stars")
 	assert_eq(_panel().row_for(&"skyline").get_meta(&"state"), CityMap.AreaState.LOCKED)
 	assert_eq((_panel().row_for(&"skyline").get_node("State") as Label).text, "Opens at Tier 4")
 	assert_eq(_panel().row_for(&"pinewood").get_meta(&"state"), CityMap.AreaState.COMING_SOON)
