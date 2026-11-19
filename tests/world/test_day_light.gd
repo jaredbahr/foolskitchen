@@ -96,6 +96,8 @@ func test_a_real_session_lights_the_shop_at_night_and_puts_it_out_by_day() -> vo
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
 	main.call("start")
+	# The authored light is a clear day's: cloud and rain shade it (WeatherLook).
+	(main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
 	main.call("refresh_presentation")
 	var rig: Node3D = main.get_node("LightingRig") as Node3D
 	var lights: OmniLight3D = rig.get_node_or_null(^"ShopLights") as OmniLight3D
