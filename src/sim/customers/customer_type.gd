@@ -40,6 +40,19 @@ extends Resource
 ## the type's arrival weight grows by up to liked_theme_bonus (FK-083).
 @export var liked_themes: Array[StringName] = []
 @export var liked_theme_bonus: float = 0.0
+## Raw review stars for a served dish that is local to where it is eaten: one
+## tagged `seafood`, or carrying one of the lot's own tags (#471). Tourists
+## like these; 0 for everyone else, so ordinary reviews are unchanged.
+@export_range(0.0, 1.0, 0.05) var local_dish_bonus: float = 0.0
+## A daily arrival window on the shop clock, in minutes after midnight (the
+## office crowd's lunch, #471). Outside [start, end) the arrival weight is
+## multiplied by off_window_weight. 0 and 0 means all day.
+@export var arrival_window_start: int = 0
+@export var arrival_window_end: int = 0
+@export_range(0.0, 1.0, 0.01) var off_window_weight: float = 1.0
+
+## Recipe tag that counts as local food at any coast or harbour (#471).
+const LOCAL_THEME_TAG: StringName = &"seafood"
 
 
 func is_valid() -> bool:
@@ -65,7 +78,38 @@ func is_valid() -> bool:
 		var weight: float = visit_weights[kind]
 		if not RecipeDef.ORDER_TYPES.has(kind) or not is_finite(weight) or weight < 0.0:
 			return false
+	if not is_finite(local_dish_bonus) or local_dish_bonus < 0.0 or local_dish_bonus > 1.0:
+		return false
+	if not is_finite(off_window_weight) or off_window_weight < 0.0 or off_window_weight > 1.0:
+		return false
+	if arrival_window_start != 0 or arrival_window_end != 0:
+		if arrival_window_start < 0 or arrival_window_end > 24 * 60 \
+				or arrival_window_end <= arrival_window_start:
+			return false
 	return true
+
+
+## Arrival-weight multiplier for the shop clock's minute. Exactly 1.0 for a
+## type with no window, or when the minute is unknown (negative).
+func window_multiplier(minute: int) -> float:
+	if minute < 0 or (arrival_window_start == 0 and arrival_window_end == 0):
+		return 1.0
+	if minute >= arrival_window_start and minute < arrival_window_end:
+		return 1.0
+	return off_window_weight
+
+
+## True when `recipe` is local food where it is served: tagged seafood, or
+## carrying one of the lot's own tags (a seaside soft serve at a seaside lot).
+static func is_local_dish(recipe: RecipeDef, lot_tags: Array[StringName]) -> bool:
+	if recipe == null:
+		return false
+	if recipe.theme_tags.has(LOCAL_THEME_TAG):
+		return true
+	for tag: StringName in recipe.lot_tags:
+		if lot_tags.has(tag):
+			return true
+	return false
 
 
 ## The multiplier for a visit kind; food and unlisted kinds stay neutral.

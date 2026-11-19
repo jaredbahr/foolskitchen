@@ -66,6 +66,10 @@ const CHUNK: float = 12.0
 ## Deer are drawn at person scale: a shoulder about two thirds of a person's height.
 const DEER_SCALE: float = 1.4
 const RABBIT_SCALE: float = 1.6
+## The shop's own porch (#596): its rail is at a person's waist, and the post by the
+## door steps stands taller to hang the lantern.
+const PATIO_RAIL: float = 0.36
+const PATIO_LANTERN_POST: float = 0.62
 
 ## One named stand of trees (#597): its id, the local rect it fills and its three looks.
 class Stand extends RefCounted:
@@ -104,6 +108,12 @@ var lease: Rect2 = Rect2()
 ## The shop building's local (u, z) extent, walls included: the porch runs along its
 ## front and stops at its corner. Empty: the lot stands in for it.
 var building: Rect2 = Rect2()
+## The shop's own patio cells (local u, z rects, one per cell) and the patio floor's
+## height (#596). Patio in front of the facade is the cabin's porch: the deck frame,
+## rail and lantern wrap it instead of the drawn deck with its rocking chairs, so the
+## player's porch tables stand on it. Empty keeps the drawn deck.
+var patio: Array[Rect2] = []
+var patio_top: float = 0.055
 
 var root: Node3D
 var stands: Array[Stand] = []
@@ -134,6 +144,8 @@ var _seconds: float = 0.0
 var _applied_at: float = -1.0
 ## Where the yard's pieces went (local), for tools and tests.
 var porch: Rect2 = Rect2()
+## The patio cells in front of the facade (local rects): the porch when not empty.
+var porch_cells: Array[Rect2] = []
 var woodpile: Rect2 = Rect2()
 var fire_pit: Vector2 = Vector2.ZERO
 var bridge: Vector2 = Vector2.ZERO
@@ -374,6 +386,8 @@ func build(parent: Node3D) -> void:
 	_plan_stands()
 	_plan_yard()
 	var key: String = var_to_str([local_reserve, shift, world_centre, light_shift, salt, compass, keep_clear, _facade(), building, skin.signature()])
+	if not porch_cells.is_empty():
+		key += var_to_str([porch_cells, patio_top])
 	var meshes: Dictionary = _cache.get(key, {})
 	if meshes.is_empty():
 		meshes = _build_static()
@@ -508,6 +522,15 @@ func _plan_yard() -> void:
 		door = doors[0]
 		for rect: Rect2 in doors:
 			door = door.merge(rect)
+	# The front patio: from the entrance row (the building's last built row) outward.
+	porch_cells.clear()
+	var front_row: float = minf(_facade(), (building.end.y if building.has_area() else shift) - GridMath.CELL_SIZE)
+	for cell: Rect2 in patio:
+		if cell.position.y >= front_row - 0.05:
+			porch_cells.append(cell)
+	if not porch_cells.is_empty():
+		_plan_patio_yard(door)
+		return
 	# The porch runs along the shop's front on the roomier side of the door; the fire
 	# pit sits out in the yard on the other side, and the woodpile past the porch's end.
 	var front: Rect2 = building if building.has_area() else lot
@@ -548,6 +571,45 @@ func _plan_yard() -> void:
 	var posts: Array[float] = _porch_posts()
 	var lantern_post: float = posts[posts.size() - 1] if porch.end.x < _door_u() else posts[0]
 	_lantern_at = Vector3(lantern_post - 0.1, PORCH_TOP + 0.47, porch.end.y - 0.035)
+
+
+## The yard round the shop's own porch (its front patio cells, #596): the woodpile past
+## the porch's far end from the door, the fire pit out past the other end, the lantern
+## on the post by the door and no rocking chairs (the porch is the player's to furnish).
+func _plan_patio_yard(door: Rect2) -> void:
+	porch = porch_cells[0]
+	for cell: Rect2 in porch_cells:
+		porch = porch.merge(cell)
+		_blocked.append(cell.grow(0.15))
+	var front: float = porch.end.y
+	# The woodpile goes beyond the end of the porch farther from the door; the fire pit
+	# out past the other end, clear of the porch and the door's approach.
+	var woodpile_right: bool = porch.end.x - door.end.x >= door.position.x - porch.position.x
+	if woodpile_right:
+		woodpile = Rect2(porch.end.x + 0.45, shift + 0.12, 1.35, 0.62)
+		fire_pit = Vector2(minf(porch.position.x - 1.9, door.position.x - 1.9), maxf(shift + 1.65, front - 0.4))
+	else:
+		woodpile = Rect2(porch.position.x - 1.8, shift + 0.12, 1.35, 0.62)
+		fire_pit = Vector2(maxf(porch.end.x + 1.9, door.end.x + 1.9), maxf(shift + 1.65, front - 0.4))
+	_blocked.append(woodpile.grow_individual(0.2, 0.2, 0.2, 1.0))
+	_blocked.append(Rect2(fire_pit - Vector2(1.7, 1.45), Vector2(3.4, 2.9)))
+	for rect: Rect2 in keep_clear:
+		_blocked.append(rect.grow(0.1))
+	_blocked.append(Rect2(door.get_center().x - 0.5, shift, 1.0, track_z(door.get_center().x) - shift))
+	trail_u = fire_pit.x + (-2.6 if woodpile_right else 2.6)
+	bridge = Vector2(_trail_at(stream_z(trail_u)), stream_z(trail_u))
+	_blocked.append(Rect2(bridge - Vector2(0.75, 1.6), Vector2(1.5, 3.2)))
+	_blocked.append(Rect2(trail_u - 1.1, track_z(trail_u) + TRACK_HALF - 0.1, 0.8, 0.9))
+	_chair_spots.clear()
+	# The lantern hangs from the tall post at the porch's corner by the door steps.
+	var by_door: Rect2 = porch_cells[0]
+	for cell: Rect2 in porch_cells:
+		if absf(cell.get_center().x - door.get_center().x) < absf(by_door.get_center().x - door.get_center().x) \
+				or (is_equal_approx(cell.get_center().x, by_door.get_center().x) and cell.position.y < by_door.position.y):
+			by_door = cell
+	var corner_u: float = by_door.end.x if by_door.get_center().x < door.get_center().x else by_door.position.x
+	var inward: float = -1.0 if by_door.get_center().x < door.get_center().x else 1.0
+	_lantern_at = Vector3(corner_u - inward * 0.1, patio_top + PATIO_LANTERN_POST - 0.15, by_door.end.y - 0.04)
 
 
 func _porch_posts() -> Array[float]:
@@ -1377,6 +1439,9 @@ func _flowers(pen: NeighbourhoodBuildings.Pen, at: Vector3, seed_value: int) -> 
 ## A timber porch deck along the shop's front: planks, a fascia, posts and a rail, two
 ## rocking chairs (their own nodes, they rock) and a crate table with a lantern.
 func _porch(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) -> void:
+	if not porch_cells.is_empty():
+		_patio_porch(pen, shadows)
+		return
 	var r: Rect2 = porch
 	var top: float = PORCH_TOP
 	# Frame and fascia.
@@ -1420,6 +1485,87 @@ func _porch(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) 
 	pen.box(_lantern_at + Vector3(-0.04, 0.07, -0.04), _lantern_at + Vector3(0.04, 0.1, 0.04), skin.timber_dark)
 	pen.box(_lantern_at + Vector3(-0.045, -0.08, -0.045), _lantern_at + Vector3(0.045, -0.06, 0.045), skin.timber_dark)
 
+
+
+## The shop's own porch (#596): a plank deck on each of the shop's patio cells (any
+## floor finish the player lays goes over it), a timber skirt round its open edges down
+## to the ground, a waist-high rail on posts along the front and the far sides, open
+## where it meets the door's path (steps up from the path), and a taller post by the
+## door with the lantern.
+func _patio_porch(pen: NeighbourhoodBuildings.Pen, shadows: NeighbourhoodGround.Soup) -> void:
+	var top: float = patio_top
+	var door: Rect2 = Rect2(_door_u() - 0.05, shift, 0.1, 1.0)
+	for rect: Rect2 in keep_clear:
+		if rect.end.y > shift - 0.05:
+			door = door.merge(rect)
+	var size: float = porch_cells[0].size.x
+	var cells: Dictionary[Vector2i, Rect2] = {}
+	var origin: Vector2 = porch.position
+	for cell: Rect2 in porch_cells:
+		cells[Vector2i(roundi((cell.position.x - origin.x) / size), roundi((cell.position.y - origin.y) / size))] = cell
+	var first_row: float = porch.position.y
+	var steps: Array[Rect2] = []
+	for key: Vector2i in cells:
+		var r: Rect2 = cells[key]
+		# The deck: a frame under three planks a cell, running out from the facade
+		# in alternating tones, just under any floor finish the player lays on it.
+		pen.box(Vector3(r.position.x, -0.04, r.position.y), Vector3(r.end.x, top - 0.03, r.end.y), skin.timber_dark)
+		for plank: int in 3:
+			var x0: float = r.position.x + float(plank) * r.size.x / 3.0
+			var x1: float = x0 + r.size.x / 3.0 - 0.012
+			var tone: Color = skin.timber if (key.x * 3 + plank) % 3 != 1 else skin.timber.darkened(0.08)
+			pen.box(Vector3(x0, top - 0.03, r.position.y), Vector3(x1, top - 0.003, r.end.y), tone)
+		# Which edges are open: no porch beyond them.
+		var open_front: bool = not cells.has(key + Vector2i(0, 1))
+		var open_left: bool = not cells.has(key + Vector2i(-1, 0))
+		var open_right: bool = not cells.has(key + Vector2i(1, 0))
+		var on_path_left: bool = open_left and r.position.x - door.end.x < size * 0.6 and r.position.x > door.position.x
+		var on_path_right: bool = open_right and door.position.x - r.end.x < size * 0.6 and r.end.x < door.end.x
+		var skirt: float = 0.03
+		if open_front:
+			pen.box(Vector3(r.position.x, -0.04, r.end.y - 0.02), Vector3(r.end.x, top - 0.004, r.end.y + skirt), skin.timber_dark)
+		if open_left:
+			pen.box(Vector3(r.position.x - skirt, -0.04, r.position.y), Vector3(r.position.x + 0.02, top - 0.004, r.end.y), skin.timber_dark)
+		if open_right:
+			pen.box(Vector3(r.end.x - 0.02, -0.04, r.position.y), Vector3(r.end.x + skirt, top - 0.004, r.end.y), skin.timber_dark)
+		# The rail: along the front and the outer sides, and along the door's path
+		# except the first row (where the path steps up onto the porch).
+		var rails: Array[Array] = []
+		if open_front:
+			rails.append([Vector2(r.position.x, r.end.y - 0.04), Vector2(r.end.x, r.end.y - 0.04)])
+		for side: Array in [[open_left, on_path_left, r.position.x + 0.04], [open_right, on_path_right, r.end.x - 0.04]]:
+			if not side[0]:
+				continue
+			if side[1] and r.position.y - first_row < size * 0.5:
+				steps.append(r)
+				continue
+			rails.append([Vector2(side[2], r.position.y), Vector2(side[2], r.end.y)])
+		for rail: Array in rails:
+			var a: Vector2 = rail[0]
+			var b: Vector2 = rail[1]
+			for end: Vector2 in [a, b]:
+				pen.box(Vector3(end.x - 0.03, top, end.y - 0.03), Vector3(end.x + 0.03, top + PATIO_RAIL, end.y + 0.03), skin.timber_dark)
+			var lo: Vector2 = a.min(b) - Vector2(0.02, 0.02)
+			var hi: Vector2 = a.max(b) + Vector2(0.02, 0.02)
+			pen.box(Vector3(lo.x, top + PATIO_RAIL - 0.05, lo.y), Vector3(hi.x, top + PATIO_RAIL, hi.y), skin.timber)
+			pen.box(Vector3(lo.x + 0.005, top + PATIO_RAIL * 0.45, lo.y + 0.005), Vector3(hi.x - 0.005, top + PATIO_RAIL * 0.45 + 0.03, hi.y - 0.005), skin.timber)
+		if open_front:
+			_shade_rect(shadows, Rect2(r.position.x, r.end.y - 0.04, r.size.x, 0.08), top, 0.3)
+	# A wide step up from the door's path onto each wing of the porch.
+	for r: Rect2 in steps:
+		var into_path: float = -1.0 if r.position.x > door.get_center().x else 1.0
+		var edge: float = r.position.x if into_path < 0.0 else r.end.x
+		var x0: float = minf(edge, edge + into_path * 0.16)
+		var x1: float = maxf(edge, edge + into_path * 0.16)
+		pen.box(Vector3(x0, -0.04, r.position.y + 0.06), Vector3(x1, top * 0.5, r.end.y - 0.06), skin.timber)
+	# The tall post by the door steps, its arm and the lantern.
+	var post: Vector2 = Vector2(_lantern_at.x + (0.1 if _lantern_at.x < _door_u() else -0.1), _lantern_at.z)
+	pen.box(Vector3(post.x - 0.04, top, post.y - 0.04), Vector3(post.x + 0.04, top + PATIO_LANTERN_POST, post.y + 0.04), skin.timber_dark)
+	pen.box(Vector3(minf(post.x, _lantern_at.x) - 0.01, top + PATIO_LANTERN_POST - 0.06, post.y - 0.015),
+		Vector3(maxf(post.x, _lantern_at.x) + 0.01, top + PATIO_LANTERN_POST - 0.03, post.y + 0.015), skin.timber_dark)
+	pen.box(_lantern_at + Vector3(-0.04, 0.07, -0.04), _lantern_at + Vector3(0.04, 0.1, 0.04), skin.timber_dark)
+	pen.box(_lantern_at + Vector3(-0.045, -0.08, -0.045), _lantern_at + Vector3(0.045, -0.06, 0.045), skin.timber_dark)
+	_shade_rect(shadows, Rect2(post - Vector2(0.05, 0.05), Vector2(0.1, 0.1)), top + PATIO_LANTERN_POST, 0.3)
 
 
 ## Split logs stacked against a low lean-to, a chopping block with an axe in it.

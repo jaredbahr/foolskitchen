@@ -35,3 +35,11 @@ var restroom_was_busy: bool = false
 var waited_seated: bool = false
 ## This guest petted the shop cat while waiting (#119).
 var petted_cat: bool = false
+## Raw stars from a guest type that loves local food, when they ate a local
+## dish (tourists, #471). Zero for everyone else.
+var local_dish_bonus: float = 0.0
+## Guest quirks (docs/GUESTS.md): a Shutterbug always writes a review when
+## served; quirk_bonus is raw stars; quirk_cause is the good-visit quote group.
+var always_reviews: bool = false
+var quirk_bonus: float = 0.0
+var quirk_cause: StringName = &""

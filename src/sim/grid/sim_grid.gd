@@ -1303,6 +1303,13 @@ func is_outdoor_floor(cell: Vector2i) -> bool:
 	return terrain(cell) == Terrain.FLOOR and room(cell) == Room.PATIO
 
 
+## True when a rain-cover item (a pergola or awning, #625) stands over the cell.
+func is_rain_covered(cell: Vector2i) -> bool:
+	var covering: PlacedItem = _items.get(_floor_cover.get(cell, 0), null)
+	var definition: ItemDef = covering.def as ItemDef if covering != null else null
+	return definition != null and definition.covers_from_rain()
+
+
 ## A placed item's footprint plus every authored work and seat cell, including
 ## ones the live projection dropped because something blocks them.
 static func use_cells(placed: PlacedItem) -> Array[Vector2i]:

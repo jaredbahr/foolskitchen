@@ -2306,7 +2306,7 @@ func _check_placement(definition: ItemDef, origin: Vector2i, turns: int, exclude
 		return EditCheck.new(false, "The current shop has invalid placements")
 	var result: SimGrid.PlaceResult = preview.can_place_def(definition, origin, turns)
 	if result != SimGrid.PlaceResult.OK:
-		return EditCheck.new(false, placement_reason(result))
+		return EditCheck.new(false, placement_reason(result, definition))
 	var proposed_id: int = -1
 	if exclude_id >= 0:
 		# Seat priority follows stable live placement IDs. Appending a moved
@@ -2433,8 +2433,13 @@ func _note_menu_access(check: EditCheck, preview: SimGrid, restoring: bool) -> v
 		return
 
 
+const RAIN_COVER_NEEDS_PATIO: String = "Rain cover goes over patio floor only, and every tile under it must be patio"
+
 ## One presentation mapping for every geometric placement result.
-static func placement_reason(result: SimGrid.PlaceResult) -> String:
+static func placement_reason(result: SimGrid.PlaceResult, definition: ItemDef = null) -> String:
+	if definition != null and definition.rain_cover and result in [SimGrid.PlaceResult.OUTDOOR_ONLY,
+			SimGrid.PlaceResult.NOT_FLOOR, SimGrid.PlaceResult.INDOOR_ONLY]:
+		return RAIN_COVER_NEEDS_PATIO
 	match result:
 		SimGrid.PlaceResult.OK:
 			return ""
