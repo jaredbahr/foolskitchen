@@ -71,6 +71,29 @@ func test_standard_and_cheaper_prices_never_refuse_or_penalize_any_type() -> voi
 				assert_eq(ReputationBook.cause_of(visit, review_tuning), &"great_value")
 
 
+func test_a_small_rise_is_shrugged_off_and_a_bigger_one_costs_past_the_grace() -> void:
+	# #649: the first 5% above the standard price costs no guests.
+	var sim: RestaurantSim = _sim(67)
+	var recipe: RecipeDef = sim.menu[0]
+	sim.menu = [recipe]
+	sim.pricing_tuning.price_grace = 0.05
+	sim.pricing_tuning.price_sensitivity = 1.5
+	sim.pricing_tuning.max_price_walkout = 0.9
+	sim.prices[recipe.id] = recipe.standard_price
+	assert_eq(sim.price_walkout_chance(recipe), 0.0)
+	var within: float = 1.0 + 0.05 * 0.99
+	sim.prices[recipe.id] = floori(recipe.standard_price * within)
+	assert_eq(sim.price_walkout_chance(recipe), 0.0, "a rise inside the grace costs nothing")
+	var ratio: float = 1.2
+	var price: int = roundi(recipe.standard_price * ratio)
+	sim.prices[recipe.id] = price
+	var over: float = float(price) / float(recipe.standard_price) - 1.0 - 0.05
+	assert_almost_eq(sim.price_walkout_chance(recipe), over * 1.5)
+	assert_true(sim.price_walkout_chance(recipe) < (over + 0.05) * 1.5, "cheaper than before the grace")
+	assert_almost_eq(sim.preview_price_walkout_chance(recipe, price), over * 1.5)
+	assert_true(sim.price_walkout_chance(recipe, 0.8) > sim.price_walkout_chance(recipe, 1.0))
+
+
 func test_budget_scales_only_above_standard_walkouts_and_review_penalties() -> void:
 	var sim: RestaurantSim = _sim(67)
 	var recipe: RecipeDef = sim.menu[0]
@@ -78,6 +101,7 @@ func test_budget_scales_only_above_standard_walkouts_and_review_penalties() -> v
 	sim.prices[recipe.id] = roundi(recipe.standard_price * 1.5)
 	sim.pricing_tuning.price_sensitivity = 1.0
 	sim.pricing_tuning.max_price_walkout = 1.0
+	sim.pricing_tuning.price_grace = 0.0
 	var excess: float = float(sim.price_of(recipe)) / float(recipe.standard_price) - 1.0
 	var review_tuning: ReviewTuning = TUNING.duplicate() as ReviewTuning
 	review_tuning.overprice_weight = 4.0

@@ -7,7 +7,7 @@
 script = ExtResource("2_goal")
 id = &"change_price"
 title = "Change a dish's price"
-description = "Open the Menu and move any dish's price up or down."
+description = "Open the Menu, move any dish's price up or down, and watch how guests react."
 condition = 0
 target = 1.0
 reward_cash = 40
