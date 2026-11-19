@@ -6,7 +6,7 @@
 script = ExtResource("1_bookings")
 unlock_level = 2
 offer_chance = 0.25
-min_party_size = 6
+min_party_size = 4
 max_party_size = 10
 deposit_per_guest = 5
 tip_bonus = 0.15

@@ -38,7 +38,7 @@ func test_tuning_and_party_limits_keep_walkins_at_six_and_bookings_at_ten() -> v
 	assert_eq(TUNING.reserved_queue_grace_minutes, 30)
 	assert_eq(TUNING.unlock_level, 2)
 	assert_almost_eq(TUNING.offer_chance, 0.25)
-	assert_eq(TUNING.min_party_size, 6)
+	assert_eq(TUNING.min_party_size, 4, "a four-seat table can take a booking (#650)")
 	assert_eq(TUNING.max_party_size, 10)
 	assert_eq(Party.MAX_SIZE, 6)
 	assert_false(Party.new([1, 2, 3, 4, 5, 6, 7] as Array[int]).is_valid())
@@ -48,7 +48,7 @@ func test_tuning_and_party_limits_keep_walkins_at_six_and_bookings_at_ten() -> v
 	assert_false(Party.new([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as Array[int], true).is_valid())
 	for seed: int in range(1, 51):
 		var booking: GroupBooking = _offer(seed)
-		assert_true(int(booking.offer["party_size"]) >= 6 and int(booking.offer["party_size"]) <= 10)
+		assert_true(int(booking.offer["party_size"]) >= 4 and int(booking.offer["party_size"]) <= 10)
 		assert_eq(booking.offer["guest_seeds"].size(), int(booking.offer["party_size"]))
 
 
@@ -94,18 +94,18 @@ func test_offers_fit_seating_and_unaccepted_oversized_offers_expire() -> void:
 	var menu: Array[StringName] = [&"burger"]
 	var too_small: GroupBooking = GroupBooking.new(_certain_tuning())
 	_provider_calls = 0
-	assert_true(too_small.plan_offer(1, 2, menu, 660, 1260, _provider(1), 5).is_empty())
+	assert_true(too_small.plan_offer(1, 2, menu, 660, 1260, _provider(1), 3).is_empty())
 	assert_eq(_provider_calls, 0)
-	for capacity: int in range(6, 10):
+	for capacity: int in range(4, 10):
 		for seed_value: int in range(32):
 			var model: GroupBooking = GroupBooking.new(_certain_tuning())
 			var offer: Dictionary = model.plan_offer(1, 2, menu, 660, 1260,
 				_provider(seed_value), capacity)
 			var size: int = int(offer.get("party_size", 0))
-			assert_true(size >= 6 and size <= capacity)
+			assert_true(size >= 4 and size <= capacity)
 			assert_eq(offer["guest_seeds"].size(), size)
 			var draws: int = _provider_calls
-			assert_true(model.plan_offer(1, 2, menu, 660, 1260, _provider(99), 5).is_empty())
+			assert_true(model.plan_offer(1, 2, menu, 660, 1260, _provider(99), 3).is_empty())
 			assert_true(model.accept_offer(1).is_empty())
 			assert_eq(_provider_calls, draws)
 
@@ -300,6 +300,43 @@ func test_first_hold_tick_blocks_walkin_before_its_seat_acquisition() -> void:
 		"a walk-in cannot acquire the group on the boundary tick")
 	assert_false(guest._book_table(sim.world, false), "the normal singleton path respects the hold")
 	assert_eq(guest.table_item_id, 0, "the ordinary customer did not reserve or start walking to the held group")
+
+
+func test_a_single_four_seat_table_is_held_against_walkins() -> void:
+	# #650: a party of four can book one four-seat table, and the hold keeps it.
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var layout: ShopLayout = LAYOUT.duplicate(true) as ShopLayout
+	layout.placements.clear()
+	for placement: ShopPlacement in LAYOUT.placements:
+		if content.item(placement.item_id).category != ItemDef.Category.TABLE:
+			layout.placements.append(placement.duplicate(true) as ShopPlacement)
+	layout.placements.append(_placement(&"table_4", Vector2i(4, 6)))
+	var errors: Array[String] = []
+	var sim: RestaurantSim = RestaurantSim.create(layout, content, 315, errors, null, false)
+	assert_eq(errors, [] as Array[String])
+	assert_eq(DiningSeats.booking_capacity(sim.world.grid, 4), 4, "the lone table can take a party of four")
+	var clock: SimClock = sim.world.clock
+	clock.day = 2
+	clock.display_open_minute = 600
+	clock.display_close_minute = 900
+	clock.open_ticks = 300
+	assert_true(clock.start_service())
+	clock.phase_tick = 14 # The next tick is the 10:15 T-75 hold boundary.
+	var booking_model: GroupBooking = _accepted_for_service_slot(690, 4)
+	sim.configure_booking(booking_model)
+	sim.spawner._remaining = 100000
+	var guest: CustomerAgent = sim.add_customer(sim.world.grid.entries()[0], _rng(95))
+	guest.state = CustomerAgent.State.QUEUED
+	sim.advance()
+	var booking_id: int = int(booking_model.booking["booking_id"])
+	var held_id: int = sim.world.booking_hold.group_for_booking(sim.world, booking_id)
+	assert_true(held_id > 0, "a single table is chosen and held")
+	assert_eq((booking_model.booking["held_group_members"] as Array).size(), 1)
+	assert_true(sim.world.booking_hold.blocks_group(sim.world, held_id), "walk-ins cannot take it")
+	assert_false(sim.world.booking_hold.blocks_group(sim.world, held_id, booking_id), "the booked party can")
+	assert_false(guest._book_table(sim.world, false), "the only table is held, so the walk-in waits")
+	assert_eq(guest.table_item_id, 0)
 
 
 func test_unreachable_lower_id_group_does_not_keep_the_hold_from_a_usable_group() -> void:

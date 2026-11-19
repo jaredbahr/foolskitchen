@@ -11,6 +11,7 @@ Each line ends with its PR number.
 ## Unreleased
 
 ### Players
+- Group bookings come sooner: a party of four can book a single four-seat or round table, so offers start once you own one, instead of only after six seats of tables are pushed together. (#671)
 - Week 2 now asks you to hire a second cook instead of a cleaner (the cleaner moves to Week 3), and the bigger lease costs $40 a day instead of $60, so growing the shop pays. (#674)
 - A small price rise costs fewer guests: the first 5% over a dish's standard price is shrugged off, so a 10% rise turns away about half as many guests as before. The first Opening week goal now says to move a price and watch how guests react. (#672)
 - Some guests now have a little personality: from owner level 3, about one guest in eight has a quirk, shown when you inspect them. The **Shutterbug** photographs every dish and always posts a review, the **Chatterbox** stays at the table a while and leaves happier, and the **Lunch-breaker** is in a hurry but thrilled when lunch comes quickly. Each has their own review lines. (#652)

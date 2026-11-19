@@ -4,7 +4,7 @@ extends Resource
 
 @export var unlock_level: int = 2
 @export_range(0.0, 1.0, 0.01) var offer_chance: float = 0.25
-@export var min_party_size: int = 6
+@export var min_party_size: int = 4
 @export var max_party_size: int = 10
 @export var deposit_per_guest: int = 5
 @export_range(0.0, 1.0, 0.01) var tip_bonus: float = 0.15
@@ -25,7 +25,7 @@ extends Resource
 func is_valid() -> bool:
 	if unlock_level < 1 or not is_finite(offer_chance) or offer_chance < 0.0 or offer_chance > 1.0:
 		return false
-	if min_party_size < 6 or max_party_size < min_party_size or max_party_size > 10:
+	if min_party_size < 4 or max_party_size < min_party_size or max_party_size > 10:
 		return false
 	if deposit_per_guest < 0 or deposit_per_guest > 1000000:
 		return false
