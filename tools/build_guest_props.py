@@ -30,8 +30,8 @@ SIZE = 512.0
 
 # Colormap texels (x, y) picked as the nearest kit swatch to each colour named.
 SWATCH = {
-    "straw": (168, 264),      # sunny straw (255, 208, 97)
-    "coral": (296, 296),      # (241, 101, 68)
+    "straw": (32, 328),       # pale wheat straw (248, 212, 170)
+    "band": (96, 508),        # slate navy hat band (86, 92, 116)
     "strap": (264, 264),      # lanyard red (207, 83, 79)
     "white": (296, 392),      # card and shirt front (252, 252, 253)
     "ink": (168, 504),        # card photo and clip (59, 62, 74)
@@ -134,12 +134,12 @@ def box(mesh: Mesh, centre, size, swatch: str) -> None:
     mesh.face([p(-1, -1, -1), p(1, -1, -1), p(1, -1, 1), p(-1, -1, 1)], swatch)
 
 
-def sun_hat(band: str = "coral") -> Mesh:
-    """A small straw hat: a thin round brim, a short crown and a coloured band."""
+def sun_hat(band: str = "band") -> Mesh:
+    """A small straw hat: a thin round brim, a short crown and a navy band."""
     mesh = Mesh()
-    frustum(mesh, (0.0, 0.0, 0.0), 0.24, 0.24, 0.025, "straw")            # brim
-    frustum(mesh, (0.0, 0.025, 0.0), 0.165, 0.145, 0.08, "straw", cap_bottom=False)  # crown
-    frustum(mesh, (0.0, 0.025, 0.0), 0.172, 0.157, 0.03, band, cap_bottom=False)    # band
+    frustum(mesh, (0.0, 0.0, 0.0), 0.2, 0.2, 0.022, "straw")            # brim
+    frustum(mesh, (0.0, 0.022, 0.0), 0.155, 0.145, 0.05, "straw", cap_bottom=False)  # crown
+    frustum(mesh, (0.0, 0.022, 0.0), 0.162, 0.153, 0.026, band, cap_bottom=False)    # band
     return mesh
 
 
@@ -153,7 +153,7 @@ def lanyard() -> Mesh:
 
     zs = CHEST_Z
     # White shirt front: a slim panel from the collar to the belly.
-    box(mesh, at(0.0, 0.265, zs - 0.004), (0.13, 0.19, 0.012), "white")
+    box(mesh, at(0.0, 0.265, zs - 0.004), (0.17, 0.23, 0.012), "white")
     # Strap: from each side of the neck, down the chest, to the card clip.
     for sign in (-1.0, 1.0):
         oriented_box(mesh, at(sign * 0.095, 0.345, zs + 0.002), at(sign * 0.012, 0.215, zs + 0.012), 0.042, 0.012, "strap")

@@ -479,7 +479,7 @@ Two small pieces for the guest types that come to the new places, in the Mini Ch
 
 | Asset | Worn by | Based on | Triangles |
 |---|---|---|---:|
-| `people/sun_hat.glb` (round straw brim, short crown, coral band; origin at the middle of the underside) | tourists, on the head bone, lifted to each model's measured head top, tilted up a little at the front | the courier cap's size and attachment; `character-*` hair blocks for the straw swatch | 92 |
+| `people/sun_hat.glb` (round straw brim, short crown, slate-navy band; origin at the middle of the underside) | tourists, on the head bone, lifted to each model's measured head top, tilted up a little at the front | the courier cap's size and attachment; `character-*` hair blocks for the straw swatch | 92 |
 | `people/lanyard.glb` (red strap in a V, a white card with a photo square and a name stripe, and a white shirt front; origin at the torso bone's rest position) | the office crowd, on the torso bone so it follows idle, walk, sit and holding | the kit torsos' chest depth (all eight guest models share one skeleton) | 96 |
 
 The tourist's holiday shirt (sunny coral or turquoise) and the office guest's jacket (navy or grey) are repaints of the model's own clothing block in a private copy of the colormap, as the courier's uniform is. Which color a guest wears follows the guest id, so a guest always looks the same.

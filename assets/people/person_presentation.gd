@@ -60,12 +60,7 @@ const CLOTHING_RAMPS: Dictionary[StringName, Rect2i] = {
 ## office crowd wear a lanyard and a navy or grey jacket over a white shirt.
 ## Which one follows the guest id (type_variant), never a random stream.
 const TOURIST_SHIRTS: Array[Color] = [Color("f06a4f"), Color("26b9c2")]
-const OFFICE_JACKETS: Array[Color] = [Color("3b57a0"), Color("8a8f9c")]
-## A second clothing block a jacket also covers (the sleeves and skirt of the
-## kit's female-a use a block of their own).
-const JACKET_EXTRA_RAMPS: Dictionary[StringName, Rect2i] = {
-	&"character-female-a": Rect2i(352, 256, 32, 128),
-}
+const OFFICE_JACKETS: Array[Color] = [Color("5878c8"), Color("8a8f9c")]
 ## How far the hat's underside sinks into the hair below the head top.
 const SUN_HAT_SINK: float = 0.04
 ## The hat sits a little back and tilted up at the front, so the face shows from above.
@@ -166,8 +161,6 @@ static func type_recolors(role: StringName, guest_id: int, customer_type: String
 		return []
 	var color: Color = colors[type_variant(guest_id)]
 	var recolors: Array[Dictionary] = [{"rect": CLOTHING_RAMPS[model], "color": color}]
-	if has_lanyard(role, customer_type) and JACKET_EXTRA_RAMPS.has(model):
-		recolors.append({"rect": JACKET_EXTRA_RAMPS[model], "color": color})
 	return recolors
 
 
