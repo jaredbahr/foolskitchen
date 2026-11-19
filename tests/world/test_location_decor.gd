@@ -8,18 +8,18 @@ const METRICS: String = "res://assets/made/location_decor/location_decor.metrics
 const BUDGET: int = 800
 ## id: [layer, footprint width, price, unlock level, charm]
 const CASES: Dictionary[StringName, Array] = {
-	&"lifebuoy": [ItemDef.PlacementLayer.WALL, 1, 30, 2, 2],
-	&"fishing_net": [ItemDef.PlacementLayer.WALL, 3, 40, 2, 2],
-	&"bunting": [ItemDef.PlacementLayer.WALL, 3, 30, 1, 0],
-	&"wheat_sheaf": [ItemDef.PlacementLayer.WALL, 1, 20, 1, 1],
-	&"skyline_print": [ItemDef.PlacementLayer.WALL, 2, 40, 3, 2],
-	&"surfboard": [ItemDef.PlacementLayer.WALL, 1, 45, 2, 2],
-	&"beach_sign": [ItemDef.PlacementLayer.WALL, 2, 30, 1, 2],
+	&"lifebuoy": [ItemDef.PlacementLayer.WALL, 1, 30, 7, 2],
+	&"fishing_net": [ItemDef.PlacementLayer.WALL, 3, 40, 8, 2],
+	&"bunting": [ItemDef.PlacementLayer.WALL, 3, 30, 6, 0],
+	&"wheat_sheaf": [ItemDef.PlacementLayer.WALL, 1, 20, 9, 1],
+	&"skyline_print": [ItemDef.PlacementLayer.WALL, 2, 40, 9, 2],
+	&"surfboard": [ItemDef.PlacementLayer.WALL, 1, 45, 7, 2],
+	&"beach_sign": [ItemDef.PlacementLayer.WALL, 2, 30, 6, 2],
 	&"crossed_paddles": [ItemDef.PlacementLayer.WALL, 3, 55, 6, 2],
 	&"millstone": [ItemDef.PlacementLayer.NORMAL, 2, 90, 8, 2],
-	&"flour_sacks": [ItemDef.PlacementLayer.NORMAL, 1, 20, 1, 1],
-	&"barrel": [ItemDef.PlacementLayer.NORMAL, 1, 25, 2, 1],
-	&"shell_jars": [ItemDef.PlacementLayer.SURFACE_DECOR, 1, 15, 1, 1],
+	&"flour_sacks": [ItemDef.PlacementLayer.NORMAL, 1, 20, 6, 1],
+	&"barrel": [ItemDef.PlacementLayer.NORMAL, 1, 25, 7, 1],
+	&"shell_jars": [ItemDef.PlacementLayer.SURFACE_DECOR, 1, 15, 8, 1],
 }
 
 var _views: Array[Node] = []

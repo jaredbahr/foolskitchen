@@ -110,3 +110,31 @@ Mornings: days 1 to 4 each have two or three goal-driven choices (what to buy, w
 ## Not changed, by design
 - Service cards were answered with their first choice, so "Flyers for hire" ($40) often cost the probe money on day 2. A real player chooses.
 - No-table walkouts are high in every set-up. That's the intended pressure to expand (D16). The fix is to make the right expansion visible and worth it (#1, #2, #4), not to cut demand.
+
+## Follow-up: unlock pacing after #675 and the location decor
+
+#675 spread the level 2–4 unlocks out to levels 5–9. Jared then had the 11 location decor pieces from #641 moved off levels 1–3 to fill the thin top levels. Each lot's pieces wait until around the time that lot is usually bought. Tier 3 is about level 6; the rooftop is Tier 4, about level 9. A lot's own starter decor is still placed when you buy it.
+
+| Level | Pieces |
+|---|---|
+| 6 | bunting (cliff), flour sacks (Old Mill), beach sign (boardwalk) |
+| 7 | lifebuoy (cliff), barrel (Old Mill), surfboard (boardwalk) |
+| 8 | fishing net (cliff), crockery dresser (Old Mill), shell jars (boardwalk) |
+| 9 | skyline print (rooftop), wheat sheaf (Old Mill) |
+
+Unlocks per owner level (items, recipes, floors and wall finishes), before this change and after it:
+
+| Level | Before | After |
+|---:|---:|---:|
+| 1 | 48 | 43 |
+| 2 | 34 | 30 |
+| 3 | 18 | 16 |
+| 4 | 15 | 15 |
+| 5 | 6 | 6 |
+| 6 | 11 | 14 |
+| 7 | 3 | 6 |
+| 8 | 2 | 5 |
+| 9 | 4 | 6 |
+
+At about 90 XP a day, level 5 comes around day 6, level 6 around day 9, level 7 around days 12–13 and level 9 around day 20, so every level-up from 5 to 9 now brings at least five new things.
+
