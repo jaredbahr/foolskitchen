@@ -431,6 +431,9 @@ func _start() -> void:
 	_main.set("use_saves", false)
 	_viewport.add_child(_main)
 	_main.call("start")
+	# A dry day: the session rolls its own weather, and rain or cloud changes the lamps, walkers and shadows.
+	(_main.get("world") as SimWorld).weather.kind = WeatherState.Kind.SUNNY
+	_main.call("refresh_presentation")
 	# Exact books for this feature: no opening-week rewards (#494).
 	retire_opening_week(_main)
 	Clock.set_speed(0)
