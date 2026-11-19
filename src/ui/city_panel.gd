@@ -33,13 +33,14 @@ const ICON_MIN: int = 36
 const ICON_MAX: int = 96
 ## Below this map width pins show the state word only and the font shrinks.
 const COMPACT_WIDTH: float = 620.0
-## Below this screen width the card fills the screen.
-const NARROW_WIDTH: float = 900.0
 ## From this screen width the tapped pin's card sits beside the map (so the map
 ## keeps its full size); below it the card sits under the map.
 const SIDE_WIDTH: float = 1000.0
 ## The card's least width when it sits beside the map, px.
 const SIDE_CARD_WIDTH: float = 320.0
+## The panel's most width, px: with the map (its card beside it) and as a plain list.
+const PANEL_MAX_MAP: float = 1500.0
+const PANEL_MAX_LIST: float = 1100.0
 ## Pins and signs keep this far (a share of the map's width) inside the drawing,
 ## which is the paper's own margin: nothing is drawn across the frame.
 const EDGE_MARGIN: float = 0.04
@@ -67,6 +68,12 @@ var _view: View
 var _owned: Array[StringName] = []
 ## The pin the owner last tapped (its card shows under the map), or "".
 var _selected: StringName = &""
+## True while the card uses the phone's slim padding.
+var _phone_padding: bool = false
+## The map size the pins and signs were last laid out for, and whether the
+## pins have been rebuilt since.
+var _laid_size: Vector2 = Vector2.ZERO
+var _layout_dirty: bool = true
 ## True while the plain list is showing instead of the map.
 var _list_mode: bool = false
 
@@ -83,7 +90,8 @@ class View extends RefCounted:
 
 
 func _ready() -> void:
-	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer)
+	PanelScroll.attach(self, $Panel as Control, $Panel/Content/Scroll as ScrollContainer,
+		[%MapScroll as ScrollContainer, %SideScroll as ScrollContainer])
 	(get_node("Panel/Content/Header/Title") as Label).text = ChainText.TITLE
 	(%Intro as Label).text = ChainText.INTRO
 	(%ViewToggle as Button).text = ChainText.SHOW_LIST
@@ -91,6 +99,7 @@ func _ready() -> void:
 	(%AlertsBar as PanelContainer).add_theme_stylebox_override(&"panel", _strip_style(6.0))
 	(%Canvas as Control).resized.connect(_relayout)
 	(%MapPage as Control).resized.connect(_size_map_view)
+	(%MapScroll as Control).resized.connect(_size_map_view)
 	get_viewport().size_changed.connect(_fit_to_screen)
 	_fit_to_screen()
 
@@ -109,40 +118,68 @@ func _strip_style(pad: float) -> StyleBoxFlat:
 	return style
 
 
-## On a narrow screen the panel takes nearly all of it; on a wide one it opens
-## out and the tapped pin's card sits beside the map, so the map keeps its size.
+## The panel takes the screen less a margin, up to a most (a plain list is not
+## stretched across a big monitor): one rule, so it never shrinks as the window
+## grows. From SIDE_WIDTH the tapped pin's card sits beside the map, so the map
+## keeps its size.
 func _fit_to_screen() -> void:
 	if not is_inside_tree():
 		return
 	var panel: Control = $Panel as Control
-	var width: float = get_viewport_rect().size.x
-	var narrow: bool = width < NARROW_WIDTH
-	var side: bool = width >= SIDE_WIDTH
-	panel.anchor_left = 0.02 if narrow else (0.05 if side else 0.18)
-	panel.anchor_right = 0.98 if narrow else (0.95 if side else 0.82)
-	panel.anchor_top = 0.02 if narrow else 0.08
-	panel.anchor_bottom = 0.98 if narrow else 0.97
+	var screen: Vector2 = get_viewport_rect().size
+	var width: float = minf(screen.x * 0.96, PANEL_MAX_MAP if (%MapScroll as Control).visible else PANEL_MAX_LIST)
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.offset_left = -width / 2.0
+	panel.offset_right = width / 2.0
+	panel.anchor_top = 0.03
+	panel.anchor_bottom = 0.97
+	panel.offset_top = 0.0
+	panel.offset_bottom = 0.0
+	# A phone's card has less padding, so its header row fits the screen.
+	var phone: bool = screen.x < 500.0
+	if phone != _phone_padding:
+		_phone_padding = phone
+		var style: StyleBox = SHARED_THEME.get_stylebox(&"panel", &"PanelContainer").duplicate()
+		if phone and style is StyleBoxFlat:
+			(style as StyleBoxFlat).set_content_margin_all(12.0)
+		panel.add_theme_stylebox_override(&"panel", style)
+	var side: bool = screen.x >= SIDE_WIDTH
 	(%MapPage as BoxContainer).vertical = not side
-	(%Side as Control).custom_minimum_size = Vector2(SIDE_CARD_WIDTH if side else 0.0, 0.0)
+	(%SideScroll as Control).custom_minimum_size = Vector2(SIDE_CARD_WIDTH if side else 0.0, 0.0)
 	_size_map_view()
 
 
-## Beside the card the map fills the page's height (keeping the drawing's
-## shape). Stacked, the map is exactly as tall as its width asks (capped at
-## half the screen) and everything packs from the top: map, card or hint, alerts.
+## Beside the card the page is exactly as tall as the screen leaves it: the map
+## fills that height (keeping the drawing's shape, never squashed) and the card
+## and alerts scroll in their own column. Stacked, the map is as tall as its
+## width asks, the card and alerts follow it from the top, and the whole page
+## scrolls when it is taller than the screen.
 func _size_map_view() -> void:
 	var view: Control = %MapView as Control
 	var page: Control = %MapPage as Control
+	var side: ScrollContainer = %SideScroll as ScrollContainer
 	var texture: Texture2D = map_texture
 	if card_is_beside() or texture == null:
+		var fill: float = (%MapScroll as Control).size.y
+		if absf(page.custom_minimum_size.y - fill) > 0.5:
+			page.custom_minimum_size = Vector2(0.0, fill)
 		view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		view.custom_minimum_size = Vector2.ZERO
-		(%Side as Control).size_flags_vertical = Control.SIZE_FILL
+		side.size_flags_vertical = Control.SIZE_FILL
+		side.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 		return
+	page.custom_minimum_size = Vector2.ZERO
 	view.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	(%Side as Control).size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var tall: float = page.size.x * float(texture.get_height()) / float(texture.get_width())
-	view.custom_minimum_size = Vector2(0.0, minf(tall, get_viewport_rect().size.y * 0.5))
+	side.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	side.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Sized from the scroll's width less its bar (shown or not), so the bar
+	# appearing cannot change the map's height and bring the bar back.
+	var scroll: ScrollContainer = %MapScroll as ScrollContainer
+	var across: float = scroll.size.x - scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var tall: float = maxf(across, 0.0) * float(texture.get_height()) / float(texture.get_width())
+	if absf(view.custom_minimum_size.y - tall) > 0.5:
+		view.custom_minimum_size = Vector2(0.0, tall)
 
 
 ## True while the tapped pin's card sits beside the map (a wide screen).
@@ -255,6 +292,7 @@ func _build_map(map: CityMapDef, view: View, owned: Array[StringName]) -> void:
 				pin_position(area.map_position, index, shown.size()), entry[4])
 			lot_pin.set_meta(&"area", area.id)
 			lot_pin.set_meta(&"slot", [area.map_position, index, shown.size()])
+	_layout_dirty = true
 	_relayout()
 
 
@@ -314,6 +352,11 @@ func _relayout() -> void:
 	var size: Vector2 = canvas.size
 	if size.x < 1.0 or size.y < 1.0:
 		return
+	# The Canvas resizes often while the window is dragged; lay out once per size.
+	if size == _laid_size and not _layout_dirty:
+		return
+	_laid_size = size
+	_layout_dirty = false
 	var icon: int = clampi(roundi(size.x * ICON_RATIO), ICON_MIN, ICON_MAX)
 	var compact: bool = size.x < COMPACT_WIDTH
 	var font: int = 11 if compact else 14
@@ -475,21 +518,45 @@ func _sign_spot(banner: Rect2, wholes: Array[Vector2], coming: bool, bounds: Rec
 				if covered == 0.0:
 					return [chosen, 0.0, which]
 	var whole: Vector2 = wholes[mini(2, wholes.size() - 1)]
+	var which_far: int = mini(2, wholes.size() - 1)
+	var far: Vector2 = _nearest_clear(banner.get_center(), wholes[which_far], bounds, taken)
+	if far.x >= 0.0:
+		return [far, 0.0, which_far]
+	return [chosen, least, which]
+
+
+## The nearest spot to `from` where a rect of size `whole` covers nothing in
+## `taken` and stays in `bounds`, or (-1, -1). A coarse scan, then a fine scan
+## around the best coarse spot.
+static func _nearest_clear(from: Vector2, whole: Vector2, bounds: Rect2, taken: Array[Rect2]) -> Vector2:
+	var best: Vector2 = Vector2(-1.0, -1.0)
 	var nearest: float = INF
-	var y: float = bounds.position.y
-	while y <= bounds.end.y - whole.y:
-		var x: float = bounds.position.x
-		while x <= bounds.end.x - whole.x:
-			var candidate: Rect2 = Rect2(Vector2(x, y), whole)
-			var distance: float = candidate.get_center().distance_to(banner.get_center())
+	for step: float in [24.0, 12.0]:
+		var y: float = bounds.position.y
+		while y <= bounds.end.y - whole.y:
+			var x: float = bounds.position.x
+			while x <= bounds.end.x - whole.x:
+				var candidate: Rect2 = Rect2(Vector2(x, y), whole)
+				var distance: float = candidate.get_center().distance_to(from)
+				if distance < nearest and not _covers_any(candidate, taken):
+					nearest = distance
+					best = candidate.position
+				x += step
+			y += step
+		if best.x >= 0.0:
+			break
+	if best.x < 0.0:
+		return best
+	var around: Vector2 = best
+	for dy: int in range(-24, 25, 4):
+		for dx: int in range(-24, 25, 4):
+			var spot: Vector2 = (around + Vector2(dx, dy)).clamp(bounds.position, bounds.end - whole)
+			var candidate: Rect2 = Rect2(spot, whole)
+			var distance: float = candidate.get_center().distance_to(from)
 			if distance < nearest and not _covers_any(candidate, taken):
 				nearest = distance
-				chosen = candidate.position
-				least = 0.0
-				which = mini(2, wholes.size() - 1)
-			x += 8.0
-		y += 8.0
-	return [chosen, least, which]
+				best = spot
+	return best
 
 
 ## True when `rect` overlaps any of `others` (a pixel of air counts as touching).
@@ -829,18 +896,19 @@ func _build_alerts_bar() -> void:
 func _apply_mode() -> void:
 	var has_map: bool = (%MapView as Control).visible
 	var show_map: bool = has_map and not _list_mode
-	(%MapPage as Control).visible = show_map
+	(%MapScroll as Control).visible = show_map
 	(get_node("Panel/Content/Scroll") as Control).visible = not show_map
 	(%Intro as Control).visible = not show_map
 	(%ViewToggle as Button).visible = has_map
 	(%ViewToggle as Button).text = ChainText.SHOW_MAP if _list_mode else ChainText.SHOW_LIST
 	var bar: Control = %AlertsBar as Control
 	bar.visible = show_map and int(bar.get_meta(&"count", 0)) > 0
+	_fit_to_screen()
 
 
 ## True while the map (not the list) is the view.
 func is_map_showing() -> bool:
-	return (%MapPage as Control).visible
+	return (%MapScroll as Control).visible
 
 
 func _on_view_toggle_pressed() -> void:

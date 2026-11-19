@@ -74,16 +74,25 @@ layout_mode = 2
 mouse_filter = 2
 autowrap_mode = 3
 
-[node name="MapPage" type="BoxContainer" parent="Panel/Content"]
+[node name="MapScroll" type="ScrollContainer" parent="Panel/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+focus_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="MapPage" type="BoxContainer" parent="Panel/Content/MapScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 10
 vertical = true
 
-[node name="MapView" type="AspectRatioContainer" parent="Panel/Content/MapPage"]
+[node name="MapView" type="AspectRatioContainer" parent="Panel/Content/MapScroll/MapPage"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -92,12 +101,12 @@ size_flags_stretch_ratio = 5.0
 mouse_filter = 2
 alignment_vertical = 0
 
-[node name="Canvas" type="Control" parent="Panel/Content/MapPage/MapView"]
+[node name="Canvas" type="Control" parent="Panel/Content/MapScroll/MapPage/MapView"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Background" type="TextureRect" parent="Panel/Content/MapPage/MapView/Canvas"]
+[node name="Background" type="TextureRect" parent="Panel/Content/MapScroll/MapPage/MapView/Canvas"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -107,7 +116,7 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 0
 
-[node name="Overlays" type="Control" parent="Panel/Content/MapPage/MapView/Canvas"]
+[node name="Overlays" type="Control" parent="Panel/Content/MapScroll/MapPage/MapView/Canvas"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -115,7 +124,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 
-[node name="Pins" type="Control" parent="Panel/Content/MapPage/MapView/Canvas"]
+[node name="Pins" type="Control" parent="Panel/Content/MapScroll/MapPage/MapView/Canvas"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -123,26 +132,35 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 
-[node name="Side" type="VBoxContainer" parent="Panel/Content/MapPage"]
+[node name="SideScroll" type="ScrollContainer" parent="Panel/Content/MapScroll/MapPage"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 2.0
+mouse_filter = 0
+mouse_force_pass_scroll_events = false
+focus_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Side" type="VBoxContainer" parent="Panel/Content/MapScroll/MapPage/SideScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="Detail" type="VBoxContainer" parent="Panel/Content/MapPage/Side"]
+[node name="Detail" type="VBoxContainer" parent="Panel/Content/MapScroll/MapPage/SideScroll/Side"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="AlertsBar" type="PanelContainer" parent="Panel/Content/MapPage/Side"]
+[node name="AlertsBar" type="PanelContainer" parent="Panel/Content/MapScroll/MapPage/SideScroll/Side"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Lines" type="VBoxContainer" parent="Panel/Content/MapPage/Side/AlertsBar"]
+[node name="Lines" type="VBoxContainer" parent="Panel/Content/MapScroll/MapPage/SideScroll/Side/AlertsBar"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2

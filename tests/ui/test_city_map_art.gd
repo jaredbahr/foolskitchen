@@ -113,7 +113,7 @@ func test_pins_sit_inside_the_drawn_map_at_two_window_sizes() -> void:
 
 ## The shipped town (the real map and lots) at a given tier, optionally with
 ## Pinewood still empty (a hoarding), in a screen of the given size.
-func _real_panel(screen: Vector2i, tier: int, empty_pinewood: bool) -> CityPanel:
+func _real_panel(screen: Vector2i, tier: int, empty_pinewood: bool, every_alert: bool = false) -> CityPanel:
 	_holder = SubViewport.new()
 	_holder.size = screen
 	(Engine.get_main_loop() as SceneTree).root.add_child(_holder)
@@ -145,6 +145,10 @@ func _real_panel(screen: Vector2i, tier: int, empty_pinewood: bool) -> CityPanel
 		view.lots.append(load("res://data/lots/%s.tres" % path) as LotDef)
 	view.career_tier = tier
 	view.reputation = 3.8
+	if every_alert:
+		# Four alerts: the bottom bar lists three and "and 1 more".
+		for site: ChainSummary.Site in view.sites:
+			site.alerts = [ChainSummary.Alert.NO_MANAGER] as Array[ChainSummary.Alert]
 	panel.set_city(map, view)
 	panel.show()
 	return panel
@@ -300,3 +304,54 @@ func test_locked_areas_get_roadworks_and_empty_areas_a_hoarding() -> void:
 	var canvas: Rect2 = Rect2(Vector2.ZERO, (panel.get_node("%Canvas") as Control).size)
 	for sign_art: TextureRect in [works, hoarding]:
 		assert_true(canvas.encloses(Rect2(sign_art.position, sign_art.size)), "%s is on the map" % sign_art.name)
+
+
+## Scrolls every scroll area above `node` to show it, then returns whether it
+## is inside `inside` (global px).
+func _reachable(panel: CityPanel, node: Control, inside: Rect2) -> bool:
+	var ancestor: Node = node.get_parent()
+	while ancestor != null and ancestor != panel:
+		if ancestor is ScrollContainer:
+			(ancestor as ScrollContainer).ensure_control_visible(node)
+		ancestor = ancestor.get_parent()
+	await _settle()
+	return inside.encloses(Rect2(node.global_position, node.size))
+
+
+func test_the_map_page_fits_small_screens_and_reaches_the_card_and_alerts() -> void:
+	for screen: Vector2i in [Vector2i(960, 540), Vector2i(844, 390), Vector2i(950, 650), Vector2i(1280, 720),
+			Vector2i(1000, 600), Vector2i(390, 844)]:
+		var panel: CityPanel = _real_panel(screen, 5, false, true)
+		await _settle()
+		panel.pin_pressed_for_review(&"cliff")
+		await _settle()
+		var view: Rect2 = Rect2(Vector2.ZERO, Vector2(screen))
+		var frame: Control = panel.get_node("Panel") as Control
+		var where: String = "%s" % screen
+		assert_true(view.encloses(Rect2(frame.global_position, frame.size)), "the panel is on the screen at %s" % where)
+		var canvas: Control = panel.get_node("%Canvas") as Control
+		assert_true(canvas.size.y > 40.0 and absf(canvas.size.x / canvas.size.y - 1.5) < 0.02, "the map keeps its shape at %s" % where)
+		var go: Control = panel.get_node("%Detail").get_child(0).get_node("Body/Top/Go") as Control
+		var inside: Rect2 = Rect2(frame.global_position, frame.size).intersection(view)
+		assert_true(await _reachable(panel, go, inside), "the Work here button is reachable at %s" % where)
+		var bar: Control = panel.get_node("%AlertsBar") as Control
+		assert_true(bar.visible, "the alerts are listed at %s" % where)
+		assert_true(await _reachable(panel, bar, inside), "the alerts are reachable at %s" % where)
+		_holder.get_parent().remove_child(_holder)
+		_holder.free()
+		_holder = null
+
+
+func test_the_panel_never_shrinks_as_the_window_grows() -> void:
+	var panel: CityPanel = _real_panel(Vector2i(880, 700), 3, false)
+	await _settle()
+	var frame: Control = panel.get_node("Panel") as Control
+	for list_mode: bool in [false, true]:
+		if list_mode:
+			(panel.get_node("%ViewToggle") as Button).pressed.emit()
+		var last: float = 0.0
+		for width: int in range(880, 1021, 10):
+			_holder.size = Vector2i(width, 700)
+			await _settle()
+			assert_true(frame.size.x >= last - 0.5, "the panel is no narrower at %d px (list %s): %s < %s" % [width, list_mode, frame.size.x, last])
+			last = frame.size.x
