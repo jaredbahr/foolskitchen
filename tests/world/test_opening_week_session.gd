@@ -97,6 +97,42 @@ func test_weekly_serving_goal_is_filtered_on_day_one_but_not_day_eight() -> void
 	assert_eq(GameState.rng(&"weekly").state, expected_rng.state)
 
 
+func test_day_one_filter_changes_a_draw_that_would_have_been_a_serving_goal() -> void:
+	# A new game whose unfiltered day-1 draw is a serving goal: only the filter
+	# in Main can make it draw something else (#703 review).
+	var probe: Node = await _start(false)
+	var settings: MenuSettings = probe.get("menu_settings") as MenuSettings
+	var restaurant: RestaurantSim = probe.get("sim") as RestaurantSim
+	var history: BusinessHistory = probe.get("business_history") as BusinessHistory
+	var level: int = (probe.get("owner_progress") as OwnerProgress).level
+	var chosen: int = 0
+	var filtered: WeeklyChallengeState = null
+	var filtered_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	for seed_value: int in range(1, 200):
+		var stream_seed: int = hash(str(seed_value) + ":weekly")
+		var plain_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		plain_rng.seed = stream_seed
+		var plain: WeeklyChallengeState = WeeklyChallengeState.new()
+		if not plain.begin_week(1, level, WEEKLY_CHALLENGES, settings.enabled_recipes(), plain_rng, history,
+				restaurant.seat_count()) or plain.kind != WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
+			continue
+		filtered_rng.seed = stream_seed
+		filtered = WeeklyChallengeState.new()
+		filtered.begin_week(1, level, WEEKLY_CHALLENGES, settings.enabled_recipes(), filtered_rng, history,
+			restaurant.seat_count(), WeeklyChallengeState.WEEK_DAYS, [WeeklyChallenge.Kind.SERVE_IN_ONE_DAY] as Array[int])
+		chosen = seed_value
+		break
+	assert_ne(chosen, 0, "some new-game seed draws a serving goal without the filter")
+	if chosen == 0:
+		return
+	_close(probe)
+	var main: Node = await _start(false, chosen)
+	var weekly: WeeklyChallengeState = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_true(weekly.is_active())
+	assert_ne(weekly.kind, WeeklyChallenge.Kind.SERVE_IN_ONE_DAY, "the Opening week filter applies on day 1")
+	assert_eq(weekly.to_dict(), filtered.to_dict())
+
+
 func test_price_change_pays_once_as_its_own_ledger_movement() -> void:
 	var main: Node = await _start(false)
 	var cash: int = Economy.cash
@@ -773,12 +809,12 @@ func _add_member(main: Node, role: StringName, id: StringName) -> bool:
 	return roster.from_dict(snapshot) and restaurant.set_staff_roster(roster.members())
 
 
-func _start(saves: bool) -> Node:
+func _start(saves: bool, seed_value: int = 7) -> Node:
 	await (Engine.get_main_loop() as SceneTree).process_frame
 	var main: Node = MAIN.instantiate()
 	main.set("use_saves", saves)
 	main.set("save_slot", SLOT)
-	main.set("new_game_seed_override", 7)
+	main.set("new_game_seed_override", seed_value)
 	main.set("skip_owner_picker", true)
 	_mains.append(main)
 	(Engine.get_main_loop() as SceneTree).root.add_child(main)
