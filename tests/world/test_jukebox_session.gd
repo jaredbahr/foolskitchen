@@ -69,6 +69,29 @@ func test_music_plays_only_while_the_shop_is_open_and_follows_the_style() -> voi
 	assert_null(Sfx.loop_track(&"jukebox_bar_blues"))
 
 
+func test_the_deluxe_jukebox_plays_the_open_shop_and_beats_a_basic_one() -> void:
+	var main: Node = _start()
+	(main.get("shop_editor") as ShopEditor).set_owner_level(12)
+	Economy.add_cash(1500, Ledger.OTHER)
+	assert_true(bool(main.call("shop_buy", &"jukebox", SPOT, 0)), (main.get("shop_editor") as ShopEditor).last_check.why)
+	var deluxe_spot: Vector2i = Vector2i(9, 5)
+	assert_true(bool(main.call("shop_buy", &"jukebox_neon", deluxe_spot, 0)), (main.get("shop_editor") as ShopEditor).last_check.why)
+	var world: SimWorld = main.get("world")
+	var deluxe: PlacedItem = world.grid.item_at(deluxe_spot)
+	assert_true(bool(main.call("shop_item_look", deluxe.id, &"jukebox_cafe_jazz")), "its style can be picked")
+	assert_true(Clock.sim.start_service(), "service opens")
+	Clock.set_speed(1)
+	main.call("refresh_presentation")
+	assert_eq(_loops_playing(), [&"jukebox_cafe_jazz"] as Array[StringName], "the deluxe jukebox plays, and the basic one stays quiet")
+	assert_eq(Sfx.loop_track(&"jukebox_cafe_jazz"), MusicTracks.track_for(&"cafe", Clock.sim.day))
+	assert_true(bool(main.call("shop_item_look", deluxe.id, &"jukebox_bar_blues")), "a style can change during service")
+	main.call("refresh_presentation")
+	assert_eq(_loops_playing(), [&"jukebox_bar_blues"] as Array[StringName], "changing style swaps the music")
+	Clock.set_speed(0)
+	main.call("refresh_presentation")
+	assert_eq(_loops_playing(), [] as Array[StringName], "paused is silent")
+
+
 func test_an_unmapped_style_keeps_the_made_loop_and_existing_quiet_gain() -> void:
 	var main: Node = _start()
 	assert_true(bool(main.call("shop_buy", &"jukebox", SPOT, 0)))

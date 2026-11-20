@@ -123,3 +123,25 @@ func test_lamps_raise_the_lamp_part_of_vibe() -> void:
 	assert_eq(_buy_floor_lamps(8), 8)
 	assert_true(sim.vibe_result.lamp_points > 0.0, "lamps add lamp vibe")
 
+
+
+func test_the_deluxe_jukebox_glows_like_a_lamp_without_counting_for_lamp_vibe() -> void:
+	(_main.get("shop_editor") as ShopEditor).set_owner_level(12)
+	var sim: RestaurantSim = _main.get("sim")
+	var before: float = sim.vibe_result.lamp_points
+	var placed: bool = false
+	for cell: Vector2i in _free_cells():
+		if bool(_main.call("shop_buy", &"jukebox_neon", cell, 0)):
+			placed = true
+			break
+	assert_true(placed, "the deluxe jukebox places on a free floor cell")
+	_main.call("refresh_presentation")
+	var lamps: Array = _main.call("lamp_visuals")
+	assert_eq(lamps.size(), 1, "its glow follows the shop lights")
+	var light: OmniLight3D = (lamps[0] as ItemVisual).get_node("Glow") as OmniLight3D
+	var day: float = light.light_energy
+	_world().clock.phase = SimClock.Phase.CLOSED
+	_main.call("refresh_presentation")
+	assert_true(light.light_energy > day * 2.0, "soft by day, full at night")
+	assert_true(light.light_energy <= DayNightView.MAX_GLOW_ENERGY)
+	assert_almost_eq(sim.vibe_result.lamp_points, before, 0.0001, "it is a showpiece, not a lamp")

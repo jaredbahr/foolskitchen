@@ -1,6 +1,7 @@
 extends TestCase
 ## Location interiors (#596): the made starter decor (assets/made/location_decor/,
-## tools/build_location_decor.py) and the crockery dresser built from kit pieces.
+## tools/build_location_decor.py) and the crockery dresser built from kit pieces,
+## and the premium showpieces (#206) built by the same script.
 ## Every piece is ordinary decor, buyable at every lot.
 
 const MADE: String = "res://assets/made/location_decor/%s.glb"
@@ -20,6 +21,11 @@ const CASES: Dictionary[StringName, Array] = {
 	&"flour_sacks": [ItemDef.PlacementLayer.NORMAL, 1, 20, 6, 1],
 	&"barrel": [ItemDef.PlacementLayer.NORMAL, 1, 25, 7, 1],
 	&"shell_jars": [ItemDef.PlacementLayer.SURFACE_DECOR, 1, 15, 8, 1],
+	# The premium showpieces (#206): solid floor pieces, priced for diminishing returns.
+	&"display_case": [ItemDef.PlacementLayer.NORMAL, 2, 420, 10, 6],
+	&"gramophone": [ItemDef.PlacementLayer.NORMAL, 1, 480, 11, 6],
+	&"jukebox_neon": [ItemDef.PlacementLayer.NORMAL, 1, 650, 12, 7],
+	&"chef_statue": [ItemDef.PlacementLayer.NORMAL, 1, 900, 13, 8],
 }
 
 var _views: Array[Node] = []
@@ -47,7 +53,7 @@ func test_made_decor_is_buyable_everywhere_with_its_own_model() -> void:
 		assert_eq(definition.unlock_level, int(entry[3]), String(id))
 		assert_eq(definition.charm, int(entry[4]), String(id))
 		assert_true(definition.lot_tags.is_empty(), "%s is sold at every lot" % id)
-		assert_false(definition.paintable, String(id))
+		assert_eq(definition.paintable, id == &"jukebox_neon", String(id))
 		var view: PropView = definition.view_scene.instantiate() as PropView
 		_views.append(view)
 		var art: Node3D = view.get_child(0).get_node("Art") as Node3D
@@ -89,3 +95,23 @@ func test_the_crockery_dresser_is_two_kit_bookcases_with_kit_crockery() -> void:
 		if part.get_meta(&"art_group", &"furniture") == &"food":
 			food += 1
 	assert_true(food >= 6, "plates, bowls, cups and mugs on its shelves")
+
+
+func test_premium_pieces_follow_the_charm_curve_and_only_the_deluxe_jukebox_glows() -> void:
+	var content: ContentDB = ContentDB.new()
+	assert_eq(content.load_all(), PackedStringArray())
+	var last_price: int = 0
+	var last_charm: int = 0
+	for id: StringName in [&"display_case", &"gramophone", &"jukebox_neon", &"chef_statue"]:
+		var definition: ItemDef = content.item(id)
+		assert_true(definition.solid, "%s stands on the floor" % id)
+		assert_true(definition.price > last_price and definition.charm >= last_charm, "%s costs more and charms at least as much" % id)
+		assert_true(definition.price / maxi(definition.charm, 1) > 60, "%s is for showing off, not the efficient buy" % id)
+		last_price = definition.price
+		last_charm = definition.charm
+		assert_eq(definition.glow_color.a > 0.0, id == &"jukebox_neon", "%s glow" % id)
+		assert_eq(definition.plays_music, id == &"jukebox_neon", "only the deluxe jukebox plays music (%s)" % id)
+	# The plain jukebox keeps its id, level and music.
+	var plain: ItemDef = content.item(&"jukebox")
+	assert_true(plain.plays_music)
+	assert_eq(plain.unlock_level, 3)

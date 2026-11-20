@@ -248,6 +248,98 @@
         "paneling.glb"
       ]
     },
+    "display_case": {
+      "triangles": 645,
+      "budget": 800,
+      "world_dimensions": [
+        0.96,
+        0.62,
+        0.42
+      ],
+      "materials": [
+        "carpet",
+        "carpetBlue",
+        "carpetDarker",
+        "carpetWhite",
+        "glass",
+        "lamp",
+        "metal",
+        "metalDark",
+        "wood",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "bookcaseOpenLow.glb (cabinet body)",
+        "bathroomMirror.glb (glass)",
+        "Food Kit cake"
+      ]
+    },
+    "gramophone": {
+      "triangles": 624,
+      "budget": 800,
+      "world_dimensions": [
+        0.528,
+        0.9698,
+        0.4906
+      ],
+      "materials": [
+        "carpet",
+        "carpetDarker",
+        "lamp",
+        "metalDark",
+        "metalMedium",
+        "woodDark"
+      ],
+      "nearest_kit": [
+        "radio.glb (retro audio)",
+        "lampRoundFloor.glb (metal stem)",
+        "sideTable.glb (legs)"
+      ]
+    },
+    "jukebox_neon": {
+      "triangles": 640,
+      "budget": 800,
+      "world_dimensions": [
+        0.42,
+        0.725,
+        0.358
+      ],
+      "materials": [
+        "carpetBlue",
+        "carpetDarker",
+        "carpetWhite",
+        "lamp",
+        "metal",
+        "metalDark",
+        "wood"
+      ],
+      "nearest_kit": [
+        "assets/props/jukebox.tscn (arch window)",
+        "speaker.glb",
+        "lampWall.glb (warm light)"
+      ]
+    },
+    "chef_statue": {
+      "triangles": 702,
+      "budget": 800,
+      "world_dimensions": [
+        0.5509,
+        1.197,
+        0.42
+      ],
+      "materials": [
+        "carpetWhite",
+        "lamp",
+        "metal",
+        "metalDark",
+        "wood"
+      ],
+      "nearest_kit": [
+        "Mini Characters (scale)",
+        "Food Kit (chef hat)",
+        "kitchenCabinet.glb (plinth)"
+      ]
+    },
     "pendant_cord": {
       "triangles": 76,
       "budget": 300,

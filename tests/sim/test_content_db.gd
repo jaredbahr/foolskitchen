@@ -7,7 +7,7 @@ func test_starter_data_loads_without_validation_errors() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 32)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 100)
+	assert_eq(db.items().size(), 104)
 	assert_eq(db.collections().size(), 6)
 	assert_eq(db.collection(&"diner_classics").item_ids, [&"neon_open_sign", &"menu_board", &"diner_booth"])
 
@@ -121,10 +121,10 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 		item_ids.append(definition.id)
 	assert_eq(item_ids, [
 		&"a_frame_sign", &"aquarium", &"aquarium_large", &"awning", &"bar_corner", &"bar_counter", &"bar_end_left", &"bar_end_right",
-		&"bar_section", &"bar_stool", &"barrel", &"bathroom_sink", &"beach_sign", &"bench", &"bookcase_open_low", &"bunting", &"chair",
+		&"bar_section", &"bar_stool", &"barrel", &"bathroom_sink", &"beach_sign", &"bench", &"bookcase_open_low", &"bunting", &"chair", &"chef_statue",
 		&"cloth_table", &"coat_rack_standing", &"cocktail_station", &"coffee_machine", &"corner_cabinet", &"crockery_dresser",
-		&"cross_table", &"crossed_paddles", &"cushioned_bench", &"diner_booth", &"diner_stool", &"door", &"drinks_fridge", &"drinks_shelf", &"fishing_net",
-		&"flour_sacks", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table", &"jukebox", &"lamp_floor_round",
+		&"cross_table", &"crossed_paddles", &"cushioned_bench", &"diner_booth", &"diner_stool", &"display_case", &"door", &"drinks_fridge", &"drinks_shelf", &"fishing_net",
+		&"flour_sacks", &"flower_window_box", &"freezer", &"fridge", &"fryer", &"glass_table", &"gramophone", &"jukebox", &"jukebox_neon", &"lamp_floor_round",
 		&"lamp_floor_square", &"lamp_pendant", &"lamp_table_round", &"lamp_table_square", &"lamp_wall", &"lifebuoy",
 		&"lounge_chair", &"menu_board", &"millstone", &"modern_chair", &"modern_frame_chair", &"neon_open_sign", &"order_counter", &"oven", &"pass_counter",
 		&"patio_chair", &"patio_table_2", &"patio_waiting_bench", &"pergola", &"plant_small_1",
@@ -137,7 +137,7 @@ func test_lists_are_sorted_and_do_not_expose_index_arrays() -> void:
 	])
 	var copy: Array[ItemDef] = db.items()
 	copy.clear()
-	assert_eq(db.items().size(), 100)
+	assert_eq(db.items().size(), 104)
 
 
 func test_reloading_does_not_duplicate_definitions() -> void:
@@ -145,7 +145,7 @@ func test_reloading_does_not_duplicate_definitions() -> void:
 	assert_eq(db.load_all().size(), 0)
 	assert_eq(db.ingredients().size(), 32)
 	assert_eq(db.recipes().size(), _recipe_resource_count("res://data/recipes"))
-	assert_eq(db.items().size(), 100)
+	assert_eq(db.items().size(), 104)
 
 
 func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> void:
@@ -158,7 +158,7 @@ func test_recursive_resource_discovery_returns_sorted_original_tres_names() -> v
 		if path.begins_with("res://data/ingredients/") or path.begins_with("res://data/recipes/") \
 				or path.begins_with("res://data/items/"):
 			content_paths += 1
-	assert_eq(content_paths, 164)
+	assert_eq(content_paths, 168)
 	assert_true(paths.has("res://data/ingredients/bun.tres"))
 	assert_true(paths.has("res://data/recipes/burger.tres"))
 	assert_true(paths.has("res://data/items/table_2.tres"))

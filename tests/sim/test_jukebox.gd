@@ -175,6 +175,82 @@ func test_only_one_jukebox_counts_toward_vibe() -> void:
 		&"jukebox_diner_rock")
 
 
+func test_the_deluxe_jukebox_is_a_650_dollar_jukebox_with_the_same_styles() -> void:
+	var definition: ItemDef = _content.item(&"jukebox_neon")
+	assert_not_null(definition)
+	assert_eq(definition.display_name, "Deluxe jukebox")
+	assert_eq(definition.category, ItemDef.Category.DECOR)
+	assert_eq(definition.price, 650)
+	assert_eq(definition.unlock_level, 12)
+	assert_eq(definition.charm, 7)
+	assert_true(definition.plays_music)
+	assert_true(definition.solid)
+	assert_true(definition.glow_color.a > 0.0, "it keeps its night glow")
+	assert_true(definition.charm > _content.item(&"jukebox").charm, "more charm than the basic jukebox")
+	assert_eq(definition.variants.size(), STYLES.size())
+	for index: int in STYLES.size():
+		assert_eq(definition.variants[index].id, STYLES[index], "the same styles as the basic jukebox")
+		assert_eq(Jukebox.style_name(definition, STYLES[index]), STYLE_NAMES[index])
+		assert_eq(Jukebox.style_theme(definition, STYLES[index], VIBE.theme_order), STYLE_THEMES[index])
+		assert_eq(Jukebox.loop_id(definition, STYLES[index]), STYLES[index], "it plays the style's loop")
+		assert_true(Sfx.tuning.loops.has(Jukebox.loop_id(definition, STYLES[index])))
+	assert_eq(Jukebox.loop_id(definition, &""), &"jukebox_diner_rock", "no style chosen plays the first")
+
+
+func test_the_deluxe_jukebox_is_counted_and_its_style_can_change() -> void:
+	_editor.set_owner_level(12)
+	_cash = 5000
+	assert_true(_history.buy(&"jukebox_neon", SPOT_A, 0, &"", &"jukebox_cafe_jazz"), _editor.last_check.why)
+	var deluxe: PlacedItem = _sim.world.grid.item(_editor.last_item_id)
+	assert_eq(Jukebox.counted_item(_sim.world.grid), deluxe)
+	var inputs: VibeModel.Inputs = VibeInputs.capture(_sim.world.grid, _content, [] as Array[RecipeDef])
+	assert_eq(_count(inputs, &"jukebox_neon"), 1)
+	var item: VibeModel.Item = _first_item(inputs, &"jukebox_neon")
+	assert_eq(item.charm, 7.0)
+	assert_eq(item.music_theme, &"cafe")
+	assert_true(_history.paint_variant(deluxe.id, &"jukebox_bar_blues"))
+	assert_eq(Jukebox.loop_id(deluxe.def as ItemDef, deluxe.variant_id), &"jukebox_bar_blues")
+	assert_eq(_first_item(VibeInputs.capture(_sim.world.grid, _content, [] as Array[RecipeDef]), &"jukebox_neon").music_theme, &"bar")
+	# Two deluxe jukeboxes still count once.
+	assert_true(_history.buy(&"jukebox_neon", SPOT_B, 0))
+	assert_eq(_count(VibeInputs.capture(_sim.world.grid, _content, [] as Array[RecipeDef]), &"jukebox_neon"), 1)
+
+
+func test_the_deluxe_jukebox_beats_the_basic_one_whichever_is_placed_first() -> void:
+	_editor.set_owner_level(12)
+	_cash = 5000
+	# Basic first, deluxe second: the deluxe one counts, once, and the basic one is left out.
+	assert_true(_history.buy(&"jukebox", SPOT_A, 0, &"", &"jukebox_bar_blues"))
+	var basic: PlacedItem = _sim.world.grid.item(_editor.last_item_id)
+	assert_eq(Jukebox.counted_item(_sim.world.grid), basic, "alone, the basic jukebox counts")
+	assert_true(_history.buy(&"jukebox_neon", SPOT_B, 0, &"", &"jukebox_cafe_jazz"))
+	var deluxe: PlacedItem = _sim.world.grid.item(_editor.last_item_id)
+	assert_eq(Jukebox.counted_item(_sim.world.grid), deluxe, "the deluxe one wins though it came second")
+	var inputs: VibeModel.Inputs = VibeInputs.capture(_sim.world.grid, _content, [] as Array[RecipeDef])
+	assert_eq(_count(inputs, &"jukebox"), 0)
+	assert_eq(_count(inputs, &"jukebox_neon"), 1)
+	assert_eq(_first_item(inputs, &"jukebox_neon").music_theme, &"cafe")
+	# Selling the deluxe one hands it back to the basic one.
+	assert_true(_history.sell(deluxe.id) >= 0)
+	assert_eq(Jukebox.counted_item(_sim.world.grid), basic)
+	# Deluxe first, basic second gives the same answer.
+	var layout_sim: RestaurantSim = RestaurantSim.create(LAYOUT, _content, 1, [] as Array[String])
+	var grid: SimGrid = layout_sim.world.grid
+	var first: PlacedItem = grid.place_def(_content.item(&"jukebox_neon"), SPOT_A, 0)
+	var second: PlacedItem = grid.place_def(_content.item(&"jukebox"), SPOT_B, 0)
+	assert_not_null(first)
+	assert_not_null(second)
+	assert_eq(Jukebox.counted_item(grid), first)
+
+
+func test_equal_charm_keeps_the_first_placed_jukebox() -> void:
+	var grid: SimGrid = _sim.world.grid
+	var first: PlacedItem = grid.place_def(_content.item(&"jukebox"), SPOT_A, 0)
+	var second: PlacedItem = grid.place_def(_content.item(&"jukebox"), SPOT_B, 0)
+	assert_not_null(second)
+	assert_eq(Jukebox.counted_item(grid), first)
+
+
 func test_a_jukebox_behind_the_scenes_is_not_counted() -> void:
 	# Kitchen cells are staff-only; guests never see or hear the machine there.
 	var kitchen: Vector2i = Vector2i(2, 3)
