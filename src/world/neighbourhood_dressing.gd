@@ -65,9 +65,12 @@ const BIKE_SEAT: float = 0.3
 const DOG_LEAD: float = 0.75
 const DOG_SIDE: float = 0.2
 const LEASH_HAND: Vector3 = Vector3(0.14, 0.42, 0.06)
-## How a terrace neighbour shows (#596): trading, or closed with a for-sale board.
+## How a neighbour shows (#596): trading, closed with a for-sale board, or (#701) taken over by
+## Chef Copley's rival shop (his gaudy sign, bunting and balloons over a trading front).
 ## A neighbour the player has bought and knocked through is #597's (TODO).
-enum NeighbourState { OCCUPIED, FOR_SALE }
+enum NeighbourState { OCCUPIED, FOR_SALE, RIVAL }
+## What a RIVAL neighbour's sign says when it was given no name.
+const RIVAL_DEFAULT_NAME: String = "Copley's"
 const SALE_TEXT: String = "FOR SALE"
 const SIGN_THEME: Theme = preload("res://src/ui/theme/main_theme.tres")
 const SIGN_FONT_SIZE: int = 48
@@ -187,6 +190,13 @@ var _promenade: NeighbourhoodPromenade
 var _neighbours: Dictionary[StringName, Node3D] = {}
 var _neighbour_plans: Dictionary[StringName, NeighbourhoodBuildings.Plan] = {}
 var _neighbour_states: Dictionary[StringName, int] = {}
+## The knock-off name a RIVAL neighbour shows, kept across rebuilds, and the look built for it (#701).
+var _neighbour_names: Dictionary[StringName, String] = {}
+var _rival_looks: Dictionary[StringName, Node3D] = {}
+## The rival's food truck (#701): the name it shows ("" for none), its root and its node.
+var _truck_name: String = ""
+var _rival_root: Node3D
+var _truck: Node3D
 ## The woodland clearing (#607), when the street's preset names a forest: its root,
 ## its builder and the state each named stand of trees shows (kept across rebuilds).
 var _forest_root: Node3D
@@ -429,6 +439,9 @@ func rebuild() -> void:
 	_country_root.visible = _configured
 	_rooftop_root.visible = _configured
 	_cliff_root.visible = _configured
+	_rival_root.visible = _configured
+	_rival_root.transform = _frame
+	_place_truck()
 	_apply_night()
 	_apply_weather()
 	_apply_time(_effective_time())
@@ -475,6 +488,9 @@ func _ensure_roots() -> void:
 	_cliff_root = Node3D.new()
 	_cliff_root.name = "Cliff"
 	add_child(_cliff_root)
+	_rival_root = Node3D.new()
+	_rival_root.name = "Rival"
+	add_child(_rival_root)
 
 
 func _clear_static() -> void:
@@ -507,6 +523,10 @@ func _clear_static() -> void:
 		_cliff_root.remove_child(child)
 		child.free()
 	_cliff = null
+	for child: Node in _rival_root.get_children():
+		_rival_root.remove_child(child)
+		child.free()
+	_truck = null
 	_lamp_bulbs = null
 	_lamp_glow = null
 	_bulb_material = null
@@ -517,6 +537,8 @@ func _clear_static() -> void:
 	_window_materials.clear()
 	_furniture.clear()
 	_neighbours.clear()
+	_rival_looks.clear()
+	_truck = null
 	_neighbour_plans.clear()
 	_neighbour_lamps.clear()
 	_crowns.clear()
@@ -558,6 +580,7 @@ func _hide_actors() -> void:
 	_country_root.hide()
 	_rooftop_root.hide()
 	_cliff_root.hide()
+	_rival_root.hide()
 	if car != null:
 		car.hide()
 
@@ -1070,7 +1093,10 @@ func _collect_neighbours(builder: NeighbourhoodBuildings) -> void:
 		var inverse: Transform3D = plan.xf.affine_inverse()
 		for part: Array in [["", "Shell"], ["_Trade", "Trade"], ["_ForSale", "ForSale"]]:
 			var mesh: Node3D = buildings.get_node_or_null(NodePath(plan.id + String(part[0]))) as Node3D
-			if mesh != null:
+			# The named house across the road (#701) keeps its shell among the street's buildings, exactly
+			# where it was before it had a name; the neighbour's own Shell is an empty marker.
+			var stays: bool = part[1] == "Shell" and not plan.is_shop
+			if mesh != null and not stays:
 				buildings.remove_child(mesh)
 				mesh.transform = inverse
 			else:
@@ -1089,13 +1115,13 @@ func _collect_neighbours(builder: NeighbourhoodBuildings) -> void:
 		var board: Dictionary = NeighbourhoodTerrace.sign_board(plan)
 		if not board.is_empty():
 			var ink: Color = plan.style.sign_ink
-			var sign: Label3D = _painted_label("Sign", plan.style.sign_text, board, ink)
+			var sign: Label3D = painted_label("Sign", plan.style.sign_text, board, ink)
 			# An arcade's name is lit; the others are paint and darken with the night.
 			sign.shaded = plan.form != ShopStyle.Form.ARCADE
 			node.add_child(sign)
 		var sale: Dictionary = NeighbourhoodTerrace.sale_board(plan)
 		var sale_node: Node3D = node.get_node(^"ForSale") as Node3D
-		var words: Label3D = _painted_label("Words", SALE_TEXT, sale, street_set.signal_red.darkened(0.15))
+		var words: Label3D = painted_label("Words", SALE_TEXT, sale, street_set.signal_red.darkened(0.15))
 		words.transform = sale_node.transform.affine_inverse() * words.transform
 		sale_node.add_child(words)
 		_neighbours[plan.neighbour_id] = node
@@ -1104,10 +1130,9 @@ func _collect_neighbours(builder: NeighbourhoodBuildings) -> void:
 
 
 ## A line of painted lettering filling `board` (its building-local centre and size).
-func _painted_label(label: String, text: String, board: Dictionary, ink: Color) -> Label3D:
+static func painted_label(label: String, text: String, board: Dictionary, ink: Color) -> Label3D:
 	var words: Label3D = Label3D.new()
 	words.name = label
-	words.text = text
 	words.font = SIGN_THEME.default_font if SIGN_THEME.default_font != null else ThemeDB.fallback_font
 	words.font_size = SIGN_FONT_SIZE
 	words.outline_size = 0
@@ -1115,12 +1140,84 @@ func _painted_label(label: String, text: String, board: Dictionary, ink: Color) 
 	words.double_sided = false
 	words.shaded = true
 	words.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var size: Vector2 = board["size"]
+	fit_label(words, text, board["size"])
+	words.position = board["centre"] + Vector3(0.0, 0.0, 0.004)
+	return words
+
+
+## Sets a painted label's words and scales them to fill `size` (never larger than the board).
+static func fit_label(words: Label3D, text: String, size: Vector2) -> void:
+	words.text = text
 	var width: float = words.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, SIGN_FONT_SIZE).x
 	var height: float = words.font.get_height(SIGN_FONT_SIZE)
 	words.pixel_size = minf(size.x / maxf(width, 1.0), size.y / maxf(height, 1.0))
-	words.position = board["centre"] + Vector3(0.0, 0.0, 0.004)
-	return words
+
+
+# --- the rival's food truck (#701) --------------------------------------------
+
+## True on a street that names a spot for the rival's truck (StreetSet.rival_truck_slot): the ones with
+## no shopfronts (a cliff top, a rooftop, a woodland clearing, a country lane). The rival parks a truck by
+## the door there instead of taking over a building.
+func can_park_truck() -> bool:
+	return street_set != null and street_set.has_truck_slot()
+
+
+## Parks the rival's truck by the lot with `text` (the knock-off name) on its panel, or renames
+## the one already there. The truck is kept across rebuilds. False when the street has no room
+## for one (`can_park_truck`) or is not built yet.
+func set_rival_truck(text: String) -> bool:
+	if not can_park_truck():
+		return false
+	_truck_name = text if not text.is_empty() else RIVAL_DEFAULT_NAME
+	_place_truck()
+	return _truck != null
+
+
+## Drives the truck away.
+func clear_rival_truck() -> void:
+	_truck_name = ""
+	_place_truck()
+
+
+## The parked truck's node (Node3D "CopleyTruck": Model, Name), or null.
+func rival_truck() -> Node3D:
+	return _truck
+
+
+## The name on the truck ("" while none is parked).
+func rival_truck_name() -> String:
+	return _truck_name
+
+
+## Where the truck stands (street-local): its centre (u, z), its yaw about the vertical (the serving
+## hatch looks out to the street, +z) and its footprint, awning included. Empty on a street with no
+## slot or one that is not built.
+func rival_truck_spot() -> Dictionary:
+	if not can_park_truck() or not _configured:
+		return {}
+	var door_u: float = 0.0
+	for box: AABB in _door_approaches:
+		door_u = (_frame.affine_inverse() * box).get_center().x
+	var slot: Vector2 = street_set.rival_truck_slot
+	var at: Vector2 = Vector2(door_u + slot.x, _shift + slot.y)
+	var half: Vector2 = NeighbourhoodRival.TRUCK_SIZE * 0.5
+	# The awning reaches 0.12 m out over the hatch side (+z).
+	return {"u": at.x, "z": at.y, "yaw": PI, "footprint": Rect2(at.x - half.x, at.y - half.y, half.x * 2.0, half.y * 2.0 + 0.12)}
+
+
+func _place_truck() -> void:
+	if _truck != null:
+		_truck.get_parent().remove_child(_truck)
+		_truck.free()
+		_truck = null
+	if _truck_name.is_empty() or not _configured or not can_park_truck():
+		return
+	var spot: Dictionary = rival_truck_spot()
+	if spot.is_empty():
+		return
+	_truck = NeighbourhoodRival.truck(_truck_name)
+	_truck.transform = Transform3D(Basis(Vector3.UP, float(spot["yaw"])), Vector3(float(spot["u"]), NeighbourhoodRival.TRUCK_GROUND, float(spot["z"])))
+	_rival_root.add_child(_truck)
 
 
 # --- the terrace neighbours' API (#596, for #597) ------------------------------
@@ -1142,14 +1239,18 @@ func neighbour(id: StringName) -> Node3D:
 
 ## What a neighbour is (for tools and #597): its display name (the sign), the side of the
 ## lot it stands on (-1 left, +1 right), its slot outward from the lot, its building form,
-## its width and its facade transform in the dressing's space.
+## its width and its facade transform in the dressing's space. The named house across the
+## road (#701) has no shop sign: its name is empty until a rival takes it.
 func neighbour_info(id: StringName) -> Dictionary:
 	if not _neighbour_plans.has(id):
 		return {}
 	var plan: NeighbourhoodBuildings.Plan = _neighbour_plans[id]
 	var side: float = signf(plan.xf.origin.x - _local_reserve.get_center().x)
 	var slot: int = (plan.seed_value - 40) % 10
-	return {"name": plan.style.sign_text, "side": int(side), "slot": slot, "form": plan.form, "width": plan.width,
+	var shown: String = plan.style.sign_text if plan.style != null else ""
+	if neighbour_state(id) == NeighbourState.RIVAL:
+		shown = neighbour_name(id)
+	return {"name": shown, "side": int(side), "slot": slot, "form": plan.form, "width": plan.width,
 		"facade": _frame * plan.xf, "state": neighbour_state(id)}
 
 
@@ -1157,13 +1258,24 @@ func neighbour_state(id: StringName) -> NeighbourState:
 	return _neighbour_states.get(id, NeighbourState.OCCUPIED) as NeighbourState
 
 
-## Shows a neighbour trading (the default) or closed with a for-sale board. The state is
-## kept across rebuilds. False when the street has no such neighbour.
+## The knock-off name a RIVAL neighbour shows ("" while it is not a rival's).
+func neighbour_name(id: StringName) -> String:
+	if neighbour_state(id) != NeighbourState.RIVAL:
+		return ""
+	return _neighbour_names.get(id, RIVAL_DEFAULT_NAME)
+
+
+## Shows a neighbour trading (the default), closed with a for-sale board, or taken over by
+## the rival (#701): `rival_name` is the knock-off name painted on his sign (it is kept while
+## the state stays RIVAL; "" keeps the last name, or the default). The state is kept across
+## rebuilds. False when the street has no such neighbour.
 ## TODO(#597): a KNOCKED_THROUGH state once a neighbour can be bought and joined to the shop.
-func set_neighbour_state(id: StringName, state: NeighbourState) -> bool:
+func set_neighbour_state(id: StringName, state: NeighbourState, rival_name: String = "") -> bool:
 	if not _neighbours.has(id):
 		return false
 	_neighbour_states[id] = state
+	if state == NeighbourState.RIVAL and not rival_name.is_empty():
+		_neighbour_names[id] = rival_name
 	_show_neighbour(id)
 	return true
 
@@ -1172,14 +1284,56 @@ func _show_neighbour(id: StringName) -> void:
 	var node: Node3D = _neighbours.get(id, null)
 	if node == null:
 		return
-	var for_sale: bool = neighbour_state(id) == NeighbourState.FOR_SALE
+	var state: NeighbourState = neighbour_state(id)
+	var for_sale: bool = state == NeighbourState.FOR_SALE
+	var rival: bool = state == NeighbourState.RIVAL
+	if for_sale:
+		_ensure_house_sale_board(id, node)
 	(node.get_node(^"Trade") as Node3D).visible = not for_sale
 	(node.get_node(^"ForSale") as Node3D).visible = for_sale
 	# A closed arcade's bulb sign goes dark (#600): no bulbs, and its name is only paint.
 	var sign: Label3D = node.get_node_or_null(^"Sign") as Label3D
 	if sign != null:
 		sign.shaded = for_sale or _neighbour_plans[id].form != ShopStyle.Form.ARCADE
+		# The rival's gaudy sign hangs over the shop's own name.
+		sign.visible = not rival
+	_show_rival_look(id, node, rival)
 	_light_neighbour(id)
+
+
+## A named house's for-sale board and post (#701) are built the first time it is shown for sale, so a
+## street whose house is never closed carries none of it.
+func _ensure_house_sale_board(id: StringName, node: Node3D) -> void:
+	var plan: NeighbourhoodBuildings.Plan = _neighbour_plans[id]
+	var sale: MeshInstance3D = node.get_node(^"ForSale") as MeshInstance3D
+	if plan.is_shop or sale == null or sale.mesh != null:
+		return
+	var builder: NeighbourhoodBuildings = NeighbourhoodBuildings.new()
+	builder.street = street_set
+	builder.paving_top = _paving_top
+	var pen: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	# Street-local, like the shop parts: the node's own transform brings it back to the building.
+	pen.xf = plan.xf
+	NeighbourhoodTerrace.new(builder).for_sale(pen, plan)
+	sale.mesh = pen.soup.to_mesh()
+	sale.material_override = NeighbourhoodRival.material()
+	sale.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## The rival look (#701) is built the first time a neighbour is taken over, so a street with no
+## rival carries none of it; after that it only shows and hides.
+func _show_rival_look(id: StringName, node: Node3D, rival: bool) -> void:
+	var look: Node3D = _rival_looks.get(id, null)
+	if rival:
+		var text: String = neighbour_name(id)
+		if look == null:
+			look = NeighbourhoodRival.look(_neighbour_plans[id], text)
+			node.add_child(look)
+			_rival_looks[id] = look
+		else:
+			NeighbourhoodRival.rename(look, _neighbour_plans[id], text)
+	if look != null:
+		look.visible = rival
 
 
 ## A neighbour's bulbs follow the night while it trades and stay dark while it is closed.

@@ -579,6 +579,17 @@ func _bucket(pen: NeighbourhoodBuildings.Pen, at: Vector3, radius: float, tone: 
 func for_sale(pen: NeighbourhoodBuildings.Pen, p: NeighbourhoodBuildings.Plan) -> void:
 	var street: StreetSet = _street()
 	var hw: float = p.width * 0.5
+	if not p.is_shop:
+		# A named house (#701): just the agent's board on its post in the front yard.
+		var board: Dictionary = sale_board(p)
+		var centre: Vector3 = board["centre"]
+		var half: Vector2 = (board["size"] as Vector2) * 0.5 + Vector2(0.04, 0.04)
+		var face: float = centre.z - 0.004
+		pen.box(Vector3(centre.x - 0.035, 0.0, SALE_POST_Z - 0.035), Vector3(centre.x + 0.035, centre.y + half.y + 0.06, SALE_POST_Z + 0.035), street.wood)
+		pen.box(Vector3(centre.x - half.x, centre.y - half.y, face - 0.03), Vector3(centre.x + half.x, centre.y + half.y, face - 0.004), street.signal_red)
+		pen.box(Vector3(centre.x - half.x + 0.03, centre.y - half.y + 0.03, face - 0.03), Vector3(centre.x + half.x - 0.03, centre.y + half.y - 0.03, face),
+			street.trim.lerp(Color.WHITE, 0.4))
+		return
 	match p.form:
 		ShopStyle.Form.KIOSK:
 			var hatch: float = minf(0.62, hw - 0.22)

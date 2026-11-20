@@ -157,9 +157,9 @@ func test_the_promenade_neighbours_exist() -> void:
 	assert_ne(surf_info["side"], goods_info["side"], "one each side of the lot")
 	assert_eq(surf_info["name"], "SURF HIRE")
 	assert_true(dressing.neighbour(&"no_such_shop") == null, "an unknown id has no node")
-	# The starter street names none, so nothing there can be bought or closed.
+	# The starter street names one: the house across the road a rival can take over (#701).
 	var starter: NeighbourhoodDressing = _dressing(StreetPreset.starter())
-	assert_eq(starter.neighbour_ids(), [] as Array[StringName])
+	assert_eq(starter.neighbour_ids(), [StreetSet.RIVAL_ID] as Array[StringName])
 	for node: NeighbourhoodDressing in [dressing, starter]:
 		node.get_parent().remove_child(node)
 		node.free()

@@ -1,0 +1,110 @@
+{
+  "assets": {
+    "copley_closing_sign": {
+      "text": {
+        "faces": "-z",
+        "panel": {
+          "centre": [
+            -0.155,
+            0.25,
+            -0.0415
+          ],
+          "size": [
+            0.46,
+            0.22
+          ]
+        }
+      },
+      "triangles": 764,
+      "world_box": {
+        "max": [
+          0.48,
+          0.63,
+          0.0
+        ],
+        "min": [
+          -0.5401,
+          0.0,
+          -0.0895
+        ],
+        "size": [
+          1.0201,
+          0.63,
+          0.0895
+        ]
+      }
+    },
+    "copley_sign": {
+      "text": {
+        "faces": "-z",
+        "panel": {
+          "centre": [
+            -0.155,
+            0.25,
+            -0.0415
+          ],
+          "size": [
+            0.46,
+            0.22
+          ]
+        }
+      },
+      "triangles": 648,
+      "world_box": {
+        "max": [
+          0.48,
+          0.63,
+          0.0
+        ],
+        "min": [
+          -0.48,
+          0.0,
+          -0.075
+        ],
+        "size": [
+          0.96,
+          0.63,
+          0.075
+        ]
+      }
+    },
+    "copley_truck": {
+      "text": {
+        "faces": "-z",
+        "panel": {
+          "centre": [
+            0.18,
+            0.75,
+            -0.3125
+          ],
+          "size": [
+            0.7,
+            0.13
+          ]
+        }
+      },
+      "triangles": 748,
+      "world_box": {
+        "max": [
+          0.665,
+          1.385,
+          0.345
+        ],
+        "min": [
+          -0.68,
+          0.0,
+          -0.435
+        ],
+        "size": [
+          1.345,
+          1.385,
+          0.78
+        ]
+      }
+    }
+  },
+  "budget": 800,
+  "furniture_scale": 1.1,
+  "issue": 701,
+  "units": "world metres (the file holds them divided by furniture_scale)"
+}

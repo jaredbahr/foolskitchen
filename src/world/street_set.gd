@@ -7,6 +7,9 @@ extends Resource
 ## The starter street's set (warm swatches, cottages and a baker's row) is data
 ## in data/streets/starter.tres; `standard()` returns a copy of it.
 
+## The neighbour id of the named rival house (`rival_house`).
+const RIVAL_ID: StringName = &"rival_house"
+
 enum Roof { GABLE_FRONT, GABLE_SIDE, HIP, PYRAMID, SHED, FLAT, FALSE_FRONT }
 enum Fence { PICKET, HEDGE, WALL, RAIL }
 
@@ -16,6 +19,14 @@ enum Fence { PICKET, HEDGE, WALL, RAIL }
 @export_range(1, 3) var shops_per_side: int = 2
 ## Houses across the road, each on its own lot.
 @export_range(1, 8) var house_count: int = 5
+## The house across the road a rival can take over (#701): its index in the house row, or -1
+## for none. It becomes a named neighbour with the id `RIVAL_ID`, so the neighbour API
+## (`NeighbourhoodDressing.set_neighbour_state`) reaches it; with no rival it looks like any house.
+@export var rival_house: int = -1
+## Where the rival parks his food truck on a street with no shopfronts (#701): its centre's offset along the
+## street from the door and its distance out from the lot's front edge, in metres. (0, 0) means the street
+## has no room for one. The serving hatch always faces the street.
+@export var rival_truck_slot: Vector2 = Vector2.ZERO
 @export var wall_colors: Array[Color] = []
 @export var roof_colors: Array[Color] = []
 @export var door_colors: Array[Color] = []
@@ -63,6 +74,11 @@ static func standard() -> StreetSet:
 	return StreetPreset.starter().buildings.duplicate_deep(Resource.DEEP_DUPLICATE_ALL) as StreetSet
 
 
+## True when the street names a spot for the rival's food truck (#701).
+func has_truck_slot() -> bool:
+	return rival_truck_slot != Vector2.ZERO
+
+
 ## True when the row beside the lot is a named terrace (#596).
 func has_terrace() -> bool:
 	return not terrace_left.is_empty() or not terrace_right.is_empty()
@@ -70,7 +86,7 @@ func has_terrace() -> bool:
 
 ## A string that changes whenever anything in the set does; used in cache keys.
 func signature() -> String:
-	var parts: Array = [seed_salt, shops_per_side, house_count, wall_colors, roof_colors, door_colors, hedge_colors,
+	var parts: Array = [seed_salt, shops_per_side, house_count, rival_house, rival_truck_slot, wall_colors, roof_colors, door_colors, hedge_colors,
 		bloom_colors, trim, glass, stone, path, wood, house_roofs, shop_roofs, house_heights, shop_heights, fences,
 		metal, signal_red, bin_colors, birds, bird_colors, leaves, leaf_colors, sign_sway_degrees,
 		soil, laundry_colors, play_colors, window_glows]

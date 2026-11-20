@@ -511,3 +511,12 @@ Two small pieces for the guest types that come to the new places, in the Mini Ch
 | `people/lanyard.glb` (red strap in a V, a white card with a photo square and a name stripe, and a white shirt front; origin at the torso bone's rest position) | the office crowd, on the torso bone so it follows idle, walk, sit and holding | the kit torsos' chest depth (all eight guest models share one skeleton) | 96 |
 
 The tourist's holiday shirt (sunny coral or turquoise) and the office guest's jacket (navy or grey) are repaints of the model's own clothing block in a private copy of the colormap, as the courier's uniform is. Which color a guest wears follows the guest id, so a guest always looks the same.
+
+## Chef Copley's art (#701)
+Rebuilt by `python3 tools/build_copley_art.py` (standard library only; no Blender, no random draws, so the bytes repeat). It also writes `copley/copley.metrics.json`: triangles (the decor budget is 800), world sizes and the area each name is painted on. Every face points at one swatch of the Mini Characters kit's own `colormap.png` (referenced by relative path, never copied): the kit's gold, purple, cream, red and ink. No textures, lights or emission of its own.
+
+| Asset | What it is and what it was based on |
+|---|---|
+| `copley/copley_truck.glb` | A garish food truck, about 2 x 1 cells (1.3 x 0.62 m) with a body taller than a person: purple box, gold skirt and cornice, a striped serving hatch with a counter, a blank cream name panel (the game paints the knock-off name on it as a Label3D, like the neighbour signs), a big white toque sign on the roof. Proportions and edge softness follow `assets/made/neighbourhood/compact_car.glb`, which it parks beside in scale. Origin: the middle of its footprint on the ground, the hatch on the -Z side. |
+| `copley/copley_sign.glb` | The gaudy shop sign: gold frame with marquee bulbs, a red medallion holding a tiny smug Copley (half-lidded eyes, one raised brow, an enormous mustache, a too-tall toque that rises above the frame) and a cream name plate. Based on the `location_decor` wall signs (`beach_sign`, `skyline_print`). Origin: the middle of the frame's bottom edge on its back plane. |
+| `copley/copley_closing_sign.glb` | "Copley's Closing Sign", the trophy: the same sign with a red CLOSED board hung across it on two cords. Hung by the `copley_sign` item (`data/items/copley_sign.tres`, `assets/props/copley_sign.tscn`), a two-face wall decor piece that is not in the catalog. |
