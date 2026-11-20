@@ -263,7 +263,7 @@ func test_arrival_snapshots_are_detached_and_later_edits_only_affect_new_guests(
 	assert_eq(first.queue_patience, 345)
 	assert_eq(first.food_patience, 1380)
 	assert_almost_eq(first.vibe_review_bonus, 0.4)
-	assert_eq(first.vibe_theme_label, "Cosy")
+	assert_eq(first.vibe_theme_label, "Cozy")
 	sim.set_vibe(null)
 	var second: CustomerAgent = _guest(sim, 122003)
 	assert_eq(second.queue_patience, 300)
@@ -272,7 +272,7 @@ func test_arrival_snapshots_are_detached_and_later_edits_only_affect_new_guests(
 	assert_eq(first.queue_patience, 345)
 	assert_eq(first.food_patience, 1380)
 	assert_almost_eq(first.review_visit(0).vibe_review_bonus, 0.4)
-	assert_eq(first.vibe_theme_label, "Cosy")
+	assert_eq(first.vibe_theme_label, "Cozy")
 	for bad_value: float in [NAN, INF, -1.0, 1.16]:
 		var invalid: VibeModel.Result = _full_vibe()
 		invalid.patience_multiplier = bad_value
@@ -571,7 +571,7 @@ func _full_vibe() -> VibeModel.Result:
 	result.valid = true
 	result.score = 100.0
 	result.active_theme = &"cosy"
-	result.theme_label = "Cosy"
+	result.theme_label = "Cozy"
 	result.theme_share = 1.0
 	result.patience_multiplier = 1.15
 	result.raw_review_bonus = 0.4

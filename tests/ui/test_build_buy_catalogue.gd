@@ -218,7 +218,7 @@ func test_theme_filters_show_items_with_any_chosen_theme() -> void:
 	var labels: Array[String] = []
 	for tag: StringName in _catalogue.theme_buttons:
 		labels.append(_catalogue.theme_buttons[tag].text)
-	assert_eq(labels, ["Cosy", "Modern", "Rustic", "Diner", "Seafood", "Café", "Bar"] as Array[String],
+	assert_eq(labels, ["Cozy", "Modern", "Rustic", "Diner", "Seafood", "Café", "Bar"] as Array[String],
 		"the vibe's own themes and words, including Café and Bar (FK-083)")
 	_catalogue.theme_buttons[&"modern"].pressed.emit()
 	var modern: Array[StringName] = _catalogue.visible_ids()
@@ -272,11 +272,11 @@ func test_price_sort_reorders_the_tiles_without_replacing_them() -> void:
 
 func test_hover_card_text() -> void:
 	assert_eq(_catalogue.hover_card_lines(&"cushioned_bench"),
-		["Cushioned two-seat bench", "$50", "Seats 2", "Themes: Cosy"] as Array[String])
+		["Cushioned two-seat bench", "$50", "Seats 2", "Themes: Cozy"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"television_vintage"),
 		["Vintage television", "$150  (unlocks at level 8)", "Decoration", "Charm +3", "Themes: Diner, Bar"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"rug_round"),
-		["Round rug", "$30", "Rug: tables and chairs can stand on it", "Charm +1", "Themes: Cosy, Rustic"] as Array[String])
+		["Round rug", "$30", "Rug: tables and chairs can stand on it", "Charm +1", "Themes: Cozy, Rustic"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"stove"),
 		["Stove", "$100", "Cooks hot dishes", "Themes: Diner"] as Array[String])
 	assert_eq(_catalogue.hover_card_lines(&"fridge")[2], "Holds 40 units of fridge food")
@@ -364,10 +364,10 @@ func test_room_readout_shows_vibe_and_theme() -> void:
 	result.valid = true
 	result.score = 42.0
 	result.active_theme = &"cosy"
-	result.theme_label = "Cosy"
+	result.theme_label = "Cozy"
 	_catalogue.set_vibe(result)
 	assert_eq(_catalogue.vibe_meter.caption_label.text, "Vibe 42 / 100")
-	assert_eq(_catalogue.theme_label.text, "Theme: Cosy")
+	assert_eq(_catalogue.theme_label.text, "Theme: Cozy")
 	result.active_theme = &""
 	_catalogue.set_vibe(result)
 	assert_eq(_catalogue.theme_label.text, "No theme yet")
