@@ -1,9 +1,10 @@
-"""Build the tourist sun hat and the office lanyard (#661).
+"""Build the guest-type pieces: the tourist sun hat and the office lanyard
+(#661), the farmer's straw hat and overall bib, the walker's knit beanie and the
+forager's basket (#663 #657 #659).
 
 python3 tools/build_guest_props.py
 Pure standard-library Python: no Blender, no downloads, no random draws, so a
-rebuild writes the same bytes. Writes assets/made/people/sun_hat.glb and
-assets/made/people/lanyard.glb.
+rebuild writes the same bytes. Writes assets/made/people/<piece>.glb.
 
 Both are chunky flat-shaded low-poly pieces in the Mini Characters style,
 coloured only through the characters kit's own colormap.png (every face's UVs
@@ -15,6 +16,11 @@ bone use), glTF Y-up, front toward +Z (the models' front before the pivot turn).
   to each model's head top and sinks it into the hair (person.gd).
 * lanyard.glb: origin at the torso bone's rest position, so it rides the chest
   through every clip. It is a strap in a V, a card, and a white shirt front.
+* farm_hat.glb, beanie.glb: origin at the middle of the underside, fitted to
+  the head top like the sun hat.
+* overall_bib.glb: origin at the torso bone's rest position, like the lanyard.
+* basket.glb: origin at the top of the handle; it hangs down -Y
+  from there. The game hangs it on the arm bone (person.gd).
 """
 from __future__ import annotations
 
@@ -35,6 +41,18 @@ SWATCH = {
     "strap": (264, 264),      # lanyard red (207, 83, 79)
     "white": (296, 392),      # card and shirt front (252, 252, 253)
     "ink": (168, 504),        # card photo and clip (59, 62, 74)
+    "gold_straw": (168, 262),  # golden farm straw (255, 211, 99)
+    "straw_shade": (168, 330), # the brim's frayed underside (255, 181, 74)
+    "bandana": (264, 300),     # red bandana band (207, 83, 79)
+    "denim": (360, 330),       # overall denim (95, 116, 203)
+    "denim_dark": (360, 380),  # overall seams and pocket (91, 102, 196)
+    "button": (136, 300),      # brass buttons (255, 192, 68)
+    "knit": (200, 300),        # beanie knit, warm orange (255, 126, 68)
+    "knit_cuff": (296, 360),   # the folded cuff, a deeper red-orange (218, 89, 75)
+    "bobble": (8, 300),        # cream bobble (253, 228, 199)
+    "wicker": (40, 360),       # basket wicker, light tan (245, 206, 160)
+    "wicker_dark": (392, 420), # rim and handle, a warm brown (176, 96, 65)
+    "mushroom": (296, 400),    # button mushroom caps, off-white (239, 239, 245)
 }
 
 # The torso bone's rest position in model space (see the kit's glTF nodes).
@@ -165,6 +183,103 @@ def lanyard() -> Mesh:
     return mesh
 
 
+def strut(mesh: Mesh, start, end, width: float, thick: float, swatch: str, up=(0.0, 0.0, 1.0)) -> None:
+    """A square-section bar from start to end; `up` picks which way `thick` faces."""
+    d = (end[0] - start[0], end[1] - start[1], end[2] - start[2])
+    length = math.sqrt(sum(x * x for x in d))
+    d = (d[0] / length, d[1] / length, d[2] / length)
+    side = (d[1] * up[2] - d[2] * up[1], d[2] * up[0] - d[0] * up[2], d[0] * up[1] - d[1] * up[0])
+    sl = math.sqrt(sum(x * x for x in side)) or 1.0
+    side = (side[0] / sl, side[1] / sl, side[2] / sl)
+    n = (side[1] * d[2] - side[2] * d[1], side[2] * d[0] - side[0] * d[2], side[0] * d[1] - side[1] * d[0])
+    w, t = width / 2.0, thick / 2.0
+    def corner(e, a, b):
+        return (e[0] + a * side[0] * w + b * n[0] * t, e[1] + a * side[1] * w + b * n[1] * t,
+                e[2] + a * side[2] * w + b * n[2] * t)
+    s = {(a, b): corner(start, a, b) for a in (-1, 1) for b in (-1, 1)}
+    e = {(a, b): corner(end, a, b) for a in (-1, 1) for b in (-1, 1)}
+    for (a1, b1), (a2, b2) in (((-1, 1), (1, 1)), ((1, 1), (1, -1)), ((1, -1), (-1, -1)), ((-1, -1), (-1, 1))):
+        mesh.face([s[a1, b1], s[a2, b2], e[a2, b2], e[a1, b1]], swatch)
+    mesh.face([e[-1, 1], e[1, 1], e[1, -1], e[-1, -1]], swatch)
+    mesh.face([s[-1, -1], s[1, -1], s[1, 1], s[-1, 1]], swatch)
+
+
+def farm_hat() -> Mesh:
+    """A golden straw farm hat: a wide, ragged brim, a round crown and a red bandana band."""
+    mesh = Mesh()
+    segments = 14
+    # Ragged brim: every other rim point a little shorter, so the edge reads frayed.
+    rim = []
+    for i in range(segments * 2):
+        angle = math.pi * i / segments
+        r = 0.245 if i % 2 == 0 else 0.222
+        rim.append((r * math.sin(angle), r * math.cos(angle)))
+    top = [(x, 0.03, z) for x, z in rim]
+    bottom = [(x, 0.0, z) for x, z in rim]
+    count = len(rim)
+    for i in range(count):
+        j = (i + 1) % count
+        mesh.face([bottom[i], top[i], top[j], bottom[j]], "straw_shade")
+    mesh.face(list(reversed(top)), "gold_straw")
+    mesh.face(bottom, "straw_shade")
+    # A rounded crown: a short drum and a domed cap, both golden.
+    frustum(mesh, (0.0, 0.03, 0.0), 0.16, 0.155, 0.045, "gold_straw", segments=segments, cap_bottom=False)
+    frustum(mesh, (0.0, 0.075, 0.0), 0.155, 0.11, 0.035, "gold_straw", segments=segments, cap_bottom=False)
+    frustum(mesh, (0.0, 0.03, 0.0), 0.166, 0.162, 0.024, "bandana", segments=segments, cap_bottom=False)
+    return mesh
+
+
+def beanie() -> Mesh:
+    """An orange knit beanie: a folded cuff, a rounded crown and a small cream bobble."""
+    mesh = Mesh()
+    segments = 12
+    frustum(mesh, (0.0, 0.0, 0.0), 0.21, 0.205, 0.05, "knit_cuff", segments=segments)
+    frustum(mesh, (0.0, 0.05, 0.0), 0.198, 0.17, 0.05, "knit", segments=segments, cap_bottom=False)
+    frustum(mesh, (0.0, 0.1, 0.0), 0.17, 0.09, 0.04, "knit", segments=segments, cap_bottom=False)
+    # Bobble: a little octagonal ball (two stacked frusta).
+    frustum(mesh, (0.0, 0.13, 0.0), 0.035, 0.055, 0.025, "bobble", segments=8)
+    frustum(mesh, (0.0, 0.155, 0.0), 0.055, 0.03, 0.03, "bobble", segments=8, cap_bottom=False)
+    return mesh
+
+
+def overall_bib() -> Mesh:
+    """A denim bib, two shoulder straps and brass buttons, in torso-bone space."""
+    mesh = Mesh()
+    ox, oy, oz = TORSO_ORIGIN
+
+    def at(x: float, y: float, z: float):
+        return (x - ox, y - oy, z - oz)
+
+    zs = CHEST_Z
+    box(mesh, at(0.0, 0.245, zs), (0.15, 0.1, 0.014), "denim")                  # bib
+    box(mesh, at(0.0, 0.25, zs + 0.009), (0.06, 0.04, 0.006), "denim_dark")      # pocket
+    for sign in (-1.0, 1.0):
+        strut(mesh, at(sign * 0.06, 0.29, zs), at(sign * 0.072, 0.35, zs - 0.012), 0.032, 0.012, "denim")
+        strut(mesh, at(sign * 0.072, 0.35, zs - 0.012), at(sign * 0.072, 0.358, -0.1), 0.032, 0.012, "denim",
+              up=(0.0, 1.0, 0.0))
+        box(mesh, at(sign * 0.058, 0.287, zs + 0.01), (0.022, 0.022, 0.008), "button")
+    return mesh
+
+
+def basket() -> Mesh:
+    """A small, wide wicker basket with an arched handle and three button mushrooms."""
+    mesh = Mesh()
+    # Handle: an arch of three bars from rim to rim, its top at the hook point (the origin).
+    rim_y = -0.06
+    arch = [(-0.1, rim_y), (-0.062, 0.0), (0.062, 0.0), (0.1, rim_y)]
+    for a, b in zip(arch, arch[1:]):
+        strut(mesh, (a[0], a[1], 0.0), (b[0], b[1], 0.0), 0.024, 0.024, "wicker")
+    # Body: a flared tub, narrower at the foot, with a light rim and one dark weave band.
+    frustum(mesh, (0.0, rim_y - 0.075, 0.0), 0.09, 0.112, 0.075, "wicker", segments=8)
+    frustum(mesh, (0.0, rim_y - 0.016, 0.0), 0.12, 0.12, 0.018, "wicker", segments=8, cap_bottom=False)
+    frustum(mesh, (0.0, rim_y - 0.052, 0.0), 0.106, 0.108, 0.012, "wicker_dark", segments=8, cap_bottom=False)
+    # The shadowy inside, and the day's finds on top of it.
+    frustum(mesh, (0.0, rim_y + 0.002, 0.0), 0.1, 0.1, 0.001, "wicker_dark", segments=8, cap_bottom=False)
+    for x, z, r in ((-0.04, 0.018, 0.04), (0.035, -0.026, 0.036), (0.04, 0.038, 0.03)):
+        frustum(mesh, (x, rim_y + 0.003, z), r, r * 0.45, 0.026, "mushroom", segments=6, cap_bottom=False)
+    return mesh
+
+
 def pad(data: bytes) -> bytes:
     return data + b"\0" * (-len(data) % 4)
 
@@ -215,7 +330,9 @@ def glb(mesh: Mesh, name: str) -> bytes:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, mesh in (("sun_hat", sun_hat()), ("lanyard", lanyard())):
+    pieces = (("sun_hat", sun_hat()), ("lanyard", lanyard()), ("farm_hat", farm_hat()), ("beanie", beanie()),
+              ("overall_bib", overall_bib()), ("basket", basket()))
+    for name, mesh in pieces:
         (OUT / f"{name}.glb").write_bytes(glb(mesh, name))
         print(f"wrote {OUT / (name + '.glb')} ({mesh.triangles()} triangles)")
 

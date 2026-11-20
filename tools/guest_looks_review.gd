@@ -1,10 +1,16 @@
 extends "res://src/world/main.gd"
-## Explicit, unsaved visual fixture for the tourist and office-crowd looks (#661).
+## Explicit, unsaved visual fixture for the guest-type looks: tourists and the
+## office crowd (#661), farmers, walkers, surfers and foragers (#663 #657 #658 #659).
 ## Pick the shot with GUEST_LOOKS_MODE, then capture with
 ##   GUEST_LOOKS_MODE=shop bash tools/screenshot.sh --scene=res://tools/guest_looks_review.tscn --speed=0 --frames=60
 ## shop  - the real shop, ten guests of mixed types seated and walking in, sunny.
-## close - eight stand-ins (tourists, then office guests, two ids per model)
-##         standing in a row; GUEST_LOOKS_POSE=idle|walk picks the pose.
+## close - stand-ins in a row, forced to a type look whether or not the type is
+##         in the catalogue yet. GUEST_LOOKS_SET picks who: one type (tourist,
+##         office, farmer, walker, surfer or forager: four ids), location (the
+##         last four types), all (every type look) or survey (the stock models);
+##         location and all show ids 0 and 3 of each type (both models, both palettes).
+##         GUEST_LOOKS_POSE=idle|walk|sit|carry picks the pose (sit on stools),
+##         GUEST_LOOKS_ZOOM the zoom and GUEST_LOOKS_FACE the facing in degrees.
 ## seat  - the seated guests of the shop, close up.
 ## The shop runs on its real, seeded sim; only the camera, the stand-ins and
 ## the forced weather are set here. Nothing is saved.
@@ -98,7 +104,9 @@ func _build_stand_ins() -> void:
 	var entry: Vector3 = GridMath.cell_to_world(world.grid.entries()[0])
 	var yaw: float = deg_to_rad(($CameraRig as CameraRig).initial_yaw_degrees)
 	var across: Vector3 = Vector3(cos(yaw), 0.0, -sin(yaw))
-	var walking: bool = OS.get_environment("GUEST_LOOKS_POSE") == "walk"
+	var pose: String = OS.get_environment("GUEST_LOOKS_POSE")
+	var face_env: String = OS.get_environment("GUEST_LOOKS_FACE")
+	var face: float = deg_to_rad(float(face_env) if not face_env.is_empty() else 0.0)
 	var looks: Array = [[&"tourist", 0], [&"tourist", 1], [&"tourist", 2], [&"tourist", 3],
 		[&"office", 0], [&"office", 1], [&"office", 2], [&"office", 3]]
 	match OS.get_environment("GUEST_LOOKS_SET"):
@@ -106,6 +114,13 @@ func _build_stand_ins() -> void:
 			looks = looks.slice(0, 4)
 		"office":
 			looks = looks.slice(4, 8)
+		"farmer", "walker", "surfer", "forager":
+			var kind: StringName = StringName(OS.get_environment("GUEST_LOOKS_SET"))
+			looks = [[kind, 0], [kind, 1], [kind, 2], [kind, 3]]
+		"location":
+			looks = _pairs([&"farmer", &"walker", &"surfer", &"forager"])
+		"all":
+			looks = _pairs([&"tourist", &"office", &"farmer", &"walker", &"surfer", &"forager"])
 		"survey":
 			# The eight stock guest models, no type look (to pick model pairs).
 			looks = [[&"regular", 0], [&"regular", 1], [&"regular", 2], [&"regular", 3],
@@ -114,13 +129,41 @@ func _build_stand_ins() -> void:
 		var person: PersonView = PERSON.instantiate() as PersonView
 		$ShopView.add_child(person)
 		person.set_look(&"customer", looks[index][1], looks[index][0])
-		person.position = entry + across * (float(index) - (looks.size() - 1) / 2.0) * 0.85 + Vector3(0.0, 0.0, 2.2)
-		person.face_direction(-across.cross(Vector3.UP) if false else Vector3(0.0, 0.0, 1.0))
-		person.set_pose(walking, false, false, false)
+		person.position = entry + across * (float(index) - (looks.size() - 1) / 2.0) * 0.85 + Vector3(0.0, 0.0, 3.0)
+		person.face_direction(Vector3(sin(face), 0.0, cos(face)))
+		match pose:
+			"walk":
+				person.set_pose(true, false, false, false)
+			"sit":
+				person.set_pose(false, true, false, false, AgentPresentationController.NOMINAL_CHAIR_SEAT_HEIGHT)
+				_add_stool(person.position)
+			"carry":
+				person.set_pose(true, false, true, false)
+			_:
+				person.set_pose(false, false, false, false)
 		person.set_playback_speed(0.0)
-		if walking:
+		if pose == "walk" or pose == "carry":
 			person._player.seek(0.3, true)
 		_stand_ins.append(person)
+
+
+## Ids 0 and 3 of each type: both models of its pair and both palettes.
+func _pairs(types: Array[StringName]) -> Array:
+	var looks: Array = []
+	for kind: StringName in types:
+		looks.append([kind, 0])
+		looks.append([kind, 3])
+	return looks
+
+
+## A plain block to sit on (the fixture has no chairs on the pavement).
+func _add_stool(at: Vector3) -> void:
+	var stool: MeshInstance3D = MeshInstance3D.new()
+	var block: BoxMesh = BoxMesh.new()
+	block.size = Vector3(0.3, AgentPresentationController.NOMINAL_CHAIR_SEAT_HEIGHT, 0.3)
+	stool.mesh = block
+	stool.position = at + Vector3(0.0, block.size.y / 2.0, 0.0)
+	$ShopView.add_child(stool)
 
 
 ## Camera-only stills: the HUD and its popups are not part of the look.

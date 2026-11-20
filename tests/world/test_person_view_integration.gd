@@ -761,6 +761,99 @@ func test_tourists_wear_a_hat_and_shirt_and_the_office_crowd_a_lanyard_and_jacke
 		view.free()
 
 
+func test_location_guests_wear_their_pieces_and_outfits_and_others_are_unchanged() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var scene: PackedScene = preload("res://assets/people/person.tscn")
+	var pieces: Dictionary[StringName, Array] = {
+		&"farmer": ["FarmHatAttachment", "OverallBibAttachment"], &"walker": ["BeanieAttachment"],
+		&"surfer": [], &"forager": ["BasketAttachment"],
+	}
+	var all_pieces: Array = ["FarmHatAttachment", "OverallBibAttachment", "BeanieAttachment", "BasketAttachment",
+		"SunHatAttachment", "LanyardAttachment"]
+	var views: Array[PersonView] = []
+	for look: Array in [[&"farmer", 0], [&"farmer", 3], [&"walker", 0], [&"walker", 3], [&"surfer", 0],
+			[&"surfer", 3], [&"forager", 0], [&"forager", 3], [&"sailor", 0], [&"regular", 1]]:
+		var view: PersonView = scene.instantiate() as PersonView
+		view.role = &"customer"
+		view.guest_id = look[1]
+		view.customer_type = look[0]
+		tree.root.add_child(view)
+		views.append(view)
+	for view: PersonView in views:
+		var label: String = "%s %d" % [view.customer_type, view.guest_id]
+		var wanted: Array = pieces.get(view.customer_type, [])
+		for piece: String in all_pieces:
+			assert_eq(view._skeleton.get_node_or_null(piece) != null, wanted.has(piece), "%s: %s" % [label, piece])
+		var body: MeshInstance3D = view._model.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+		var head: MeshInstance3D = view._model.find_children("head-mesh", "MeshInstance3D", true, false)[0]
+		var kit: Node3D = (load(PersonPresentation.model_path_for(&"customer", view.guest_id, view.customer_type))
+			as PackedScene).instantiate() as Node3D
+		var kit_body: MeshInstance3D = kit.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+		var outfit: Dictionary = PersonPresentation.outfit(&"customer", view.guest_id, view.customer_type)
+		if outfit.is_empty():
+			assert_eq(body.mesh, kit_body.mesh, "%s keeps the kit body" % label)
+			assert_null(body.get_surface_override_material(0))
+			assert_null(head.get_surface_override_material(0))
+		else:
+			assert_ne(body.mesh, kit_body.mesh, "%s wears a dressed copy" % label)
+			assert_eq(body.mesh.get_surface_count(), 1)
+			assert_eq(body.skin.get_bind_count(), kit_body.skin.get_bind_count(), "skin kept")
+			# The upper colour is painted at the top row of a spare block, shade 1.
+			var image: Image = (body.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+			var found: bool = false
+			for index: int in 16:
+				var block: Vector2i = PersonOutfit.spare_block(index)
+				if image.get_pixel(block.x + 16, block.y).is_equal_approx(outfit["upper"]):
+					found = true
+			assert_true(found, "%s: the outfit colour is painted" % label)
+			assert_eq(head.get_surface_override_material(0) != null, outfit.has("hair"), "%s: wet hair" % label)
+			# The vendored colormap is never painted.
+			var source: Image = (kit_body.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+			if source.is_compressed():
+				source.decompress()
+			assert_true(source.get_pixel(16, 0).get_luminance() < 0.05, "kit spare blocks stay black")
+		kit.free()
+	# Same guest, same look: the dressed mesh is shared, not rebuilt.
+	var again: PersonView = scene.instantiate() as PersonView
+	again.role = &"customer"
+	again.customer_type = &"farmer"
+	tree.root.add_child(again)
+	var first_body: MeshInstance3D = views[0]._model.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+	assert_eq(again._model.find_children("body-mesh", "MeshInstance3D", true, false)[0].mesh, first_body.mesh)
+	again.free()
+	# The basket rides the left arm through every pose, and the pieces stay on.
+	var forager: PersonView = views[6]
+	var basket: BoneAttachment3D = forager._skeleton.get_node("BasketAttachment") as BoneAttachment3D
+	assert_eq(basket.bone_name, "arm-left")
+	var positions: Array[Vector3] = []
+	for pose: Array in [[false, false, false], [true, false, false], [false, true, false], [true, false, true]]:
+		assert_true(forager.set_pose(pose[0], pose[1], pose[2], false, 0.27))
+		forager.set_playback_speed(0.0)
+		forager._player.seek(0.3, true)
+		await tree.process_frame
+		assert_not_null(forager._skeleton.get_node_or_null("BasketAttachment"), "basket stays on")
+		var arm: Transform3D = forager._skeleton.global_transform * forager._skeleton.get_bone_global_pose(
+			forager._skeleton.find_bone("arm-left"))
+		var piece: Node3D = basket.get_child(0) as Node3D
+		assert_true(piece.global_position.is_equal_approx(arm * PersonPresentation.BASKET_OFFSET),
+			"the basket hangs from the hand in %s" % forager.current_clip())
+		positions.append(piece.global_position)
+	assert_false(positions[0].is_equal_approx(positions[2]), "seated, the basket moves with the arm")
+	assert_false(positions[0].is_equal_approx(positions[3]), "carrying, it rides the level forearm")
+	# A pooled forager re-looked as a regular on the same model drops the basket and the jacket.
+	assert_eq(forager.model_name(), &"character-female-c")
+	assert_true(forager.set_look(&"customer", 1, &"regular"))
+	assert_eq(forager.model_name(), &"character-female-c")
+	assert_null(forager._skeleton.get_node_or_null("BasketAttachment"))
+	var plain: MeshInstance3D = forager._model.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+	var kit_c: Node3D = (load(PersonPresentation.MODEL_DIRECTORY + "character-female-c.glb") as PackedScene).instantiate() as Node3D
+	assert_eq(plain.mesh, (kit_c.find_children("body-mesh", "MeshInstance3D", true, false)[0] as MeshInstance3D).mesh)
+	kit_c.free()
+	for view: PersonView in views:
+		view.free()
+
+
 func _enter_view() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

@@ -167,3 +167,98 @@ func test_tourist_hat_fits_every_model_the_pair_can_use() -> void:
 	for id: int in [0, 1]:
 		var model: StringName = PersonPresentation.model_for(&"customer", id, &"tourist")
 		assert_true(PersonPresentation.source_head_top(model) > 0.0, "a measured head top for %s" % model)
+
+
+const LOCATION_TYPES: Array[StringName] = [&"farmer", &"walker", &"surfer", &"forager"]
+
+
+func test_location_guests_have_their_own_pieces_and_no_one_else_does() -> void:
+	for role: StringName in [&"customer", &"guest"]:
+		assert_true(PersonPresentation.has_farm_hat(role, &"farmer"))
+		assert_true(PersonPresentation.has_overall_bib(role, &"farmer"))
+		assert_true(PersonPresentation.has_beanie(role, &"walker"))
+		assert_true(PersonPresentation.has_basket(role, &"forager"))
+	for kind: StringName in [&"regular", &"student", &"foodie", &"family", &"tourist", &"office", &"unknown", &"surfer"]:
+		assert_false(PersonPresentation.has_farm_hat(&"customer", kind))
+		assert_false(PersonPresentation.has_beanie(&"customer", kind))
+		assert_false(PersonPresentation.has_basket(&"customer", kind))
+		assert_false(PersonPresentation.has_overall_bib(&"customer", kind))
+	for kind: StringName in [&"regular", &"student", &"foodie", &"family", &"tourist", &"office", &"unknown"]:
+		for id: int in [0, 1, 2, 3, -1]:
+			assert_true(PersonPresentation.outfit(&"customer", id, kind).is_empty(), "%s has no outfit" % kind)
+	for kind: StringName in LOCATION_TYPES:
+		for role: StringName in [&"cook", &"server", &"owner", &"courier", &"inspector"]:
+			assert_true(PersonPresentation.outfit(role, 0, kind).is_empty())
+			assert_eq(PersonPresentation.type_look_key(role, 0, kind), &"")
+			assert_false(PersonPresentation.has_farm_hat(role, kind) or PersonPresentation.has_beanie(role, kind)
+				or PersonPresentation.has_basket(role, kind) or PersonPresentation.has_overall_bib(role, kind))
+	# An unknown type keeps the full stock model mapping and no look.
+	for id: int in range(8):
+		assert_eq(PersonPresentation.model_for(&"customer", id, &"sailor"), PersonPresentation.GUEST_MODELS[id])
+		assert_eq(PersonPresentation.type_look_key(&"customer", id, &"sailor"), &"")
+
+
+func test_location_guest_models_and_palettes_are_deterministic_by_guest_id() -> void:
+	for kind: StringName in LOCATION_TYPES:
+		var models: Dictionary[StringName, bool] = {}
+		var outfits: Dictionary[String, bool] = {}
+		for id: int in [0, 1, 2, 3, 4, 5, -1, -2, -3, -4, 9223372036854775807, -9223372036854775807 - 1]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			assert_eq(model, PersonPresentation.model_for(&"guest", id, kind))
+			assert_true(PersonPresentation.GUEST_MODELS.has(model))
+			assert_true(PersonPresentation.SKIN_COLUMNS.has(model), "%s: a measured skin block" % model)
+			models[model] = true
+			var outfit: Dictionary = PersonPresentation.outfit(&"customer", id, kind)
+			assert_false(outfit.is_empty(), "%s id %d is dressed" % [kind, id])
+			assert_eq(outfit, PersonPresentation.outfit(&"customer", id, kind), "same id, same clothes")
+			assert_true(outfit.get("upper") is Color)
+			assert_eq(PersonPresentation.type_look_key(&"customer", id, kind),
+				StringName("%s:%d" % [kind, PersonPresentation.type_variant(id)]))
+			outfits[var_to_str(outfit)] = true
+			if outfit.has("hair"):
+				assert_true(PersonPresentation.HAIR_COLUMNS.has(model), "%s: a measured hair block" % model)
+		assert_eq(models.size(), 2, "%s use a pair of models" % kind)
+		assert_eq(outfits.size(), 2, "%s wear one of two palettes" % kind)
+		# Each model of the pair wears both palettes.
+		var combos: Dictionary[String, bool] = {}
+		for id: int in range(8):
+			combos["%s:%d" % [PersonPresentation.model_for(&"customer", id, kind), PersonPresentation.type_variant(id)]] = true
+		assert_eq(combos.size(), 4)
+	# Hats and beanies fit a measured head top; the hat models have no bun or cap.
+	for kind: StringName in [&"farmer", &"walker"]:
+		for id: int in [0, 1]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			assert_true(PersonPresentation.source_head_top(model) > 0.0 and PersonPresentation.source_head_top(model) < 0.75,
+				"%s fits a hat on %s" % [kind, model])
+
+
+func test_outfit_regions_paint_the_right_body_parts() -> void:
+	var skin: Vector2i = Vector2i(480, 384)
+	var cloth: Vector2i = Vector2i(352, 256)
+	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.01, 0.0), cloth, skin), PersonOutfit.Region.KEEP, "shoes")
+	assert_eq(PersonOutfit.region_for(&"leg-right", Vector3(-0.08, 0.06, 0.0), cloth, skin), PersonOutfit.Region.SHIN)
+	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.14, 0.0), cloth, skin), PersonOutfit.Region.THIGH)
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.19, 0.0), cloth, skin), PersonOutfit.Region.HIP)
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.3, 0.0), cloth, skin), PersonOutfit.Region.TORSO)
+	assert_eq(PersonOutfit.region_for(&"arm-left", Vector3(0.18, 0.29, 0.0), cloth, skin), PersonOutfit.Region.SLEEVE)
+	assert_eq(PersonOutfit.region_for(&"arm-right", Vector3(-0.32, 0.29, 0.0), cloth, skin), PersonOutfit.Region.HAND)
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.3, 0.0), skin, skin), PersonOutfit.Region.KEEP, "skin stays skin")
+	assert_eq(PersonOutfit.region_for(&"head", Vector3(0.0, 0.5, 0.0), cloth, skin), PersonOutfit.Region.KEEP)
+	var surfer: Dictionary = PersonPresentation.outfit(&"customer", 0, &"surfer")
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.SLEEVE, surfer), &"skin", "a tank top bares the arms")
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.SHIN, surfer), &"skin", "board shorts bare the shins")
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.THIGH, surfer), surfer["lower"])
+	assert_ne(surfer["upper"], surfer["lower"], "top and shorts differ")
+	var farmer: Dictionary = PersonPresentation.outfit(&"customer", 0, &"farmer")
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.HIP, farmer), PersonPresentation.FARMER_DENIM, "overalls cover the hips")
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.SHIN, farmer), PersonPresentation.FARMER_DENIM)
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.TORSO, farmer), farmer["upper"])
+	var walker: Dictionary = PersonPresentation.outfit(&"customer", 0, &"walker")
+	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.HIP, walker), walker["upper"], "a jacket reaches the hips")
+	assert_null(PersonOutfit.paint_for(PersonOutfit.Region.THIGH, walker), "walkers keep their own trousers")
+	assert_null(PersonOutfit.paint_for(PersonOutfit.Region.HAND, walker), "and their gloves")
+	assert_null(PersonOutfit.paint_for(PersonOutfit.Region.KEEP, farmer))
+	assert_eq(PersonOutfit.column_of(Vector2(353.5, 300.0)), Vector2i(352, 256))
+	assert_eq(PersonOutfit.spare_block(0), Vector2i(0, 0))
+	assert_eq(PersonOutfit.spare_block(15), Vector2i(480, 0))
+	assert_eq(PersonOutfit.spare_block(16), Vector2i(-1, -1))
