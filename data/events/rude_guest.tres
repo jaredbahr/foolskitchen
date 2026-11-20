@@ -14,7 +14,7 @@ staff_mood = -1
 [sub_resource type="Resource" id="Choice_2"]
 script = ExtResource("2_choice")
 label = "Back {staff} up"
-result = "The guest stormed out and wrote one star from the pavement. {staff} looked ten feet tall."
+result = "The guest stormed out and wrote one star from the sidewalk. {staff} looked ten feet tall."
 review_stars = 1
 staff_mood = 1
 
@@ -22,7 +22,7 @@ staff_mood = 1
 script = ExtResource("1_def")
 id = &"rude_guest"
 title = "A guest with opinions"
-text = "A guest is loudly telling {staff} the food is \"not how my nan made it\". {staff} has never met their nan."
+text = "A guest is loudly telling {staff} the food is \"not how my grandma made it\". {staff} has never met their grandma."
 icon = &"warning"
 requires = Array[StringName]([&"staff"])
 cooldown_days = 6

@@ -475,7 +475,7 @@ func eyedrop(item_id: int, cell: Vector2i) -> bool:
 	if definition == null:
 		return false
 	if not definition.catalogue_visible or definition.category == ItemDef.Category.DOOR:
-		current_check = EditCheck.new(false, "%s isn't sold in the catalogue" % definition.display_name)
+		current_check = EditCheck.new(false, "%s isn't sold in the catalog" % definition.display_name)
 		changed.emit()
 		return false
 	if not begin_buy(definition.id, cell, placed.variant_id):
@@ -528,7 +528,7 @@ func hover_summary() -> String:
 				if current_check.ok else current_check.why
 		Tool.EYEDROPPER:
 			return "Place another %s" % definition.display_name if definition.catalogue_visible \
-				and definition.category != ItemDef.Category.DOOR else "%s isn't sold in the catalogue" % definition.display_name
+				and definition.category != ItemDef.Category.DOOR else "%s isn't sold in the catalog" % definition.display_name
 	return dining_summary() if tool == Tool.HAND else ""
 
 
@@ -1511,7 +1511,7 @@ func floors_summary() -> String:
 			relaid = true
 			break
 	if not relaid:
-		return "Recolour %s (free)" % tiles
+		return "Recolor %s (free)" % tiles
 	var text: String = "Lay %s of %s: %s" % [tiles, name,
 		Fmt.money(current_check.cost) if current_check.cost > 0 and not GameMode.is_creative() else "free"]
 	if current_check.refund > 0 and not GameMode.is_creative():
@@ -1676,7 +1676,7 @@ func wall_finish_summary() -> String:
 			relaid = true
 			break
 	if not relaid:
-		return "Recolour %s (free)" % faces
+		return "Recolor %s (free)" % faces
 	var text: String = "Put up %s on %s: %s" % [name, faces,
 		Fmt.money(current_check.cost) if current_check.cost > 0 and not GameMode.is_creative() else "free"]
 	if current_check.refund > 0 and not GameMode.is_creative():

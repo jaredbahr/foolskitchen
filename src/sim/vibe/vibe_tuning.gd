@@ -52,7 +52,7 @@ const KNOWN_THEMES: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner"
 ## Explicit tie order, independent of placement, dictionary or menu order.
 @export var theme_order: Array[StringName] = [&"cosy", &"modern", &"rustic", &"diner", &"seafood", &"cafe", &"bar"]
 @export var theme_labels: Dictionary[StringName, String] = {
-	&"cosy": "Cosy", &"modern": "Modern", &"rustic": "Rustic",
+	&"cosy": "Cozy", &"modern": "Modern", &"rustic": "Rustic",
 	&"diner": "Diner", &"seafood": "Seafood", &"cafe": "Café", &"bar": "Bar",
 }
 @export var no_theme_label: String = "No theme"

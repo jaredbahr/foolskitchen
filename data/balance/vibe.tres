@@ -41,7 +41,7 @@ theme_min_share = 0.6
 theme_min_layout_weight = 1.0
 theme_order = Array[StringName]([&"cosy", &"modern", &"rustic", &"diner", &"seafood", &"cafe", &"bar"])
 theme_labels = Dictionary[StringName, String]({
-&"cosy": "Cosy",
+&"cosy": "Cozy",
 &"modern": "Modern",
 &"rustic": "Rustic",
 &"diner": "Diner",

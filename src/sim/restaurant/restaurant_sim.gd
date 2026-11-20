@@ -1319,7 +1319,7 @@ func _configure_regular_customer(customer: CustomerAgent, visit: StringName) -> 
 	customer.regular_profile = profile
 	customer.display_name = profile.display_name
 	customer.regular_arrival_tick = world.now
-	customer.regular_favourite_label = regular_recipe_labels.get(profile.favourite_dish, "Favourite dish")
+	customer.regular_favourite_label = regular_recipe_labels.get(profile.favourite_dish, "Favorite dish")
 	for recipe: RecipeDef in menu:
 		if recipe.id == profile.favourite_dish:
 			customer.regular_favourite_available = true

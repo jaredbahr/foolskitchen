@@ -108,8 +108,8 @@ func test_inspect_names_favourite_and_feelings_use_plain_text_without_ids() -> v
 	panel.show_agent(guest.id)
 	assert_eq((panel.get_node("%Title") as Label).text, "Rosa (Regular)")
 	var details: String = (panel.get_node("%Details") as Label).text
-	assert_true(details.contains("Favourite dish: Tomato soup"))
-	assert_true(details.contains("Favourite seat: column 3, row 4"))
+	assert_true(details.contains("Favorite dish: Tomato soup"))
+	assert_true(details.contains("Favorite seat: column 3, row 4"))
 	assert_true(details.contains("Loves coming here"))
 	assert_false(details.contains("tomato_soup"))
 	assert_false(details.contains("#"))

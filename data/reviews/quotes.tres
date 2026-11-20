@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_quotes")
 groups = Dictionary[StringName, PackedStringArray]({
-&"slow_seating": PackedStringArray("Found a seat eventually. Made friends with the queue.", "The line had plenty of time to admire the decor.", "A table opened just as my feet gave up.", "The queue was longer than my shopping list.", "I got to know the front door very well.", "A chair would have made the wait easier."),
+&"slow_seating": PackedStringArray("Found a seat eventually. Made friends with the line.", "The line had plenty of time to admire the decor.", "A table opened just as my feet gave up.", "The line was longer than my shopping list.", "I got to know the front door very well.", "A chair would have made the wait easier."),
 &"slow_food": PackedStringArray("I aged a little waiting for lunch. Worth a bite, though.", "The kitchen took the scenic route to my table.", "My stomach started keeping its own clock.", "Good food, once it found me.", "I finished a whole daydream before dinner arrived.", "I had time to plan tomorrow's lunch while waiting."),
 &"great_value": PackedStringArray("That was a lovely meal for the price.", "My wallet left as happy as I did.", "A bargain worth coming back for.", "Good food without a scary bill.", "I checked the bill twice. What a deal.", "Plenty of cheer for a small price."),
 &"too_pricey": PackedStringArray("Delicious, but my wallet wants a word.", "The bill had more ambition than I did.", "Lovely food. A little steep for lunch.", "I may need to save up for seconds.", "My purse is still recovering.", "Tasty, though the price raised an eyebrow."),

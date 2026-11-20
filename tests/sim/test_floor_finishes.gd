@@ -115,7 +115,7 @@ func test_locked_floor_types_wait_for_their_level() -> void:
 	assert_eq(bigger.locked_reason(99), "Unlocks at Tier 2")
 	assert_eq(_content.floor_style(&"checker").locked_reason(3), "")
 	assert_eq(_editor.check_flooring(_editor.lay_changes(cells, &"marble", &"cream")).why, "Unknown floor type")
-	assert_eq(_editor.check_flooring(_editor.lay_changes(cells, &"checker", &"neon")).why, "Unknown colour")
+	assert_eq(_editor.check_flooring(_editor.lay_changes(cells, &"checker", &"neon")).why, "Unknown color")
 
 
 func test_fill_room_stops_at_walls_doorways_and_other_rooms() -> void:
@@ -280,7 +280,7 @@ func test_history_undoes_and_redoes_floors_with_exact_cash() -> void:
 	assert_eq(_history.undo_label(), "lay Checker tiles")
 	assert_eq(_ledger.cash, START_CASH - 8)
 	assert_true(_history.apply_flooring(_editor.recolour_changes(cells, &"clay")))
-	assert_eq(_history.undo_label(), "recolour the floor")
+	assert_eq(_history.undo_label(), "recolor the floor")
 	assert_eq(_ledger.cash, START_CASH - 8)
 	assert_true(_history.undo(), _history.last_refusal)
 	assert_eq(_editor.floors.finish(Vector2i(2, 6)).swatch, &"cream")

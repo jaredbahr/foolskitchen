@@ -411,7 +411,7 @@ func why() -> String:
 		State.ORDERING:
 			return _waiting_why("Waiting for a server to take my order")
 		State.WAITING_FOOD when takeaway:
-			return _waiting_why("Waiting for my takeaway drink, %ds of patience left" % [
+			return _waiting_why("Waiting for my drink to go, %ds of patience left" % [
 				ceili(float(maxi(0, food_patience - _food_wait)) / SimClock.TICKS_PER_SECOND)])
 		State.WAITING_FOOD:
 			if is_drinks_visit():

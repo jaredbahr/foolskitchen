@@ -21,8 +21,8 @@ risk_result = "She left a one-star review: \"Smells of ambition.\""
 [resource]
 script = ExtResource("1_def")
 id = &"neighbour_complaint"
-title = "The neighbour again"
-text = "The neighbour is at the door about \"the smell\". It's food. You're a restaurant. Still, she has a clipboard."
+title = "The neighbor again"
+text = "The neighbor is at the door about \"the smell\". It's food. You're a restaurant. Still, she has a clipboard."
 icon = &"warning"
 cooldown_days = 6
 choices = Array[ExtResource("2_choice")]([SubResource("Choice_1"), SubResource("Choice_2")])
