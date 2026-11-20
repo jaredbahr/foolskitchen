@@ -313,6 +313,7 @@ Each line ends with its PR number.
 - The roadmap's build queue is reset: the early game, the restaurant chain and new guests come first, then the rest of the location work. (#679)
 - The build queue now includes the chain goals work (the Ladle ladder, the goals line and naming your chain) and birthday bookings, after the guest quirks. (#689)
 - The build queue now includes a sweep that puts every word you read into US spelling. (#696)
+- A design for a rival: when one of your restaurants is clearly winning, a smug copycat chef opens a knock-off next door, and you beat him on price, vibe or a new concept until he closes in a huff. Not built yet. (#697)
 - A design for guests with personality (`docs/GUESTS.md`): six new guest types tied to locations (tourists, the office crowd, walkers, surfers, farmers, foragers), small quirks like the guest who photographs every dish, and how reviews and the morning paper talk about them. (#637)
 - A design for chain goals: a ladder of nine goals across your restaurants, from a second shop to a Golden Ladle in every neighborhood, then a special edition of the Daily Ladle and free play, now decided (`docs/CITY_MAP.md` section 12, DESIGN D43). (#677)
 - `docs/GUESTS.md` records Jared's second round of guest decisions: quirk badges over seated guests, a review voice per guest type on good visits, the birthday table as a booking with a cake, and the foragers' mushroom gift. (#685)
