@@ -11,6 +11,7 @@ Follow `AGENTS.md` (shared rules for all AI workers). Plans: `docs/DESIGN.md`, `
   - Opus: hard problems (movement, architecture, deep bugs), foundation work, escalation when Codex fails an issue twice, and final review calls.
   - Label every open issue with one owner: `codex` (clear brief, testable sim or UI work), `both` (Codex may try; harder, review closely, take over after two failed tries) or `claude` (movement, art, taste or design calls, unscoped backlog; Codex never starts it). Codex issues also need `worker-ready`. An issue without `worker-ready` stays with the director. Write new Codex issues from `.github/ISSUE_TEMPLATE/task.md`: Phase, Depends on, Context (files to read), Do, Don't, Done when.
 - **Release notes:** `CHANGELOG.md` `## Unreleased` holds every merged change since the last published build (CI requires an entry per PR). When reviewing, check that the entry is accurate and player-readable. When publishing, use the *whole* Unreleased section as the "What's new". Never pick highlights. Then rename it to the version and date.
+- **Music:** Suno music prompts ask for no ambient sound (no wind, crowd chatter or background voices): Suno does it badly and it complicates the track (Jared, 2026-11-18; `AGENTS.md`, Music).
 - Light process: branch, then a PR into `main`, with one review before merge.
 - Commits: `git -c user.name=Jared -c user.email=jarebahr@gmail.com commit`.
 
