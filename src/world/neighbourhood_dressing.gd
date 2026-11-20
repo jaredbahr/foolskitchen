@@ -1219,12 +1219,22 @@ func rival_truck_blocked_by() -> String:
 	for column: int in columns + 1:
 		for row: int in rows + 1:
 			points.append(rect.position + Vector2(rect.size.x * float(column) / float(columns), rect.size.y * float(row) / float(rows)))
-	for builder: Object in [_forest, _country, _rooftop, _cliff]:
+	# Each builder's own checks, named in full: a renamed check reports itself instead of passing quietly.
+	var checks: Array = [
+		[_forest, ["_is_blocked", "_on_stream", "_in_stand"]],
+		[_country, ["_is_blocked", "_on_stream", "_on_lane", "_in_plot"]],
+		[_rooftop, ["_is_blocked"]],
+		[_cliff, ["_is_blocked", "_on_path"]],
+	]
+	for entry: Array in checks:
+		var builder: Object = entry[0]
 		if builder == null:
 			continue
-		for point: Vector2 in points:
-			for check: String in ["_is_blocked", "_on_path", "_in_plot", "_in_stand"]:
-				if builder.has_method(check) and bool(builder.call(check, point, 0.05)):
+		for check: String in entry[1]:
+			if not builder.has_method(check):
+				return "missing check %s" % check
+			for point: Vector2 in points:
+				if bool(builder.call(check, point, 0.05)):
 					return "%s at %s" % [check, point]
 	return ""
 
@@ -1410,12 +1420,12 @@ func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
 	_window_cache[key] = glows
 
 
-## A fresh unlit, emissive material for lit windows and bulbs, dark until the night lights it.
 ## The warm emissive material of lit bulbs (also the rival's marquee bulbs, #701).
 static func lit_material() -> StandardMaterial3D:
 	return _lit_material()
 
 
+## A fresh unlit, emissive material for lit windows and bulbs, dark until the night lights it.
 static func _lit_material() -> StandardMaterial3D:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
