@@ -58,6 +58,45 @@ func test_new_game_shows_the_chain_in_the_tracker_and_goals() -> void:
 	assert_eq(list.get_child(0).name, &"OpeningWeek", "the Opening week card leads the panel")
 
 
+func test_weekly_serving_goal_is_filtered_on_day_one_but_not_day_eight() -> void:
+	var main: Node = await _start(false)
+	var weekly: WeeklyChallengeState = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_true(weekly.is_active())
+	assert_ne(weekly.kind, WeeklyChallenge.Kind.SERVE_IN_ONE_DAY, "Opening week has its own serving rewards")
+	for step: int in 6:
+		_next_morning(main)
+	assert_eq(Clock.sim.day, 7)
+	assert_eq(_state(main).current(main.get("goal_chains")), CHAIN)
+	var settings: MenuSettings = main.get("menu_settings") as MenuSettings
+	var restaurant: RestaurantSim = main.get("sim") as RestaurantSim
+	var history: BusinessHistory = main.get("business_history") as BusinessHistory
+	var expected: WeeklyChallengeState = null
+	var chosen_seed: int = -1
+	var expected_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	# Pick a seed whose unfiltered week-2 draw is a serving goal, so leaving
+	# the first-week filter on cannot accidentally pass with the same choice.
+	for seed_value: int in range(50):
+		expected_rng.seed = seed_value
+		var candidate: WeeklyChallengeState = WeeklyChallengeState.new()
+		if candidate.begin_week(8, (main.get("owner_progress") as OwnerProgress).level,
+				WEEKLY_CHALLENGES, settings.enabled_recipes(), expected_rng, history, restaurant.seat_count()) \
+				and candidate.kind == WeeklyChallenge.Kind.SERVE_IN_ONE_DAY:
+			expected = candidate
+			chosen_seed = seed_value
+			break
+	assert_not_null(expected, "the unfiltered pool offers a serving goal")
+	if expected == null:
+		return
+	GameState.rng(&"weekly").seed = chosen_seed
+	_next_morning(main)
+	weekly = main.get("weekly_challenge") as WeeklyChallengeState
+	assert_eq(Clock.sim.day, 8)
+	assert_eq(_state(main).current(main.get("goal_chains")), WEEK_TWO)
+	assert_eq(weekly.kind, WeeklyChallenge.Kind.SERVE_IN_ONE_DAY, "Week 2 is unfiltered")
+	assert_eq(weekly.to_dict(), expected.to_dict())
+	assert_eq(GameState.rng(&"weekly").state, expected_rng.state)
+
+
 func test_price_change_pays_once_as_its_own_ledger_movement() -> void:
 	var main: Node = await _start(false)
 	var cash: int = Economy.cash

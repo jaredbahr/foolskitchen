@@ -57,7 +57,8 @@ func projected_progress(observation: MilestoneDay) -> int:
 
 func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 		enabled_menu: Array[RecipeDef], random: RandomNumberGenerator,
-		history: BusinessHistory = null, seats: int = 0, service_days: int = WEEK_DAYS) -> bool:
+		history: BusinessHistory = null, seats: int = 0, service_days: int = WEEK_DAYS,
+		skip_kinds: Array[int] = []) -> bool:
 	if day < 1 or day > MAX_DAY - WEEK_DAYS + 1 or not _is_rotation_day(day) \
 			or (status != Status.EMPTY and day <= end_day) \
 			or (status == Status.EMPTY and challenge_id != &"") or owner_level < 1 or owner_level > MAX_DAY \
@@ -106,6 +107,13 @@ func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 		if fresh.is_empty():
 			return false
 		eligible = fresh
+	var filtered: Array[WeeklyChallenge] = []
+	for candidate: WeeklyChallenge in eligible:
+		if not skip_kinds.has(candidate.kind):
+			filtered.append(candidate)
+	# A custom pool must still offer a challenge when every kind is skipped.
+	if not filtered.is_empty():
+		eligible = filtered
 	if eligible.is_empty():
 		return false
 	var selected: WeeklyChallenge = eligible[random.randi_range(0, eligible.size() - 1)]
@@ -141,7 +149,7 @@ func begin_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 
 func begin_legacy_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 		enabled_menu: Array[RecipeDef], random: RandomNumberGenerator,
-		history: BusinessHistory = null, seats: int = 0) -> bool:
+		history: BusinessHistory = null, seats: int = 0, skip_kinds: Array[int] = []) -> bool:
 	if day < 1 or day > MAX_DAY or status != Status.EMPTY \
 			or not challenge_id.is_empty():
 		return false
@@ -149,7 +157,7 @@ func begin_legacy_week(day: int, owner_level: int, pool: WeeklyChallengePool,
 	var candidate: WeeklyChallengeState = WeeklyChallengeState.new()
 	candidate.previous_challenge_id = previous_challenge_id
 	if not candidate.begin_week(week_start, owner_level, pool, enabled_menu, random,
-			history, seats, week_start + WEEK_DAYS - day):
+			history, seats, week_start + WEEK_DAYS - day, skip_kinds):
 		return false
 	candidate.last_evaluated_day = day - 1
 	previous_challenge_id = candidate.previous_challenge_id
