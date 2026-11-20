@@ -505,9 +505,10 @@ const DAY_ONE_STREAMS: Dictionary = {
 			"seed": "7543029",
 			"state": "-7929524535254594193"
 		},
+		# The first career draw excludes serving goals (#676).
 		"weekly": {
 			"seed": "1106350689",
-			"state": "-2680579914754492782"
+			"state": "-4149683713818441655"
 		},
 		"weather": {
 			"seed": "2145409216",
