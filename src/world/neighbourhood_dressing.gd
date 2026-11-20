@@ -538,7 +538,6 @@ func _clear_static() -> void:
 	_furniture.clear()
 	_neighbours.clear()
 	_rival_looks.clear()
-	_truck = null
 	_neighbour_plans.clear()
 	_neighbour_lamps.clear()
 	_crowns.clear()
@@ -1205,6 +1204,31 @@ func rival_truck_spot() -> Dictionary:
 	return {"u": at.x, "z": at.y, "yaw": PI, "footprint": Rect2(at.x - half.x, at.y - half.y, half.x * 2.0, half.y * 2.0 + 0.12)}
 
 
+## What the truck's spot would stand on, asked of the street's own builder (its lot, door approach,
+## porch, paths, land plots and stands of trees): "" when the footprint is clear, else a short reason.
+## For tests and the review fixture.
+func rival_truck_blocked_by() -> String:
+	var spot: Dictionary = rival_truck_spot()
+	if spot.is_empty():
+		return "no spot"
+	var rect: Rect2 = spot["footprint"]
+	# Every 15 cm over the footprint, edges included, so a thin plot or path cannot slip between samples.
+	var points: Array[Vector2] = []
+	var columns: int = ceili(rect.size.x / 0.15)
+	var rows: int = ceili(rect.size.y / 0.15)
+	for column: int in columns + 1:
+		for row: int in rows + 1:
+			points.append(rect.position + Vector2(rect.size.x * float(column) / float(columns), rect.size.y * float(row) / float(rows)))
+	for builder: Object in [_forest, _country, _rooftop, _cliff]:
+		if builder == null:
+			continue
+		for point: Vector2 in points:
+			for check: String in ["_is_blocked", "_on_path", "_in_plot", "_in_stand"]:
+				if builder.has_method(check) and bool(builder.call(check, point, 0.05)):
+					return "%s at %s" % [check, point]
+	return ""
+
+
 func _place_truck() -> void:
 	if _truck != null:
 		_truck.get_parent().remove_child(_truck)
@@ -1218,6 +1242,7 @@ func _place_truck() -> void:
 	_truck = NeighbourhoodRival.truck(_truck_name)
 	_truck.transform = Transform3D(Basis(Vector3.UP, float(spot["yaw"])), Vector3(float(spot["u"]), NeighbourhoodRival.TRUCK_GROUND, float(spot["z"])))
 	_rival_root.add_child(_truck)
+	_light_rival_lamps()
 
 
 # --- the terrace neighbours' API (#596, for #597) ------------------------------
@@ -1246,11 +1271,13 @@ func neighbour_info(id: StringName) -> Dictionary:
 		return {}
 	var plan: NeighbourhoodBuildings.Plan = _neighbour_plans[id]
 	var side: float = signf(plan.xf.origin.x - _local_reserve.get_center().x)
-	var slot: int = (plan.seed_value - 40) % 10
-	var shown: String = plan.style.sign_text if plan.style != null else ""
+	# A terrace shop's slot outward from the lot; the named house across the road has none.
+	var slot: int = (plan.seed_value - 40) % 10 if plan.is_shop else -1
+	var original: String = plan.style.sign_text if plan.style != null else ""
+	var shown: String = original
 	if neighbour_state(id) == NeighbourState.RIVAL:
 		shown = neighbour_name(id)
-	return {"name": shown, "side": int(side), "slot": slot, "form": plan.form, "width": plan.width,
+	return {"name": shown, "original_name": original, "side": int(side), "slot": slot, "form": plan.form, "width": plan.width,
 		"facade": _frame * plan.xf, "state": neighbour_state(id)}
 
 
@@ -1330,6 +1357,7 @@ func _show_rival_look(id: StringName, node: Node3D, rival: bool) -> void:
 			look = NeighbourhoodRival.look(_neighbour_plans[id], text)
 			node.add_child(look)
 			_rival_looks[id] = look
+			_light_rival_lamps()
 		else:
 			NeighbourhoodRival.rename(look, _neighbour_plans[id], text)
 	if look != null:
@@ -1346,6 +1374,23 @@ func _light_neighbour(id: StringName) -> void:
 	var material: StandardMaterial3D = lamps.material_override as StandardMaterial3D
 	material.albedo_color = WINDOW_DAY.lerp(Color.WHITE, level)
 	material.emission_energy_multiplier = level * WINDOW_ENERGY
+
+
+## The rival's marquee bulbs (his sign's and his truck's, #701) follow the night like the street's own bulbs.
+func _light_rival_lamps() -> void:
+	var level: float = _lamplight()
+	var owners: Array[Node] = []
+	for look: Node3D in _rival_looks.values():
+		owners.append(look)
+	if _truck != null:
+		owners.append(_truck)
+	for owner: Node in owners:
+		for node: Node in owner.find_children("Lamps", "MeshInstance3D", true, false):
+			var lamps: MeshInstance3D = node as MeshInstance3D
+			lamps.visible = level > 0.01
+			var material: StandardMaterial3D = lamps.material_override as StandardMaterial3D
+			material.albedo_color = WINDOW_DAY.lerp(WINDOW_NIGHT, level)
+			material.emission_energy_multiplier = level * WINDOW_ENERGY * 3.0
 
 
 ## Whether a neighbour's bulbs are lit now (false when it has none), for tests and tools.
@@ -1366,6 +1411,11 @@ func _store_windows(builder: NeighbourhoodBuildings, key: String) -> void:
 
 
 ## A fresh unlit, emissive material for lit windows and bulbs, dark until the night lights it.
+## The warm emissive material of lit bulbs (also the rival's marquee bulbs, #701).
+static func lit_material() -> StandardMaterial3D:
+	return _lit_material()
+
+
 static func _lit_material() -> StandardMaterial3D:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
@@ -2044,6 +2094,7 @@ func _apply_night() -> void:
 		_window_materials[index].emission_energy_multiplier = level * WINDOW_ENERGY
 	for id: StringName in _neighbour_lamps:
 		_light_neighbour(id)
+	_light_rival_lamps()
 	var lamps: float = _lamplight()
 	if _bulb_material != null:
 		_bulb_material.emission_energy_multiplier = lamps * LAMP_BULB_ENERGY

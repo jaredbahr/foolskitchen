@@ -111,7 +111,7 @@ func test_the_made_models_are_within_budget_and_match_the_name_areas() -> void:
 	assert_true(float(size[2]) > 0.5 and float(size[2]) < 0.9, "and across: %s" % size[2])
 	assert_true(float(size[1]) > 0.9 and float(size[1]) < 1.5, "taller than a person: %s" % size[1])
 	var trophy: Array = assets["copley_closing_sign"]["world_box"]["size"]
-	assert_true(float(trophy[0]) <= 1.1, "the trophy fits its two wall faces")
+	assert_true(float(trophy[0]) <= 1.0, "the trophy fits its two wall faces (1.0 m): %s" % trophy[0])
 
 
 static func _vector(parts: Array) -> Vector3:
@@ -168,6 +168,8 @@ func test_the_starter_street_names_a_rival_house_that_looks_like_any_house_until
 	assert_null(starter.neighbour(StreetSet.RIVAL_ID).get_node_or_null(^"Rival"), "and carries no rival look yet")
 	var info: Dictionary = starter.neighbour_info(StreetSet.RIVAL_ID)
 	assert_eq(info["name"], "", "an ordinary house has no shop sign")
+	assert_eq(info["original_name"], "", "and no original shop name")
+	assert_eq(info["slot"], -1, "nor a slot outward from the lot")
 	# The house is across the road from the lot: well out past its maximum footprint.
 	var facade: Transform3D = info["facade"]
 	var local: Vector3 = starter.local_frame().affine_inverse() * facade.origin
@@ -196,6 +198,27 @@ func test_a_neighbour_can_be_taken_over_by_the_rival_and_given_back() -> void:
 	var plate: Vector3 = sign.to_global(NeighbourhoodRival.SIGN_TEXT_CENTRE * (words.position.length() / NeighbourhoodRival.SIGN_TEXT_CENTRE.length()))
 	assert_true(plate.distance_to(words.global_position) < 0.02, "the lettering sits on the plate")
 	assert_true(look.get_node("Decor") is MeshInstance3D, "with bunting and balloons")
+	# A yard sign is two-sided: the back shows the same plate, lettering turned to read from that side.
+	var back: Node3D = look.get_node_or_null(^"SignBack") as Node3D
+	assert_not_null(back, "the house's sign has a back face")
+	var back_words: Label3D = back.get_node("Name") as Label3D
+	assert_eq(back_words.text, "Cool's Kitchen")
+	var inverse: Basis = look.global_transform.basis.inverse()
+	assert_true((inverse * words.global_transform.basis.z).z > 0.9, "the front lettering faces the street")
+	assert_true((inverse * back_words.global_transform.basis.z).z < -0.9, "the back lettering faces away, not mirrored")
+	assert_true(back.get_node("Model").get_child_count() == 1, "with the made model on it")
+	# The marquee bulbs glow warm after dark and are off by day, driven by the street's night level.
+	var bulbs: Array[Node] = look.find_children("Lamps", "MeshInstance3D", true, false)
+	assert_eq(bulbs.size(), 2, "both faces have bulbs")
+	for bulb: Node in bulbs:
+		assert_false((bulb as MeshInstance3D).visible, "unlit by day")
+	starter.set_night(1.0)
+	for bulb: Node in bulbs:
+		assert_true((bulb as MeshInstance3D).visible, "lit at night")
+		assert_true(((bulb as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier > 0.0)
+	starter.set_night(0.0)
+	for bulb: Node in bulbs:
+		assert_false((bulb as MeshInstance3D).visible, "and off again by day")
 	assert_false((starter.neighbour(id).get_node(^"ForSale") as Node3D).visible, "it is open for trade")
 	assert_true((starter.neighbour(id).get_node(^"Trade") as Node3D).visible)
 	# A new name replaces the old; no second look is built.
@@ -209,6 +232,7 @@ func test_a_neighbour_can_be_taken_over_by_the_rival_and_given_back() -> void:
 	starter.rebuild()
 	assert_eq(starter.neighbour_state(id), NeighbourhoodDressing.NeighbourState.RIVAL, "he is still there after a rebuild")
 	assert_eq((starter.neighbour(id).get_node(^"Rival/Sign/Name") as Label3D).text, "Not Fool's Kitchen", "with his new name")
+	assert_eq((starter.neighbour(id).get_node(^"Rival/SignBack/Name") as Label3D).text, "Not Fool's Kitchen", "on both faces")
 	assert_true((starter.neighbour(id).get_node(^"Rival") as Node3D).visible)
 	_free(starter)
 	# Giving it back hides the look, and the house is as it was.
@@ -249,6 +273,9 @@ func test_the_rival_look_changes_no_other_neighbour_and_fits_every_building_form
 		assert_false((promenade.neighbour(id).get_node_or_null(^"Sign") as Label3D).visible if promenade.neighbour(id).get_node_or_null(^"Sign") != null else false,
 			"%s's own name is covered" % id)
 		assert_true(promenade.neighbour_name(id) == "Beachfront Bored Walk")
+		assert_eq(promenade.neighbour_info(id)["name"], "Beachfront Bored Walk")
+		assert_true(promenade.neighbour_info(id).has("original_name"), "%s keeps its own name for the card" % id)
+		assert_null(look.get_node_or_null(^"SignBack"), "a shop's sign is one-sided")
 		# Sign and balloons stay near the building: nothing strays from the facade.
 		var bounds: AABB = AABB()
 		for mesh: Node in look.find_children("*", "MeshInstance3D", true, false):
@@ -297,6 +324,17 @@ func test_the_truck_parks_only_where_a_street_names_a_slot() -> void:
 		assert_not_null(truck, kind)
 		assert_eq((truck.get_node("Name") as Label3D).text, "Seaside Riff", kind)
 		assert_true(truck.get_node("Model").get_child_count() == 1, "%s: the made model is in" % kind)
+		# (Whether the spot is clear of what each real lot builds is checked on the real lots, in
+		# test_copley_lots_session.gd; this grid is not any lot's.)
+		dressing.rebuild()
+		assert_not_null(dressing.rival_truck(), kind)
+		truck = dressing.rival_truck()
+		var night_bulbs: Array[Node] = truck.find_children("Lamps", "MeshInstance3D", true, false)
+		assert_eq(night_bulbs.size(), 1, "%s: the truck has its marquee bulbs" % kind)
+		assert_false((night_bulbs[0] as MeshInstance3D).visible, "%s: unlit by day" % kind)
+		dressing.set_night(1.0)
+		assert_true((night_bulbs[0] as MeshInstance3D).visible, "%s: glowing at night" % kind)
+		dressing.set_night(0.0)
 		# The truck stands in front of the lot, beside the door, off the door's own approach.
 		var spot: Dictionary = dressing.rival_truck_spot()
 		var footprint: Rect2 = spot["footprint"]
@@ -312,7 +350,9 @@ func test_the_truck_parks_only_where_a_street_names_a_slot() -> void:
 		assert_not_null(dressing.rival_truck(), "%s: it is still there" % kind)
 		assert_true(dressing.set_rival_truck("Beachfront Bored Walk"))
 		assert_eq((dressing.rival_truck().get_node("Name") as Label3D).text, "Beachfront Bored Walk")
+		var holder: Node = dressing.rival_truck().get_parent()
 		dressing.clear_rival_truck()
 		assert_null(dressing.rival_truck(), kind)
+		assert_eq(holder.get_child_count(), 0, "%s: nothing is left in the Rival root" % kind)
 		assert_eq(dressing.rival_truck_name(), "")
 		_free(dressing)

@@ -118,6 +118,10 @@ func _show_piece() -> void:
 			if not dressing.set_rival_truck(NAMES.get(_view, "Copley's")):
 				push_error("Copley review: no room for a truck at %s" % _view)
 				return
+			var blocked: String = dressing.rival_truck_blocked_by()
+			if not blocked.is_empty():
+				push_error("Copley review: the truck at %s would stand on something: %s" % [_view, blocked])
+			print("COPLEY_TRUCK ", _view, " blocked=", blocked, " spot=", dressing.rival_truck_spot())
 			_target = dressing.rival_truck().global_position
 	if OS.get_environment("COPLEY_GRID") == "1":
 		_grid_markers(dressing)

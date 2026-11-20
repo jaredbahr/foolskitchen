@@ -280,22 +280,22 @@ def add_sign(m: Mesh) -> None:
 
 def add_closed_board(m: Mesh) -> None:
     """The CLOSED board: a red board hung from two cords across the right of the sign, a little tilted."""
-    cx, cy = 0.20, 0.19
-    half_w, half_h = 0.31, 0.12
+    cx, cy = 0.17, 0.19
+    half_w, half_h = 0.29, 0.12
     angle = math.radians(-7.0)
     front = -0.062
     c, s = math.cos(angle), math.sin(angle)
     # The cords run from the sign's top bar to the board's top corners.
     for side in (-1.0, 1.0):
-        top = (cx + side * 0.25, SIGN_H - 0.02)
-        corner = (cx + side * 0.25 * c - (half_h * 0.9) * s, cy + side * 0.25 * s + (half_h * 0.9) * c)
+        top = (cx + side * 0.23, SIGN_H - 0.02)
+        corner = (cx + side * 0.23 * c - (half_h * 0.9) * s, cy + side * 0.23 * s + (half_h * 0.9) * c)
         bar(m, top, corner, 0.008, front - 0.012, front, "ink")
         centred_box(m, (top[0], top[1], front + 0.004), (0.026, 0.026, 0.012), "gold_deep")
     m.tilt = (cx, cy, angle)
     box(m, (cx - half_w - 0.016, cy - half_h - 0.016, front - 0.016), (cx + half_w + 0.016, cy + half_h + 0.016, front), "white")
     box(m, (cx - half_w, cy - half_h, front - 0.026), (cx + half_w, cy + half_h, front - 0.012), "red")
     word = "CLOSED"
-    cell_w, cell_h, gap = 0.078, 0.135, 0.017
+    cell_w, cell_h, gap = 0.074, 0.135, 0.016
     span = len(word) * cell_w + (len(word) - 1) * gap
     left = cx - span / 2
     z = front - 0.0275

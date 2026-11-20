@@ -58,14 +58,47 @@ static func truck(text: String) -> Node3D:
 	words.rotation = Vector3(0.0, PI, 0.0)
 	words.position = TRUCK_TEXT_CENTRE + Vector3(0.0, 0.0, -0.0015)
 	root.add_child(words)
+	root.add_child(_lamps(truck_bulbs(), 1.0))
 	return root
 
 
-## Changes the words on a truck built by `truck`.
-static func rename_truck(root: Node3D, text: String) -> void:
-	var words: Label3D = root.get_node_or_null(^"Name") as Label3D
-	if words != null:
-		NeighbourhoodDressing.fit_label(words, text, TRUCK_TEXT_SIZE)
+## The truck's marquee bulbs along its cornice (the truck's space), where the made model draws them.
+## They glow after dark (the dressing lights them like the street's other bulbs).
+static func truck_bulbs() -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	for index: int in 7:
+		# tools/build_copley_art.py authors x as the viewer sees it and flips it when writing.
+		points.append(Vector3(-(-0.60 + 0.19 * float(index)), 0.842, -0.340))
+	return points
+
+
+## The sign's marquee bulbs along its frame (the sign's space, factor 1): the made model's, in the
+## same places, a gap where the toque rises.
+static func sign_bulbs() -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	for index: int in 10:
+		var x: float = -0.40 + 0.09 * float(index)
+		if absf(x - (-0.255)) > 0.11:
+			points.append(Vector3(-x, SIGN_SIZE.y - 0.02, -0.070))
+		points.append(Vector3(-x, 0.02, -0.070))
+	return points
+
+
+## Small glowing blocks over the model's bulbs: one unlit emissive mesh, dark by day (the dressing's
+## night level drives its material, the same one the street's own string lights and windows use).
+static func _lamps(points: Array[Vector3], factor: float) -> MeshInstance3D:
+	var pen: NeighbourhoodBuildings.Pen = NeighbourhoodBuildings.Pen.new()
+	for point: Vector3 in points:
+		var at: Vector3 = point * factor
+		var half: float = 0.017 * factor
+		pen.box(at - Vector3(half, half, half), at + Vector3(half, half, half), Color.WHITE)
+	var lamps: MeshInstance3D = MeshInstance3D.new()
+	lamps.name = "Lamps"
+	lamps.mesh = pen.soup.to_mesh()
+	lamps.material_override = NeighbourhoodDressing.lit_material()
+	lamps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	lamps.visible = false
+	return lamps
 
 
 ## A made model at the shared furniture scale, `scale` bigger.
@@ -120,7 +153,9 @@ static func look(p: NeighbourhoodBuildings.Plan, text: String) -> Node3D:
 	if float(mount["post_from"]) >= 0.0:
 		for side: float in [-1.0, 1.0]:
 			var x: float = at.x + side * SIGN_SIZE.x * factor * 0.34
-			pen.box(Vector3(x - 0.03, float(mount["post_from"]), at.z - 0.06), Vector3(x + 0.03, at.y + 0.02, at.z), GOLD.darkened(0.2))
+			# A house's sign is two-sided, so its posts run through the middle.
+			var back: float = 0.04 if not p.is_shop else 0.0
+			pen.box(Vector3(x - 0.03, float(mount["post_from"]), at.z - 0.06 + back), Vector3(x + 0.03, at.y + 0.02, at.z + back), GOLD.darkened(0.2))
 	var decor: MeshInstance3D = MeshInstance3D.new()
 	decor.name = "Decor"
 	decor.mesh = pen.soup.to_mesh()
@@ -131,14 +166,22 @@ static func look(p: NeighbourhoodBuildings.Plan, text: String) -> Node3D:
 	# The sign's face looks to -z; the facade's looks to +z.
 	sign.transform = Transform3D(Basis(Vector3.UP, PI), at)
 	root.add_child(sign)
+	if not p.is_shop:
+		# A yard sign stands out in the open, and the default camera sees these houses from behind:
+		# its back face shows the same plate and Copley, lettering turned to read from that side.
+		var back: Node3D = sign_node(text, factor)
+		back.name = "SignBack"
+		back.transform = Transform3D(Basis.IDENTITY, at)
+		root.add_child(back)
 	return root
 
 
 ## Changes the words on a look built by `look`.
 static func rename(root: Node3D, p: NeighbourhoodBuildings.Plan, text: String) -> void:
-	var words: Label3D = root.get_node_or_null(^"Sign/Name") as Label3D
-	if words != null:
-		NeighbourhoodDressing.fit_label(words, text, SIGN_TEXT_SIZE * float(sign_mount(p)["scale"]))
+	for path: NodePath in [^"Sign/Name", ^"SignBack/Name"]:
+		var words: Label3D = root.get_node_or_null(path) as Label3D
+		if words != null:
+			NeighbourhoodDressing.fit_label(words, text, SIGN_TEXT_SIZE * float(sign_mount(p)["scale"]))
 
 
 ## The sign on its own, `factor` times the made model's size: Node3D "Sign" with the model and the
@@ -152,6 +195,7 @@ static func sign_node(text: String, factor: float = 1.0) -> Node3D:
 	words.rotation = Vector3(0.0, PI, 0.0)
 	words.position = SIGN_TEXT_CENTRE * factor + Vector3(0.0, 0.0, -0.0015)
 	root.add_child(words)
+	root.add_child(_lamps(sign_bulbs(), factor))
 	return root
 
 
@@ -200,7 +244,8 @@ static func _balloons(pen: NeighbourhoodBuildings.Pen, p: NeighbourhoodBuildings
 	var z: float = 0.5 if p.is_shop and p.form == ShopStyle.Form.SHOP else 0.34
 	var ground: float = 0.0
 	if not p.is_shop:
-		x = sign_at.x + signf(sign_at.x) * (SIGN_SIZE.x * factor * 0.5 + 0.32)
+		# Inboard of the sign, away from the neighbour's hedge.
+		x = sign_at.x - signf(sign_at.x) * (SIGN_SIZE.x * factor * 0.5 + 0.2)
 		z = sign_at.z + 0.15
 	pen.box(Vector3(x - 0.07, ground, z - 0.07), Vector3(x + 0.07, ground + 0.06, z + 0.07), GOLD.darkened(0.2))
 	var heights: Array[float] = [1.12, 1.38, 1.22]
