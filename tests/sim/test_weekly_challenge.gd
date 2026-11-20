@@ -35,6 +35,68 @@ func test_pool_covers_every_kind_and_targets_scale_from_the_draw_level() -> void
 		"a clean-day goal cannot exceed the available seven service days")
 
 
+func test_skipped_serve_kind_is_deterministic_for_fifty_seeds_and_legacy_weeks() -> void:
+	var menu: Array[RecipeDef] = [_recipe(&"tea", "Tea")]
+	var skipped: Array[int] = [WeeklyChallenge.Kind.SERVE_IN_ONE_DAY]
+	for seed_value: int in range(50):
+		var random: RandomNumberGenerator = _rng()
+		var same: RandomNumberGenerator = _rng()
+		random.seed = seed_value
+		same.seed = seed_value
+		var first: WeeklyChallengeState = WeeklyChallengeState.new()
+		var replay: WeeklyChallengeState = WeeklyChallengeState.new()
+		assert_true(first.begin_week(1, 1, POOL, menu, random, null, 0, 7, skipped))
+		assert_ne(first.kind, WeeklyChallenge.Kind.SERVE_IN_ONE_DAY, "seed %d" % seed_value)
+		assert_true(replay.begin_week(1, 1, POOL, menu, same, null, 0, 7, skipped))
+		assert_eq(replay.to_dict(), first.to_dict())
+		assert_eq(same.state, random.state)
+		var legacy: WeeklyChallengeState = WeeklyChallengeState.new()
+		random.seed = seed_value
+		assert_true(legacy.begin_legacy_week(3, 1, POOL, menu, random, null, 0, skipped))
+		assert_ne(legacy.kind, WeeklyChallenge.Kind.SERVE_IN_ONE_DAY)
+		assert_eq(legacy.last_evaluated_day, 2)
+
+
+func test_unfiltered_draws_and_rng_match_the_pre_filter_fifty_seed_trace() -> void:
+	# Captured on main f89fcac before the filter, including complete save data
+	# and the RNG after day 1, day 8 (no repeat), and a legacy day-3 draw.
+	var menu: Array[RecipeDef] = [_recipe(&"tea", "Tea")]
+	var draws: Array = []
+	for seed_value: int in range(50):
+		var random: RandomNumberGenerator = _rng()
+		random.seed = seed_value
+		var state: WeeklyChallengeState = WeeklyChallengeState.new()
+		assert_true(state.begin_week(1, 1, POOL, menu, random))
+		draws.append([state.to_dict(), random.state])
+		assert_true(state.begin_week(8, 1, POOL, menu, random))
+		draws.append([state.to_dict(), random.state])
+		var legacy: WeeklyChallengeState = WeeklyChallengeState.new()
+		random.seed = seed_value
+		assert_true(legacy.begin_legacy_week(3, 1, POOL, menu, random))
+		draws.append([legacy.to_dict(), random.state])
+	assert_eq(JSON.stringify(draws).sha256_text(),
+		"8017ce3a8d86b4288492ffc97187446e8a5481e25fc6bd5ac92eb66ff5c59c17")
+
+
+func test_filter_falls_back_without_changing_the_draw_or_repeat_rule() -> void:
+	var skipped: Array[int] = [WeeklyChallenge.Kind.SERVE_IN_ONE_DAY]
+	var serve_only: WeeklyChallengePool = _pool([POOL.by_id(&"serve_a_busy_day"), POOL.by_id(&"serve_a_full_day")])
+	var filtered: WeeklyChallengeState = WeeklyChallengeState.new()
+	var normal: WeeklyChallengeState = WeeklyChallengeState.new()
+	var random: RandomNumberGenerator = _rng()
+	var same: RandomNumberGenerator = _rng()
+	assert_true(filtered.begin_week(1, 1, serve_only, [], random, null, 0, 7, skipped))
+	assert_true(normal.begin_week(1, 1, serve_only, [], same))
+	assert_eq(filtered.to_dict(), normal.to_dict())
+	assert_eq(random.state, same.state)
+	var previous: StringName = filtered.challenge_id
+	assert_true(filtered.begin_week(8, 1, serve_only, [], random, null, 0, 7, skipped))
+	assert_ne(filtered.challenge_id, previous, "fallback still avoids consecutive repeats")
+	var legacy: WeeklyChallengeState = WeeklyChallengeState.new()
+	assert_true(legacy.begin_legacy_week(3, 1, serve_only, [], _rng(), null, 0, skipped))
+	assert_eq(legacy.kind, WeeklyChallenge.Kind.SERVE_IN_ONE_DAY)
+
+
 func test_rotation_is_day_one_then_every_seventh_morning_without_repeating() -> void:
 	assert_true(WeeklyChallengeState.rotation_day(1))
 	assert_false(WeeklyChallengeState.rotation_day(7))

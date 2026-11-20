@@ -6166,16 +6166,23 @@ func _begin_weekly_challenge_if_needed() -> void:
 		return
 	var day: int = Clock.sim.day
 	var enabled: Array[RecipeDef] = menu_settings.enabled_recipes()
+	var skip_kinds: Array[int] = []
+	var chain: OpeningWeekSet = _chain_set()
+	# This draw precedes the chain rollover, so day 8 must ignore the old chain.
+	if opening_week != null and opening_week.is_active() and chain != null \
+			and chain.id == &"opening_week" and day <= opening_week.last_day(chain) \
+			and not opening_week.all_done(chain):
+		skip_kinds.append(WeeklyChallenge.Kind.SERVE_IN_ONE_DAY)
 	if WeeklyChallengeState.rotation_day(day):
 		if weekly_challenge.start_day == day and not weekly_challenge.challenge_id.is_empty():
 			return
 		weekly_challenge.begin_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"), business_history, sim.seat_count())
+			GameState.rng(&"weekly"), business_history, sim.seat_count(), WeeklyChallengeState.WEEK_DAYS, skip_kinds)
 	elif weekly_challenge.status == WeeklyChallengeState.Status.EMPTY:
 		# Saves made before this section existed begin a fresh challenge for the
 		# remaining days of the current week, without inventing earlier progress.
 		weekly_challenge.begin_legacy_week(day, owner_progress.level, WEEKLY_CHALLENGES, enabled,
-			GameState.rng(&"weekly"), business_history, sim.seat_count())
+			GameState.rng(&"weekly"), business_history, sim.seat_count(), skip_kinds)
 
 
 func _refresh_goals(force: bool = false) -> void:
