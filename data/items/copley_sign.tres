@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ItemDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/sim/content/item_def.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/props/copley_sign.tscn" id="2_view"]
+
+[resource]
+script = ExtResource("1_script")
+view_scene = ExtResource("2_view")
+id = &"copley_sign"
+display_name = "Copley's Closing Sign"
+catalogue_visible = false
+category = 6
+placement_layer = 2
+footprint = Vector2i(2, 1)
+solid = false
+work_cells = Array[Vector2i]([])
+seat_cells = Array[Vector2i]([])
+station_type = &""
+capacity = 1
+quality_bonus = 0.0
+price = 0
+unlock_level = 1
+announce_unlock = false
+charm = 2
+theme_tags = Array[StringName]([])
+placeholder_color = Color(0.99, 0.75, 0.27, 1)
+paintable = false

@@ -86,7 +86,8 @@ class Plan extends RefCounted:
 	var bounds: AABB = AABB()
 	var lot: Rect2 = Rect2()
 	var lot_index: int = 0
-	## A named terrace neighbour's id (#596); empty for the hashed row and the houses.
+	## A named neighbour's id: a terrace shop's (#596) or the rival house's (#701); empty for the
+	## hashed row and the other houses.
 	var neighbour_id: StringName = &""
 	## ShopStyle.Form: a shop, kiosk, hut or arcade.
 	var form: int = 0
@@ -256,6 +257,8 @@ func _plan_houses() -> void:
 		var key: int = 20 + index
 		var p: Plan = Plan.new()
 		p.id = "House%d" % index
+		if index == street.rival_house:
+			p.neighbour_id = StreetSet.RIVAL_ID
 		p.lot_index = index
 		p.seed_value = key
 		var lot_width: float = widths[index]
@@ -452,7 +455,9 @@ func build_parts(p: Plan) -> Array[MeshInstance3D]:
 	_lamps = null
 	var sale: Pen = Pen.new()
 	sale.xf = p.xf
-	_terrace_helper().for_sale(sale, p)
+	# A named house's board is built when it is first shown (NeighbourhoodDressing), not for every street.
+	if p.is_shop:
+		_terrace_helper().for_sale(sale, p)
 	var parts: Array[MeshInstance3D] = [shell, trade, _instance(String(p.id) + "_ForSale", sale)]
 	if not lamps.soup.is_empty():
 		parts.append(_instance(String(p.id) + "_Lamps", lamps))
