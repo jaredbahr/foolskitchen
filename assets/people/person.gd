@@ -48,6 +48,8 @@ const FARM_HAT_SCENE: PackedScene = preload("res://assets/made/people/farm_hat.g
 const OVERALL_BIB_SCENE: PackedScene = preload("res://assets/made/people/overall_bib.glb")
 const BEANIE_SCENE: PackedScene = preload("res://assets/made/people/beanie.glb")
 const BASKET_SCENE: PackedScene = preload("res://assets/made/people/basket.glb")
+## The kit's own sunglasses, for surfers (#658).
+const SUNGLASSES_SCENE: PackedScene = preload("res://assets/kenney/characters/aid-sunglasses.glb")
 ## Uniform materials by role, built once from the vendored colormap.
 static var _uniform_materials: Dictionary[StringName, Material] = {}
 ## Tourist shirts and office jackets, by model and look.
@@ -189,6 +191,11 @@ func _attach_guest_type_pieces(regular: bool, model: StringName) -> bool:
 			"BeanieAttachment", model, PersonPresentation.BEANIE_SINK, PersonPresentation.BEANIE_BACK,
 			PersonPresentation.BEANIE_TILT_DEGREES):
 		return false
+	if PersonPresentation.has_sunglasses(role, customer_type):
+		var glasses: Node3D = SUNGLASSES_SCENE.instantiate() as Node3D
+		if glasses == null or not _attach_made_piece(glasses, "SunglassesAttachment", "head",
+				PersonPresentation.SUNGLASSES_OFFSET):
+			return false
 	if PersonPresentation.has_overall_bib(role, customer_type):
 		var bib: Node3D = OVERALL_BIB_SCENE.instantiate() as Node3D
 		if bib == null or not _attach_made_piece(bib, "OverallBibAttachment", "torso", Vector3.ZERO):

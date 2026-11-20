@@ -178,11 +178,13 @@ func test_location_guests_have_their_own_pieces_and_no_one_else_does() -> void:
 		assert_true(PersonPresentation.has_overall_bib(role, &"farmer"))
 		assert_true(PersonPresentation.has_beanie(role, &"walker"))
 		assert_true(PersonPresentation.has_basket(role, &"forager"))
+		assert_true(PersonPresentation.has_sunglasses(role, &"surfer"))
 	for kind: StringName in [&"regular", &"student", &"foodie", &"family", &"tourist", &"office", &"unknown", &"surfer"]:
 		assert_false(PersonPresentation.has_farm_hat(&"customer", kind))
 		assert_false(PersonPresentation.has_beanie(&"customer", kind))
 		assert_false(PersonPresentation.has_basket(&"customer", kind))
 		assert_false(PersonPresentation.has_overall_bib(&"customer", kind))
+		assert_false(PersonPresentation.has_sunglasses(&"customer", kind) and kind != &"surfer")
 	for kind: StringName in [&"regular", &"student", &"foodie", &"family", &"tourist", &"office", &"unknown"]:
 		for id: int in [0, 1, 2, 3, -1]:
 			assert_true(PersonPresentation.outfit(&"customer", id, kind).is_empty(), "%s has no outfit" % kind)
@@ -235,15 +237,24 @@ func test_location_guest_models_and_palettes_are_deterministic_by_guest_id() -> 
 func test_outfit_regions_paint_the_right_body_parts() -> void:
 	var skin: Vector2i = Vector2i(480, 384)
 	var cloth: Vector2i = Vector2i(352, 256)
-	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.01, 0.0), cloth, skin), PersonOutfit.Region.KEEP, "shoes")
-	assert_eq(PersonOutfit.region_for(&"leg-right", Vector3(-0.08, 0.06, 0.0), cloth, skin), PersonOutfit.Region.SHIN)
-	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.14, 0.0), cloth, skin), PersonOutfit.Region.THIGH)
-	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.19, 0.0), cloth, skin), PersonOutfit.Region.HIP)
-	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.3, 0.0), cloth, skin), PersonOutfit.Region.TORSO)
-	assert_eq(PersonOutfit.region_for(&"arm-left", Vector3(0.18, 0.29, 0.0), cloth, skin), PersonOutfit.Region.SLEEVE)
-	assert_eq(PersonOutfit.region_for(&"arm-right", Vector3(-0.32, 0.29, 0.0), cloth, skin), PersonOutfit.Region.HAND)
-	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.3, 0.0), skin, skin), PersonOutfit.Region.KEEP, "skin stays skin")
-	assert_eq(PersonOutfit.region_for(&"head", Vector3(0.0, 0.5, 0.0), cloth, skin), PersonOutfit.Region.KEEP)
+	# Legs: a block that reaches the hips is clothing; one that stays below the knee
+	# (shoes, boots, socks, bare shins) is kept whatever its height.
+	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.01, 0.0), cloth, 0.17), PersonOutfit.Region.KEEP, "hem on the shoe")
+	assert_eq(PersonOutfit.region_for(&"leg-right", Vector3(-0.08, 0.06, 0.0), cloth, 0.17), PersonOutfit.Region.SHIN)
+	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.14, 0.0), cloth, 0.17), PersonOutfit.Region.THIGH)
+	assert_eq(PersonOutfit.region_for(&"leg-left", Vector3(0.08, 0.06, 0.0), Vector2i(32, 384), 0.08), PersonOutfit.Region.KEEP, "boot shaft")
+	# Torso: skin-toned neckline kept, a skin-toned chest painted (an open shirt under a jacket).
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.19, 0.0), cloth, 0.3), PersonOutfit.Region.HIP)
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.3, 0.0), cloth, 0.3), PersonOutfit.Region.TORSO)
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.3, 0.0), skin, 0.36), PersonOutfit.Region.TORSO)
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.33, 0.0), Vector2i(448, 384), 0.33), PersonOutfit.Region.KEEP, "neckline")
+	assert_eq(PersonOutfit.region_for(&"torso", Vector3(0.0, 0.33, 0.0), cloth, 0.33), PersonOutfit.Region.TORSO, "a collar")
+	# Arms: the block reaching the fist is the hand, a wider one no body part.
+	assert_eq(PersonOutfit.region_for(&"arm-left", Vector3(0.18, 0.29, 0.0), cloth, 0.3), PersonOutfit.Region.SLEEVE)
+	assert_eq(PersonOutfit.region_for(&"arm-left", Vector3(0.31, 0.29, 0.0), skin, 0.33), PersonOutfit.Region.SLEEVE, "a lower sleeve")
+	assert_eq(PersonOutfit.region_for(&"arm-right", Vector3(-0.32, 0.29, 0.0), skin, 0.38), PersonOutfit.Region.HAND)
+	assert_eq(PersonOutfit.region_for(&"arm-right", Vector3(-0.5, 0.29, 0.0), cloth, 0.54), PersonOutfit.Region.KEEP, "a bag")
+	assert_eq(PersonOutfit.region_for(&"head", Vector3(0.0, 0.5, 0.0), cloth, 0.6), PersonOutfit.Region.KEEP)
 	var surfer: Dictionary = PersonPresentation.outfit(&"customer", 0, &"surfer")
 	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.SLEEVE, surfer), &"skin", "a tank top bares the arms")
 	assert_eq(PersonOutfit.paint_for(PersonOutfit.Region.SHIN, surfer), &"skin", "board shorts bare the shins")

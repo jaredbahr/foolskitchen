@@ -767,10 +767,10 @@ func test_location_guests_wear_their_pieces_and_outfits_and_others_are_unchanged
 	var scene: PackedScene = preload("res://assets/people/person.tscn")
 	var pieces: Dictionary[StringName, Array] = {
 		&"farmer": ["FarmHatAttachment", "OverallBibAttachment"], &"walker": ["BeanieAttachment"],
-		&"surfer": [], &"forager": ["BasketAttachment"],
+		&"surfer": ["SunglassesAttachment"], &"forager": ["BasketAttachment"],
 	}
 	var all_pieces: Array = ["FarmHatAttachment", "OverallBibAttachment", "BeanieAttachment", "BasketAttachment",
-		"SunHatAttachment", "LanyardAttachment"]
+		"SunglassesAttachment", "SunHatAttachment", "LanyardAttachment"]
 	var views: Array[PersonView] = []
 	for look: Array in [[&"farmer", 0], [&"farmer", 3], [&"walker", 0], [&"walker", 3], [&"surfer", 0],
 			[&"surfer", 3], [&"forager", 0], [&"forager", 3], [&"sailor", 0], [&"regular", 1]]:
@@ -807,7 +807,32 @@ func test_location_guests_wear_their_pieces_and_outfits_and_others_are_unchanged
 				if image.get_pixel(block.x + 16, block.y).is_equal_approx(outfit["upper"]):
 					found = true
 			assert_true(found, "%s: the outfit colour is painted" % label)
+			# Torso triangles really point at a block painted in the upper colour.
+			var sorted: Dictionary = PersonOutfit.triangle_regions(kit_body.mesh.surface_get_arrays(0), kit_body.skin)
+			var dressed_uvs: PackedVector2Array = body.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]
+			var dressed_indices: PackedInt32Array = body.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+			var checked: int = 0
+			for index: int in (sorted["regions"] as PackedInt32Array).size():
+				if sorted["regions"][index] != PersonOutfit.Region.TORSO:
+					continue
+				var texel: Vector2 = dressed_uvs[dressed_indices[index * 3]] * PersonOutfit.TEXTURE_SIZE
+				var block: Vector2i = PersonOutfit.column_of(texel)
+				assert_eq(block.y, PersonOutfit.SPARE_ROWS[0], "%s: torso triangle %d is in a spare block" % [label, index])
+				assert_true(image.get_pixel(block.x + 16, block.y).is_equal_approx(outfit["upper"]),
+					"%s: torso triangle %d shows the upper colour" % [label, index])
+				checked += 1
+			assert_true(checked > 10, "%s: torso triangles checked" % label)
 			assert_eq(head.get_surface_override_material(0) != null, outfit.has("hair"), "%s: wet hair" % label)
+			if outfit.has("hair"):
+				var hair: Vector2i = PersonPresentation.HAIR_COLUMNS[view.model_name()]
+				var wet: Image = (head.get_surface_override_material(0) as StandardMaterial3D).albedo_texture.get_image()
+				var dry: Image = (head.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+				if dry.is_compressed():
+					dry.decompress()
+				for row: int in [0, 64, 127]:
+					var before: float = dry.get_pixel(hair.x + 16, hair.y + row).get_luminance()
+					var after: float = wet.get_pixel(hair.x + 16, hair.y + row).get_luminance()
+					assert_true(after < before * 0.8, "%s: wet hair is darker (row %d: %f -> %f)" % [label, row, before, after])
 			# The vendored colormap is never painted.
 			var source: Image = (kit_body.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
 			if source.is_compressed():
@@ -852,6 +877,62 @@ func test_location_guests_wear_their_pieces_and_outfits_and_others_are_unchanged
 	kit_c.free()
 	for view: PersonView in views:
 		view.free()
+
+
+func test_location_outfits_dress_whole_garments_on_every_kit_body_they_use() -> void:
+	for kind: StringName in [&"farmer", &"walker", &"surfer", &"forager"]:
+		for id: int in [0, 1]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			var outfit: Dictionary = PersonPresentation.outfit(&"customer", id, kind)
+			var kit: Node3D = (load(PersonPresentation.MODEL_DIRECTORY + String(model) + ".glb") as PackedScene).instantiate() as Node3D
+			var body: MeshInstance3D = kit.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+			var sorted: Dictionary = PersonOutfit.triangle_regions(body.mesh.surface_get_arrays(0), body.skin)
+			assert_false(sorted.is_empty(), "%s: the kit body sorts" % model)
+			# A vertex has one UV: every triangle sharing it is in one region.
+			var corners: PackedInt32Array = body.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+			var vertex_region: Dictionary[int, int] = {}
+			var split: int = 0
+			for corner: int in corners.size():
+				var region: int = sorted["regions"][corner / 3]
+				if vertex_region.get(corners[corner], region) != region:
+					split += 1
+				vertex_region[corners[corner]] = region
+			assert_eq(split, 0, "%s: no face is split between two regions" % model)
+			var regions: PackedInt32Array = sorted["regions"]
+			var bones: Array = sorted["bones"]
+			var columns: Array = sorted["columns"]
+			var centroids: Array = sorted["centroids"]
+			var shoe_blocks: Dictionary[Vector2i, bool] = {}
+			for index: int in regions.size():
+				if String(bones[index]).begins_with("leg") and (centroids[index] as Vector3).y < PersonOutfit.SHOE_TOP:
+					shoe_blocks[columns[index]] = true
+			var torso: int = 0
+			var torso_painted: int = 0
+			var upper_arm: int = 0
+			var upper_arm_painted: int = 0
+			for index: int in regions.size():
+				var label: String = "%s on %s, triangle %d" % [kind, model, index]
+				var paint: Variant = PersonOutfit.paint_for(regions[index], outfit)
+				var bone: String = String(bones[index])
+				if bone == "torso":
+					torso += 1
+					if paint is Color:
+						torso_painted += 1
+				if bone.begins_with("arm") and absf((centroids[index] as Vector3).x) < 0.22:
+					upper_arm += 1
+					if paint != null:
+						upper_arm_painted += 1
+				if regions[index] == PersonOutfit.Region.HAND:
+					assert_false(paint is Color, "%s: hands are never painted a colour" % label)
+				if bone == "head" or bone == "root":
+					assert_eq(regions[index], PersonOutfit.Region.KEEP, label)
+				if bone.begins_with("leg") and shoe_blocks.has(columns[index]):
+					assert_eq(regions[index], PersonOutfit.Region.KEEP, "%s: shoes stay shoes" % label)
+			assert_true(torso > 0)
+			assert_true(float(torso_painted) / torso >= 0.9,
+				"%s on %s: the top is one garment (%d of %d torso triangles)" % [kind, model, torso_painted, torso])
+			assert_eq(upper_arm_painted, upper_arm, "%s on %s: every upper-arm triangle is dressed or bared" % [kind, model])
+			kit.free()
 
 
 func _enter_view() -> void:

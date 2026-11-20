@@ -6,46 +6,120 @@ extends RefCounted
 ## often serves several parts (sleeves and trousers share one on some models),
 ## so a block repaint cannot dress a torso apart from the legs. Instead each
 ## triangle of a private copy of the body mesh is sorted into a body region by
-## its skin bone and rest-pose position, and its UVs move to a spare block of a
-## private colormap copy painted in that region's colour. Each spare block keeps
-## the shading of the block it replaces. Hands, shoes and anything already in
-## the model's skin colour keep their kit UVs (some
-## models wear gloves; an outfit may bare the hands). The vendored files are never
-## edited, and nothing here reads a random stream.
+## its skin bone, its rest-pose position and how far its block reaches on that
+## model, and its UVs move to a spare block of a private colormap copy painted
+## in that region's colour. Each spare block keeps the shading of the block it
+## replaces. Shoes, boots, socks and bare shins (leg blocks that stay below the
+## knee), skin-toned necklines and anything that is not a body part keep their
+## kit UVs; hands keep theirs unless the outfit bares them (some models wear
+## gloves). The vendored files are never edited, and nothing here reads a
+## random stream.
 
 enum Region { KEEP, TORSO, HIP, SLEEVE, HAND, THIGH, SHIN }
 
 ## Rest-pose heights and reach in the kit's source units (all eight guest
-## models share one skeleton): shoes end at SHOE_TOP, the legs' lower blocks
-## at SHIN_TOP, the hips at HIP_TOP; arm faces beyond HAND_X are the hand.
+## models share one skeleton). A leg block is clothing only when it reaches
+## above LEG_GARMENT_TOP (trousers, skirts, shorts); within it, triangles below
+## SHOE_TOP are the hem over the shoe and those below SHIN_TOP the shin. The hips
+## end at HIP_TOP; skin-toned torso triangles at or above NECK_Y are the neck.
+## An arm block reaching HAND_REACH sideways (in the T-pose) is the hand, and one
+## reaching past ARM_REACH is no body part (a bag strap).
 const SHOE_TOP: float = 0.03
 const SHIN_TOP: float = 0.09
+const LEG_GARMENT_TOP: float = 0.1
 const HIP_TOP: float = 0.215
-const HAND_X: float = 0.27
+const NECK_Y: float = 0.315
+const HAND_REACH: float = 0.36
+const ARM_REACH: float = 0.42
 const TEXTURE_SIZE: int = 512
 const BLOCK: Vector2i = Vector2i(32, 128)
 ## Blocks of the colormap no kit model uses (the black rows at the top), where
 ## the outfit's colours are painted.
 const SPARE_ROWS: Array[int] = [0]
+## The kit's skin-tone blocks (the warm ramps of the bottom row).
+const SKIN_TONES: Array[Vector2i] = [Vector2i(320, 384), Vector2i(352, 384), Vector2i(384, 384),
+	Vector2i(416, 384), Vector2i(448, 384), Vector2i(480, 384)]
 
 static var _cache: Dictionary[String, Array] = {}
 
 
-## The region a body triangle belongs to, from its strongest bone and its
-## centroid in the rest pose. `column` is the block its UVs point at.
-static func region_for(bone: StringName, centroid: Vector3, column: Vector2i, skin: Vector2i) -> Region:
-	if column == skin:
-		return Region.KEEP
+## The region a body triangle belongs to, from its strongest bone, its centroid
+## in the rest pose and its block (`column`). `reach` is how far that block
+## goes on this model, over the same bone group: its highest centroid on the
+## legs, its widest centroid |x| on the arms (see triangle_regions).
+static func region_for(bone: StringName, centroid: Vector3, column: Vector2i, reach: float) -> Region:
 	match bone:
 		&"leg-left", &"leg-right":
-			if centroid.y < SHOE_TOP:
+			if reach < LEG_GARMENT_TOP or centroid.y < SHOE_TOP:
 				return Region.KEEP
 			return Region.SHIN if centroid.y < SHIN_TOP else Region.THIGH
 		&"torso":
+			if centroid.y >= NECK_Y and SKIN_TONES.has(column):
+				return Region.KEEP
 			return Region.HIP if centroid.y < HIP_TOP else Region.TORSO
 		&"arm-left", &"arm-right":
-			return Region.HAND if absf(centroid.x) >= HAND_X else Region.SLEEVE
+			if reach > ARM_REACH:
+				return Region.KEEP
+			return Region.HAND if reach >= HAND_REACH else Region.SLEEVE
 	return Region.KEEP
+
+
+## Every triangle's region, block, bone and rest centroid for a kit body
+## surface's arrays, as {"regions": PackedInt32Array, "columns":
+## Array[Vector2i], "bones": Array[StringName], "centroids": Array[Vector3]};
+## {} if the arrays are not a skinned, indexed, UV-mapped surface.
+static func triangle_regions(arrays: Array, skin: Skin) -> Dictionary:
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS] if arrays[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	if skin == null or uvs.size() != vertices.size() or bones.size() != vertices.size() * 4 \
+			or weights.size() != bones.size() or indices.is_empty():
+		return {}
+	var names: Array[StringName] = []
+	var centroids: Array[Vector3] = []
+	var columns: Array[Vector2i] = []
+	var reach: Dictionary[String, float] = {}
+	for triangle: int in range(0, indices.size(), 3):
+		var first: int = indices[triangle]
+		var bone: StringName = _strongest_bone(skin, bones, weights, first)
+		var centroid: Vector3 = (vertices[first] + vertices[indices[triangle + 1]] + vertices[indices[triangle + 2]]) / 3.0
+		var column: Vector2i = column_of(uvs[first] * TEXTURE_SIZE)
+		names.append(bone)
+		centroids.append(centroid)
+		columns.append(column)
+		var group_key: String = "%s|%s" % [_group(bone), column]
+		var extent: float = absf(centroid.x) if _group(bone) == "arm" else centroid.y
+		reach[group_key] = maxf(reach.get(group_key, -INF), extent)
+	var regions: PackedInt32Array = PackedInt32Array()
+	for index: int in names.size():
+		regions.append(region_for(names[index], centroids[index], columns[index],
+			reach["%s|%s" % [_group(names[index]), columns[index]]]))
+	# A flat face is two triangles sharing vertices, and a vertex has one UV:
+	# when a face straddles a height line (the hips, the knee) both of its
+	# triangles take the region of the higher one, so no face is split in two.
+	var changed: bool = true
+	while changed:
+		changed = false
+		var by_vertex: Dictionary[int, int] = {}
+		for index: int in regions.size():
+			for corner: int in 3:
+				var vertex: int = indices[index * 3 + corner]
+				var other: int = by_vertex.get(vertex, -1)
+				if other < 0 or centroids[index].y > centroids[other].y:
+					by_vertex[vertex] = index
+		for index: int in regions.size():
+			for corner: int in 3:
+				var owner: int = by_vertex[indices[index * 3 + corner]]
+				if regions[owner] != regions[index] and columns[owner] == columns[index]:
+					regions[index] = regions[owner]
+					changed = true
+	return {"regions": regions, "columns": columns, "bones": names, "centroids": centroids}
+
+
+static func _group(bone: StringName) -> String:
+	return String(bone).trim_suffix("-left").trim_suffix("-right")
 
 
 ## What a region wears under an outfit: a Color, &"skin" (bare), or null (keep).
@@ -87,6 +161,8 @@ static func spare_block(index: int) -> Vector2i:
 static func dressed_body(body: MeshInstance3D, outfit: Dictionary, skin: Vector2i, key: String) -> Array:
 	if _cache.has(key):
 		return _cache[key]
+	# A failed look is remembered too, so it is not rebuilt for every guest.
+	_cache[key] = []
 	var source: ArrayMesh = body.mesh as ArrayMesh
 	if source == null or source.get_surface_count() != 1 or body.skin == null:
 		return []
@@ -94,26 +170,22 @@ static func dressed_body(body: MeshInstance3D, outfit: Dictionary, skin: Vector2
 	if base == null or base.albedo_texture == null:
 		return []
 	var arrays: Array = source.surface_get_arrays(0)
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
-	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
-	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
-	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	if uvs.size() != vertices.size() or bones.size() != vertices.size() * 4 or indices.is_empty():
+	var sorted: Dictionary = triangle_regions(arrays, body.skin)
+	if sorted.is_empty():
 		return []
+	var regions: PackedInt32Array = sorted["regions"]
+	var columns: Array = sorted["columns"]
+	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 	var moved: PackedVector2Array = uvs.duplicate()
 	# Spare blocks by "colour|source column": each keeps the source's shading.
 	var slots: Dictionary[String, Vector2i] = {}
 	var paints: Array[Dictionary] = []
-	for triangle: int in range(0, indices.size(), 3):
-		var first: int = indices[triangle]
-		var centroid: Vector3 = (vertices[first] + vertices[indices[triangle + 1]] + vertices[indices[triangle + 2]]) / 3.0
-		var texel: Vector2 = uvs[first] * TEXTURE_SIZE
-		var column: Vector2i = column_of(texel)
-		var paint: Variant = paint_for(region_for(_strongest_bone(body.skin, bones, weights, first), centroid,
-			column, skin), outfit)
+	for index: int in regions.size():
+		var paint: Variant = paint_for(regions[index], outfit)
 		if paint == null:
 			continue
+		var column: Vector2i = columns[index]
 		var target: Vector2i = skin
 		if paint is Color:
 			var slot_key: String = "%s|%s" % [(paint as Color).to_html(), column]
@@ -126,7 +198,7 @@ static func dressed_body(body: MeshInstance3D, outfit: Dictionary, skin: Vector2
 			target = slots[slot_key]
 		var shift: Vector2 = Vector2(target - column) / float(TEXTURE_SIZE)
 		for corner: int in 3:
-			var vertex: int = indices[triangle + corner]
+			var vertex: int = indices[index * 3 + corner]
 			moved[vertex] = uvs[vertex] + shift
 	arrays[Mesh.ARRAY_TEX_UV] = moved
 	var mesh: ArrayMesh = ArrayMesh.new()
@@ -187,7 +259,8 @@ static func painted_material(base: StandardMaterial3D, paints: Array[Dictionary]
 ## The head's material with its hair block darkened by `shade`, built once per key.
 static func wet_hair_material(head: MeshInstance3D, hair: Vector2i, shade: float, key: String) -> Material:
 	if _cache.has(key):
-		return _cache[key][0]
+		return _cache[key][0] if not _cache[key].is_empty() else null
+	_cache[key] = []
 	var base: StandardMaterial3D = head.mesh.surface_get_material(0) as StandardMaterial3D if head.mesh != null else null
 	if base == null or base.albedo_texture == null:
 		return null

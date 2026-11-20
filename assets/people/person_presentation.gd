@@ -69,7 +69,7 @@ const SUN_HAT_TILT_DEGREES: float = -10.0
 ## Location guests (#663 #657 #658 #659): farmers wear a straw farm hat and
 ## denim overalls over a white or sage shirt; walkers a knit beanie and a yellow
 ## or green rain jacket; surfers a tank top and board shorts (aqua and orange,
-## either way round) with damp, darker hair; foragers an olive or brown jacket
+## either way round) with damp, darker hair and sunglasses; foragers an olive or brown jacket
 ## and a basket on the arm. Which palette follows the guest id (type_variant).
 const FARMER_SHIRTS: Array[Color] = [Color("f6efe2"), Color("8fc79a")]
 const FARMER_DENIM: Color = Color("5f74cb")
@@ -96,6 +96,10 @@ const BEANIE_TILT_DEGREES: float = -6.0
 ## level forearm when carrying.
 const BASKET_OFFSET: Vector3 = Vector3(0.27, 0.056, 0.03)
 const BASKET_ROTATION_DEGREES: Vector3 = Vector3(0.0, 0.0, 39.0)
+## Surfers wear the kit's own sunglasses (`aid-sunglasses`), on the head bone:
+## the lenses over the eyes (the kit heads' eyes span 0.40 to 0.51 high, the
+## face front is at z 0.16 to 0.17), in the bone's space.
+const SUNGLASSES_OFFSET: Vector3 = Vector3(0.0, 0.077, 0.088)
 ## The skin and hair colormap columns of each guest model's head mesh, read
 ## from the vendored GLBs' head-mesh UVs (the face block and the hair block).
 const SKIN_COLUMNS: Dictionary[StringName, Vector2i] = {
@@ -206,6 +210,11 @@ static func has_overall_bib(role: StringName, customer_type: StringName) -> bool
 ## Walkers wear a knit beanie with a bobble (#657).
 static func has_beanie(role: StringName, customer_type: StringName) -> bool:
 	return _is_guest_role(role) and customer_type == &"walker"
+
+
+## Surfers wear sunglasses, so they read as beach-goers at game zoom (#658).
+static func has_sunglasses(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"surfer"
 
 
 ## Foragers carry a wicker basket on the arm (#659).
