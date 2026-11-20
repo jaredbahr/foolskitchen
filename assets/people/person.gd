@@ -43,6 +43,13 @@ const CLIPBOARD_OFFSET: Vector3 = Vector3(0.0, 0.0, -0.1)
 ## Made pieces for guest types (#661), built by tools/build_guest_props.py.
 const SUN_HAT_SCENE: PackedScene = preload("res://assets/made/people/sun_hat.glb")
 const LANYARD_SCENE: PackedScene = preload("res://assets/made/people/lanyard.glb")
+## Location guests' pieces (#663 #657 #659), from the same generator.
+const FARM_HAT_SCENE: PackedScene = preload("res://assets/made/people/farm_hat.glb")
+const OVERALL_BIB_SCENE: PackedScene = preload("res://assets/made/people/overall_bib.glb")
+const BEANIE_SCENE: PackedScene = preload("res://assets/made/people/beanie.glb")
+const BASKET_SCENE: PackedScene = preload("res://assets/made/people/basket.glb")
+## The kit's own sunglasses, for surfers (#658).
+const SUNGLASSES_SCENE: PackedScene = preload("res://assets/kenney/characters/aid-sunglasses.glb")
 ## Uniform materials by role, built once from the vendored colormap.
 static var _uniform_materials: Dictionary[StringName, Material] = {}
 ## Tourist shirts and office jackets, by model and look.
@@ -176,12 +183,73 @@ func _attach_guest_type_pieces(regular: bool, model: StringName) -> bool:
 		var lanyard: Node3D = LANYARD_SCENE.instantiate() as Node3D
 		if lanyard == null or not _attach_made_piece(lanyard, "LanyardAttachment", "torso", Vector3.ZERO):
 			return false
+	if PersonPresentation.has_farm_hat(role, customer_type) and not _attach_head_piece(FARM_HAT_SCENE,
+			"FarmHatAttachment", model, PersonPresentation.FARM_HAT_SINK, PersonPresentation.FARM_HAT_BACK,
+			PersonPresentation.FARM_HAT_TILT_DEGREES):
+		return false
+	if PersonPresentation.has_beanie(role, customer_type) and not _attach_head_piece(BEANIE_SCENE,
+			"BeanieAttachment", model, PersonPresentation.BEANIE_SINK, PersonPresentation.BEANIE_BACK,
+			PersonPresentation.BEANIE_TILT_DEGREES):
+		return false
+	if PersonPresentation.has_sunglasses(role, customer_type):
+		var glasses: Node3D = SUNGLASSES_SCENE.instantiate() as Node3D
+		if glasses == null or not _attach_made_piece(glasses, "SunglassesAttachment", "head",
+				PersonPresentation.SUNGLASSES_OFFSET):
+			return false
+	if PersonPresentation.has_overall_bib(role, customer_type):
+		var bib: Node3D = OVERALL_BIB_SCENE.instantiate() as Node3D
+		if bib == null or not _attach_made_piece(bib, "OverallBibAttachment", "torso", Vector3.ZERO):
+			return false
+	if PersonPresentation.has_basket(role, customer_type):
+		var basket: Node3D = BASKET_SCENE.instantiate() as Node3D
+		if basket == null or not _attach_made_piece(basket, "BasketAttachment", "arm-left",
+				PersonPresentation.BASKET_OFFSET):
+			return false
+		basket.rotation_degrees = PersonPresentation.BASKET_ROTATION_DEGREES
 	if regular:
 		return true
+	var outfit: Dictionary = PersonPresentation.outfit(role, guest_id, customer_type)
+	if not outfit.is_empty():
+		return _apply_outfit(outfit, model)
 	var recolors: Array[Dictionary] = PersonPresentation.type_recolors(role, guest_id, customer_type, model)
 	if recolors.is_empty():
 		return true
 	return _apply_body_recolors(recolors, "%s:%s:%d" % [model, customer_type, PersonPresentation.type_variant(guest_id)])
+
+
+## A hat-like piece fitted to the model's measured head top, sunk into the hair.
+func _attach_head_piece(scene: PackedScene, attachment_name: String, model: StringName, sink: float,
+		back: float, tilt_degrees: float) -> bool:
+	var lift: float = _head_top_in_bone_space(model)
+	if lift < 0.0:
+		return false
+	var piece: Node3D = scene.instantiate() as Node3D
+	return piece != null and _attach_made_piece(piece, attachment_name, "head", Vector3(0.0, lift - sink, back),
+		tilt_degrees)
+
+
+## Dresses the body mesh in a location guest's outfit (PersonOutfit) and, for
+## wet hair, darkens the head's hair block. Both are private, cached copies.
+func _apply_outfit(outfit: Dictionary, model: StringName) -> bool:
+	if not PersonPresentation.SKIN_COLUMNS.has(model):
+		return false
+	var key: String = "%s:%s:%d" % [model, customer_type, PersonPresentation.type_variant(guest_id)]
+	var dressed: bool = false
+	for node: Node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if mesh.name == &"body-mesh":
+			var built: Array = PersonOutfit.dressed_body(mesh, outfit, PersonPresentation.SKIN_COLUMNS[model], key)
+			if built.is_empty():
+				return false
+			mesh.mesh = built[0]
+			dressed = true
+		elif mesh.name == &"head-mesh" and outfit.has("hair") and PersonPresentation.HAIR_COLUMNS.has(model):
+			var hair: Material = PersonOutfit.wet_hair_material(mesh, PersonPresentation.HAIR_COLUMNS[model],
+				outfit["hair"], key + ":hair")
+			if hair == null:
+				return false
+			mesh.set_surface_override_material(0, hair)
+	return dressed
 
 
 ## Head top above the head bone's rest origin, in the bone's own space.

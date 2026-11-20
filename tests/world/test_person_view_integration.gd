@@ -761,6 +761,180 @@ func test_tourists_wear_a_hat_and_shirt_and_the_office_crowd_a_lanyard_and_jacke
 		view.free()
 
 
+func test_location_guests_wear_their_pieces_and_outfits_and_others_are_unchanged() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	var scene: PackedScene = preload("res://assets/people/person.tscn")
+	var pieces: Dictionary[StringName, Array] = {
+		&"farmer": ["FarmHatAttachment", "OverallBibAttachment"], &"walker": ["BeanieAttachment"],
+		&"surfer": ["SunglassesAttachment"], &"forager": ["BasketAttachment"],
+	}
+	var all_pieces: Array = ["FarmHatAttachment", "OverallBibAttachment", "BeanieAttachment", "BasketAttachment",
+		"SunglassesAttachment", "SunHatAttachment", "LanyardAttachment"]
+	var views: Array[PersonView] = []
+	for look: Array in [[&"farmer", 0], [&"farmer", 3], [&"walker", 0], [&"walker", 3], [&"surfer", 0],
+			[&"surfer", 3], [&"forager", 0], [&"forager", 3], [&"sailor", 0], [&"regular", 1]]:
+		var view: PersonView = scene.instantiate() as PersonView
+		view.role = &"customer"
+		view.guest_id = look[1]
+		view.customer_type = look[0]
+		tree.root.add_child(view)
+		views.append(view)
+	for view: PersonView in views:
+		var label: String = "%s %d" % [view.customer_type, view.guest_id]
+		var wanted: Array = pieces.get(view.customer_type, [])
+		for piece: String in all_pieces:
+			assert_eq(view._skeleton.get_node_or_null(piece) != null, wanted.has(piece), "%s: %s" % [label, piece])
+		var body: MeshInstance3D = view._model.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+		var head: MeshInstance3D = view._model.find_children("head-mesh", "MeshInstance3D", true, false)[0]
+		var kit: Node3D = (load(PersonPresentation.model_path_for(&"customer", view.guest_id, view.customer_type))
+			as PackedScene).instantiate() as Node3D
+		var kit_body: MeshInstance3D = kit.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+		var outfit: Dictionary = PersonPresentation.outfit(&"customer", view.guest_id, view.customer_type)
+		if outfit.is_empty():
+			assert_eq(body.mesh, kit_body.mesh, "%s keeps the kit body" % label)
+			assert_null(body.get_surface_override_material(0))
+			assert_null(head.get_surface_override_material(0))
+		else:
+			assert_ne(body.mesh, kit_body.mesh, "%s wears a dressed copy" % label)
+			assert_eq(body.mesh.get_surface_count(), 1)
+			assert_eq(body.skin.get_bind_count(), kit_body.skin.get_bind_count(), "skin kept")
+			# The upper colour is painted at the top row of a spare block, shade 1.
+			var image: Image = (body.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+			var found: bool = false
+			for index: int in 16:
+				var block: Vector2i = PersonOutfit.spare_block(index)
+				if image.get_pixel(block.x + 16, block.y).is_equal_approx(outfit["upper"]):
+					found = true
+			assert_true(found, "%s: the outfit colour is painted" % label)
+			# Torso triangles really point at a block painted in the upper colour.
+			var sorted: Dictionary = PersonOutfit.triangle_regions(kit_body.mesh.surface_get_arrays(0), kit_body.skin)
+			var dressed_uvs: PackedVector2Array = body.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]
+			var dressed_indices: PackedInt32Array = body.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+			var checked: int = 0
+			for index: int in (sorted["regions"] as PackedInt32Array).size():
+				if sorted["regions"][index] != PersonOutfit.Region.TORSO:
+					continue
+				var texel: Vector2 = dressed_uvs[dressed_indices[index * 3]] * PersonOutfit.TEXTURE_SIZE
+				var block: Vector2i = PersonOutfit.column_of(texel)
+				assert_eq(block.y, PersonOutfit.SPARE_ROWS[0], "%s: torso triangle %d is in a spare block" % [label, index])
+				assert_true(image.get_pixel(block.x + 16, block.y).is_equal_approx(outfit["upper"]),
+					"%s: torso triangle %d shows the upper colour" % [label, index])
+				checked += 1
+			assert_true(checked > 10, "%s: torso triangles checked" % label)
+			assert_eq(head.get_surface_override_material(0) != null, outfit.has("hair"), "%s: wet hair" % label)
+			if outfit.has("hair"):
+				var hair: Vector2i = PersonPresentation.HAIR_COLUMNS[view.model_name()]
+				var wet: Image = (head.get_surface_override_material(0) as StandardMaterial3D).albedo_texture.get_image()
+				var dry: Image = (head.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+				if dry.is_compressed():
+					dry.decompress()
+				for row: int in [0, 64, 127]:
+					var before: float = dry.get_pixel(hair.x + 16, hair.y + row).get_luminance()
+					var after: float = wet.get_pixel(hair.x + 16, hair.y + row).get_luminance()
+					assert_true(after < before * 0.8, "%s: wet hair is darker (row %d: %f -> %f)" % [label, row, before, after])
+			# The vendored colormap is never painted.
+			var source: Image = (kit_body.mesh.surface_get_material(0) as StandardMaterial3D).albedo_texture.get_image()
+			if source.is_compressed():
+				source.decompress()
+			assert_true(source.get_pixel(16, 0).get_luminance() < 0.05, "kit spare blocks stay black")
+		kit.free()
+	# Same guest, same look: the dressed mesh is shared, not rebuilt.
+	var again: PersonView = scene.instantiate() as PersonView
+	again.role = &"customer"
+	again.customer_type = &"farmer"
+	tree.root.add_child(again)
+	var first_body: MeshInstance3D = views[0]._model.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+	assert_eq(again._model.find_children("body-mesh", "MeshInstance3D", true, false)[0].mesh, first_body.mesh)
+	again.free()
+	# The basket rides the left arm through every pose, and the pieces stay on.
+	var forager: PersonView = views[6]
+	var basket: BoneAttachment3D = forager._skeleton.get_node("BasketAttachment") as BoneAttachment3D
+	assert_eq(basket.bone_name, "arm-left")
+	var positions: Array[Vector3] = []
+	for pose: Array in [[false, false, false], [true, false, false], [false, true, false], [true, false, true]]:
+		assert_true(forager.set_pose(pose[0], pose[1], pose[2], false, 0.27))
+		forager.set_playback_speed(0.0)
+		forager._player.seek(0.3, true)
+		await tree.process_frame
+		assert_not_null(forager._skeleton.get_node_or_null("BasketAttachment"), "basket stays on")
+		var arm: Transform3D = forager._skeleton.global_transform * forager._skeleton.get_bone_global_pose(
+			forager._skeleton.find_bone("arm-left"))
+		var piece: Node3D = basket.get_child(0) as Node3D
+		assert_true(piece.global_position.is_equal_approx(arm * PersonPresentation.BASKET_OFFSET),
+			"the basket hangs from the hand in %s" % forager.current_clip())
+		positions.append(piece.global_position)
+	assert_false(positions[0].is_equal_approx(positions[2]), "seated, the basket moves with the arm")
+	assert_false(positions[0].is_equal_approx(positions[3]), "carrying, it rides the level forearm")
+	# A pooled forager re-looked as a regular on the same model drops the basket and the jacket.
+	assert_eq(forager.model_name(), &"character-female-c")
+	assert_true(forager.set_look(&"customer", 1, &"regular"))
+	assert_eq(forager.model_name(), &"character-female-c")
+	assert_null(forager._skeleton.get_node_or_null("BasketAttachment"))
+	var plain: MeshInstance3D = forager._model.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+	var kit_c: Node3D = (load(PersonPresentation.MODEL_DIRECTORY + "character-female-c.glb") as PackedScene).instantiate() as Node3D
+	assert_eq(plain.mesh, (kit_c.find_children("body-mesh", "MeshInstance3D", true, false)[0] as MeshInstance3D).mesh)
+	kit_c.free()
+	for view: PersonView in views:
+		view.free()
+
+
+func test_location_outfits_dress_whole_garments_on_every_kit_body_they_use() -> void:
+	for kind: StringName in [&"farmer", &"walker", &"surfer", &"forager"]:
+		for id: int in [0, 1]:
+			var model: StringName = PersonPresentation.model_for(&"customer", id, kind)
+			var outfit: Dictionary = PersonPresentation.outfit(&"customer", id, kind)
+			var kit: Node3D = (load(PersonPresentation.MODEL_DIRECTORY + String(model) + ".glb") as PackedScene).instantiate() as Node3D
+			var body: MeshInstance3D = kit.find_children("body-mesh", "MeshInstance3D", true, false)[0]
+			var sorted: Dictionary = PersonOutfit.triangle_regions(body.mesh.surface_get_arrays(0), body.skin)
+			assert_false(sorted.is_empty(), "%s: the kit body sorts" % model)
+			# A vertex has one UV: every triangle sharing it is in one region.
+			var corners: PackedInt32Array = body.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+			var vertex_region: Dictionary[int, int] = {}
+			var split: int = 0
+			for corner: int in corners.size():
+				var region: int = sorted["regions"][corner / 3]
+				if vertex_region.get(corners[corner], region) != region:
+					split += 1
+				vertex_region[corners[corner]] = region
+			assert_eq(split, 0, "%s: no face is split between two regions" % model)
+			var regions: PackedInt32Array = sorted["regions"]
+			var bones: Array = sorted["bones"]
+			var columns: Array = sorted["columns"]
+			var centroids: Array = sorted["centroids"]
+			var shoe_blocks: Dictionary[Vector2i, bool] = {}
+			for index: int in regions.size():
+				if String(bones[index]).begins_with("leg") and (centroids[index] as Vector3).y < PersonOutfit.SHOE_TOP:
+					shoe_blocks[columns[index]] = true
+			var torso: int = 0
+			var torso_painted: int = 0
+			var upper_arm: int = 0
+			var upper_arm_painted: int = 0
+			for index: int in regions.size():
+				var label: String = "%s on %s, triangle %d" % [kind, model, index]
+				var paint: Variant = PersonOutfit.paint_for(regions[index], outfit)
+				var bone: String = String(bones[index])
+				if bone == "torso":
+					torso += 1
+					if paint is Color:
+						torso_painted += 1
+				if bone.begins_with("arm") and absf((centroids[index] as Vector3).x) < 0.22:
+					upper_arm += 1
+					if paint != null:
+						upper_arm_painted += 1
+				if regions[index] == PersonOutfit.Region.HAND:
+					assert_false(paint is Color, "%s: hands are never painted a colour" % label)
+				if bone == "head" or bone == "root":
+					assert_eq(regions[index], PersonOutfit.Region.KEEP, label)
+				if bone.begins_with("leg") and shoe_blocks.has(columns[index]):
+					assert_eq(regions[index], PersonOutfit.Region.KEEP, "%s: shoes stay shoes" % label)
+			assert_true(torso > 0)
+			assert_true(float(torso_painted) / torso >= 0.9,
+				"%s on %s: the top is one garment (%d of %d torso triangles)" % [kind, model, torso_painted, torso])
+			assert_eq(upper_arm_painted, upper_arm, "%s on %s: every upper-arm triangle is dressed or bared" % [kind, model])
+			kit.free()
+
+
 func _enter_view() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	await tree.process_frame

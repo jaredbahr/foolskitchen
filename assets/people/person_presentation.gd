@@ -66,6 +66,54 @@ const SUN_HAT_SINK: float = 0.04
 ## The hat sits a little back and tilted up at the front, so the face shows from above.
 const SUN_HAT_BACK: float = -0.03
 const SUN_HAT_TILT_DEGREES: float = -10.0
+## Location guests (#663 #657 #658 #659): farmers wear a straw farm hat and
+## denim overalls over a white or sage shirt; walkers a knit beanie and a yellow
+## or green rain jacket; surfers a tank top and board shorts (aqua and orange,
+## either way round) with damp, darker hair and sunglasses; foragers an olive or brown jacket
+## and a basket on the arm. Which palette follows the guest id (type_variant).
+const FARMER_SHIRTS: Array[Color] = [Color("f6efe2"), Color("8fc79a")]
+const FARMER_DENIM: Color = Color("5f74cb")
+const WALKER_JACKETS: Array[Color] = [Color("ffc23f"), Color("3fae7c")]
+const SURFER_AQUA: Color = Color("3fd0cf")
+const SURFER_ORANGE: Color = Color("ff9a3c")
+const FORAGER_JACKETS: Array[Color] = [Color("7f8a45"), Color("9a6a48")]
+## How dark a surfer's wet hair is against the kit's own hair colour.
+const WET_HAIR_SHADE: float = 0.68
+## The farm hat and beanie sit on the head top like the sun hat; the beanie
+## sinks lower, over the hair line.
+const FARM_HAT_SINK: float = 0.035
+const FARM_HAT_BACK: float = -0.02
+const FARM_HAT_TILT_DEGREES: float = -8.0
+const BEANIE_SINK: float = 0.075
+const BEANIE_BACK: float = -0.01
+const BEANIE_TILT_DEGREES: float = -6.0
+## Where the forager's basket hangs from the left hand, in the arm bone's space
+## (the arm points along +X in the rest pose): its handle's inner end at the
+## hand, the basket just outside it (and a little forward) so the big kit hand
+## never hides it from the camera above. It is turned to hang straight down in
+## the idle pose (the idle arm slopes 39 degrees off the vertical); it swings
+## with the arm when walking, tilts with it when seated and hangs from the
+## level forearm when carrying.
+const BASKET_OFFSET: Vector3 = Vector3(0.27, 0.056, 0.03)
+const BASKET_ROTATION_DEGREES: Vector3 = Vector3(0.0, 0.0, 39.0)
+## Surfers wear the kit's own sunglasses (`aid-sunglasses`), on the head bone:
+## the lenses over the eyes (the kit heads' eyes span 0.40 to 0.51 high, the
+## face front is at z 0.16 to 0.17), in the bone's space.
+const SUNGLASSES_OFFSET: Vector3 = Vector3(0.0, 0.077, 0.088)
+## The skin and hair colormap columns of each guest model's head mesh, read
+## from the vendored GLBs' head-mesh UVs (the face block and the hair block).
+const SKIN_COLUMNS: Dictionary[StringName, Vector2i] = {
+	&"character-female-a": Vector2i(416, 384), &"character-female-c": Vector2i(352, 384),
+	&"character-female-d": Vector2i(480, 384), &"character-female-e": Vector2i(480, 384),
+	&"character-female-f": Vector2i(480, 384), &"character-male-c": Vector2i(480, 384),
+	&"character-male-e": Vector2i(480, 384), &"character-male-f": Vector2i(352, 384),
+}
+const HAIR_COLUMNS: Dictionary[StringName, Vector2i] = {
+	&"character-female-a": Vector2i(32, 384), &"character-female-c": Vector2i(96, 384),
+	&"character-female-d": Vector2i(352, 384), &"character-female-e": Vector2i(32, 384),
+	&"character-female-f": Vector2i(416, 384), &"character-male-e": Vector2i(416, 384),
+	&"character-male-f": Vector2i(32, 384),
+}
 # Rest-pose head mesh maxima read from the vendored GLB POSITION accessors.
 # These are source measurements, before the single shared character scale.
 const HEAD_TOPS: Dictionary[StringName, float] = {
@@ -106,6 +154,15 @@ static func model_for(role: StringName, guest_id: int = 0, customer_type: String
 					models = [&"character-female-d", &"character-male-e"]
 				&"office":
 					models = [&"character-female-a", &"character-male-f"]
+				# Hats and beanies need a model without a bun or a cap.
+				&"farmer":
+					models = [&"character-female-e", &"character-male-e"]
+				&"walker":
+					models = [&"character-female-f", &"character-male-f"]
+				&"surfer":
+					models = [&"character-female-d", &"character-male-e"]
+				&"forager":
+					models = [&"character-female-c", &"character-male-f"]
 			# Avoid abs(INT64_MIN) and use no RNG, including for negative IDs.
 			var count: int = models.size()
 			var index: int = ((guest_id % count) + count) % count
@@ -140,12 +197,62 @@ static func type_variant(guest_id: int) -> int:
 	return posmod(guest_id >> 1, 2)
 
 
-## Names the tourist or office look (type and colour) a view must wear, or
-## &"" for any other guest; a view rebuilds when this changes, even on the same model.
+## Farmers wear a golden straw farm hat (#663).
+static func has_farm_hat(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"farmer"
+
+
+## Farmers wear denim overalls: a bib on the chest over denim legs (#663).
+static func has_overall_bib(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"farmer"
+
+
+## Walkers wear a knit beanie with a bobble (#657).
+static func has_beanie(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"walker"
+
+
+## Surfers wear sunglasses, so they read as beach-goers at game zoom (#658).
+static func has_sunglasses(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"surfer"
+
+
+## Foragers carry a wicker basket on the arm (#659).
+static func has_basket(role: StringName, customer_type: StringName) -> bool:
+	return _is_guest_role(role) and customer_type == &"forager"
+
+
+## Names the type look (type and colour) a view must wear, or &"" for any
+## other guest; a view rebuilds when this changes, even on the same model.
 static func type_look_key(role: StringName, guest_id: int, customer_type: StringName) -> StringName:
-	if has_sun_hat(role, customer_type) or has_lanyard(role, customer_type):
+	if has_sun_hat(role, customer_type) or has_lanyard(role, customer_type) \
+			or not outfit(role, guest_id, customer_type).is_empty():
 		return StringName("%s:%d" % [customer_type, type_variant(guest_id)])
 	return &""
+
+
+## The clothes of a location guest (farmer, walker, surfer, forager), or {} for
+## every other look. Keys: `upper` (torso and sleeves), `lower` (hips and legs,
+## absent to keep the model's own), `bare_arms`, `bare_hands` and `bare_shins`
+## (paint those parts in the model's own skin: a tank top, no gloves, shorts)
+## and `hair` (a shade multiplier for the head's hair block, absent for none).
+## PersonOutfit paints them.
+static func outfit(role: StringName, guest_id: int, customer_type: StringName) -> Dictionary:
+	if not _is_guest_role(role):
+		return {}
+	var variant: int = type_variant(guest_id)
+	match customer_type:
+		&"farmer":
+			return {"upper": FARMER_SHIRTS[variant], "lower": FARMER_DENIM, "bare_hands": true}
+		&"walker":
+			return {"upper": WALKER_JACKETS[variant]}
+		&"surfer":
+			return {"upper": SURFER_AQUA if variant == 0 else SURFER_ORANGE,
+				"lower": SURFER_ORANGE if variant == 0 else SURFER_AQUA,
+				"bare_arms": true, "bare_hands": true, "bare_shins": true, "hair": WET_HAIR_SHADE}
+		&"forager":
+			return {"upper": FORAGER_JACKETS[variant]}
+	return {}
 
 
 ## Colormap blocks to repaint on the body mesh of a tourist (holiday shirt) or
