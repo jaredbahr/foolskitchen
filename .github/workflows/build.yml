@@ -26,7 +26,9 @@ jobs:
   build:
     name: Export Windows and Web
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The full checks alone outgrew 20 minutes (a manual build was cut off on
+    # 2026-11-20); the export needs a few more.
+    timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,6 +53,9 @@ jobs:
           bash tools/get_export_templates.sh
 
       - name: Checks
+        env:
+          # Same sharding as check.yml (#529).
+          TEST_SHARDS: 4
         run: bash tools/check.sh
 
       - name: Export
