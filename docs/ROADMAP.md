@@ -11,54 +11,62 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 ## Up next: the build queue (reset 2026-11-19)
 **Codex: take the `worker-ready` issues below from the top**, skipping any whose **Depends on** hasn't merged and any that already has an open PR or a claim comment (see `AGENTS.md`). Claude reviews every PR before merge. `codex` = Codex takes it; `both` = Codex may try, Claude takes over if it fails twice.
 
-**Wave N, early game, the chain and guests (Jared, 2026-11-19; chain goals added from D43, #677): take these first.**
-1. `codex` #676 Early game: no "serve N" weekly challenge while the Opening week runs
-2. `codex` #667 Evening report: one "Your chain today" line across all your restaurants
-3. `codex` #668 Morning site card: each away restaurant's tonight result and top alert
-4. `codex` #670 City screen: open it any time with M (read-only outside the morning)
-5. `codex` #669 City screen: buy a lot for sale right from the city screen
-6. `codex` #653 Four small guest quirks: sweet tooth, big eater, indecisive, early bird
-7. `codex` #663 New guest type: farmers at Old Mill Street (after #653)
-8. `codex` #657 New guest type: walkers at the Seaside Cliff
-9. `codex` #658 New guest type: surfers at the Beachfront Boardwalk
-10. `codex` #659 New guest type: foragers at the Woodland Cabin
-11. `codex` #654 Guest quirk: the window-seat lover
-12. `codex` #655 Guest quirk: the maybe-famous guest draws a small crowd
-13. `codex` #656 One tourist in twenty returns as a named regular
-14. `codex` #680 Chain goals G1: the Ladle ladder's data, rules, payouts and save
-15. `codex` #681 Chain goals G2: the goals line on the city screen and the ladder card (after #680)
-16. `codex` #682 Chain goals G3: name your chain at the second restaurant (after #680)
-17. `codex` #684 Birthday table bookings and the dog walker quirk (sim only)
-18. `codex` #693 US spelling across all player-facing text, with a guard test
-19. `codex` #698 Rival R1: the sim (docs/RIVALS.md, D44)
-20. `codex` #699 Rival R2: the rival card, HUD chip, paper and city badge (after #698)
-21. `codex` #700 Rival R3: Copley's stunts (after #698)
+**Wave O, early-game feel (Jared, 2026-11-20, from a new-game playthrough of days 1 to 3): take these first.**
+1. `codex` #704 Early game: guests from opening, a lunch and dinner shape, and rushes that arrive
+2. `codex` #705 Service: live toast when guests leave unserved, and a "Paused, press 1x" line
+3. `codex` #706 Early game: no dish sells out on days 1 to 3
+4. `codex` #707 Evening report: a cash line that adds up
+5. `codex` #708 Build catalog: locked item tiles show the item's name
+6. `codex` #709 Morning and evening: one panel at a time
+
+**Wave N, early game, the chain and guests (Jared, 2026-11-19; chain goals added from D43, #677): next.**
+7. `codex` #676 Early game: no "serve N" weekly challenge while the Opening week runs
+8. `codex` #667 Evening report: one "Your chain today" line across all your restaurants
+9. `codex` #668 Morning site card: each away restaurant's tonight result and top alert
+10. `codex` #670 City screen: open it any time with M (read-only outside the morning)
+11. `codex` #669 City screen: buy a lot for sale right from the city screen
+12. `codex` #653 Four small guest quirks: sweet tooth, big eater, indecisive, early bird
+13. `codex` #663 New guest type: farmers at Old Mill Street (after #653)
+14. `codex` #657 New guest type: walkers at the Seaside Cliff
+15. `codex` #658 New guest type: surfers at the Beachfront Boardwalk
+16. `codex` #659 New guest type: foragers at the Woodland Cabin
+17. `codex` #654 Guest quirk: the window-seat lover
+18. `codex` #655 Guest quirk: the maybe-famous guest draws a small crowd
+19. `codex` #656 One tourist in twenty returns as a named regular
+20. `codex` #680 Chain goals G1: the Ladle ladder's data, rules, payouts and save
+21. `codex` #681 Chain goals G2: the goals line on the city screen and the ladder card (after #680)
+22. `codex` #682 Chain goals G3: name your chain at the second restaurant (after #680)
+23. `codex` #684 Birthday table bookings and the dog walker quirk (sim only)
+24. `codex` #693 US spelling across all player-facing text, with a guard test
+25. `codex` #698 Rival R1: the sim (docs/RIVALS.md, D44)
+26. `codex` #699 Rival R2: the rival card, HUD chip, paper and city badge (after #698)
+27. `codex` #700 Rival R3: Copley's stunts (after #698)
 
 **Wave L, every location plays differently (Jared, 2026-11-18; D39, #596):**
-22. `both` #623 Seaside Cliff: terrace-only seating rule
-23. `codex` #605 Seaside Cliff: the daily catch
-24. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount
-25. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
-26. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
-27. `both` #629 Seaside Cliff: guests walk up and down the cliff path
-28. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
-29. `both` #597 Growth steps: each lot grows its own way
-30. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
-31. `both` #606 Skyline Rooftop: cocktails and a tasting menu
-32. `both` #590 Walk-up window: a hatch that serves passers-by
+28. `both` #623 Seaside Cliff: terrace-only seating rule
+29. `codex` #605 Seaside Cliff: the daily catch
+30. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount
+31. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
+32. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
+33. `both` #629 Seaside Cliff: guests walk up and down the cliff path
+34. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
+35. `both` #597 Growth steps: each lot grows its own way
+36. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
+37. `both` #606 Skyline Rooftop: cocktails and a tasting menu
+38. `both` #590 Walk-up window: a hatch that serves passers-by
 
 **Wave M, engine and polish (after wave L, or alongside it when a wave L issue is blocked):**
-33. `both` #548 Dead-end aisles: guard two #545 fixes with tests
-34. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
-35. `both` #391 Aisle pinch warning: faster hover, more routes
-36. `both` #384 Light staff mood
-37. `both` #378 Group bookings: the good-service payoff
-38. `codex` #371 Sixty more review quotes
-39. `both` #356 Day off
-40. `both` #324 Broken equipment
-41. `both` #339 Dishwasher
-42. `both` #328 Chop rhythm mini-game
-43. `both` #341 Plating mini-game for VIP guests
+39. `both` #548 Dead-end aisles: guard two #545 fixes with tests
+40. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
+41. `both` #391 Aisle pinch warning: faster hover, more routes
+42. `both` #384 Light staff mood
+43. `both` #378 Group bookings: the good-service payoff
+44. `codex` #371 Sixty more review quotes
+45. `both` #356 Day off
+46. `both` #324 Broken equipment
+47. `both` #339 Dishwasher
+48. `both` #328 Chop rhythm mini-game
+49. `both` #341 Plating mini-game for VIP guests
 
 **When this list runs out,** take any open issue labelled `worker-ready` and `codex` (then `both`), lowest number first, with the same checks.
 

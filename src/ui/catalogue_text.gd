@@ -30,7 +30,7 @@ const STATION_TEXT: Dictionary[StringName, String] = {
 	&"shaved_ice_cart": "Makes shaved ice",
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
-	&"order_counter": "Café guests queue here to order and pay, then take a table or a takeaway",
+	&"order_counter": "Café guests line up here to order and pay, then take a table or take it to go",
 }
 ## Restroom fixtures (FK-101): plain words, nothing more (D8).
 const RESTROOM_TEXT: Dictionary[StringName, String] = {
@@ -131,7 +131,7 @@ static func does(definition: ItemDef) -> String:
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR and definition.exterior_band == ExteriorSupport.Band.GROUND:
-		return "Stands on the pavement beside the door and shows your name and today's special"
+		return "Stands on the sidewalk beside the door and shows your name and today's special"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR:
 		return "Hangs outside on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_in_window():
@@ -212,7 +212,7 @@ static func card_lines(definition: ItemDef, owner_level: int, variant_id: String
 ## "Paint | Sage wood on the cushion - Click a wall, floor or item".
 static func paint_title(swatch: SwatchDef, original: bool, material: StringName, part: String,
 		main_part: bool = true) -> String:
-	var colour: String = "Original" if original else (swatch.display_name if swatch != null else "Pick a colour")
+	var colour: String = "Original" if original else (swatch.display_name if swatch != null else "Pick a color")
 	var finish: String = " " + PaintFinish.label(material).to_lower() if PaintFinish.valid(material) else ""
 	var where: String = "" if main_part or part.is_empty() else " on the " + part.to_lower()
 	return "Paint | %s%s%s - Click a wall, floor or item" % [colour, finish, where]
@@ -230,7 +230,7 @@ static func paint_part_tip(part: String, swatch: SwatchDef, material: StringName
 	if swatch == null and not PaintFinish.valid(material):
 		return "%s: as it came" % part
 	var finish: String = " " + PaintFinish.label(material).to_lower() if PaintFinish.valid(material) else ""
-	return "%s: %s%s" % [part, swatch.display_name if swatch != null else "its own colour", finish]
+	return "%s: %s%s" % [part, swatch.display_name if swatch != null else "its own color", finish]
 
 
 static func paint_variant_title(definition: ItemDef, look: ItemVariant) -> String:

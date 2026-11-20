@@ -25,4 +25,4 @@ favourite_tip_rate = 0.04
 names = PackedStringArray("Rosa", "Theo", "Mina", "Jules", "Nora", "Ben", "Ada", "Omar", "Iris", "Felix")
 model_ids = Array[StringName]([&"character-female-a", &"character-male-a", &"character-female-c", &"character-male-c", &"character-female-d", &"character-male-d", &"character-female-e", &"character-male-e", &"character-female-f", &"character-male-f"])
 tint_ids = Array[StringName]([&"honey", &"slate_blue", &"sage", &"cream"])
-greetings = PackedStringArray("The usual!", "Hi again!", "My favourite place.", "Good to be back!")
+greetings = PackedStringArray("The usual!", "Hi again!", "My favorite place.", "Good to be back!")

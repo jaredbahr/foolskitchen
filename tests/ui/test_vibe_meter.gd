@@ -55,7 +55,7 @@ func test_valid_result_updates_caption_bar_tooltip_and_view_state() -> void:
 	assert_eq(_meter.caption_label.text, "Vibe 42 / 100")
 	assert_almost_eq(_meter.score_bar.value, 42.4321, 0.000001)
 	assert_eq(_meter.caption_label.tooltip_text,
-		"Decor 32, Variety 18, Theme: Cosy +10, Lamps 6, Crowding -4")
+		"Decor 32, Variety 18, Theme: Cozy +10, Lamps 6, Crowding -4")
 	assert_eq(_meter.tooltip_text, _meter.caption_label.tooltip_text)
 	assert_eq(_meter.score_bar.tooltip_text, _meter.caption_label.tooltip_text)
 	var state: Dictionary = _meter.view_state()
@@ -93,7 +93,7 @@ func test_score_is_clamped_and_tooltip_amounts_are_bounded() -> void:
 	assert_eq(_meter.caption_label.text, "Vibe 100 / 100")
 	assert_eq(_meter.score_bar.value, 100.0)
 	assert_eq(_meter.caption_label.tooltip_text,
-		"Decor 999, Variety -999, Theme: Cosy +999, Lamps 999, Crowding -999")
+		"Decor 999, Variety -999, Theme: Cozy +999, Lamps 999, Crowding -999")
 
 
 func test_collection_tooltip_explains_nominal_set_rewards_and_total_cap() -> void:
@@ -157,7 +157,7 @@ func _result(score: float) -> VibeModel.Result:
 	result.lamp_points = 6.0
 	result.crowding_penalty = 4.0
 	result.active_theme = &"cosy"
-	result.theme_label = "Cosy"
+	result.theme_label = "Cozy"
 	return result
 
 

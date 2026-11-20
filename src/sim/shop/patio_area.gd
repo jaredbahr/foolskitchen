@@ -2,7 +2,7 @@ class_name PatioArea
 extends RefCounted
 ## Patio pavement lies outside the indoor footprint and creates no guest entry.
 
-const OUTSIDE_AREA: String = "Choose pavement beside the street door"
+const OUTSIDE_AREA: String = "Choose sidewalk beside the street door"
 const INVALID_CELLS: String = "Invalid patio cells"
 const HAS_FURNITURE: String = "Clear the furniture and its seats off that patio first"
 
@@ -67,7 +67,7 @@ func problem(bought: Array[Vector2i]) -> String:
 	var seen: Dictionary[Vector2i, bool] = {}
 	for cell: Vector2i in bought:
 		if not can_hold(cell):
-			return "Choose pavement behind the shop" if _at_back else OUTSIDE_AREA
+			return "Choose the paving behind the shop" if _at_back else OUTSIDE_AREA
 		if seen.has(cell):
 			return INVALID_CELLS
 		seen[cell] = true

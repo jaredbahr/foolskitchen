@@ -13,15 +13,15 @@ clean_spots = true
 [sub_resource type="Resource" id="Choice_2"]
 script = ExtResource("2_choice")
 label = "Ignore it"
-result = "Just a rumour. It usually is."
+result = "Just a rumor. It usually is."
 risk_percent = 25
 risk_review_stars = 2
-risk_result = "It wasn't just a rumour. Someone with a notebook left two stars."
+risk_result = "It wasn't just a rumor. Someone with a notebook left two stars."
 
 [resource]
 script = ExtResource("1_def")
 id = &"critic_rumour"
-title = "Critic rumour"
+title = "Critic rumor"
 text = "Word on the street: a critic is in the area. Possibly. The word on the street is not always reliable."
 icon = &"information"
 min_tier = 2

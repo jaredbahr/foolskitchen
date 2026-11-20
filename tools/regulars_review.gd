@@ -152,8 +152,8 @@ func _assert_recognition() -> void:
 			or not viewport_rect.grow(-40.0).has_point(greeting_pixel) \
 			or inspector_card.get_global_rect().has_point(star_pixel) \
 			or not viewport_rect.encloses(inspector_card.get_global_rect()) \
-			or not details.text.contains("Favourite dish: Burger") \
-			or not details.text.contains("Favourite seat:") \
+			or not details.text.contains("Favorite dish: Burger") \
+			or not details.text.contains("Favorite seat:") \
 			or not details.text.contains(RegularText.feeling(_fixture_profile.mood)):
 		_fail("regular recognition or complete inspector text is outside the viewport")
 		return

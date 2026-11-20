@@ -164,7 +164,7 @@ func test_theme_ties_keep_authored_order_and_no_known_tags_read_neutrally() -> v
 	var tied: Array[RecipeDef] = [
 		_tagged(&"diner", [&"diner"]), _tagged(&"cosy", [&"cosy"]),
 	]
-	assert_eq(MenuThemeText.summary(tied), "Menu leans: Cosy 50%, Diner 50%")
+	assert_eq(MenuThemeText.summary(tied), "Menu leans: Cozy 50%, Diner 50%")
 	assert_eq(MenuThemeText.summary([] as Array[RecipeDef]), "Menu leans: No theme")
 	assert_eq(MenuThemeText.summary([_tagged(&"unknown", [&"unknown"])] as Array[RecipeDef]),
 		"Menu leans: No theme")

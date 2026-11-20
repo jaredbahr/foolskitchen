@@ -419,7 +419,7 @@ func test_food_equipment_reasons_show_in_the_tree_and_detail_not_the_drinks_hint
 		shown.append((child as Label).text)
 	assert_true(shown.has("Buy a fryer"), str(shown))
 	for hint: String in panel.get("_drink_hints") as Array[String]:
-		assert_false(hint.contains("Fries") or hint.contains("Savoury pie"), hint)
+		assert_false(hint.contains("Fries") or hint.contains("Savory pie"), hint)
 	assert_false(panel.drinks_section().is_ancestor_of(slots))
 
 

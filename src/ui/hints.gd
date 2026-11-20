@@ -154,7 +154,7 @@ static func text_for(step: int) -> String:
 		Step.STOCK: return "Check your fridge and shelves; order what you need"
 		Step.BUILD: return "Move or buy furniture; paint rooms in Build"
 		Step.OPEN: return "Ready? Open shop to welcome your first guests"
-		Step.QUEUE: return "Guests queue by the door until a table is ready"
+		Step.QUEUE: return "Guests wait by the door until a table is ready"
 		Step.DIRTY: return "Staff clear dirty tables so the next guests can sit"
 		Step.REPORT: return "Check the evening report to see how today went"
 		Step.DAY_TWO: return "Hire and plan in the mornings. You're on your own now"

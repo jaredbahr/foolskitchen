@@ -2,7 +2,7 @@ class_name RegularText
 extends RefCounted
 ## Plain, shared labels for saved regular profiles; never exposes internal IDs.
 
-const FAVOURITE: String = "A regular's favourite"
+const FAVOURITE: String = "A regular's favorite"
 
 
 static func feeling(mood: float) -> String:
@@ -17,7 +17,7 @@ static func feeling(mood: float) -> String:
 
 static func inspection(profile: RegularProfile, dish_label: String) -> String:
 	var dish: String = dish_label if not dish_label.is_empty() else "A dish from an earlier menu"
-	return "Favourite dish: %s\nFavourite seat: column %d, row %d\n%s" % [dish,
+	return "Favorite dish: %s\nFavorite seat: column %d, row %d\n%s" % [dish,
 		profile.favourite_seat.x + 1, profile.favourite_seat.y + 1, feeling(profile.mood)]
 
 

@@ -130,7 +130,7 @@ const SWATCH_SIZE: float = 30.0
 const PART_FALLBACK_NAMES: Array[String] = ["Main", "Part 2", "Part 3"]
 const AUTO_TIP: String = "Auto: each part keeps its own material (wood stays wood, cushions stay fabric)"
 const ORIGINAL_TIP: String = "Original: put a part, wall or floor back to how it came"
-const COPY_LOOK_TIP: String = "Copy look (or Alt-click): click a piece to copy its colours and materials, then click pieces to paste"
+const COPY_LOOK_TIP: String = "Copy look (or Alt-click): click a piece to copy its colors and materials, then click pieces to paste"
 ## Floors and Wall finish colour rows: Original/Auto plus the palette in two rows.
 const COLOUR_ROW_COLUMNS: int = 21
 
@@ -857,7 +857,7 @@ func _refresh_floor_styles() -> void:
 		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
-			"Lay %s for %s. Replacing a floor refunds half its price; recolouring is free" % [
+			"Lay %s for %s. Replacing a floor refunds half its price; recoloring is free" % [
 				definition.display_name.to_lower(), price.to_lower()]
 		var selected: bool = definition.id == selected_floor_style
 		button.set_pressed_no_signal(selected)
@@ -908,7 +908,7 @@ func _refresh_floor_colours() -> void:
 			rows.add_child(line)
 			var label: Label = Label.new()
 			label.name = "Label"
-			label.text = "Accent" if accent else "Colour"
+			label.text = "Accent" if accent else "Color"
 			label.custom_minimum_size = Vector2(64.0, 0.0)
 			line.add_child(label)
 			# The palette (#431) is too long for one line: two rows of chips.
@@ -945,7 +945,7 @@ func _refresh_floor_colours() -> void:
 			var chip: Button = chips[id]
 			var definition: SwatchDef = _content.swatch(id)
 			chip.tooltip_text = definition.display_name if definition != null else (
-				"Auto: a darker shade of the colour" if accent else "Original floor colour")
+				"Auto: a darker shade of the color" if accent else "Original floor color")
 			var look: StyleBoxFlat = StyleBoxFlat.new()
 			look.bg_color = _swatch_colour(id, main * 0.72 if accent else _floor_base)
 			look.bg_color.a = 1.0
@@ -1021,7 +1021,7 @@ func _refresh_wall_styles() -> void:
 		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
-			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recolouring is free" % [
+			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recoloring is free" % [
 				definition.display_name.to_lower(), price.to_lower()]
 		var selected: bool = definition.id == selected_wall_style
 		button.set_pressed_no_signal(selected)
@@ -1066,7 +1066,7 @@ func _refresh_wall_colours() -> void:
 			rows.add_child(line)
 			var label: Label = Label.new()
 			label.name = "Label"
-			label.text = "Accent" if accent else "Colour"
+			label.text = "Accent" if accent else "Color"
 			label.custom_minimum_size = Vector2(64.0, 0.0)
 			line.add_child(label)
 			# The palette (#431) is too long for one line: two rows of chips.
@@ -1104,8 +1104,8 @@ func _refresh_wall_colours() -> void:
 			var chip: Button = chips[id]
 			var definition: SwatchDef = _content.swatch(id)
 			chip.tooltip_text = definition.display_name if definition != null else (
-				("Auto: the wall colour above the panelling" if pattern == WallStyleDef.Pattern.WAINSCOT
-					else "Auto: a darker shade of the colour") if accent else "Original wall colour")
+				("Auto: the wall color above the paneling" if pattern == WallStyleDef.Pattern.WAINSCOT
+					else "Auto: a darker shade of the color") if accent else "Original wall color")
 			var look: StyleBoxFlat = StyleBoxFlat.new()
 			look.bg_color = _swatch_colour(id, WallFinishView.auto_accent(pattern, main, _wall_base) if accent else _wall_base)
 			look.bg_color.a = 1.0

@@ -17,13 +17,13 @@ result = "They paid. Damply."
 cash = 4
 risk_percent = 40
 risk_review_stars = 2
-risk_result = "They paid, then wrote a review about their trousers. Two stars."
+risk_result = "They paid, then wrote a review about their pants. Two stars."
 
 [resource]
 script = ExtResource("1_def")
 id = &"spilled_drink"
 title = "Spilled drink"
-text = "A full glass goes flying across table four. Some of it lands on a guest. Most of it lands on their trousers."
+text = "A full glass goes flying across table four. Some of it lands on a guest. Most of it lands on their pants."
 icon = &"warning"
 cooldown_days = 3
 choices = Array[ExtResource("2_choice")]([SubResource("Choice_1"), SubResource("Choice_2")])

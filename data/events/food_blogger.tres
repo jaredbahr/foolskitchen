@@ -6,18 +6,18 @@
 [sub_resource type="Resource" id="Choice_1"]
 script = ExtResource("2_choice")
 label = "Seat them now"
-result = "They skipped the queue, ate everything and posted it all. Expect curious faces tomorrow, and a review soon."
+result = "They skipped the line, ate everything and posted it all. Expect curious faces tomorrow, and a review soon."
 guest_patience_seconds = -15
 tomorrow_arrivals_percent = 8
 follow_up = &"blogger_review"
 
 [sub_resource type="Resource" id="Choice_2"]
 script = ExtResource("2_choice")
-label = "They can queue"
-result = "They queued like everyone else, and lived."
+label = "They can wait in line"
+result = "They waited in line like everyone else, and lived."
 risk_percent = 30
 risk_review_stars = 2
-risk_result = "They queued, then told forty thousand people about queuing. Two stars."
+risk_result = "They waited in line, then told forty thousand people about waiting in line. Two stars."
 
 [resource]
 script = ExtResource("1_def")
