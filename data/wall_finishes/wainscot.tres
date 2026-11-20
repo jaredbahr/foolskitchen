@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_script")
 id = &"wainscot"
-display_name = "Painted panelling"
+display_name = "Painted paneling"
 order = 2
 price = 2
 pattern = 1

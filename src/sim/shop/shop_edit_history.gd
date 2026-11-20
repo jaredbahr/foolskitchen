@@ -331,7 +331,7 @@ func apply_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish]) -> bool
 		if before[cell].style != effective[cell].style and laid.is_empty():
 			laid = effective[cell].style
 	entry.cash = _editor.last_cash_change
-	entry.label = "recolour the floor" if laid.is_empty() else "lay " + _editor.floor_style_name(laid)
+	entry.label = "recolor the floor" if laid.is_empty() else "lay " + _editor.floor_style_name(laid)
 	_push(entry)
 	return true
 
@@ -357,7 +357,7 @@ func apply_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish]) ->
 		if before[face].style != effective[face].style and laid.is_empty():
 			laid = effective[face].style
 	entry.cash = _editor.last_cash_change
-	entry.label = "recolour the walls" if laid.is_empty() else "put up " + _editor.wall_style_name(laid)
+	entry.label = "recolor the walls" if laid.is_empty() else "put up " + _editor.wall_style_name(laid)
 	_push(entry)
 	return true
 
@@ -426,7 +426,7 @@ func paint_hung(anchor: Vector3i, swatch_id: StringName) -> bool:
 	entry.anchor = anchor
 	entry.swatch_id = before
 	entry.paint_after = swatch_id
-	entry.label = "recolour " + _decor_name(hung.def_id)
+	entry.label = "recolor " + _decor_name(hung.def_id)
 	_push(entry)
 	return true
 

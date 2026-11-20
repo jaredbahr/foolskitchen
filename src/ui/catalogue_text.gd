@@ -30,7 +30,7 @@ const STATION_TEXT: Dictionary[StringName, String] = {
 	&"shaved_ice_cart": "Makes shaved ice",
 	&"drinks_fridge": "Keeps soft drinks cold",
 	&"drinks_shelf": "Holds the beer and wine",
-	&"order_counter": "Café guests line up here to order and pay, then take a table or a takeaway",
+	&"order_counter": "Café guests line up here to order and pay, then take a table or take it to go",
 }
 ## Restroom fixtures (FK-101): plain words, nothing more (D8).
 const RESTROOM_TEXT: Dictionary[StringName, String] = {
@@ -131,7 +131,7 @@ static func does(definition: ItemDef) -> String:
 	if definition.placement_layer == ItemDef.PlacementLayer.FLOOR_DECOR:
 		return "Rug: tables and chairs can stand on it"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR and definition.exterior_band == ExteriorSupport.Band.GROUND:
-		return "Stands on the pavement beside the door and shows your name and today's special"
+		return "Stands on the sidewalk beside the door and shows your name and today's special"
 	if definition.wall_mount == ItemDef.WallMount.EXTERIOR:
 		return "Hangs outside on the street front, %d tiles wide" % definition.footprint.x
 	if definition.hangs_in_window():

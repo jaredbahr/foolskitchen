@@ -386,7 +386,7 @@ func check_stamp(blueprint: Blueprint, anchor: Vector2i, rotation: int = 0, exac
 		if entry.origin.x < 0 or entry.origin.y < 0 or entry.quarter_turns < 0 or entry.quarter_turns > 3:
 			return EditCheck.new(false, CatalogueText.BLUEPRINT_INVALID)
 		if not entry.swatch_id.is_empty() and (not definition.paintable or _content.swatch(entry.swatch_id) == null):
-			return EditCheck.new(false, "Unknown colour")
+			return EditCheck.new(false, "Unknown color")
 		if exact == null and not LotAccess.allowed(definition, _lot_tags):
 			return EditCheck.new(false, CatalogueText.lot_refusal(definition.lot_tags))
 		if exact == null and definition.unlock_level > _owner_level:
@@ -1405,7 +1405,7 @@ func check_flooring(changes: Dictionary[Vector2i, FloorFinishes.Finish], exact: 
 			return EditCheck.new(false, "Unknown floor type")
 		for colour: StringName in [next.swatch, next.accent]:
 			if not colour.is_empty() and _content.swatch(colour) == null:
-				return EditCheck.new(false, "Unknown colour")
+				return EditCheck.new(false, "Unknown color")
 		if live.terrain(cell) != SimGrid.Terrain.FLOOR:
 			continue
 		floor_seen = true
@@ -1552,7 +1552,7 @@ func check_wall_finishes(changes: Dictionary[Vector3i, FloorFinishes.Finish], ex
 			return EditCheck.new(false, "Unknown wall finish")
 		for colour: StringName in [next.swatch, next.accent]:
 			if not colour.is_empty() and _content.swatch(colour) == null:
-				return EditCheck.new(false, "Unknown colour")
+				return EditCheck.new(false, "Unknown color")
 		if not WallFaces.is_face(live, face):
 			continue
 		face_seen = true
@@ -1673,7 +1673,7 @@ func check_hang(def_id: StringName, anchor: Vector3i, exact: Exact = null, swatc
 	if not swatch_id.is_empty() and (not definition.paintable \
 			or WallDecor.mount_for(_sim.world.grid, definition, anchor) != ItemDef.WallMount.EXTERIOR \
 			or _content.swatch(swatch_id) == null):
-		return EditCheck.new(false, "Choose an available colour for this outside item")
+		return EditCheck.new(false, "Choose an available color for this outside item")
 	if _books == null or not _books.is_ready():
 		return EditCheck.new(false, "The shop books are unavailable")
 	var charge: int = definition.price if exact == null else -exact.amount
@@ -1885,7 +1885,7 @@ func check_patio(cells: Array[Vector2i], adding: bool, exact: Exact = null) -> E
 	for cell: Vector2i in cells:
 		if adding:
 			if not _patio.area.has_point(cell):
-				return EditCheck.new(false, "Patio floor goes on the marked pavement")
+				return EditCheck.new(false, "Patio floor goes on the marked sidewalk")
 			if _patio.can_hold(cell) and not _patio_bought.has(cell):
 				effective[cell] = true
 		elif _patio_bought.has(cell):

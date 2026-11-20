@@ -149,7 +149,7 @@ func test_locked_finishes_and_decor_wait_for_their_level() -> void:
 	_editor.set_owner_level(3)
 	assert_true(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"brick", &"brick")).ok)
 	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"marble", &"cream")).why, "Unknown wall finish")
-	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"brick", &"neon")).why, "Unknown colour")
+	assert_eq(_editor.check_wall_finishes(_editor.wall_lay_changes(faces, &"brick", &"neon")).why, "Unknown color")
 
 
 func test_paint_area_follows_the_wall_round_corners_and_stops_at_rooms_and_doorways() -> void:
@@ -365,7 +365,7 @@ func test_history_undoes_and_redoes_wall_finishes_with_exact_cash() -> void:
 	assert_true(_history.apply_wall_finishes(_editor.wall_lay_changes(faces, &"subway_tile", &"cream")))
 	assert_eq(_history.undo_label(), "put up Subway tiles")
 	assert_true(_history.apply_wall_finishes(_editor.wall_recolour_changes(faces, &"sage")))
-	assert_eq(_history.undo_label(), "recolour the walls")
+	assert_eq(_history.undo_label(), "recolor the walls")
 	assert_eq(_ledger.cash, START_CASH - 9)
 	assert_true(_history.undo(), _history.last_refusal)
 	assert_eq(_editor.walls.finish(_face(1, 6, WEST)).swatch, &"cream")

@@ -857,7 +857,7 @@ func _refresh_floor_styles() -> void:
 		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
-			"Lay %s for %s. Replacing a floor refunds half its price; recolouring is free" % [
+			"Lay %s for %s. Replacing a floor refunds half its price; recoloring is free" % [
 				definition.display_name.to_lower(), price.to_lower()]
 		var selected: bool = definition.id == selected_floor_style
 		button.set_pressed_no_signal(selected)
@@ -1021,7 +1021,7 @@ func _refresh_wall_styles() -> void:
 		button.text = "%s\n%s" % [definition.display_name, price if locked.is_empty() else ("Tier %d" % definition.unlock_tier if definition.unlock_tier > _career_tier else "Level %d" % definition.unlock_level)]
 		button.disabled = not locked.is_empty()
 		button.tooltip_text = locked if not locked.is_empty() else \
-			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recolouring is free" % [
+			"Put up %s for %s (each 0.5 m of wall). Replacing a finish refunds half its price; recoloring is free" % [
 				definition.display_name.to_lower(), price.to_lower()]
 		var selected: bool = definition.id == selected_wall_style
 		button.set_pressed_no_signal(selected)

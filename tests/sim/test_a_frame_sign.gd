@@ -35,7 +35,7 @@ func test_item_is_a_35_dollar_level_two_street_decor_piece() -> void:
 	assert_eq(_definition.wall_mount, ItemDef.WallMount.EXTERIOR)
 	assert_eq(_definition.exterior_band, ExteriorSupport.Band.GROUND)
 	assert_eq(_definition.footprint, Vector2i.ONE)
-	assert_eq(CatalogueText.does(_definition), "Stands on the pavement beside the door and shows your name and today's special")
+	assert_eq(CatalogueText.does(_definition), "Stands on the sidewalk beside the door and shows your name and today's special")
 
 
 func test_only_the_pavement_beside_the_street_door_is_allowed() -> void:
