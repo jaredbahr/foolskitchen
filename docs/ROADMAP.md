@@ -29,38 +29,39 @@ Hobby pace: there are no dates, only exit criteria. Each phase ends with a playa
 15. `codex` #681 Chain goals G2: the goals line on the city screen and the ladder card (after #680)
 16. `codex` #682 Chain goals G3: name your chain at the second restaurant (after #680)
 17. `codex` #684 Birthday table bookings and the dog walker quirk (sim only)
+18. `codex` #693 US spelling across all player-facing text, with a guard test
 
 **Wave L, every location plays differently (Jared, 2026-11-18; D39, #596):**
-18. `both` #623 Seaside Cliff: terrace-only seating rule
-19. `codex` #605 Seaside Cliff: the daily catch
-20. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount
-21. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
-22. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
-23. `both` #629 Seaside Cliff: guests walk up and down the cliff path
-24. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
-25. `both` #597 Growth steps: each lot grows its own way
-26. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
-27. `both` #606 Skyline Rooftop: cocktails and a tasting menu
-28. `both` #590 Walk-up window: a hatch that serves passers-by
+19. `both` #623 Seaside Cliff: terrace-only seating rule
+20. `codex` #605 Seaside Cliff: the daily catch
+21. `codex` #604 Old Mill Street: country food, the bread oven and a farm-gate discount
+22. `codex` #624 Seaside Cliff: sea-view seats add vibe and price tolerance
+23. `codex` #617 Rooftop: guests step out of the lift lobby, in small bursts
+24. `both` #629 Seaside Cliff: guests walk up and down the cliff path
+25. `both` #626 Local food: each location's own ingredients, a Local tag and bonus
+26. `both` #597 Growth steps: each lot grows its own way
+27. `codex` #608 Woodland Cabin lot: foraged food and seasonal foraging
+28. `both` #606 Skyline Rooftop: cocktails and a tasting menu
+29. `both` #590 Walk-up window: a hatch that serves passers-by
 
 **Wave M, engine and polish (after wave L, or alongside it when a wave L issue is blocked):**
-29. `both` #548 Dead-end aisles: guard two #545 fixes with tests
-30. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
-31. `both` #391 Aisle pinch warning: faster hover, more routes
-32. `both` #384 Light staff mood
-33. `both` #378 Group bookings: the good-service payoff
-34. `codex` #371 Sixty more review quotes
-35. `both` #356 Day off
-36. `both` #324 Broken equipment
-37. `both` #339 Dishwasher
-38. `both` #328 Chop rhythm mini-game
-39. `both` #341 Plating mini-game for VIP guests
+30. `both` #548 Dead-end aisles: guard two #545 fixes with tests
+31. `both` #587 main.gd seam 4a: the Stock panel binds its own commands
+32. `both` #391 Aisle pinch warning: faster hover, more routes
+33. `both` #384 Light staff mood
+34. `both` #378 Group bookings: the good-service payoff
+35. `codex` #371 Sixty more review quotes
+36. `both` #356 Day off
+37. `both` #324 Broken equipment
+38. `both` #339 Dishwasher
+39. `both` #328 Chop rhythm mini-game
+40. `both` #341 Plating mini-game for VIP guests
 
 **When this list runs out,** take any open issue labelled `worker-ready` and `codex` (then `both`), lowest number first, with the same checks.
 
 Several issues touch the same screens or the same lot files. Running two or three Codex tasks at once is fine; merge `main` into your branch before marking ready, as `AGENTS.md` says.
 
-**Director-scoped (`claude`, art or taste first):** premium decor #206; the city map art #642, the awards night #683 (after #680), travel feel #644; guest looks and voices #660, #661, #662.
+**Director-scoped (`claude`, art or taste first):** the awards night #683 (after #680); the dog and birthday balloon art #660 (after #684). Done 2026-11-19: premium decor #206, city map art #642, travel feel #644, guest looks #661 and voices #662.
 **Later backlog (`claude` until scoped into `codex` issues):** #164 more sites, #167 makeovers, #169 staff drama, #170 design extras, #171 food depth, #172 more visitors, #173 neighbourhood rivals, #159 more entertainment (stage, games corner).
 
 ## Phase 0: Foundation
