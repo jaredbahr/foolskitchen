@@ -1,7 +1,9 @@
 class_name DishVisual
 extends Node3D
-## One reusable serving. All approved recipe models and their vessels are
-## warmed before service; showing a dish only toggles visibility.
+## One reusable serving. The models and vessels of today's menu (and of any
+## recipe still in flight) are warmed between services (FoodPresentation);
+## showing a warmed dish only toggles visibility. A dish that was not warmed is
+## built once, on demand, the first time this serving shows it.
 ##
 ## A serving is a vessel (RecipeDef.vessel: plate, bowl, board, cup and
 ## saucer, paper tray...) plus the food on it. Food is fitted to fill about
@@ -31,6 +33,7 @@ var footprint_radius: float = 0.0
 ## The vessel node currently visible (clean or dirty), or null.
 var vessel: Node3D
 var _variant_models: Dictionary[StringName, Array] = {}
+var _by_key: Dictionary[String, Node3D] = {}
 var _shown: Node3D
 var _dirty: bool = false
 var _takeaway: bool = false
@@ -50,35 +53,63 @@ static func _clear_overrides(node: Node) -> void:
 		_clear_overrides(child)
 
 
+## Warms the servings of `recipes` (FoodPresentation passes the menu plus the
+## recipes still in flight). Calling it again adds only what is missing.
 func prepare(recipes: Array[RecipeDef]) -> void:
-	plate = _model(PLATE, ArtScale.FOOD_SCALE)
-	footprint_radius = _footprint_radius(plate, Transform3D.IDENTITY)
-	dirty_plate = _model(PLATE, ArtScale.FOOD_SCALE)
-	# ART_STYLE §5 permits a private darker copy for dirty crockery.
-	_darken(dirty_plate)
+	if plate == null:
+		plate = _model(PLATE, ArtScale.FOOD_SCALE)
+		footprint_radius = _footprint_radius(plate, Transform3D.IDENTITY)
+		dirty_plate = _model(PLATE, ArtScale.FOOD_SCALE)
+		# ART_STYLE §5 permits a private darker copy for dirty crockery.
+		_darken(dirty_plate)
+		vessels[RecipeDef.PLATE] = plate
+		dirty_vessels[RecipeDef.PLATE] = dirty_plate
+	for recipe: RecipeDef in recipes:
+		if recipe != null and not recipe.id.is_empty() and not models.has(recipe.id):
+			_prepare_recipe(recipe)
+	visible = visible and _shown != null
+
+
+## Drops every warmed serving but the standard plates and warms `recipes`
+## instead. Only between services (the menu changed): it allocates. A serving
+## in flight keeps its recipe and shows its rebuilt model at the next show.
+func rebuild(recipes: Array[RecipeDef]) -> void:
+	for child: Node in get_children():
+		if child != plate and child != dirty_plate:
+			remove_child(child)
+			child.free()
+	plate.visible = false
+	dirty_plate.visible = false
+	_shown = null
+	vessel = null
+	models.clear()
+	takeaway_models.clear()
+	_variant_models.clear()
+	_by_key.clear()
+	vessels.clear()
+	dirty_vessels.clear()
 	vessels[RecipeDef.PLATE] = plate
 	dirty_vessels[RecipeDef.PLATE] = dirty_plate
-	var by_key: Dictionary[String, Node3D] = {}
-	for recipe: RecipeDef in recipes:
-		if recipe == null or recipe.id.is_empty():
-			continue
-		if recipe.view_model == null:
-			# A future unmapped dish still has an actual, already-warmed serving.
-			models[recipe.id] = plate
-			continue
-		_prepare_vessel(recipe.vessel, not recipe.is_drink())
-		models[recipe.id] = _prepare_food(recipe.view_model, recipe.vessel, by_key)
-		if not recipe.view_variants.is_empty():
-			var alternatives: Array[Node3D] = []
-			for variant: PackedScene in recipe.view_variants:
-				if variant != null:
-					alternatives.append(_prepare_food(variant, recipe.vessel, by_key))
-			_variant_models[recipe.id] = alternatives
-		var away: StringName = recipe.served_vessel(true)
-		if away != recipe.vessel or recipe.served_model(true) != recipe.view_model:
-			_prepare_vessel(away, false)
-			takeaway_models[recipe.id] = _prepare_food(recipe.served_model(true), away, by_key)
-	visible = false
+	prepare(recipes)
+
+
+func _prepare_recipe(recipe: RecipeDef) -> void:
+	if recipe.view_model == null:
+		# A future unmapped dish still has an actual, already-warmed serving.
+		models[recipe.id] = plate
+		return
+	_prepare_vessel(recipe.vessel, not recipe.is_drink())
+	models[recipe.id] = _prepare_food(recipe.view_model, recipe.vessel)
+	if not recipe.view_variants.is_empty():
+		var alternatives: Array[Node3D] = []
+		for variant: PackedScene in recipe.view_variants:
+			if variant != null:
+				alternatives.append(_prepare_food(variant, recipe.vessel))
+		_variant_models[recipe.id] = alternatives
+	var away: StringName = recipe.served_vessel(true)
+	if away != recipe.vessel or recipe.served_model(true) != recipe.view_model:
+		_prepare_vessel(away, false)
+		takeaway_models[recipe.id] = _prepare_food(recipe.served_model(true), away)
 
 
 func _prepare_vessel(id: StringName, can_be_dirty: bool) -> void:
@@ -91,9 +122,9 @@ func _prepare_vessel(id: StringName, can_be_dirty: bool) -> void:
 
 
 ## Food is shared per (scene, vessel): the same model on one vessel is one node.
-func _prepare_food(scene: PackedScene, vessel_id: StringName, by_key: Dictionary[String, Node3D]) -> Node3D:
+func _prepare_food(scene: PackedScene, vessel_id: StringName) -> Node3D:
 	var key: String = scene.resource_path + "@" + String(vessel_id)
-	var model: Node3D = by_key.get(key) as Node3D
+	var model: Node3D = _by_key.get(key) as Node3D
 	if model != null:
 		return model
 	var vessel_scale: float = DishVessels.scale(vessel_id)
@@ -115,7 +146,7 @@ func _prepare_food(scene: PackedScene, vessel_id: StringName, by_key: Dictionary
 		inner.position = Vector3.ZERO
 		_center(model)
 		model.position.y = DishVessels.rest_height(vessel_id)
-	by_key[key] = model
+	_by_key[key] = model
 	return model
 
 
@@ -124,6 +155,10 @@ func show_dish(recipe: RecipeDef, dirty: bool, takeaway: bool = false) -> void:
 	if recipe == null or recipe.id.is_empty():
 		clear_dish()
 		return
+	if not models.has(recipe.id):
+		# Not warmed (an old order for a dish since taken off the menu): built
+		# once, here, rather than shown as an empty plate.
+		_prepare_recipe(recipe)
 	var model: Node3D = plate
 	var vessel_id: StringName = RecipeDef.PLATE
 	if recipe.view_model != null and models.get(recipe.id) != null:

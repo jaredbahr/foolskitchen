@@ -51,7 +51,7 @@ func test_every_recipe_has_a_model_and_a_known_vessel_and_the_pool_warms_both() 
 	var recipes: Array[RecipeDef] = _content.recipes()
 	assert_false(paths.is_empty())
 	assert_eq(recipes.size(), paths.size(), "every actual recipe resource is loaded, without a fixed total")
-	var dish: DishVisual = _view.food.pool[0]
+	var dish: DishVisual = _full_dish()
 	for recipe: RecipeDef in recipes:
 		assert_true(paths.has(recipe.resource_path))
 		assert_not_null(recipe.view_model, String(recipe.id) + " has its authored presentation mapping")
@@ -62,7 +62,7 @@ func test_every_recipe_has_a_model_and_a_known_vessel_and_the_pool_warms_both() 
 			var path: String = recipe.view_model.resource_path
 			assert_true(path.begins_with("res://assets/kenney/food/") or path.begins_with("res://assets/made/")
 				or path.begins_with("res://assets/props/"), path)
-		assert_true(dish.models.has(recipe.id), "the warmed pool covers every loaded recipe")
+		assert_true(dish.models.has(recipe.id), "a serving can warm every loaded recipe")
 		assert_not_null(dish.models.get(recipe.id))
 		assert_not_null(dish.vessels.get(recipe.vessel), "the warmed pool holds every recipe's vessel")
 		if not recipe.is_drink():
@@ -74,6 +74,7 @@ func test_every_recipe_has_a_model_and_a_known_vessel_and_the_pool_warms_both() 
 			continue
 		assert_eq(recipe.view_model.resource_path, String(SERVINGS[id][0]))
 		assert_eq(recipe.vessel, SERVINGS[id][1] as StringName)
+	dish.free()
 
 
 func test_no_two_food_recipes_share_an_identical_serving() -> void:
@@ -110,7 +111,7 @@ func test_takeaway_recipes_stand_in_a_takeaway_vessel() -> void:
 
 
 func test_every_vessel_stays_inside_the_plate_footprint_and_food_fills_it() -> void:
-	var dish: DishVisual = _view.food.pool[0]
+	var dish: DishVisual = _full_dish()
 	for id: StringName in dish.vessels:
 		var vessel: Node3D = dish.vessels[id]
 		if vessel != null:
@@ -128,10 +129,11 @@ func test_every_vessel_stays_inside_the_plate_footprint_and_food_fills_it() -> v
 			var vessel_radius: float = DishVisual._footprint_radius(dish.vessels[recipe.vessel], Transform3D.IDENTITY)
 			assert_true(radius >= vessel_radius * 0.55 or height >= ArtScale.SERVED_FOOD_MAX_HEIGHT - 0.001,
 				"%s fills its %s (%.3f of %.3f)" % [recipe.id, recipe.vessel, radius, vessel_radius])
+	dish.free()
 
 
 func test_dirty_serving_is_a_darkened_copy_of_its_own_vessel_for_every_vessel() -> void:
-	var dish: DishVisual = _view.food.pool[0]
+	var dish: DishVisual = _full_dish()
 	var count: int = _food_node_count(dish)
 	var by_vessel: Dictionary[StringName, RecipeDef] = {}
 	for recipe: RecipeDef in _content.recipes():
@@ -156,11 +158,13 @@ func test_dirty_serving_is_a_darkened_copy_of_its_own_vessel_for_every_vessel() 
 				visible += 1
 		assert_eq(visible, 1, String(vessel) + " dirty shows only its vessel")
 	assert_eq(_food_node_count(dish), count, "showing never allocates")
+	dish.free()
 
 
 func test_soft_serve_varies_the_model_by_order_without_rebuilding_the_dish() -> void:
 	var dish: DishVisual = _view.food.pool[0]
 	var recipe: RecipeDef = _content.recipe(&"soft_serve")
+	dish.prepare([recipe])
 	var paths: PackedStringArray = [
 		"res://assets/kenney/food/ice-cream.glb",
 		"res://assets/props/ice_cream_cone_chocolate.tscn",
@@ -1226,3 +1230,86 @@ func test_a_soft_drink_taken_away_goes_in_a_lidded_paper_cup_and_beer_and_wine_d
 	assert_eq(dish._shown.get_child(0).scene_file_path, "res://assets/made/food/soda_to_go.glb")
 	for id: StringName in [&"beer", &"wine"]:
 		assert_null(_content.recipe(id).takeaway_view_model, String(id) + " is not sold to go")
+
+
+## A serving warmed for the whole recipe book (the pool warms only the menu).
+func _full_dish() -> DishVisual:
+	var dish: DishVisual = DishVisual.new()
+	dish.prepare(_content.recipes())
+	return dish
+
+
+func _warmed(dish: DishVisual) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for id: StringName in dish.models:
+		ids.append(id)
+	return ids
+
+
+func test_the_pool_warms_only_the_menu_and_the_recipes_in_flight() -> void:
+	var menu: Array[StringName] = []
+	for recipe: RecipeDef in _sim.menu:
+		menu.append(recipe.id)
+	assert_false(menu.is_empty())
+	for dish: DishVisual in _view.food.pool:
+		var warmed: Array[StringName] = _warmed(dish)
+		for id: StringName in menu:
+			assert_true(warmed.has(id), String(id) + " on the menu is warmed")
+		assert_eq(warmed.size(), menu.size(), "nothing off the menu is warmed")
+	assert_true(_content.recipes().size() > menu.size(), "the fixture menu is a subset of the recipe book")
+
+
+func test_a_menu_change_between_services_rebuilds_the_pool_and_keeps_a_recipe_in_flight() -> void:
+	assert_eq(_sim.world.clock.phase, SimClock.Phase.MORNING)
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var leaving: RecipeDef = _sim.menu[0]
+	# An order for the dish about to come off the menu is still on the pass.
+	var order: Order = Order.new()
+	order.recipe_id = leaving.id
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[0]
+	_sim.orders.place(order, 0)
+	_sim.orders.set_state(order, Order.State.READY)
+	_view._sync_agents()
+	var dish: DishVisual = _view.food.tickets[order.id].dish
+	assert_not_null(dish)
+	var added: RecipeDef = null
+	for recipe: RecipeDef in _content.recipes():
+		if not _sim.menu.has(recipe) and recipe.view_model != null and not recipe.is_drink():
+			added = recipe
+			break
+	_sim.menu.erase(leaving)
+	_sim.menu.append(added)
+	_view._sync_agents()
+	for serving: DishVisual in _view.food.pool:
+		var warmed: Array[StringName] = _warmed(serving)
+		assert_true(warmed.has(added.id), "the newly listed dish is warmed")
+		assert_true(warmed.has(leaving.id), "the dish still on the pass stays warmed")
+	assert_true(dish.visible and dish._shown != null and dish._shown.visible, "the in-flight serving is redrawn")
+	assert_true(dish._shown == dish.models[leaving.id])
+	# Once that order is gone, the next menu change drops it from the pool.
+	_sim.orders.set_state(order, Order.State.CANCELLED)
+	_view._sync_agents()
+	_sim.menu.append(_content.recipe(&"coffee") if not _sim.menu.has(_content.recipe(&"coffee")) else _content.recipe(&"tea"))
+	_view._sync_agents()
+	assert_false(_warmed(_view.food.pool[0]).has(leaving.id), "a dish off the menu and out of flight is dropped")
+
+
+func test_an_unwarmed_recipe_is_built_once_on_demand_never_shown_as_an_empty_plate() -> void:
+	var off_menu: RecipeDef = null
+	for recipe: RecipeDef in _content.recipes():
+		if not _sim.menu.has(recipe) and recipe.view_model != null and not recipe.is_drink():
+			off_menu = recipe
+			break
+	assert_not_null(off_menu)
+	var dish: DishVisual = _view.food.pool[0]
+	assert_false(dish.models.has(off_menu.id))
+	dish.show_dish(off_menu, false)
+	assert_true(dish.models.has(off_menu.id))
+	assert_true(dish._shown == dish.models[off_menu.id] and dish._shown != dish.plate)
+	var count: int = _food_node_count(dish)
+	dish.clear_dish()
+	dish.show_dish(off_menu, false)
+	dish.show_dish(off_menu, true)
+	assert_eq(_food_node_count(dish), count, "built once, then reused")
+	dish.clear_dish()

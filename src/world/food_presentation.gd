@@ -53,7 +53,8 @@ var surface_bounds: Dictionary[int, AABB] = {}
 var _tops: Dictionary[int, Surface] = {}
 var _bases: Dictionary[int, Basis] = {}
 var tickets: Dictionary[int, Ticket] = {}
-var _recipes: Array[RecipeDef] = []
+## The menu the pool was last warmed for, compared each sync without allocating.
+var _menu_seen: Array[RecipeDef] = []
 var _sink_id: int = 0
 ## Customers taking their order away, gathered once per sync.
 var _away: Dictionary[int, bool] = {}
@@ -63,11 +64,15 @@ var _pass_id: int = 0
 func bind(value: RestaurantSim, definitions: ContentDB, items: Dictionary[int, ItemVisual]) -> void:
 	restaurant = value
 	content = definitions
-	_recipes = content.recipes()
+	_menu_seen.assign(restaurant.menu)
 	restaurant.orders.order_placed.connect(_remember)
 	for state: Order.State in [Order.State.PLACED, Order.State.COOKING, Order.State.READY, Order.State.DELIVERED]:
 		for order: Order in restaurant.orders.orders_in_state(state):
 			_remember(order)
+	# A pool kept from an earlier restaurant is warmed for this one's menu.
+	var recipes: Array[RecipeDef] = served_recipes()
+	for dish: DishVisual in pool:
+		dish.rebuild(recipes)
 	refresh_layout(items)
 
 
@@ -139,7 +144,7 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 	while pool.size() < seats * 2 + 16:
 		var dish: DishVisual = DishVisual.new()
 		add_child(dish)
-		dish.prepare(_recipes)
+		dish.prepare(served_recipes())
 		pool.append(dish)
 	while stack.size() < 6:
 		var dish: DishVisual = DishVisual.new()
@@ -155,7 +160,43 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 				-pool[0].footprint_radius - 0.001, Geometry2D.JOIN_MITER))
 
 
+## What the pool warms: today's menu plus every recipe still in flight (an
+## order not yet eaten, or a dirty serving still on its table).
+func served_recipes() -> Array[RecipeDef]:
+	var recipes: Array[RecipeDef] = []
+	for recipe: RecipeDef in restaurant.menu:
+		if recipe != null and not recipes.has(recipe):
+			recipes.append(recipe)
+	for id: int in tickets:
+		var recipe: RecipeDef = tickets[id].recipe
+		if not tickets[id].retired and recipe != null and not recipes.has(recipe):
+			recipes.append(recipe)
+	return recipes
+
+
+## The pool is warmed for the menu, not the whole recipe book. A menu changed
+## between services (the morning, or Build/Menu while closed) rebuilds it;
+## during service a newly listed dish is built on demand, once per serving.
+func _follow_menu() -> void:
+	var menu: Array[RecipeDef] = restaurant.menu
+	var same: bool = menu.size() == _menu_seen.size()
+	if same:
+		for index: int in range(menu.size()):
+			if menu[index] != _menu_seen[index]:
+				same = false
+				break
+	if same:
+		return
+	_menu_seen.assign(menu)
+	var clock: SimClock = restaurant.world.clock
+	if clock == null or clock.phase == SimClock.Phase.MORNING or clock.phase == SimClock.Phase.CLOSED:
+		var recipes: Array[RecipeDef] = served_recipes()
+		for dish: DishVisual in pool:
+			dish.rebuild(recipes)
+
+
 func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Dictionary[int, Node3D]) -> void:
+	_follow_menu()
 	for id: int in tickets:
 		tickets[id].carrier_id = 0
 		tickets[id].carry_index = 0
