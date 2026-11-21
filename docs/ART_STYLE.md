@@ -72,12 +72,12 @@ Any new building piece (walls, windows, doors, the awning, counters) follows the
 - **A serving is a vessel plus food** (Jared, 2026-11-21). Each recipe names its model (`view_model`) and its vessel (`vessel`) in `data/recipes/<id>.tres`; `src/world/dish_vessels.gd` says what each vessel id draws. The vessel hints at the dish:
   - **plate** (kit `plate`): most mains. **diner_plate** (made, blue well): fried eggs and bacon and eggs, so the white of the egg reads.
   - **deep_plate**, **bowl**, **soup_bowl** (kit `bowl` on a `plate`) and **pan**: mussels in broth, cereal, tomato soup and seafood stew, each with its own colour of fill.
-  - **board** (kit `cutting-board`) and **rect_plate** (kit `plate-rectangle`): club sandwich, tomato melt, salmon maki. **basket** (made, wicker): bar fries.
-  - **cup_saucer**: coffee, tea and the sundae glass. **coaster** (made card mat): beer, wine and soft drinks.
+  - **board** (made dark walnut board, so it stands out on light tables) and **rect_plate** (kit `plate-rectangle`): club sandwich, tomato melt, salmon maki. **basket** (made, wicker): bar fries.
+  - **cup_saucer**: coffee and tea. **coaster** (made card mat): beer, wine and soft drinks. The sundae is a made wide, short coupe on a plate.
 - **Bigger food, same plates.** Plates keep their size (a plate is about 0.29 across), so tables, the pass and the tray look unchanged; every vessel stays inside the plate's footprint. The food on it is fitted to fill about 70% of the vessel (`ArtScale.SERVED_FOOD_FILL`) and stands no taller than `ArtScale.SERVED_FOOD_MAX_HEIGHT`. Never raise `FOOD_SCALE` to make served food bigger. A fill authored inside its vessel (a soup in its bowl) carries `vessel_space` metadata and keeps the vessel's scale.
 - **One strong colour and a clear silhouette per dish.** No two food recipes share a model; shared kit pieces are combined into a dish of their own in `assets/props/food/`.
-- **Takeaway goes in paper.** Cones and to-go treats (soft serve, cone of fries, shaved ice) stand in a paper cup or paper tray, never on a plate. An order taken away at the counter uses the recipe's `takeaway_vessel` (and `takeaway_view_model`): pastries in a flat paper bag, coffee and tea in a lidded to-go cup, a sundae's scoop in a paper cup.
-- **Dirty:** a dirty serving is a darker private copy of its own vessel, with the food gone. The sink stack is plain dirty plates. No new models.
+- **Takeaway goes in paper.** Cones and to-go treats (soft serve, cone of fries, shaved ice) stand in a paper cup or paper tray, never on a plate. An order taken away at the counter uses the recipe's `takeaway_vessel` (and `takeaway_view_model`): croissants and muffins on a flat paper bag, coffee, tea and soft drinks in a lidded to-go cup, a sundae's scoop in a paper cup. Beer and wine are not sold to go.
+- **Dirty:** a dirty serving is a darker copy of its own vessel, with the food gone; the darkened materials are shared by every serving. Only the dine-in vessels of food get a dirty copy (drinks and takeaway are never left dirty). The sink stack is plain dirty plates. No new models.
 
 ## 6. Lighting
 - Lighting is engine-only and lives in one rig: a warm key light from the upper left, a soft cool fill, warm ambient light. Assets never bake light.

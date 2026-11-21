@@ -52,6 +52,10 @@ SWATCH = {
     "tomato": (488, 350),       # tomato soup (233, 97, 71)
     "coffee": (72, 444),        # coffee, olives (65, 51, 49)
     "grey": (264, 444),         # metal (134, 139, 161)
+    "walnut": (104, 380),       # walnut board top (138, 85, 66)
+    "walnut_dark": (104, 470),  # its edges and groove (68, 52, 50)
+    "chocolate": (40, 380),     # chocolate ice cream (190, 108, 75)
+    "pink": (8, 444),           # strawberry ice cream (236, 130, 207)
 }
 
 
@@ -298,6 +302,42 @@ def fry_basket() -> Mesh:
     return m
 
 
+def walnut_board() -> Mesh:
+    """A dark walnut serving board (the kit `cutting-board` shape, its wood a
+    darker swatch so it stands out on the light tables): a chamfered slab
+    with a juice groove and a short handle."""
+    m = Mesh()
+    w, d = 0.31, 0.2
+    outline = [(-w, -d), (w, -d), (w, d), (-w, d)]
+    slab(m, outline, 0.0, 0.055, "walnut_dark", top_swatch="walnut", inset=0.015, bevel=0.015)
+    gw, gd = w - 0.06, d - 0.055
+    groove = [(-gw, 0.0551, -gd), (gw, 0.0551, -gd), (gw, 0.0551, gd), (-gw, 0.0551, gd)]
+    inner = [(-gw + 0.02, 0.0552, -gd + 0.02), (gw - 0.02, 0.0552, -gd + 0.02), (gw - 0.02, 0.0552, gd - 0.02),
+             (-gw + 0.02, 0.0552, gd - 0.02)]
+    band(m, groove, inner, "walnut_dark", 0.0, 1.0)
+    slab(m, [(w, -0.05), (w + 0.1, -0.035), (w + 0.1, 0.035), (w, 0.05)], 0.0, 0.04, "walnut_dark",
+         top_swatch="walnut")
+    return m
+
+
+def sundae_coupe() -> Mesh:
+    """An ice cream sundae in a wide, short glass coupe: a chocolate and a
+    strawberry scoop, whipped cream and a cherry on top."""
+    m = Mesh()
+    seg = 10
+    frustum(m, 0.13, 0.11, 0.0, 0.02, "glass", segments=seg)
+    frustum(m, 0.03, 0.03, 0.02, 0.06, "glass", segments=6, top=False, bottom=False)
+    frustum(m, 0.05, 0.24, 0.06, 0.12, "glass", segments=seg, top=False)
+    frustum(m, 0.24, 0.25, 0.12, 0.14, "porcelain", segments=seg, top=False, bottom=False)
+    cap(m, ring(0.235, 0.13, seg), "cream", 1.0)
+    for cx, cz, sw in ((-0.085, 0.03, "chocolate"), (0.09, -0.03, "pink")):
+        dome(m, [(0.12, 0.13), (0.13, 0.17), (0.11, 0.22), (0.06, 0.25)], sw, segments=8, cx=cx, cz=cz)
+    dome(m, [(0.09, 0.22), (0.08, 0.26), (0.05, 0.29), (0.015, 0.31)], "white", segments=6, cx=0.0, cz=0.0)
+    frustum(m, 0.035, 0.035, 0.29, 0.34, "red", segments=6)
+    strut(m, (0.0, 0.34, 0.0), (0.02, 0.39, -0.01), 0.01, 0.01, "green")
+    return m
+
+
 # ---------------------------------------------------------------- drinks
 
 def beer_glass() -> Mesh:
@@ -322,6 +362,19 @@ def wine_glass() -> Mesh:
     frustum(m, 0.03, 0.1, 0.16, 0.22, "red", segments=seg, top=False, bottom=True)
     frustum(m, 0.1, 0.112, 0.22, 0.29, "red", segments=seg, top=True, bottom=False)
     frustum(m, 0.112, 0.1, 0.29, 0.37, "glass", segments=seg, top=False, bottom=False)
+    return m
+
+
+def soda_to_go() -> Mesh:
+    """A soft drink to go: a white paper cup with a red band, a domed lid and a
+    striped straw."""
+    m = Mesh()
+    seg = 10
+    frustum(m, 0.085, 0.1, 0.0, 0.12, "white", segments=seg, top=False)
+    frustum(m, 0.1, 0.112, 0.12, 0.22, "red", segments=seg, top=False, bottom=False)
+    frustum(m, 0.112, 0.117, 0.22, 0.27, "white", segments=seg, top=False, bottom=False)
+    dome(m, [(0.122, 0.27), (0.11, 0.3), (0.06, 0.315)], "porcelain", segments=seg)
+    strut(m, (0.02, 0.3, 0.0), (0.04, 0.42, 0.02), 0.022, 0.022, "red")
     return m
 
 
@@ -598,6 +651,7 @@ def glb(mesh: Mesh, name: str) -> bytes:
 PIECES = (
     ("diner_plate", diner_plate), ("coaster", coaster), ("paper_tray", paper_tray), ("fry_basket", fry_basket),
     ("beer_glass", beer_glass), ("wine_glass", wine_glass), ("coffee_to_go", coffee_to_go),
+    ("soda_to_go", soda_to_go), ("walnut_board", walnut_board), ("sundae_coupe", sundae_coupe),
     ("battered_fish", battered_fish), ("chips_pile", chips_pile), ("tomato_soup_fill", soup_fill),
     ("cereal_fill", cereal_fill), ("stew_fill", stew_fill), ("broth_fill", broth_fill),
     ("shrimp_skewer", shrimp_skewer), ("stew_shrimp", stew_shrimp), ("grilled_cheese", grilled_cheese),

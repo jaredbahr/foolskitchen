@@ -219,8 +219,8 @@ the evening by day and night).
   `ice_cream_cone_chocolate.tscn` and `ice_cream_cone_mint.tscn` seat the kit's
   scoops on its `ice-cream-cne`; `shaved_ice.tscn` puts the made topping in the
   kit `ice-cream-cup`; the paper cone of fries is `walkup/fries_cone.glb`. The
-  food art pass (#713) serves the sundae as the kit's own `sundae` and moved
-  the other served dishes to `assets/props/food/` (below).
+  food art pass (#713) serves the sundae in a made coupe and moved the other
+  served dishes to `assets/props/food/` (below).
 
 ## UI control icons (#498)
 `ui/*.png` (switch on/off, slider handle, dropdown arrow, menu radio dots) are drawn by `tools/make_ui_controls.py` in the theme palette: rounded, outlined in the ink colour, no gradients. Re-run the script to regenerate.
@@ -560,3 +560,6 @@ Rebuilt by `python3 tools/build_food_art.py` (standard library only; no Blender,
 | `food/club_pick.glb` | club sandwich | a cocktail pick with an olive and a red frill | 48 |
 | `food/muffin.glb` | muffin | kit `cupcake` case and `muffin` top: pleated paper, golden dome, blueberries | 212 |
 | `food/savory_pie.glb` | savoury pie | kit `mincemeat-pie` size: one crimped individual pie with a golden lid, steam slits and a pastry leaf | 272 |
+| `food/soda_to_go.glb` | soft drink taken away | kit `soda` cup: a white paper cup with a red band, a domed lid and a straw | 128 |
+| `food/walnut_board.glb` | vessel: club sandwich, tomato melt | kit `cutting-board` shape and groove, in the colormap's darker walnut brown so it stands out on light tables | 40 |
+| `food/sundae_coupe.glb` | ice cream sundae | kit `sundae` and `ice-cream-cup`: a wide, short glass coupe with a chocolate and a strawberry scoop, whipped cream and a cherry | 284 |

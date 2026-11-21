@@ -14,7 +14,7 @@ const SERVED_FOOD_MAX_HEIGHT: float = 0.18
 ## Vessels drawn larger than their kit size, on top of FOOD_SCALE, so a small
 ## cup reads at the default zoom. Every vessel stays inside the plate footprint.
 const VESSEL_SCALE: Dictionary[StringName, float] = {
-	&"cup_saucer": 1.5, &"paper_cup": 1.6, &"board": 0.9, &"rect_plate": 0.88, &"paper_bag": 1.1, &"coaster": 1.3,
+	&"cup_saucer": 1.5, &"paper_cup": 1.6, &"rect_plate": 0.88, &"paper_bag": 1.1, &"coaster": 1.3,
 }
 ## The restaurant cat (#119) is built at its own real size; this keeps it in
 ## proportion to the Mini Characters, who are scaled by CHARACTER_SCALE.

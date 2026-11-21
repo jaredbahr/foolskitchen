@@ -19,7 +19,7 @@ const SPECS: Dictionary[StringName, Dictionary] = {
 	&"bowl": {"scene": "res://assets/kenney/food/bowl.glb", "rest": 0.18, "fit": 0.33},
 	&"soup_bowl": {"scene": "res://assets/props/food/soup_bowl.tscn", "rest": 0.23, "fit": 0.33},
 	&"pan": {"scene": "res://assets/kenney/food/pan.glb", "rest": 0.13, "fit": 0.37},
-	&"board": {"scene": "res://assets/kenney/food/cutting-board.glb", "rest": 0.06, "fit": 0.5},
+	&"board": {"scene": "res://assets/made/food/walnut_board.glb", "rest": 0.055, "fit": 0.44},
 	&"rect_plate": {"scene": "res://assets/kenney/food/plate-rectangle.glb", "rest": 0.08, "fit": 0.5},
 	&"basket": {"scene": "res://assets/made/food/fry_basket.glb", "rest": 0.025, "fit": 0.42},
 	&"cup_saucer": {"scene": "res://assets/kenney/food/cup-saucer.glb", "rest": 0.022, "fit": 0.2},

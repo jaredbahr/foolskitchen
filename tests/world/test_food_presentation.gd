@@ -35,7 +35,8 @@ const SERVINGS: Dictionary[StringName, Array] = {
 	&"mussels_broth": ["res://assets/props/food/mussels.tscn", &"deep_plate"],
 	&"salmon_maki": ["res://assets/props/food/salmon_maki.tscn", &"rect_plate"],
 	&"savoury_pie": ["res://assets/made/food/savory_pie.glb", &"plate"],
-	&"ice_cream_sundae": ["res://assets/kenney/food/sundae.glb", &"cup_saucer"],
+	&"ice_cream_sundae": ["res://assets/made/food/sundae_coupe.glb", &"plate"],
+	&"club_sandwich": ["res://assets/props/food/club_sandwich.tscn", &"board"],
 	&"tomato_soup": ["res://assets/props/food/tomato_soup.tscn", &"soup_bowl"],
 	&"seafood_stew": ["res://assets/props/food/seafood_stew.tscn", &"pan"],
 	&"cereal": ["res://assets/props/food/cereal.tscn", &"bowl"],
@@ -64,7 +65,8 @@ func test_every_recipe_has_a_model_and_a_known_vessel_and_the_pool_warms_both() 
 		assert_true(dish.models.has(recipe.id), "the warmed pool covers every loaded recipe")
 		assert_not_null(dish.models.get(recipe.id))
 		assert_not_null(dish.vessels.get(recipe.vessel), "the warmed pool holds every recipe's vessel")
-		assert_not_null(dish.dirty_vessels.get(recipe.vessel), "and its dirty copy")
+		if not recipe.is_drink():
+			assert_not_null(dish.dirty_vessels.get(recipe.vessel), "and its dirty copy")
 	for id: StringName in SERVINGS:
 		var recipe: RecipeDef = _content.recipe(id)
 		assert_not_null(recipe)
@@ -133,7 +135,8 @@ func test_dirty_serving_is_a_darkened_copy_of_its_own_vessel_for_every_vessel() 
 	var count: int = _food_node_count(dish)
 	var by_vessel: Dictionary[StringName, RecipeDef] = {}
 	for recipe: RecipeDef in _content.recipes():
-		by_vessel[recipe.vessel] = recipe
+		if not recipe.is_drink():
+			by_vessel[recipe.vessel] = recipe
 	assert_true(by_vessel.size() >= 10, "the menu uses the vessel set")
 	for vessel: StringName in by_vessel:
 		var recipe: RecipeDef = by_vessel[vessel]
@@ -210,7 +213,7 @@ func test_diner_classics_fit_the_plate_and_use_one_pizza_wedge_and_a_filled_cup(
 		if mesh.visible and mesh.mesh != null:
 			wedges.append(child.name)
 	assert_eq(wedges, [&"slice6"] as Array[StringName], "the imported pizza supplies one rendered wedge")
-	assert_eq(dish.models[&"ice_cream_sundae"].get_child(0).scene_file_path, "res://assets/kenney/food/sundae.glb")
+	assert_eq(dish.models[&"ice_cream_sundae"].get_child(0).scene_file_path, "res://assets/made/food/sundae_coupe.glb")
 	# Taken away, the sundae's scoop goes in a paper cup.
 	var to_go: Node3D = dish.takeaway_models[&"ice_cream_sundae"].get_child(0) as Node3D
 	assert_eq(to_go.get_node("ChocolateScoop").scene_file_path,
@@ -1190,3 +1193,36 @@ func test_content_rejects_unknown_vessels_and_a_plated_takeaway() -> void:
 	assert_eq(recipe.vessel_errors(), PackedStringArray())
 	recipe.takeaway_vessel = &"none"
 	assert_eq(recipe.vessel_errors().size(), 1, "only a drink is handed over with no vessel")
+
+
+func test_pooled_servings_share_dirty_materials_and_skip_vessels_that_are_never_dirty() -> void:
+	var first: DishVisual = _view.food.pool[0]
+	var second: DishVisual = _view.food.pool[1]
+	# Drinks are never dirtied and takeaway-only vessels never reach a table.
+	for vessel: StringName in [&"coaster", &"paper_bag", &"none"]:
+		assert_null(first.dirty_vessels.get(vessel), String(vessel) + " has no dirty copy")
+	for vessel: StringName in first.dirty_vessels:
+		var a: Array[Node] = first.dirty_vessels[vessel].find_children("*", "MeshInstance3D", true, false)
+		var b: Array[Node] = second.dirty_vessels[vessel].find_children("*", "MeshInstance3D", true, false)
+		for index: int in range(a.size()):
+			var mesh: MeshInstance3D = a[index] as MeshInstance3D
+			for surface: int in range(mesh.get_surface_override_material_count()):
+				assert_true(mesh.get_surface_override_material(surface) != null)
+				assert_true(mesh.get_surface_override_material(surface)
+					== (b[index] as MeshInstance3D).get_surface_override_material(surface),
+					String(vessel) + " dirty material is shared, not one per serving")
+	# A dirtied drink or takeaway serving still has a vessel to show.
+	first.show_dish(_content.recipe(&"beer"), true)
+	assert_true(first.vessel == first.dirty_plate)
+	first.show_dish(_content.recipe(&"croissant"), true, true)
+	assert_true(first.vessel == first.dirty_vessels[&"plate"])
+	first.clear_dish()
+
+
+func test_a_soft_drink_taken_away_goes_in_a_lidded_paper_cup_and_beer_and_wine_do_not() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	dish.show_dish(_content.recipe(&"soft_drink"), false, true)
+	assert_null(dish.vessel)
+	assert_eq(dish._shown.get_child(0).scene_file_path, "res://assets/made/food/soda_to_go.glb")
+	for id: StringName in [&"beer", &"wine"]:
+		assert_null(_content.recipe(id).takeaway_view_model, String(id) + " is not sold to go")

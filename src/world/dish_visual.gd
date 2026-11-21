@@ -13,7 +13,12 @@ const PLATE: PackedScene = preload("res://assets/kenney/food/plate.glb")
 ## footprint every vessel stays inside.
 var plate: Node3D
 var dirty_plate: Node3D
+## Darkened dirty-crockery materials, one per source material, shared by every
+## serving (ART_STYLE §5): never a private material per pooled serving.
+static var _dark_materials: Dictionary[Material, Material] = {}
 ## Clean and dirty vessel nodes by RecipeDef vessel id ("plate" is `plate`).
+## A dirty copy exists only for a vessel a dirty serving can show: the dine-in
+## vessel of a food recipe (FoodPresentation only dirties food at a table).
 var vessels: Dictionary[StringName, Node3D] = {}
 var dirty_vessels: Dictionary[StringName, Node3D] = {}
 var models: Dictionary[StringName, Node3D] = {}
@@ -61,7 +66,7 @@ func prepare(recipes: Array[RecipeDef]) -> void:
 			# A future unmapped dish still has an actual, already-warmed serving.
 			models[recipe.id] = plate
 			continue
-		_prepare_vessel(recipe.vessel)
+		_prepare_vessel(recipe.vessel, not recipe.is_drink())
 		models[recipe.id] = _prepare_food(recipe.view_model, recipe.vessel, by_key)
 		if not recipe.view_variants.is_empty():
 			var alternatives: Array[Node3D] = []
@@ -71,23 +76,18 @@ func prepare(recipes: Array[RecipeDef]) -> void:
 			_variant_models[recipe.id] = alternatives
 		var away: StringName = recipe.served_vessel(true)
 		if away != recipe.vessel or recipe.served_model(true) != recipe.view_model:
-			_prepare_vessel(away)
+			_prepare_vessel(away, false)
 			takeaway_models[recipe.id] = _prepare_food(recipe.served_model(true), away, by_key)
 	visible = false
 
 
-func _prepare_vessel(id: StringName) -> void:
-	if vessels.has(id):
-		return
+func _prepare_vessel(id: StringName, can_be_dirty: bool) -> void:
 	var scene: PackedScene = DishVessels.scene(id)
-	if scene == null:
-		vessels[id] = null
-		dirty_vessels[id] = null
-		return
-	var vessel_scale: float = DishVessels.scale(id)
-	vessels[id] = _model(scene, vessel_scale)
-	dirty_vessels[id] = _model(scene, vessel_scale)
-	_darken(dirty_vessels[id])
+	if not vessels.has(id):
+		vessels[id] = _model(scene, DishVessels.scale(id)) if scene != null else null
+	if can_be_dirty and dirty_vessels.get(id) == null and scene != null:
+		dirty_vessels[id] = _model(scene, DishVessels.scale(id))
+		_darken(dirty_vessels[id])
 
 
 ## Food is shared per (scene, vessel): the same model on one vessel is one node.
@@ -139,6 +139,10 @@ func show_dish(recipe: RecipeDef, dirty: bool, takeaway: bool = false) -> void:
 				model = alternatives[index] as Node3D
 	if not vessels.has(vessel_id):
 		vessel_id = RecipeDef.PLATE
+	if dirty and dirty_vessels.get(vessel_id) == null:
+		# Only dine-in food is ever dirtied; anything else falls back to its
+		# own dine-in vessel, then to the standard plate.
+		vessel_id = recipe.vessel if dirty_vessels.get(recipe.vessel) != null else RecipeDef.PLATE
 	if visible and recipe_id == recipe.id and _dirty == dirty and _shown == model and _takeaway == takeaway:
 		return
 	_dirty = dirty
@@ -246,8 +250,12 @@ static func _darken(node: Node) -> void:
 		for index: int in range(mesh.mesh.get_surface_count()):
 			var source: BaseMaterial3D = mesh.get_active_material(index) as BaseMaterial3D
 			if source != null:
-				var material: BaseMaterial3D = source.duplicate() as BaseMaterial3D
-				material.albedo_color = source.albedo_color.darkened(0.4)
+				var material: Material = _dark_materials.get(source)
+				if material == null:
+					var dark: BaseMaterial3D = source.duplicate() as BaseMaterial3D
+					dark.albedo_color = source.albedo_color.darkened(0.4)
+					material = dark
+					_dark_materials[source] = material
 				mesh.set_surface_override_material(index, material)
 	for child: Node in node.get_children():
 		_darken(child)
