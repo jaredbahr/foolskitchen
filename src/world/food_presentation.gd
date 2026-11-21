@@ -238,7 +238,10 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		var guest: CustomerAgent = agent as CustomerAgent
 		if guest != null and guest.takeaway:
 			_away[agent.id] = true
-		if guest != null and guest.state == CustomerAgent.State.EATING:
+		# A delivered dish steams from the moment it lands, so a guest still
+		# waiting to start counts as zero eaten; a paying guest has finished.
+		if guest != null and (guest.state == CustomerAgent.State.EATING \
+				or guest.state == CustomerAgent.State.WAITING_FOOD):
 			_eaters[agent.id] = guest
 	for agent: SimAgent in restaurant.world.agents:
 		if not agent is StaffAgent or not frames.has(agent.id) or not frames[agent.id].carrying:
@@ -384,8 +387,10 @@ func _consider_steam(ticket: Ticket, stage: StringName) -> void:
 	if not ticket.recipe.hot or ticket.dish == null or _away.has(ticket.order.customer_id):
 		return
 	var guest: CustomerAgent = _eaters.get(ticket.order.customer_id)
-	var strength: float = steam_strength(stage, guest.eaten_ticks() if guest != null else 0,
-		guest.eat_ticks if guest != null else 0)
+	var eaten: int = 0
+	if guest != null and guest.state == CustomerAgent.State.EATING:
+		eaten = guest.eaten_ticks()
+	var strength: float = steam_strength(stage, eaten, guest.eat_ticks if guest != null else 0)
 	if strength <= 0.0:
 		return
 	var rank: float = float(_hot_count)

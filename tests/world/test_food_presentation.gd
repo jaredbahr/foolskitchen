@@ -1392,6 +1392,27 @@ func test_plate_steam_is_pooled_and_capped_and_never_allocates() -> void:
 	assert_eq(food.get_child_count(), children)
 
 
+func test_a_delivered_dish_steams_before_the_guest_starts_and_not_once_they_pay() -> void:
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], RandomNumberGenerator.new())
+	guest.table_item_id = table.id
+	guest.seat_cell = table.seat_cells[0]
+	_pose_guest_at_seat(guest, table, guest.seat_cell)
+	guest.state = CustomerAgent.State.WAITING_FOOD
+	guest.eat_ticks = 400
+	guest._eating = 399
+	var order: Order = _hot_order(&"tomato_soup", table, 0)
+	order.customer_id = guest.id
+	assert_true(_sim.kitchen.plates.take(order.id, table.id))
+	_sim.orders.set_state(order, Order.State.DELIVERED)
+	_view._sync_agents()
+	assert_eq(_view.food.tickets[order.id].dish.stage, &"eating")
+	assert_eq(_steaming(), 1, "the dish steams the moment it lands, before the first bite")
+	guest.state = CustomerAgent.State.PAYING
+	_view._sync_agents()
+	assert_eq(_steaming(), 0, "a guest paying has finished the meal")
+
+
 func test_steam_follows_the_guests_own_meal_then_stops_and_the_fade_reaches_every_puff() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(_view)
