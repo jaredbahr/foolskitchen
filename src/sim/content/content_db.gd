@@ -684,6 +684,7 @@ static func validate_definitions(ingredient_defs: Array[IngredientDef], recipe_d
 			errors.append("recipe '%s': unknown order type '%s'" % [definition.id, definition.order_type])
 		elif definition.is_drink() != (definition.section == RecipeDef.Section.DRINKS):
 			errors.append("recipe '%s': drinks, and only drinks, belong in the Drinks section" % definition.id)
+		errors.append_array(definition.vessel_errors())
 		for ingredient_index: int in range(definition.ingredients.size()):
 			if definition.ingredients[ingredient_index] == null:
 				errors.append("recipe '%s': ingredient[%d] is null" % [definition.id, ingredient_index])

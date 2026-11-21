@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/club_wedge.glb" id="1_club_wedge"]
+[ext_resource type="PackedScene" path="res://assets/made/food/club_pick.glb" id="2_club_pick"]
+
+[node name="ClubSandwich" type="Node3D"]
+
+[node name="Wedge" parent="." instance=ExtResource("1_club_wedge")]
+position = Vector3(-0.06, 0, 0.06)
+
+[node name="Pick" parent="." instance=ExtResource("2_club_pick")]
+position = Vector3(-0.09, 0.12, 0.03)
+
+[node name="Wedge2" parent="." instance=ExtResource("1_club_wedge")]
+transform = Transform3D(-1, 0, -1.22465e-16, 0, 1, 0, 1.22465e-16, 0, -1, 0.08, 0, -0.08)
+
+[node name="Pick2" parent="." instance=ExtResource("2_club_pick")]
+position = Vector3(0.11, 0.12, -0.05)

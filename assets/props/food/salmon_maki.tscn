@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/maki-salmon.glb" id="1_maki_salmon"]
+
+[node name="SalmonMaki" type="Node3D"]
+
+[node name="Maki1" parent="." instance=ExtResource("1_maki_salmon")]
+position = Vector3(-0.14, 0, 0)
+
+[node name="Maki2" parent="." instance=ExtResource("1_maki_salmon")]
+transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, 0, 0, 0)
+
+[node name="Maki3" parent="." instance=ExtResource("1_maki_salmon")]
+transform = Transform3D(0.5, 0, -0.866025, 0, 1, 0, 0.866025, 0, 0.5, 0.14, 0, 0)

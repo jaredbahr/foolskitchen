@@ -5,7 +5,7 @@
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
 [ext_resource type="Resource" path="res://data/ingredients/frozen_fries.tres" id="ingredient_fries"]
 [ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
-[ext_resource type="PackedScene" path="res://assets/kenney/food/fries.glb" id="view_model"]
+[ext_resource type="PackedScene" path="res://assets/props/food/bar_fries.tscn" id="view_model"]
 
 [sub_resource type="Resource" id="Step_fry"]
 script = ExtResource("3_step")
@@ -15,6 +15,7 @@ duration_ticks = 24
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"basket"
 id = &"bar_fries"
 unlock_from = &"beer"
 display_name = "Bar fries"

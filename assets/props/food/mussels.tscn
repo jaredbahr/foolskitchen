@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/broth_fill.glb" id="1_broth_fill"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/mussel-open.glb" id="2_mussel_open"]
+
+[node name="Mussels" type="Node3D"]
+metadata/vessel_space = true
+
+[node name="Broth" parent="." instance=ExtResource("1_broth_fill")]
+
+[node name="Mussel1" parent="." instance=ExtResource("2_mussel_open")]
+transform = Transform3D(-0.44328, 0, -1.433, 0, 1.5, 0, 1.433, 0, -0.44328, 0.059104, 0.09, 0.191067)
+
+[node name="Mussel2" parent="." instance=ExtResource("2_mussel_open")]
+transform = Transform3D(-1.46266, 0, -0.33261, 0, 1.5, 0, 0.33261, 0, -1.46266, 0.195021, 0.09, 0.044348)
+
+[node name="Mussel3" parent="." instance=ExtResource("2_mussel_open")]
+transform = Transform3D(-1.01938, 0, 1.10039, 0, 1.5, 0, -1.10039, 0, -1.01938, 0.135917, 0.09, -0.146719)
+
+[node name="Mussel4" parent="." instance=ExtResource("2_mussel_open")]
+transform = Transform3D(0.44328, 0, 1.433, 0, 1.5, 0, -1.433, 0, 0.44328, -0.059104, 0.09, -0.191067)
+
+[node name="Mussel5" parent="." instance=ExtResource("2_mussel_open")]
+transform = Transform3D(1.46266, 0, 0.33261, 0, 1.5, 0, -0.33261, 0, 1.46266, -0.195021, 0.09, -0.044348)
+
+[node name="Mussel6" parent="." instance=ExtResource("2_mussel_open")]
+transform = Transform3D(1.01938, 0, -1.10039, 0, 1.5, 0, 1.10039, 0, 1.01938, -0.135917, 0.09, 0.146719)

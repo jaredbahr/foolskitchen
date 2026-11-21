@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/egg-cooked.glb" id="1_egg_cooked"]
+
+[node name="FriedEggs" type="Node3D"]
+
+[node name="Egg" parent="." instance=ExtResource("1_egg_cooked")]
+position = Vector3(-0.17, 0, 0.05)
+
+[node name="Egg2" parent="." instance=ExtResource("1_egg_cooked")]
+transform = Transform3D(-0.766044, 0, -0.642788, 0, 1, 0, 0.642788, 0, -0.766044, 0.17, 0, -0.05)

@@ -6,7 +6,7 @@
 [ext_resource type="Resource" path="res://data/ingredients/flour.tres" id="ingredient_flour"]
 [ext_resource type="Resource" path="res://data/ingredients/milk.tres" id="ingredient_milk"]
 [ext_resource type="Resource" path="res://data/ingredients/egg.tres" id="ingredient_egg"]
-[ext_resource type="PackedScene" path="res://assets/kenney/food/waffle.glb" id="view_model"]
+[ext_resource type="PackedScene" path="res://assets/props/food/waffles.tscn" id="view_model"]
 
 [sub_resource type="Resource" id="Step_prep"]
 script = ExtResource("3_step")
@@ -21,6 +21,7 @@ duration_ticks = 45
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"plate"
 id = &"waffles"
 display_name = "Waffles"
 section = 6

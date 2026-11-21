@@ -14,6 +14,7 @@ duration_ticks = 6
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"coaster"
 id = &"soft_drink"
 display_name = "Soft drink"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_soda")])

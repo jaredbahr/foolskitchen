@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/waffle.glb" id="1_waffle"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/whipped-cream.glb" id="2_whipped_cream"]
+
+[node name="Waffles" type="Node3D"]
+
+[node name="Waffle" parent="." instance=ExtResource("1_waffle")]
+
+[node name="Cream" parent="." instance=ExtResource("2_whipped_cream")]
+position = Vector3(0.02, 0.04, 0)

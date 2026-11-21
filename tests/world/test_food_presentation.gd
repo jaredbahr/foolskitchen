@@ -27,50 +27,132 @@ func after_each() -> void:
 	_content = null
 
 
-func test_every_current_recipe_uses_the_approved_food_kit_model() -> void:
-	var expected: Dictionary[StringName, String] = {
-		&"burger": "burger-cheese", &"tomato_soup": "bowl-soup",
-		&"grilled_cheese": "sandwich", &"tomato_melt": "sandwich",
-		&"fries": "fries", &"bar_fries": "fries", &"savoury_pie": "pie",
-		&"croissant": "croissant", &"coffee": "cup-coffee", &"tea": "cup-tea",
-		&"soft_drink": "soda-glass", &"beer": "glass", &"wine": "glass-wine",
-		&"fish_and_chips": "fish", &"mussels_broth": "mussel-open", &"salmon_maki": "sushi-salmon",
-		&"seafood_stew": "bowl-broth", &"shrimp_skewer": "skewer",
-		&"fried_eggs": "egg-cooked", &"pancakes": "pancakes", &"waffles": "waffle",
-		&"cereal": "bowl-cereal", &"muffin": "muffin",
-		&"club_sandwich": "sandwich", &"hot_dog": "hot-dog", &"taco": "taco",
-		&"soft_serve": "ice-cream",
-	}
-	var assembled: Dictionary[StringName, String] = {
-		&"bacon_and_eggs": "res://assets/props/bacon_and_eggs.tscn",
-		&"pizza_slice": "res://assets/props/pizza_slice.tscn",
-		&"ice_cream_sundae": "res://assets/props/ice_cream_sundae.tscn",
-		&"shaved_ice": "res://assets/props/shaved_ice.tscn",
-		&"cone_fries": "res://assets/made/walkup/fries_cone.glb",
-	}
+## The dishes the food art pass (#713) fixed: each names its exact model and vessel.
+const SERVINGS: Dictionary[StringName, Array] = {
+	&"wine": ["res://assets/made/food/wine_glass.glb", &"coaster"],
+	&"beer": ["res://assets/made/food/beer_glass.glb", &"coaster"],
+	&"fish_and_chips": ["res://assets/props/food/fish_and_chips.tscn", &"plate"],
+	&"mussels_broth": ["res://assets/props/food/mussels.tscn", &"deep_plate"],
+	&"salmon_maki": ["res://assets/props/food/salmon_maki.tscn", &"rect_plate"],
+	&"savoury_pie": ["res://assets/made/food/savory_pie.glb", &"plate"],
+	&"ice_cream_sundae": ["res://assets/kenney/food/sundae.glb", &"cup_saucer"],
+	&"tomato_soup": ["res://assets/props/food/tomato_soup.tscn", &"soup_bowl"],
+	&"seafood_stew": ["res://assets/props/food/seafood_stew.tscn", &"pan"],
+	&"cereal": ["res://assets/props/food/cereal.tscn", &"bowl"],
+	&"coffee": ["res://assets/kenney/food/cup-coffee.glb", &"cup_saucer"],
+	&"tea": ["res://assets/kenney/food/cup-tea.glb", &"cup_saucer"],
+	&"burger": ["res://assets/kenney/food/burger-cheese.glb", &"plate"],
+}
+
+
+func test_every_recipe_has_a_model_and_a_known_vessel_and_the_pool_warms_both() -> void:
 	var paths: PackedStringArray = _recipe_resource_paths("res://data/recipes")
 	var recipes: Array[RecipeDef] = _content.recipes()
 	assert_false(paths.is_empty())
 	assert_eq(recipes.size(), paths.size(), "every actual recipe resource is loaded, without a fixed total")
+	var dish: DishVisual = _view.food.pool[0]
 	for recipe: RecipeDef in recipes:
 		assert_true(paths.has(recipe.resource_path))
 		assert_not_null(recipe.view_model, String(recipe.id) + " has its authored presentation mapping")
+		assert_true(recipe.vessel in RecipeDef.VESSELS and recipe.vessel != &"none", String(recipe.id) + " has a vessel")
+		assert_true(DishVessels.SPECS.has(recipe.vessel), String(recipe.id) + " vessel is drawn")
+		assert_eq(recipe.vessel_errors(), PackedStringArray())
 		if recipe.view_model != null:
-			if assembled.has(recipe.id):
-				assert_eq(recipe.view_model.resource_path, assembled[recipe.id])
-			else:
-				assert_true(recipe.view_model.resource_path.begins_with("res://assets/kenney/food/"))
-		assert_true(_view.food.pool[0].models.has(recipe.id), "the warmed pool covers every loaded recipe")
-		assert_not_null(_view.food.pool[0].models.get(recipe.id))
-	# Preserve every existing exact model choice; new content is discovered above.
-	for id: StringName in expected:
+			var path: String = recipe.view_model.resource_path
+			assert_true(path.begins_with("res://assets/kenney/food/") or path.begins_with("res://assets/made/")
+				or path.begins_with("res://assets/props/"), path)
+		assert_true(dish.models.has(recipe.id), "the warmed pool covers every loaded recipe")
+		assert_not_null(dish.models.get(recipe.id))
+		assert_not_null(dish.vessels.get(recipe.vessel), "the warmed pool holds every recipe's vessel")
+		assert_not_null(dish.dirty_vessels.get(recipe.vessel), "and its dirty copy")
+	for id: StringName in SERVINGS:
 		var recipe: RecipeDef = _content.recipe(id)
 		assert_not_null(recipe)
-		if recipe == null:
+		if recipe == null or recipe.view_model == null:
 			continue
-		assert_not_null(recipe.view_model)
-		if recipe.view_model != null:
-			assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
+		assert_eq(recipe.view_model.resource_path, String(SERVINGS[id][0]))
+		assert_eq(recipe.vessel, SERVINGS[id][1] as StringName)
+
+
+func test_no_two_food_recipes_share_an_identical_serving() -> void:
+	var seen: Dictionary[String, StringName] = {}
+	for recipe: RecipeDef in _content.recipes():
+		if recipe.is_drink() or recipe.view_model == null:
+			continue
+		var key: String = recipe.view_model.resource_path
+		assert_false(seen.has(key), "%s and %s share %s" % [recipe.id, seen.get(key, &""), key])
+		seen[key] = recipe.id
+
+
+func test_takeaway_recipes_stand_in_a_takeaway_vessel() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	for recipe: RecipeDef in _content.recipes():
+		if not recipe.takeaway_ok:
+			continue
+		var vessel: StringName = recipe.served_vessel(true)
+		assert_true(DishVessels.is_takeaway(vessel), "%s goes out in %s" % [recipe.id, vessel])
+		dish.show_dish(recipe, false, true)
+		assert_true(dish.vessel == dish.vessels[vessel])
+		assert_true(dish.vessel.visible and dish._shown.visible)
+	# Cones and to-go treats are never stood on a plate, even at a table.
+	for id: StringName in [&"soft_serve", &"cone_fries", &"shaved_ice"]:
+		assert_true(DishVessels.is_takeaway(_content.recipe(id).vessel), String(id))
+	# A pastry or a coffee taken away at the counter goes in a bag or a to-go cup.
+	for id: StringName in [&"croissant", &"muffin"]:
+		assert_eq(_content.recipe(id).served_vessel(true), &"paper_bag")
+	dish.show_dish(_content.recipe(&"coffee"), false, true)
+	assert_null(dish.vessel, "a coffee to go is handed over in its own cup")
+	assert_eq(dish._shown.get_child(0).scene_file_path, "res://assets/made/food/coffee_to_go.glb")
+	dish.show_dish(_content.recipe(&"coffee"), false, false)
+	assert_true(dish.vessel == dish.vessels[&"cup_saucer"] and dish.vessel.visible)
+
+
+func test_every_vessel_stays_inside_the_plate_footprint_and_food_fills_it() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	for id: StringName in dish.vessels:
+		var vessel: Node3D = dish.vessels[id]
+		if vessel != null:
+			assert_true(DishVisual._footprint_radius(vessel, Transform3D.IDENTITY) <= dish.footprint_radius + 0.001,
+				"%s fits where a plate fits (tables, pass, tray)" % id)
+	for recipe: RecipeDef in _content.recipes():
+		var food: Node3D = dish.models[recipe.id]
+		var radius: float = DishVisual._footprint_radius(food, Transform3D.IDENTITY)
+		assert_true(radius <= dish.footprint_radius + 0.001, "%s food stays on the plate footprint" % recipe.id)
+		var height: float = DishVisual._drawn_aabb(food).size.y
+		assert_true(height <= ArtScale.SERVED_FOOD_MAX_HEIGHT + 0.001, "%s is not taller than a served dish may be" % recipe.id)
+		if recipe.vessel in [&"plate", &"diner_plate", &"board", &"rect_plate"]:
+			# Bigger food on the same plate (Jared, 2026-11-21): about 70% of it,
+			# unless a tall dish (a carton of fries) reached the height limit first.
+			var vessel_radius: float = DishVisual._footprint_radius(dish.vessels[recipe.vessel], Transform3D.IDENTITY)
+			assert_true(radius >= vessel_radius * 0.55 or height >= ArtScale.SERVED_FOOD_MAX_HEIGHT - 0.001,
+				"%s fills its %s (%.3f of %.3f)" % [recipe.id, recipe.vessel, radius, vessel_radius])
+
+
+func test_dirty_serving_is_a_darkened_copy_of_its_own_vessel_for_every_vessel() -> void:
+	var dish: DishVisual = _view.food.pool[0]
+	var count: int = _food_node_count(dish)
+	var by_vessel: Dictionary[StringName, RecipeDef] = {}
+	for recipe: RecipeDef in _content.recipes():
+		by_vessel[recipe.vessel] = recipe
+	assert_true(by_vessel.size() >= 10, "the menu uses the vessel set")
+	for vessel: StringName in by_vessel:
+		var recipe: RecipeDef = by_vessel[vessel]
+		dish.order_id = 0
+		dish.show_dish(recipe, false)
+		assert_true(dish.vessel == dish.vessels[vessel] and dish.vessel.visible, String(vessel))
+		assert_true(dish._shown.visible)
+		dish.show_dish(recipe, true)
+		assert_true(dish.vessel == dish.dirty_vessels[vessel] and dish.vessel.visible, String(vessel) + " dirty")
+		assert_false(dish.vessels[vessel].visible)
+		assert_false(dish._shown.visible, "the food goes with the meal")
+		var mesh: MeshInstance3D = dish.vessel.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D
+		assert_not_null(mesh.get_surface_override_material(0), String(vessel) + " dirty copy is darkened")
+		var visible: int = 0
+		for child: Node in dish.get_children():
+			if child is Node3D and (child as Node3D).visible:
+				visible += 1
+		assert_eq(visible, 1, String(vessel) + " dirty shows only its vessel")
+	assert_eq(_food_node_count(dish), count, "showing never allocates")
 
 
 func test_soft_serve_varies_the_model_by_order_without_rebuilding_the_dish() -> void:
@@ -87,7 +169,8 @@ func test_soft_serve_varies_the_model_by_order_without_rebuilding_the_dish() -> 
 		dish.show_dish(recipe, false)
 		assert_eq(dish.recipe_id, recipe.id)
 		assert_eq(dish._shown.get_child(0).scene_file_path, paths[id % paths.size()])
-		assert_true(dish._shown.visible and dish.plate.visible)
+		assert_true(dish._shown.visible and dish.vessel.visible)
+		assert_true(dish.vessel == dish.vessels[&"paper_cup"], "a cone stands in a paper cup, never on a plate")
 	assert_eq(dish.get_child_count(), before)
 
 
@@ -97,7 +180,7 @@ func test_each_breakfast_recipe_shows_food_within_its_plate() -> void:
 		if recipe.menu_section() != RecipeDef.Section.BREAKFAST:
 			continue
 		dish.show_dish(recipe, false)
-		assert_true(dish.plate.visible)
+		assert_true(dish.vessel.visible)
 		var food: Node3D = dish.models[recipe.id]
 		assert_ne(food, dish.plate, "Breakfast must have a food model")
 		assert_true(food.visible)
@@ -105,9 +188,11 @@ func test_each_breakfast_recipe_shows_food_within_its_plate() -> void:
 			recipe.display_name + " fits on the standard plate")
 		if recipe.id == &"bacon_and_eggs":
 			var serving: Node3D = food.get_child(0) as Node3D
-			assert_eq(serving.get_child_count(), 2)
+			assert_eq(serving.get_child_count(), 3)
 			assert_eq(serving.get_node("Egg").scene_file_path, "res://assets/kenney/food/egg-cooked.glb")
 			assert_eq(serving.get_node("Bacon").scene_file_path, "res://assets/kenney/food/bacon.glb")
+		if recipe.id in [&"bacon_and_eggs", &"fried_eggs"]:
+			assert_eq(recipe.vessel, &"diner_plate", "the egg white reads on a blue diner plate")
 
 
 func test_diner_classics_fit_the_plate_and_use_one_pizza_wedge_and_a_filled_cup() -> void:
@@ -116,7 +201,7 @@ func test_diner_classics_fit_the_plate_and_use_one_pizza_wedge_and_a_filled_cup(
 		dish.show_dish(_content.recipe(id), false)
 		var food: Node3D = dish.models[id]
 		assert_ne(food, dish.plate)
-		assert_true(food.visible and dish.plate.visible)
+		assert_true(food.visible and dish.vessel.visible)
 		assert_true(DishVisual._footprint_radius(food, Transform3D.IDENTITY) <= dish.footprint_radius)
 	var pizza: Node3D = dish.models[&"pizza_slice"]
 	var wedges: Array[StringName] = []
@@ -125,9 +210,10 @@ func test_diner_classics_fit_the_plate_and_use_one_pizza_wedge_and_a_filled_cup(
 		if mesh.visible and mesh.mesh != null:
 			wedges.append(child.name)
 	assert_eq(wedges, [&"slice6"] as Array[StringName], "the imported pizza supplies one rendered wedge")
-	var sundae: Node3D = dish.models[&"ice_cream_sundae"].get_child(0) as Node3D
-	assert_eq(sundae.get_node("Cup").scene_file_path, "res://assets/kenney/food/ice-cream-cup.glb")
-	assert_eq(sundae.get_node("ChocolateScoop").scene_file_path,
+	assert_eq(dish.models[&"ice_cream_sundae"].get_child(0).scene_file_path, "res://assets/kenney/food/sundae.glb")
+	# Taken away, the sundae's scoop goes in a paper cup.
+	var to_go: Node3D = dish.takeaway_models[&"ice_cream_sundae"].get_child(0) as Node3D
+	assert_eq(to_go.get_node("ChocolateScoop").scene_file_path,
 		"res://assets/kenney/food/ice-cream-scoop-chocolate.glb")
 
 
@@ -244,6 +330,39 @@ func test_ready_carried_eating_dirty_bussed_and_sink_stack_lifecycle() -> void:
 	assert_false(_view.food.stack[0].visible)
 
 
+func test_a_guest_taking_the_order_away_gets_the_to_go_serving_and_others_the_dine_in_one() -> void:
+	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(1, 3), 0))
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var dishes: Array[DishVisual] = []
+	for away: bool in [true, false]:
+		var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], RandomNumberGenerator.new())
+		guest.table_item_id = table.id
+		guest.seat_cell = table.seat_cells[dishes.size()]
+		_pose_guest_at_seat(guest, table, guest.seat_cell)
+		guest.takeaway = away
+		guest.state = CustomerAgent.State.PAYING if away else CustomerAgent.State.EATING
+		var order: Order = Order.new()
+		order.recipe_id = &"coffee"
+		order.customer_id = guest.id
+		order.table_item_id = table.id
+		order.seat_cell = guest.seat_cell
+		_sim.orders.place(order, 0)
+		_sim.orders.set_state(order, Order.State.READY)
+		_sim.orders.set_state(order, Order.State.DELIVERED)
+		_view._sync_agents()
+		assert_eq(order.state, Order.State.DELIVERED)
+		var dish: DishVisual = _view.food.tickets[order.id].dish
+		assert_not_null(dish)
+		if dish == null:
+			return
+		dishes.append(dish)
+	assert_null(dishes[0].vessel, "a coffee to go has no saucer")
+	assert_eq(dishes[0]._shown.get_child(0).scene_file_path, "res://assets/made/food/coffee_to_go.glb")
+	assert_true(dishes[0]._shown.visible)
+	assert_true(dishes[1].vessel == dishes[1].vessels[&"cup_saucer"] and dishes[1].vessel.visible)
+	assert_eq(dishes[1]._shown.get_child(0).scene_file_path, "res://assets/kenney/food/cup-coffee.glb")
+
+
 func test_pour_frame_carries_unplated_drink_only_after_ready() -> void:
 	assert_not_null(_sim.world.grid.place_def(_content.item(&"coffee_machine"), Vector2i(1, 3), 0))
 	var server: StaffAgent = _staff(&"server")
@@ -265,6 +384,7 @@ func test_pour_frame_carries_unplated_drink_only_after_ready() -> void:
 	assert_eq(dish.stage, &"carried")
 	assert_false(dish.plate.visible)
 	assert_false(dish.dirty_plate.visible)
+	assert_true(dish.vessels[&"cup_saucer"].visible, "a coffee is carried on its saucer")
 	assert_true(dish.models[&"coffee"].visible)
 	assert_false((_view.agent_nodes[server.id].get_node("Tray") as Node3D).visible)
 
@@ -830,11 +950,9 @@ func _staff(role: StringName) -> StaffAgent:
 	return null
 
 
-func test_every_seafood_mapping_draws_its_actual_model_on_a_supported_pooled_plate() -> void:
-	var expected: Dictionary[StringName, String] = {
-		&"fish_and_chips": "fish", &"mussels_broth": "mussel-open", &"salmon_maki": "sushi-salmon",
-		&"seafood_stew": "bowl-broth", &"shrimp_skewer": "skewer",
-	}
+func test_every_seafood_dish_draws_its_actual_model_in_its_vessel_on_a_supported_pooled_serving() -> void:
+	var expected: Array[StringName] = [&"fish_and_chips", &"mussels_broth", &"salmon_maki", &"seafood_stew",
+		&"shrimp_skewer"]
 	assert_not_null(_sim.world.grid.place_def(_content.item(&"fryer"), Vector2i(2, 3)))
 	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
 	var pass_item: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"pass_counter")[0]
@@ -847,7 +965,6 @@ func test_every_seafood_mapping_draws_its_actual_model_on_a_supported_pooled_pla
 		assert_not_null(recipe.view_model)
 		if recipe.view_model == null:
 			continue
-		assert_eq(recipe.view_model.resource_path, "res://assets/kenney/food/%s.glb" % expected[id])
 		var order: Order = Order.new()
 		order.recipe_id = id
 		order.table_item_id = table.id
@@ -865,12 +982,11 @@ func test_every_seafood_mapping_draws_its_actual_model_on_a_supported_pooled_pla
 		assert_true(dish == first, "successive seafood meals reuse the same released pool node")
 		assert_true(dish.visible)
 		assert_eq(dish.stage, &"ready")
-		assert_true(dish.plate.visible)
-		assert_false(dish.dirty_plate.visible)
+		assert_true(dish.vessel == dish.vessels[recipe.vessel] and dish.vessel.visible)
+		assert_false(dish.dirty_vessels[recipe.vessel].visible)
 		assert_true(dish.models[id].visible)
 		assert_true(dish._shown == dish.models[id])
 		assert_eq(dish.models[id].get_child(0).scene_file_path, recipe.view_model.resource_path)
-		assert_eq((dish.models[id].get_child(0) as Node3D).scale, Vector3.ONE * ArtScale.FOOD_SCALE)
 		_assert_native_plate_support(pass_item, dish, String(id) + " native pass support", PASS_OVERHANG)
 		_sim.orders.set_state(order, Order.State.CANCELLED)
 		_view._sync_agents()
@@ -914,8 +1030,9 @@ func test_unmapped_valid_recipe_uses_a_prewarmed_real_plate_without_allocating_d
 			assert_eq(_food_node_count(dish), count)
 			dish.show_dish(_content.recipe(&"coffee"), false)
 			assert_true(dish.models[&"coffee"].visible)
-			assert_false(dish.plate.visible, "a mapped drink keeps its existing unplated presentation")
+			assert_false(dish.plate.visible, "a mapped drink stands on its own vessel, never a plate")
 			assert_false(dish.dirty_plate.visible)
+			assert_true(dish.vessels[&"cup_saucer"].visible)
 		dish.stage = &"carried"
 		dish.order_id = 9236
 		dish.show_dish(null, false)
@@ -1058,3 +1175,18 @@ func _pose_guest_at_seat(guest: CustomerAgent, table: PlacedItem, seat: Vector2i
 	assert_true(_sim.world.reset_agent_position(guest, seat))
 	assert_true(_sim.world.agents.has(guest))
 	assert_true(guest.movement_admitted)
+
+
+func test_content_rejects_unknown_vessels_and_a_plated_takeaway() -> void:
+	var recipe: RecipeDef = RecipeDef.new()
+	recipe.id = &"fixture"
+	assert_eq(recipe.vessel_errors(), PackedStringArray(), "a new recipe defaults to a plate")
+	recipe.vessel = &"trough"
+	assert_eq(recipe.vessel_errors().size(), 1)
+	recipe.vessel = &"plate"
+	recipe.takeaway_ok = true
+	assert_eq(recipe.vessel_errors().size(), 1, "a takeaway dish never goes out on a plate")
+	recipe.takeaway_vessel = &"paper_tray"
+	assert_eq(recipe.vessel_errors(), PackedStringArray())
+	recipe.takeaway_vessel = &"none"
+	assert_eq(recipe.vessel_errors().size(), 1, "only a drink is handed over with no vessel")

@@ -4,7 +4,8 @@ extends Node3D
 ## never in sync(): carried dishes inherit the actual smoothed person's transform.
 
 const CREAM: SwatchDef = preload("res://data/swatches/cream.tres")
-## Plate spacing, sized for ArtScale.FOOD_SCALE (a plate is about 0.29 across).
+## Plate spacing, sized for ArtScale.FOOD_SCALE (a plate is about 0.29 across;
+## every vessel stays inside the plate's footprint, DishVessels).
 ## Pass: along the counter. Tray: across and along the carried tray.
 const PASS_PLATE_STEP: float = 0.33
 ## The carried tray, sized to hold four plates in two rows with small gaps.
@@ -54,6 +55,8 @@ var _bases: Dictionary[int, Basis] = {}
 var tickets: Dictionary[int, Ticket] = {}
 var _recipes: Array[RecipeDef] = []
 var _sink_id: int = 0
+## Customers taking their order away, gathered once per sync.
+var _away: Dictionary[int, bool] = {}
 var _pass_id: int = 0
 
 
@@ -156,6 +159,11 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 	for id: int in tickets:
 		tickets[id].carrier_id = 0
 		tickets[id].carry_index = 0
+	# A guest taking the order away at the counter gets the to-go serving.
+	_away.clear()
+	for agent: SimAgent in restaurant.world.agents:
+		if agent is CustomerAgent and (agent as CustomerAgent).takeaway:
+			_away[agent.id] = true
 	for agent: SimAgent in restaurant.world.agents:
 		if not agent is StaffAgent or not frames.has(agent.id) or not frames[agent.id].carrying:
 			continue
@@ -246,7 +254,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		dish.rotation = Vector3.ZERO
 		dish.order_id = id
 		dish.stage = stage
-		dish.show_dish(ticket.recipe, stage == &"dirty")
+		dish.show_dish(ticket.recipe, stage == &"dirty", _away.has(order.customer_id))
 	for item_id: int in steam:
 		steam[item_id].emitting = false
 	busy_loops.clear()

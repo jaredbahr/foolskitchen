@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
-[ext_resource type="PackedScene" path="res://assets/made/walkup/fries_cone.glb" id="4_view"]
+[ext_resource type="PackedScene" path="res://assets/props/food/cone_fries.tscn" id="4_view"]
 [ext_resource type="Resource" path="res://data/ingredients/potato.tres" id="ingredient_potato"]
 [ext_resource type="Resource" path="res://data/ingredients/oil.tres" id="ingredient_oil"]
 
@@ -20,6 +20,7 @@ duration_ticks = 30
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("4_view")
+vessel = &"paper_tray"
 id = &"cone_fries"
 display_name = "Cone of fries"
 section = 2

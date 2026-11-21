@@ -219,7 +219,8 @@ the evening by day and night).
   `ice_cream_cone_chocolate.tscn` and `ice_cream_cone_mint.tscn` seat the kit's
   scoops on its `ice-cream-cne`; `shaved_ice.tscn` puts the made topping in the
   kit `ice-cream-cup`; the paper cone of fries is `walkup/fries_cone.glb`. The
-  sundae is #558's `ice_cream_sundae.tscn` (kit cup and chocolate scoop).
+  food art pass (#713) serves the sundae as the kit's own `sundae` and moved
+  the other served dishes to `assets/props/food/` (below).
 
 ## UI control icons (#498)
 `ui/*.png` (switch on/off, slider handle, dropdown arrow, menu radio dots) are drawn by `tools/make_ui_controls.py` in the theme palette: rounded, outlined in the ink colour, no gradients. Re-run the script to regenerate.
@@ -532,3 +533,30 @@ Four more pieces from the same generator and in the same style (one kit colormap
 | `people/basket.glb` (light wicker basket with a dark weave band, an arched handle and three button mushrooms; origin at the top of the handle) | foragers, on the left arm bone, hung just outside the hand so the big kit hand never hides it from the camera above | the kit hands' size | 178 |
 
 The clothes are painted, not modelled (`assets/people/person_outfit.gd`): each triangle of a private copy of the body mesh is sorted by its bone, its rest-pose position and how far its block reaches on that model (torso, hips, sleeves, hands, thighs, shins), and its UVs move to a spare (unused, black) block of a private colormap copy painted in the outfit's color with the shading of the block it came from. That dresses parts apart even where the kit shares one block between them. Leg blocks that stay below the knee (shoes, boots, socks, bare shins) and skin-toned necklines keep their kit colors; a skin-toned chest or upper arm under a jacket is painted, so a jacket reads as one garment; the two triangles of a face always land in one region. Farmers wear denim from the hips down under a white or sage shirt; walkers a yellow or green rain jacket; surfers an aqua or orange tank top over the other color's board shorts, with bare arms, hands and shins, the head's hair block darkened (wet) and the kit's own `aid-sunglasses` on the head bone; foragers an olive or brown jacket. The model pairs are female-e and male-e (farmers), female-f and male-f (walkers), female-d and male-e (surfers), female-c and male-f (foragers): the hat and beanie wearers have no bun or cap. The vendored model and colormap are never edited, and which palette a guest wears follows the guest id.
+
+## Served food and vessels (#713)
+Rebuilt by `python3 tools/build_food_art.py` (standard library only; no Blender, no random draws, so the bytes repeat; it prints each piece's triangles). Every face points at one swatch of the Food Kit's own `colormap.png` (referenced by relative path, never copied). Sizes are Food Kit source units: the game scales them by `ArtScale.FOOD_SCALE` like the kit pieces beside them. Each is under the 300-triangle small-prop budget. Fills (`*_fill`) are authored inside the kit vessel they name. The dishes that combine them with kit pieces are scenes in `assets/props/food/`; which recipe uses what is in each `data/recipes/<id>.tres` (`view_model`, `vessel`) and `docs/ART_STYLE.md` §5.
+
+| Asset | Used for | Based on | Triangles |
+|---|---|---|---:|
+| `food/diner_plate.glb` | vessel: fried eggs, bacon and eggs | kit `plate` (same profile and radius), a white rim edge around a blue well | 140 |
+| `food/coaster.glb` | vessel: beer, wine, soft drink | a card beer mat with a red ring; kit `plate` edge softness | 112 |
+| `food/paper_tray.glb` | takeaway vessel: cone of fries | a red-printed paper boat with a white floor; kit `bag-flat` paper | 36 |
+| `food/fry_basket.glb` | vessel: bar fries | an oval wicker basket lined with white paper; kit `bowl` wall | 80 |
+| `food/beer_glass.glb` | beer | kit `glass`: an amber pint with a white head | 124 |
+| `food/wine_glass.glb` | wine | kit `glass-wine` proportions, with red wine (the kit model maps half its vertices to the colormap's black corner, so it renders black) | 124 |
+| `food/coffee_to_go.glb` | coffee or tea taken away | kit `cup` with a kraft sleeve and a lid | 136 |
+| `food/battered_fish.glb` | fish and chips | kit `fish` length: a golden battered fillet with a tail | 112 |
+| `food/chips_pile.glb` | fish and chips, bar fries | kit `fries` sticks, heaped loose | 156 |
+| `food/tomato_soup_fill.glb` | tomato soup | the soup surface of kit `bowl-soup`, tomato red with cream and herbs | 114 |
+| `food/cereal_fill.glb` | cereal | the fill of kit `bowl-cereal`: milk and loops | 204 |
+| `food/stew_fill.glb` | seafood stew | the fill of kit `pan-stew`, red with potato and fish chunks | 144 |
+| `food/broth_fill.glb` | mussels in broth | a shallow golden broth for kit `plate-deep` | 104 |
+| `food/shrimp_skewer.glb` | shrimp skewer | kit `skewer`'s stick with four curled pink-orange shrimp | 160 |
+| `food/stew_shrimp.glb` | seafood stew | two shrimp from the skewer, resting on the stew | 74 |
+| `food/grilled_cheese.glb` | grilled cheese | kit `sandwich` and `bread`: two toasted halves, one propped on the other, cheese at every edge | 82 |
+| `food/melted_cheese.glb` | tomato melt | a melted sheet sized for kit `bread` | 24 |
+| `food/club_wedge.glb` | club sandwich | kit `sandwich` layers stacked into a tall quarter: toast, lettuce, tomato, ham, cheese | 56 |
+| `food/club_pick.glb` | club sandwich | a cocktail pick with an olive and a red frill | 48 |
+| `food/muffin.glb` | muffin | kit `cupcake` case and `muffin` top: pleated paper, golden dome, blueberries | 212 |
+| `food/savory_pie.glb` | savoury pie | kit `mincemeat-pie` size: one crimped individual pie with a golden lid, steam slits and a pastry leaf | 272 |

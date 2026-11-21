@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/walkup/shaved_ice_topping.glb" id="1_shaved_ice_topping"]
+
+[node name="ShavedIce" type="Node3D"]
+metadata/vessel_space = true
+
+[node name="Ice" parent="." instance=ExtResource("1_shaved_ice_topping")]
