@@ -1392,7 +1392,7 @@ func test_plate_steam_is_pooled_and_capped_and_never_allocates() -> void:
 	assert_eq(food.get_child_count(), children)
 
 
-func test_steam_rises_early_in_a_hot_meal_then_stops() -> void:
+func test_steam_follows_the_guests_own_meal_then_stops_and_the_fade_reaches_every_puff() -> void:
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	tree.root.add_child(_view)
 	_view.set_process(false)
@@ -1403,6 +1403,7 @@ func test_steam_rises_early_in_a_hot_meal_then_stops() -> void:
 	guest.seat_cell = table.seat_cells[0]
 	_pose_guest_at_seat(guest, table, guest.seat_cell)
 	guest.state = CustomerAgent.State.EATING
+	guest.eat_ticks = 400
 	var order: Order = _hot_order(&"tomato_soup", table, 0)
 	order.customer_id = guest.id
 	assert_true(_sim.kitchen.plates.take(order.id, table.id))
@@ -1410,25 +1411,81 @@ func test_steam_rises_early_in_a_hot_meal_then_stops() -> void:
 	_view._sync_agents()
 	var ticket: FoodPresentation.Ticket = _view.food.tickets[order.id]
 	assert_eq(ticket.dish.stage, &"eating")
-	assert_eq(ticket.eating_since, _sim.world.now)
 	assert_eq(_steaming(), 1)
 	var puff: CPUParticles3D = null
 	for index: int in range(_view.food.dish_steam.size()):
 		if _view.food._steam_order[index] == order.id:
 			puff = _view.food.dish_steam[index]
 	assert_true(puff.position.y > ticket.dish.position.y + 0.02, "steam rises from the top of the soup")
-	assert_almost_eq(puff.color.a, 1.0, 0.001)
 	assert_true(puff.emitting, "in the tree, the emitter actually puffs")
-	# Late in the window it fades, and after it the steam stops.
-	var start: int = ticket.eating_since
-	_sim.world.now = start + FoodPresentation.DISH_STEAM_TICKS - 10
+	var material: StandardMaterial3D = puff.material_override as StandardMaterial3D
+	assert_not_null(material, "each emitter fades through its own material")
+	assert_almost_eq(material.albedo_color.a, 1.0, 0.001)
+	# The guest's own progress drives it: late in the window it fades.
+	guest._eating = int(400 * (FoodPresentation.DISH_STEAM_SHARE - FoodPresentation.DISH_STEAM_FADE * 0.5))
 	_view._sync_agents()
 	assert_eq(_steaming(), 1)
-	assert_true(puff.color.a < 0.5, "fading near the end of the window")
-	_sim.world.now = start + FoodPresentation.DISH_STEAM_TICKS
+	assert_almost_eq(material.albedo_color.a, 0.5, 0.02, "fading, and the fade reaches puffs already in the air")
+	guest._eating = int(400 * FoodPresentation.DISH_STEAM_SHARE)
 	_view._sync_agents()
 	assert_eq(_steaming(), 0, "no steam once the first part of the meal is over")
 	assert_false(puff.emitting, "it stops emitting; its last puffs fade out")
+	# A guest seen mid-meal (a loaded game) resumes from their progress.
+	guest._eating = 10
+	_view._sync_agents()
+	assert_eq(_steaming(), 1)
+
+
+func test_the_steam_window_scales_with_each_guests_eating_time() -> void:
+	for eat_ticks: int in [100, 270, 600]:
+		assert_almost_eq(FoodPresentation.steam_strength(&"eating", 0, eat_ticks), 1.0, 0.001)
+		var cooling: int = int(eat_ticks * (FoodPresentation.DISH_STEAM_SHARE - FoodPresentation.DISH_STEAM_FADE * 0.5))
+		assert_almost_eq(FoodPresentation.steam_strength(&"eating", cooling, eat_ticks), 0.5, 0.05)
+		assert_eq(FoodPresentation.steam_strength(&"eating", int(ceil(eat_ticks * FoodPresentation.DISH_STEAM_SHARE)),
+			eat_ticks), 0.0)
+	# 60 ticks in is early in a long meal but over for a short one.
+	assert_true(FoodPresentation.steam_strength(&"eating", 60, 600) > 0.9)
+	assert_eq(FoodPresentation.steam_strength(&"eating", 60, 100), 0.0)
+	assert_eq(FoodPresentation.steam_strength(&"ready", 0, 0), 1.0, "it steams all the while on the pass")
+	assert_eq(FoodPresentation.steam_strength(&"carried", 0, 270), 0.0)
+	assert_eq(FoodPresentation.steam_strength(&"dirty", 0, 270), 0.0)
+
+
+func test_steam_goes_to_the_nearest_hot_servings_and_only_moves_when_clearly_nearer() -> void:
+	# Rank: a serving that owns an emitter keeps it unless the other is 15% nearer.
+	var held: float = FoodPresentation.steam_rank(1.0, true)
+	assert_true(FoodPresentation.steam_rank(0.9 * 0.9, false) > held, "10% nearer does not steal")
+	assert_true(FoodPresentation.steam_rank(0.8 * 0.8, false) < held, "20% nearer does")
+	# With a real camera, the cap goes to the servings nearest it.
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_view)
+	_view.set_process(false)
+	var camera: Camera3D = Camera3D.new()
+	_view.add_child(camera)
+	camera.current = true
+	await tree.process_frame
+	var tables: Array[PlacedItem] = ShopBuilder.items_with_def(_sim.world, &"table_2")
+	assert_true(tables.size() >= 2, "the fixture has tables at different distances")
+	camera.global_position = GridMath.cell_to_world(tables[0].seat_cells[0]) + Vector3(0.0, 2.0, 0.0)
+	var orders: Array[Order] = []
+	for index: int in range(FoodPresentation.DISH_STEAM_CAP + 4):
+		orders.append(_hot_order(&"tomato_soup", tables[index % tables.size()], index))
+	_view._sync_agents()
+	assert_eq(_steaming(), FoodPresentation.DISH_STEAM_CAP)
+	var steaming: Array[float] = []
+	var idle: Array[float] = []
+	for order: Order in orders:
+		var dish: DishVisual = _view.food.tickets[order.id].dish
+		if dish == null:
+			continue
+		var distance: float = camera.global_position.distance_squared_to(dish.global_position)
+		if _view.food._steam_order.has(order.id):
+			steaming.append(distance)
+		else:
+			idle.append(distance)
+	assert_false(idle.is_empty())
+	assert_true(steaming.max() <= idle.min() + 0.0001, "every steaming serving is at least as near as every idle one")
+	assert_true(idle.max() > steaming.min(), "the idle ones include farther servings")
 
 
 func test_a_cleared_serving_shows_tinted_leftovers_in_its_own_vessel_without_allocating() -> void:
@@ -1485,3 +1542,21 @@ func test_vessels_that_are_never_dirty_get_no_leftovers_and_the_pool_only_for_th
 			menu_vessels.append(recipe.vessel)
 	for vessel: StringName in _view.food.pool[0].leftovers:
 		assert_true(menu_vessels.has(vessel), String(vessel) + " leftovers are warmed only for the menu")
+
+
+func test_a_rebuild_drops_plate_leftovers_and_an_unmapped_dish_leaves_plain_ones() -> void:
+	var dish: DishVisual = DishVisual.new()
+	dish.prepare([_content.recipe(&"burger")] as Array[RecipeDef])
+	assert_true(dish.leftovers.has(&"plate"))
+	dish.rebuild([_content.recipe(&"tomato_soup")] as Array[RecipeDef])
+	assert_false(dish.leftovers.has(&"plate"), "no plate dish on the new menu: no plate leftovers")
+	assert_eq(dish.dirty_plate.get_child_count(), 1, "the dirty plate holds only its plate again")
+	dish.rebuild([_content.recipe(&"burger")] as Array[RecipeDef])
+	var future: RecipeDef = _future_recipe()
+	dish.show_dish(future, true)
+	assert_true(dish.vessel == dish.dirty_plate)
+	for mesh: MeshInstance3D in dish.leftovers[&"plate"].find_children("*", "MeshInstance3D", true, false):
+		assert_not_null(mesh.material_override, "a dish with no color of its own leaves plain leftovers")
+		assert_true(mesh.material_override == dish._plain_leftovers[&"plate"])
+	assert_false(dish.steam_heights.has(&"burger"), "steam heights only for hot dishes")
+	dish.free()

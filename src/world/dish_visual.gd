@@ -29,6 +29,9 @@ var dirty_vessels: Dictionary[StringName, Node3D] = {}
 ## meshes, tinted with the dish's colour when it is shown dirty.
 var leftovers: Dictionary[StringName, Node3D] = {}
 var _leftover_meshes: Dictionary[StringName, Array] = {}
+## The dirty vessel's own darkened material: untinted leftovers (a dish with
+## no model, so no colour of its own) use it.
+var _plain_leftovers: Dictionary[StringName, Material] = {}
 ## Height of each warmed recipe's food top above the serving origin (steam).
 var steam_heights: Dictionary[StringName, float] = {}
 var models: Dictionary[StringName, Node3D] = {}
@@ -90,13 +93,15 @@ func rebuild(recipes: Array[RecipeDef]) -> void:
 	dirty_plate.visible = false
 	_shown = null
 	vessel = null
+	# The plate's leftovers live in the kept dirty plate: dropped too, and made
+	# again only if a recipe on the new menu is served on a plate.
 	var plate_leftovers: Node3D = leftovers.get(RecipeDef.PLATE)
-	var plate_meshes: Array = _leftover_meshes.get(RecipeDef.PLATE, [])
+	if plate_leftovers != null:
+		dirty_plate.remove_child(plate_leftovers)
+		plate_leftovers.free()
 	leftovers.clear()
 	_leftover_meshes.clear()
-	if plate_leftovers != null:
-		leftovers[RecipeDef.PLATE] = plate_leftovers
-		_leftover_meshes[RecipeDef.PLATE] = plate_meshes
+	_plain_leftovers.clear()
 	steam_heights.clear()
 	models.clear()
 	takeaway_models.clear()
@@ -116,7 +121,8 @@ func _prepare_recipe(recipe: RecipeDef) -> void:
 		return
 	_prepare_vessel(recipe.vessel, not recipe.is_drink())
 	models[recipe.id] = _prepare_food(recipe.view_model, recipe.vessel)
-	steam_heights[recipe.id] = models[recipe.id].position.y + _drawn_aabb(models[recipe.id]).end.y
+	if recipe.hot:
+		steam_heights[recipe.id] = models[recipe.id].position.y + _drawn_aabb(models[recipe.id]).end.y
 	if not recipe.is_drink():
 		_prepare_leftovers(recipe.vessel)
 		if DishVessels.LEFTOVERS.has(recipe.vessel) and bool(DishVessels.LEFTOVERS[recipe.vessel][3]):
@@ -159,6 +165,10 @@ func _prepare_leftovers(id: StringName) -> void:
 	var meshes: Array = []
 	if bool(entry[3]):
 		meshes.assign(bits.find_children("*", "MeshInstance3D", true, false))
+		var found: Array[Node] = model.find_children("*", "MeshInstance3D", true, false)
+		var vessel_mesh: MeshInstance3D = (found[0] if not found.is_empty() else model) as MeshInstance3D
+		if vessel_mesh != null:
+			_plain_leftovers[id] = vessel_mesh.get_surface_override_material(0)
 	_leftover_meshes[id] = meshes
 
 
@@ -248,7 +258,9 @@ func show_dish(recipe: RecipeDef, dirty: bool, takeaway: bool = false) -> void:
 		vessel.visible = true
 	if dirty and _leftover_meshes.has(vessel_id):
 		# Shared material, cached while warming: no allocation here.
-		var leftover_tint: Material = _tint_materials.get(recipe.view_color)
+		var leftover_tint: Material = _tint_materials.get(recipe.view_color) if recipe.view_model != null else null
+		if leftover_tint == null:
+			leftover_tint = _plain_leftovers.get(vessel_id)
 		for mesh: MeshInstance3D in _leftover_meshes[vessel_id]:
 			mesh.material_override = leftover_tint
 	# The food (the plate itself for an unmapped dish) goes with the meal.
