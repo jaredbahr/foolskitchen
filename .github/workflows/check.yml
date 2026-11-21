@@ -15,7 +15,8 @@ jobs:
   check:
     name: Godot checks
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Hosted runners vary: the same suite has taken 14 to over 25 minutes (2026-11-21).
+    timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
