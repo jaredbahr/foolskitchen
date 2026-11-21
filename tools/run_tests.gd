@@ -66,8 +66,9 @@ func _initialize() -> void:
 	for path in files:
 		if not filter.is_empty() and not path.contains(filter):
 			continue
-		if not filter.is_empty():
-			print("TEST FILE: %s" % path)
+		# Every file is named as it starts, so a shard killed by its timeout shows
+		# which file it was stuck in (#714).
+		print("TEST FILE: %s" % path)
 		var file_started: int = Time.get_ticks_msec()
 		var script: GDScript = load(path)
 		if script == null or not script.can_instantiate():
