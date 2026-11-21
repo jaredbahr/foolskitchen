@@ -1295,6 +1295,26 @@ func test_a_menu_change_between_services_rebuilds_the_pool_and_keeps_a_recipe_in
 	assert_false(_warmed(_view.food.pool[0]).has(leaving.id), "a dish off the menu and out of flight is dropped")
 
 
+func test_a_menu_change_during_service_leaves_the_pool_alone() -> void:
+	# Rebuilding frees and re-creates every pooled dish, so it only happens in
+	# the morning or while closed; during service a new dish is built on demand.
+	_sim.world.clock.phase = SimClock.Phase.OPEN
+	var before: Array = []
+	for serving: DishVisual in _view.food.pool:
+		before.append([_warmed(serving), serving.get_child_count()])
+	var added: RecipeDef = null
+	for recipe: RecipeDef in _content.recipes():
+		if not _sim.menu.has(recipe) and recipe.view_model != null and not recipe.is_drink():
+			added = recipe
+			break
+	assert_not_null(added)
+	_sim.menu.append(added)
+	_view._sync_agents()
+	for index: int in _view.food.pool.size():
+		var serving: DishVisual = _view.food.pool[index]
+		assert_eq([_warmed(serving), serving.get_child_count()], before[index], "no rebuild while open")
+
+
 func test_an_unwarmed_recipe_is_built_once_on_demand_never_shown_as_an_empty_plate() -> void:
 	var off_menu: RecipeDef = null
 	for recipe: RecipeDef in _content.recipes():
