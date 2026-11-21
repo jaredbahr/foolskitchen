@@ -598,6 +598,39 @@ def savory_pie() -> Mesh:
     return m
 
 
+# ---------------------------------------------------------------- leftovers (dirty servings)
+# Leftovers point at the kit's plain white swatch so the game can tint them
+# with each dish's own colour (RecipeDef.view_color): one shared mesh per piece.
+
+def smear() -> Mesh:
+    """A thin, irregular smear of sauce left on a cleared plate."""
+    m = Mesh()
+    outline = [(-0.17, -0.02), (-0.1, -0.08), (0.02, -0.07), (0.12, -0.1), (0.17, -0.03), (0.13, 0.05),
+               (0.03, 0.07), (-0.09, 0.06)]
+    slab(m, outline, 0.0, 0.008, "white")
+    return m
+
+
+CRUMBS = ((-0.05, 0.1, 0.6, 0.05), (0.08, 0.12, -0.4, 0.04), (0.16, -0.12, 1.1, 0.035), (-0.14, -0.13, 0.2, 0.045),
+          (0.0, 0.17, 0.9, 0.03))
+
+
+def crumbs() -> Mesh:
+    """A few crumbs and leftover bits, scattered beside the smear."""
+    m = Mesh()
+    for x, z, yaw, size in CRUMBS:
+        box(m, (x, size * 0.35, z), (size, size * 0.7, size * 0.8), "white", yaw=yaw)
+    return m
+
+
+def crumpled_paper() -> Mesh:
+    """A crumpled paper napkin: a lumpy, faceted ball, left in a paper vessel."""
+    m = Mesh()
+    rings = [(0.07, 0.0), (0.1, 0.03), (0.095, 0.07), (0.06, 0.1), (0.02, 0.11)]
+    dome(m, rings, "white", segments=6, swatches=["white", "porcelain", "white", "glass"], turn=0.3)
+    return m
+
+
 # ---------------------------------------------------------------- export
 
 def pad(data: bytes) -> bytes:
@@ -652,6 +685,7 @@ PIECES = (
     ("diner_plate", diner_plate), ("coaster", coaster), ("paper_tray", paper_tray), ("fry_basket", fry_basket),
     ("beer_glass", beer_glass), ("wine_glass", wine_glass), ("coffee_to_go", coffee_to_go),
     ("soda_to_go", soda_to_go), ("walnut_board", walnut_board), ("sundae_coupe", sundae_coupe),
+    ("smear", smear), ("crumbs", crumbs), ("crumpled_paper", crumpled_paper),
     ("battered_fish", battered_fish), ("chips_pile", chips_pile), ("tomato_soup_fill", soup_fill),
     ("cereal_fill", cereal_fill), ("stew_fill", stew_fill), ("broth_fill", broth_fill),
     ("shrimp_skewer", shrimp_skewer), ("stew_shrimp", stew_shrimp), ("grilled_cheese", grilled_cheese),

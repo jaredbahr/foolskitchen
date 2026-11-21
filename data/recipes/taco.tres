@@ -22,6 +22,7 @@ duration_ticks = 44
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"plate"
+view_color = Color(0.380, 0.796, 0.545, 1)
 id = &"taco"
 display_name = "Taco"
 section = 1

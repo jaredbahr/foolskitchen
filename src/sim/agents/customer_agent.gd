@@ -216,6 +216,11 @@ func is_critic() -> bool:
 	return not critic_tells.is_empty()
 
 
+## Ticks eaten so far of this meal (out of eat_ticks); read-only, for the view.
+func eaten_ticks() -> int:
+	return _eating
+
+
 func is_drinks_visit() -> bool:
 	return visit_kind != RecipeDef.FOOD
 

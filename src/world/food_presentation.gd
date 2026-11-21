@@ -21,6 +21,18 @@ const SINK_STACK_STEP: float = 0.027
 const SINK_STACK_OFFSET: float = 0.02
 ## A drink sits this far to the side of its plate; the table clamp keeps it on the top.
 const DRINK_SIDE_OFFSET: float = 0.24
+## Steam from hot servings (RecipeDef.hot): at most this many emitters, all
+## made at bind, given to the hot servings nearest the camera.
+const DISH_STEAM_CAP: int = 12
+## A hot meal steams through the first share of the guest's own meal (their
+## eating progress over eat_ticks), fading out over the last DISH_STEAM_FADE of
+## that share. It steams all the while on the pass.
+const DISH_STEAM_SHARE: float = 0.45
+const DISH_STEAM_FADE: float = 0.15
+## A dish keeps its emitter until another is this much nearer the camera.
+const DISH_STEAM_HYSTERESIS: float = 0.15
+## Steam rises from just above the top of the food.
+const DISH_STEAM_LIFT: float = 0.01
 
 class Surface extends RefCounted:
 	var point: Vector3
@@ -56,6 +68,16 @@ var tickets: Dictionary[int, Ticket] = {}
 ## The menu the pool was last warmed for, compared each sync without allocating.
 var _menu_seen: Array[RecipeDef] = []
 var _sink_id: int = 0
+## The plate steam emitters (DISH_STEAM_CAP of them) and the order each
+## serves (0 when free). Candidates are gathered in fixed-size arrays.
+var dish_steam: Array[CPUParticles3D] = []
+var _steam_order: PackedInt32Array = PackedInt32Array()
+var _hot_orders: PackedInt32Array = PackedInt32Array()
+var _hot_rank: PackedFloat32Array = PackedFloat32Array()
+var _hot_alpha: PackedFloat32Array = PackedFloat32Array()
+var _hot_count: int = 0
+## Guests eating right now, by id, gathered once per sync (steam timing).
+var _eaters: Dictionary[int, CustomerAgent] = {}
 ## Customers taking their order away, gathered once per sync.
 var _away: Dictionary[int, bool] = {}
 var _pass_id: int = 0
@@ -73,6 +95,15 @@ func bind(value: RestaurantSim, definitions: ContentDB, items: Dictionary[int, I
 	var recipes: Array[RecipeDef] = served_recipes()
 	for dish: DishVisual in pool:
 		dish.rebuild(recipes)
+	while dish_steam.size() < DISH_STEAM_CAP:
+		var puff: CPUParticles3D = _dish_steam(dish_steam.size())
+		add_child(puff)
+		dish_steam.append(puff)
+	_steam_order.resize(DISH_STEAM_CAP)
+	_steam_order.fill(0)
+	_hot_orders.resize(DISH_STEAM_CAP)
+	_hot_rank.resize(DISH_STEAM_CAP)
+	_hot_alpha.resize(DISH_STEAM_CAP)
 	refresh_layout(items)
 
 
@@ -202,9 +233,16 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		tickets[id].carry_index = 0
 	# A guest taking the order away at the counter gets the to-go serving.
 	_away.clear()
+	_eaters.clear()
 	for agent: SimAgent in restaurant.world.agents:
-		if agent is CustomerAgent and (agent as CustomerAgent).takeaway:
+		var guest: CustomerAgent = agent as CustomerAgent
+		if guest != null and guest.takeaway:
 			_away[agent.id] = true
+		# A delivered dish steams from the moment it lands, so a guest still
+		# waiting to start counts as zero eaten; a paying guest has finished.
+		if guest != null and (guest.state == CustomerAgent.State.EATING \
+				or guest.state == CustomerAgent.State.WAITING_FOOD):
+			_eaters[agent.id] = guest
 	for agent: SimAgent in restaurant.world.agents:
 		if not agent is StaffAgent or not frames.has(agent.id) or not frames[agent.id].carrying:
 			continue
@@ -227,6 +265,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 						ticket.carry_index = index
 					index += 1
 	var pass_index: int = 0
+	_hot_count = 0
 	for id: int in tickets:
 		var ticket: Ticket = tickets[id]
 		var order: Order = ticket.order
@@ -296,6 +335,8 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		dish.order_id = id
 		dish.stage = stage
 		dish.show_dish(ticket.recipe, stage == &"dirty", _away.has(order.customer_id))
+		_consider_steam(ticket, stage)
+	_place_steam()
 	for item_id: int in steam:
 		steam[item_id].emitting = false
 	busy_loops.clear()
@@ -318,6 +359,101 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		dish.visible = washing_sink > 0 and restaurant.kitchen.plate_cycle_enabled and index < restaurant.kitchen.plates.dirty
 		if dish.visible:
 			dish.position = surfaces[washing_sink] + Vector3(SINK_STACK_OFFSET, index * SINK_STACK_STEP, 0.0)
+
+
+## How strongly a hot serving steams: 1 on the pass; while eating, 1 for the
+## first part of the guest's own meal, fading to 0 at DISH_STEAM_SHARE of it.
+## The guest's real eating progress drives it, so a loaded game resumes it.
+static func steam_strength(stage: StringName, eaten: int, eat_ticks: int) -> float:
+	if stage == &"ready":
+		return 1.0
+	if stage != &"eating" or eat_ticks <= 0:
+		return 0.0
+	var progress: float = float(eaten) / float(eat_ticks)
+	return clampf((DISH_STEAM_SHARE - progress) / DISH_STEAM_FADE, 0.0, 1.0)
+
+
+## Nearest first, with hysteresis: a serving that already has an emitter
+## ranks as if DISH_STEAM_HYSTERESIS nearer, so emitters do not swap back and
+## forth as the camera moves. Ranks compare squared distances.
+static func steam_rank(distance_squared: float, owns_emitter: bool) -> float:
+	var keep: float = 1.0 - DISH_STEAM_HYSTERESIS
+	return distance_squared * (keep * keep if owns_emitter else 1.0)
+
+
+## A hot serving on the pass, or early in its meal, asks for steam. The
+## DISH_STEAM_CAP best ranked (ticket order without a camera) keep it.
+func _consider_steam(ticket: Ticket, stage: StringName) -> void:
+	if not ticket.recipe.hot or ticket.dish == null or _away.has(ticket.order.customer_id):
+		return
+	var guest: CustomerAgent = _eaters.get(ticket.order.customer_id)
+	var eaten: int = 0
+	if guest != null and guest.state == CustomerAgent.State.EATING:
+		eaten = guest.eaten_ticks()
+	var strength: float = steam_strength(stage, eaten, guest.eat_ticks if guest != null else 0)
+	if strength <= 0.0:
+		return
+	var rank: float = float(_hot_count)
+	var camera: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	if camera != null:
+		rank = steam_rank(camera.global_position.distance_squared_to(ticket.dish.global_position),
+			_steam_order.has(ticket.order.id))
+	var slot: int = _hot_count
+	if _hot_count >= DISH_STEAM_CAP:
+		# Replace the worst-ranked candidate, if this one ranks better.
+		slot = 0
+		for index: int in range(1, DISH_STEAM_CAP):
+			if _hot_rank[index] > _hot_rank[slot]:
+				slot = index
+		if rank >= _hot_rank[slot]:
+			return
+	else:
+		_hot_count += 1
+	_hot_orders[slot] = ticket.order.id
+	_hot_rank[slot] = rank
+	_hot_alpha[slot] = strength
+
+
+## An emitter keeps the serving it already steams. A serving no longer chosen
+## frees its emitter, which stops emitting while its last puffs finish; a free
+## emitter is moved to a newly chosen serving without restarting, so puffs
+## already in the air finish where they are.
+func _place_steam() -> void:
+	for index: int in range(dish_steam.size()):
+		var owner: int = _steam_order[index]
+		var kept: bool = false
+		for candidate: int in range(_hot_count):
+			if _hot_orders[candidate] == owner and owner != 0:
+				kept = true
+				_aim_steam(index, candidate)
+				_hot_orders[candidate] = 0
+				break
+		if not kept and owner != 0:
+			_steam_order[index] = 0
+			if dish_steam[index].emitting:
+				dish_steam[index].emitting = false
+	for candidate: int in range(_hot_count):
+		if _hot_orders[candidate] == 0:
+			continue
+		for index: int in range(dish_steam.size()):
+			if _steam_order[index] == 0:
+				_steam_order[index] = _hot_orders[candidate]
+				_aim_steam(index, candidate)
+				break
+
+
+func _aim_steam(index: int, candidate: int) -> void:
+	var ticket: Ticket = tickets.get(_steam_order[index]) as Ticket
+	var puff: CPUParticles3D = dish_steam[index]
+	# Pass and table servings are children of this node, like the emitters.
+	puff.position = ticket.dish.position + Vector3.UP * (DISH_STEAM_LIFT
+		+ float(ticket.dish.steam_heights.get(ticket.recipe.id, 0.06)))
+	# The emitter's own material fades every puff in the air, not just new ones.
+	(puff.material_override as StandardMaterial3D).albedo_color.a = _hot_alpha[candidate]
+	# World-space puffs need the tree; a detached view only keeps the slot.
+	var emit: bool = puff.is_inside_tree()
+	if puff.emitting != emit:
+		puff.emitting = emit
 
 
 ## Keep the dish beside its own seat, including the end of a long table.
@@ -441,6 +577,40 @@ static func _collect_surfaces(node: Node, transform: Transform3D, areas: Diction
 	for child: Node in node.get_children():
 		var spatial: Node3D = child as Node3D
 		_collect_surfaces(child, transform * spatial.transform if spatial != null else transform, areas, centers, bounds, triangles, serving)
+
+
+## A plate's steam: the cooking steam's look, smaller, slower and sparser.
+## Its seed is fixed per emitter, so the puffs are the same every run.
+static func _dish_steam(index: int) -> CPUParticles3D:
+	var puff: CPUParticles3D = _steam()
+	# Big, white, short-lived puffs that rise a little: hot dishes read across
+	# the room at the default zoom without becoming a smokestack.
+	puff.amount = 7
+	puff.lifetime = 1.3
+	puff.local_coords = false
+	puff.spread = 10.0
+	puff.initial_velocity_min = 0.16
+	puff.initial_velocity_max = 0.22
+	puff.scale_amount_min = 0.09
+	puff.scale_amount_max = 0.13
+	var curve: Curve = Curve.new()
+	curve.add_point(Vector2(0.0, 0.5))
+	curve.add_point(Vector2(1.0, 1.0))
+	puff.scale_amount_curve = curve
+	var fade: Gradient = Gradient.new()
+	fade.colors = PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.95), Color(1, 1, 1, 0.75),
+		Color(1, 1, 1, 0.0)])
+	fade.offsets = PackedFloat32Array([0.0, 0.15, 0.55, 1.0])
+	puff.color_ramp = fade
+	# Its own material, so its fade (albedo alpha) reaches every puff it has.
+	var material: StandardMaterial3D = (puff.mesh.surface_get_material(0) as StandardMaterial3D).duplicate()
+	puff.material_override = material
+	puff.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	puff.emission_sphere_radius = 0.018
+	puff.use_fixed_seed = true
+	puff.seed = 7919 * (index + 1)
+	puff.visible = true
+	return puff
 
 
 static func _steam() -> CPUParticles3D:

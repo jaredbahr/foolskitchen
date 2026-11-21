@@ -563,3 +563,6 @@ Rebuilt by `python3 tools/build_food_art.py` (standard library only; no Blender,
 | `food/soda_to_go.glb` | soft drink taken away | kit `soda` cup: a white paper cup with a red band, a domed lid and a straw | 128 |
 | `food/walnut_board.glb` | vessel: club sandwich, tomato melt | kit `cutting-board` shape and groove, in the colormap's darker walnut brown so it stands out on light tables | 40 |
 | `food/sundae_coupe.glb` | ice cream sundae | kit `sundae` and `ice-cream-cup`: a wide, short glass coupe with a chocolate and a strawberry scoop, whipped cream and a cherry | 284 |
+| `food/smear.glb` | leftovers on a dirty plate, bowl, pan or board | a thin, irregular sauce smear on the kit's white swatch, tinted per dish | 28 |
+| `food/crumbs.glb` | leftovers on a dirty plate, board or basket | five tiny crumbs on the kit's white swatch, tinted per dish | 60 |
+| `food/crumpled_paper.glb` | leftovers in a dirty paper cup or tray | a lumpy, faceted paper napkin ball, kit white and grey | 52 |

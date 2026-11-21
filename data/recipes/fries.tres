@@ -21,6 +21,7 @@ duration_ticks = 35
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"plate"
+view_color = Color(0.812, 0.325, 0.310, 1)
 id = &"fries"
 unlock_from = &"burger"
 display_name = "Fries"

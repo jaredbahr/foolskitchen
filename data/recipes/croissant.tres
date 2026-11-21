@@ -15,6 +15,7 @@ duration_ticks = 10
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"plate"
+view_color = Color(0.945, 0.592, 0.424, 1)
 takeaway_vessel = &"paper_bag"
 id = &"croissant"
 display_name = "Croissant"

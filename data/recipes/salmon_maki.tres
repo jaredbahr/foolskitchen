@@ -18,6 +18,7 @@ duration_ticks = 49
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"rect_plate"
+view_color = Color(0.255, 0.200, 0.192, 1)
 id = &"salmon_maki"
 display_name = "Salmon maki"
 section = 0

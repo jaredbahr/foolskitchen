@@ -16,6 +16,7 @@ duration_ticks = 7
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"cup_saucer"
+hot = true
 takeaway_view_model = ExtResource("takeaway_view")
 takeaway_vessel = &"none"
 id = &"coffee"
