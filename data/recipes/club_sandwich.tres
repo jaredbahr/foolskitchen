@@ -7,7 +7,7 @@
 [ext_resource type="Resource" path="res://data/ingredients/cheese.tres" id="ingredient_cheese"]
 [ext_resource type="Resource" path="res://data/ingredients/lettuce.tres" id="ingredient_lettuce"]
 [ext_resource type="Resource" path="res://data/ingredients/tomato.tres" id="ingredient_tomato"]
-[ext_resource type="PackedScene" path="res://assets/kenney/food/sandwich.glb" id="view_model"]
+[ext_resource type="PackedScene" path="res://assets/props/food/club_sandwich.tscn" id="view_model"]
 
 [sub_resource type="Resource" id="Step_prep"]
 script = ExtResource("3_step")
@@ -22,6 +22,7 @@ duration_ticks = 28
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"board"
 id = &"club_sandwich"
 display_name = "Club sandwich"
 section = 1

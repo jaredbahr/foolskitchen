@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/battered_fish.glb" id="1_battered_fish"]
+[ext_resource type="PackedScene" path="res://assets/made/food/chips_pile.glb" id="2_chips_pile"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/lemon-half.glb" id="3_lemon_half"]
+
+[node name="FishAndChips" type="Node3D"]
+
+[node name="Fish" parent="." instance=ExtResource("1_battered_fish")]
+transform = Transform3D(0.939693, 0, 0.34202, 0, 1, 0, -0.34202, 0, 0.939693, 0.08, 0, 0.1)
+
+[node name="Chips" parent="." instance=ExtResource("2_chips_pile")]
+transform = Transform3D(0.984808, 0, -0.173648, 0, 1, 0, 0.173648, 0, 0.984808, -0.05, 0, -0.17)
+
+[node name="Lemon" parent="." instance=ExtResource("3_lemon_half")]
+position = Vector3(0.3, 0, -0.12)

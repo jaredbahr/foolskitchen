@@ -6,6 +6,16 @@ extends RefCounted
 const FURNITURE_SCALE: float = 1.1
 const CHARACTER_SCALE: float = 1.1
 const FOOD_SCALE: float = 0.33
+## Served food (ART_STYLE §5): the food on a vessel is fitted to fill about
+## this share of the vessel's fit radius (DishVessels), never the vessel itself.
+const SERVED_FOOD_FILL: float = 0.7
+## No served food or drink stands taller than this above its vessel (metres).
+const SERVED_FOOD_MAX_HEIGHT: float = 0.18
+## Vessels drawn larger than their kit size, on top of FOOD_SCALE, so a small
+## cup reads at the default zoom. Every vessel stays inside the plate footprint.
+const VESSEL_SCALE: Dictionary[StringName, float] = {
+	&"cup_saucer": 1.5, &"paper_cup": 1.6, &"rect_plate": 0.88, &"paper_bag": 1.1, &"coaster": 1.3,
+}
 ## The restaurant cat (#119) is built at its own real size; this keeps it in
 ## proportion to the Mini Characters, who are scaled by CHARACTER_SCALE.
 const CAT_SCALE: float = 1.5

@@ -17,6 +17,7 @@ duration_ticks = 9
 script = ExtResource("1_recipe")
 view_model = ExtResource("4_view")
 view_variants = Array[PackedScene]([ExtResource("view_alt_0"), ExtResource("view_alt_1")])
+vessel = &"paper_cup"
 id = &"soft_serve"
 display_name = "Soft serve"
 section = 4

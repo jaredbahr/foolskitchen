@@ -4,7 +4,8 @@ extends Node3D
 ## never in sync(): carried dishes inherit the actual smoothed person's transform.
 
 const CREAM: SwatchDef = preload("res://data/swatches/cream.tres")
-## Plate spacing, sized for ArtScale.FOOD_SCALE (a plate is about 0.29 across).
+## Plate spacing, sized for ArtScale.FOOD_SCALE (a plate is about 0.29 across;
+## every vessel stays inside the plate's footprint, DishVessels).
 ## Pass: along the counter. Tray: across and along the carried tray.
 const PASS_PLATE_STEP: float = 0.33
 ## The carried tray, sized to hold four plates in two rows with small gaps.
@@ -52,19 +53,26 @@ var surface_bounds: Dictionary[int, AABB] = {}
 var _tops: Dictionary[int, Surface] = {}
 var _bases: Dictionary[int, Basis] = {}
 var tickets: Dictionary[int, Ticket] = {}
-var _recipes: Array[RecipeDef] = []
+## The menu the pool was last warmed for, compared each sync without allocating.
+var _menu_seen: Array[RecipeDef] = []
 var _sink_id: int = 0
+## Customers taking their order away, gathered once per sync.
+var _away: Dictionary[int, bool] = {}
 var _pass_id: int = 0
 
 
 func bind(value: RestaurantSim, definitions: ContentDB, items: Dictionary[int, ItemVisual]) -> void:
 	restaurant = value
 	content = definitions
-	_recipes = content.recipes()
+	_menu_seen.assign(restaurant.menu)
 	restaurant.orders.order_placed.connect(_remember)
 	for state: Order.State in [Order.State.PLACED, Order.State.COOKING, Order.State.READY, Order.State.DELIVERED]:
 		for order: Order in restaurant.orders.orders_in_state(state):
 			_remember(order)
+	# A pool kept from an earlier restaurant is warmed for this one's menu.
+	var recipes: Array[RecipeDef] = served_recipes()
+	for dish: DishVisual in pool:
+		dish.rebuild(recipes)
 	refresh_layout(items)
 
 
@@ -136,7 +144,7 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 	while pool.size() < seats * 2 + 16:
 		var dish: DishVisual = DishVisual.new()
 		add_child(dish)
-		dish.prepare(_recipes)
+		dish.prepare(served_recipes())
 		pool.append(dish)
 	while stack.size() < 6:
 		var dish: DishVisual = DishVisual.new()
@@ -152,10 +160,51 @@ func refresh_layout(items: Dictionary[int, ItemVisual]) -> void:
 				-pool[0].footprint_radius - 0.001, Geometry2D.JOIN_MITER))
 
 
+## What the pool warms: today's menu plus every recipe still in flight (an
+## order not yet eaten, or a dirty serving still on its table).
+func served_recipes() -> Array[RecipeDef]:
+	var recipes: Array[RecipeDef] = []
+	for recipe: RecipeDef in restaurant.menu:
+		if recipe != null and not recipes.has(recipe):
+			recipes.append(recipe)
+	for id: int in tickets:
+		var recipe: RecipeDef = tickets[id].recipe
+		if not tickets[id].retired and recipe != null and not recipes.has(recipe):
+			recipes.append(recipe)
+	return recipes
+
+
+## The pool is warmed for the menu, not the whole recipe book. A menu changed
+## between services (the morning, or Build/Menu while closed) rebuilds it;
+## during service a newly listed dish is built on demand, once per serving.
+func _follow_menu() -> void:
+	var menu: Array[RecipeDef] = restaurant.menu
+	var same: bool = menu.size() == _menu_seen.size()
+	if same:
+		for index: int in range(menu.size()):
+			if menu[index] != _menu_seen[index]:
+				same = false
+				break
+	if same:
+		return
+	_menu_seen.assign(menu)
+	var clock: SimClock = restaurant.world.clock
+	if clock == null or clock.phase == SimClock.Phase.MORNING or clock.phase == SimClock.Phase.CLOSED:
+		var recipes: Array[RecipeDef] = served_recipes()
+		for dish: DishVisual in pool:
+			dish.rebuild(recipes)
+
+
 func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Dictionary[int, Node3D]) -> void:
+	_follow_menu()
 	for id: int in tickets:
 		tickets[id].carrier_id = 0
 		tickets[id].carry_index = 0
+	# A guest taking the order away at the counter gets the to-go serving.
+	_away.clear()
+	for agent: SimAgent in restaurant.world.agents:
+		if agent is CustomerAgent and (agent as CustomerAgent).takeaway:
+			_away[agent.id] = true
 	for agent: SimAgent in restaurant.world.agents:
 		if not agent is StaffAgent or not frames.has(agent.id) or not frames[agent.id].carrying:
 			continue
@@ -246,7 +295,7 @@ func sync(frames: Dictionary[int, AgentPresentationController.Frame], people: Di
 		dish.rotation = Vector3.ZERO
 		dish.order_id = id
 		dish.stage = stage
-		dish.show_dish(ticket.recipe, stage == &"dirty")
+		dish.show_dish(ticket.recipe, stage == &"dirty", _away.has(order.customer_id))
 	for item_id: int in steam:
 		steam[item_id].emitting = false
 	busy_loops.clear()

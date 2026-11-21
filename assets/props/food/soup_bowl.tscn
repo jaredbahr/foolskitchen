@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/kenney/food/plate.glb" id="1_plate"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/bowl.glb" id="2_bowl"]
+
+[node name="SoupBowl" type="Node3D"]
+
+[node name="Plate" parent="." instance=ExtResource("1_plate")]
+
+[node name="Bowl" parent="." instance=ExtResource("2_bowl")]
+position = Vector3(0, 0.05, 0)

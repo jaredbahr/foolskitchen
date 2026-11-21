@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/tomato_soup_fill.glb" id="1_tomato_soup_fill"]
+
+[node name="TomatoSoup" type="Node3D"]
+metadata/vessel_space = true
+
+[node name="Soup" parent="." instance=ExtResource("1_tomato_soup_fill")]

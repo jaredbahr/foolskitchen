@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     # The full checks alone outgrew 20 minutes (a manual build was cut off on
     # 2026-11-20); the export needs a few more.
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

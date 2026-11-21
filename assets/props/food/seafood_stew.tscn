@@ -1,0 +1,19 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/stew_fill.glb" id="1_stew_fill"]
+[ext_resource type="PackedScene" path="res://assets/made/food/stew_shrimp.glb" id="2_stew_shrimp"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/mussel-open.glb" id="3_mussel_open"]
+
+[node name="SeafoodStew" type="Node3D"]
+metadata/vessel_space = true
+
+[node name="Stew" parent="." instance=ExtResource("1_stew_fill")]
+
+[node name="Shrimp" parent="." instance=ExtResource("2_stew_shrimp")]
+position = Vector3(0, 0.12, 0)
+
+[node name="Mussel" parent="." instance=ExtResource("3_mussel_open")]
+transform = Transform3D(1.07246, 0, -0.899903, 0, 1.4, 0, 0.899903, 0, 1.07246, -0.14, 0.12, -0.1)
+
+[node name="Mussel2" parent="." instance=ExtResource("3_mussel_open")]
+transform = Transform3D(0.478828, 0, 1.31557, 0, 1.4, 0, -1.31557, 0, 0.478828, 0.15, 0.12, 0.06)

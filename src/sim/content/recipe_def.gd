@@ -8,6 +8,14 @@ const COFFEE: StringName = &"coffee"
 const DRINKS: StringName = &"drinks"
 ## Visit kinds in their fixed order (also the arrival draw order).
 const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
+const PLATE: StringName = &"plate"
+## Every serving vessel a recipe may name (drawn by DishVessels). NONE is only
+## for a takeaway drink handed over in its own cup.
+const VESSELS: Array[StringName] = [&"plate", &"diner_plate", &"deep_plate", &"bowl", &"soup_bowl", &"pan",
+	&"board", &"rect_plate", &"basket", &"cup_saucer", &"coaster", &"paper_tray", &"paper_cup", &"paper_bag",
+	&"none"]
+## Paper and to-go vessels: what a takeaway serving must stand in.
+const TAKEAWAY_VESSELS: Array[StringName] = [&"paper_tray", &"paper_cup", &"paper_bag", &"none"]
 
 @export var id: StringName = &""
 @export var display_name: String = ""
@@ -15,6 +23,13 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 @export var view_model: PackedScene
 ## Alternate serving models use the same recipe, ingredients and price.
 @export var view_variants: Array[PackedScene] = []
+## Presentation only: what the dish is served in or on (one of VESSELS). The
+## vessel hints at the dish; a dirty serving is a darkened copy of it.
+@export var vessel: StringName = PLATE
+## Presentation only, for a guest taking the order away at the counter: the
+## model and vessel used instead. Empty keeps the dine-in serving.
+@export var takeaway_view_model: PackedScene
+@export var takeaway_vessel: StringName = &""
 @export var section: Section = Section.MAINS
 ## One unit per entry; repeated references represent multiple units.
 @export var ingredients: Array[IngredientDef] = []
@@ -44,6 +59,30 @@ const ORDER_TYPES: Array[StringName] = [FOOD, COFFEE, DRINKS]
 
 func is_drink() -> bool:
 	return order_type != FOOD
+
+
+## The vessel this serving is drawn in: the takeaway one when it is set and the
+## guest is taking the order away.
+func served_vessel(takeaway: bool) -> StringName:
+	return takeaway_vessel if takeaway and not takeaway_vessel.is_empty() else vessel
+
+
+func served_model(takeaway: bool) -> PackedScene:
+	return takeaway_view_model if takeaway and takeaway_view_model != null else view_model
+
+
+## Presentation data checks (vessel names only; ContentDB reports them).
+func vessel_errors() -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not vessel in VESSELS or vessel == &"none":
+		errors.append("recipe '%s': unknown serving vessel '%s'" % [id, vessel])
+	if not takeaway_vessel.is_empty() and not takeaway_vessel in TAKEAWAY_VESSELS:
+		errors.append("recipe '%s': takeaway vessel '%s' is not a takeaway vessel" % [id, takeaway_vessel])
+	if takeaway_vessel == &"none" and not is_drink():
+		errors.append("recipe '%s': only a drink is handed over with no vessel" % id)
+	if takeaway_ok and not served_vessel(true) in TAKEAWAY_VESSELS:
+		errors.append("recipe '%s': a takeaway dish needs a takeaway vessel" % id)
+	return errors
 
 
 ## The menu heading this recipe is listed under: every drink (FK-083) is in

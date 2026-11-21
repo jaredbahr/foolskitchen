@@ -14,6 +14,8 @@ duration_ticks = 10
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"plate"
+takeaway_vessel = &"paper_bag"
 id = &"croissant"
 display_name = "Croissant"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_pastry")])

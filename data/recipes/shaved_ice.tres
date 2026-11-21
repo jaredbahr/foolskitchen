@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
-[ext_resource type="PackedScene" path="res://assets/props/shaved_ice.tscn" id="4_view"]
+[ext_resource type="PackedScene" path="res://assets/props/food/shaved_ice.tscn" id="4_view"]
 [ext_resource type="Resource" path="res://data/ingredients/fruit_syrup.tres" id="ingredient_fruit_syrup"]
 
 [sub_resource type="Resource" id="Step_0"]
@@ -14,6 +14,7 @@ duration_ticks = 12
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("4_view")
+vessel = &"paper_cup"
 id = &"shaved_ice"
 display_name = "Shaved ice"
 section = 4

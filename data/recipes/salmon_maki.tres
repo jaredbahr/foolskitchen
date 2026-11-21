@@ -7,7 +7,7 @@
 [ext_resource type="Resource" path="res://data/ingredients/rice.tres" id="ingredient_rice"]
 [ext_resource type="Resource" path="res://data/ingredients/lemon.tres" id="ingredient_lemon"]
 
-[ext_resource type="PackedScene" path="res://assets/kenney/food/sushi-salmon.glb" id="view_model"]
+[ext_resource type="PackedScene" path="res://assets/props/food/salmon_maki.tscn" id="view_model"]
 
 [sub_resource type="Resource" id="Step_0"]
 script = ExtResource("3_step")
@@ -17,6 +17,7 @@ duration_ticks = 49
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"rect_plate"
 id = &"salmon_maki"
 display_name = "Salmon maki"
 section = 0

@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/chips_pile.glb" id="1_chips_pile"]
+
+[node name="BarFries" type="Node3D"]
+
+[node name="Chips" parent="." instance=ExtResource("1_chips_pile")]
+transform = Transform3D(1.15, 0, 0, 0, 1.15, 0, 0, 0, 1.15, -0.08, 0, 0.02)
+
+[node name="MoreChips" parent="." instance=ExtResource("1_chips_pile")]
+transform = Transform3D(0.182331, 0, -1.03405, 0, 1.05, 0, 1.03405, 0, 0.182331, 0.12, 0, -0.02)

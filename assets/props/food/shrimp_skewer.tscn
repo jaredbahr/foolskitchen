@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/shrimp_skewer.glb" id="1_shrimp_skewer"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/lemon-half.glb" id="2_lemon_half"]
+
+[node name="ShrimpSkewer" type="Node3D"]
+
+[node name="Skewer" parent="." instance=ExtResource("1_shrimp_skewer")]
+transform = Transform3D(0.939693, 0, -0.34202, 0, 1, 0, 0.34202, 0, 0.939693, 0, 0, 0)
+
+[node name="Lemon" parent="." instance=ExtResource("2_lemon_half")]
+position = Vector3(0.1, 0, -0.2)

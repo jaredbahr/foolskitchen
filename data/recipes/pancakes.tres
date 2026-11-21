@@ -21,6 +21,7 @@ duration_ticks = 42
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"plate"
 id = &"pancakes"
 display_name = "Pancakes"
 section = 6

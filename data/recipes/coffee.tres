@@ -1,10 +1,11 @@
-[gd_resource type="Resource" script_class="RecipeDef" load_steps=7 format=3]
+[gd_resource type="Resource" script_class="RecipeDef" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/sim/content/recipe_def.gd" id="1_recipe"]
 [ext_resource type="Script" path="res://src/sim/content/ingredient_def.gd" id="2_ingredient"]
 [ext_resource type="Script" path="res://src/sim/content/recipe_step.gd" id="3_step"]
 [ext_resource type="Resource" path="res://data/ingredients/coffee_beans.tres" id="ingredient_coffee_beans"]
 [ext_resource type="PackedScene" path="res://assets/kenney/food/cup-coffee.glb" id="view_model"]
+[ext_resource type="PackedScene" path="res://assets/made/food/coffee_to_go.glb" id="takeaway_view"]
 
 [sub_resource type="Resource" id="Step_make"]
 script = ExtResource("3_step")
@@ -14,6 +15,9 @@ duration_ticks = 7
 [resource]
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
+vessel = &"cup_saucer"
+takeaway_view_model = ExtResource("takeaway_view")
+takeaway_vessel = &"none"
 id = &"coffee"
 display_name = "Coffee"
 ingredients = Array[ExtResource("2_ingredient")]([ExtResource("ingredient_coffee_beans")])
