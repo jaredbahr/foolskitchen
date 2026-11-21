@@ -7,8 +7,10 @@
 # Any "SCRIPT ERROR", "Parse Error" or "ERROR:" line in the output fails the check, so code
 # paths exercised by tests must not push_error() on purpose (test the return value instead).
 # Each step has a timeout so a hung script fails instead of blocking CI: 5
-# minutes for import and parse, 25 for each test shard (the CI job itself stops
-# at 25). TEST_SHARDS test shards run in parallel: 2 by default, 4 in CI (#529).
+# minutes for import and parse, 22 for each test shard: under the CI job's own
+# 25-minute stop, so a stuck shard is killed here and its log is still printed
+# (SHARD_TIMEOUT overrides it). TEST_SHARDS test shards run in parallel: 2 by
+# default, 4 in CI (#529).
 # Godot binary: $GODOT, else .tools/ (from tools/get_godot.sh), else `godot` on PATH.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,6 +60,7 @@ echo "== tests"
 # user:// (XDG_DATA_HOME), so no two processes share save slots or settings.
 # TEST_SHARDS=1 runs one process.
 shards="${TEST_SHARDS:-2}"
+shard_timeout="${SHARD_TIMEOUT:-1320}"
 pids=()
 logs=()
 homes=()
@@ -66,7 +69,7 @@ for ((k = 0; k < shards; k++)); do
   shard_home="$(mktemp -d)"
   logs+=("$shard_log")
   homes+=("$shard_home")
-  XDG_DATA_HOME="$shard_home" timeout 1500 "$GODOT" --headless --path . --script tools/run_tests.gd -- \
+  XDG_DATA_HOME="$shard_home" timeout "$shard_timeout" "$GODOT" --headless --path . --script tools/run_tests.gd -- \
     "--shard=$k/$shards" >"$shard_log" 2>&1 &
   pids+=($!)
 done
@@ -76,7 +79,7 @@ for ((k = 0; k < shards; k++)); do
   cat "${logs[$k]}"
   if [[ $code -eq 124 ]]; then
     # `timeout` exits 124: the shard was killed, it did not fail a test.
-    echo "FAIL: tests (shard $k/$shards) timed out after 1500 s. On a busy machine, rerun alone before reading it as a test failure."; fail=1
+    echo "FAIL: tests (shard $k/$shards) timed out after $shard_timeout s. On a busy machine, rerun alone before reading it as a test failure."; fail=1
   elif [[ $code -ne 0 ]] || has_errors "${logs[$k]}"; then echo "FAIL: tests (shard $k/$shards)"; fail=1; fi
   rm -rf -- "${logs[$k]}" "${homes[$k]}"
 done
