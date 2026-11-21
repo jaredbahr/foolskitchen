@@ -18,11 +18,19 @@ var dirty_plate: Node3D
 ## Darkened dirty-crockery materials, one per source material, shared by every
 ## serving (ART_STYLE §5): never a private material per pooled serving.
 static var _dark_materials: Dictionary[Material, Material] = {}
+## Leftover tints, one material per dish colour, shared by every serving.
+static var _tint_materials: Dictionary[Color, Material] = {}
 ## Clean and dirty vessel nodes by RecipeDef vessel id ("plate" is `plate`).
 ## A dirty copy exists only for a vessel a dirty serving can show: the dine-in
 ## vessel of a food recipe (FoodPresentation only dirties food at a table).
 var vessels: Dictionary[StringName, Node3D] = {}
 var dirty_vessels: Dictionary[StringName, Node3D] = {}
+## The leftovers inside each dirty vessel (DishVessels.LEFTOVERS), and their
+## meshes, tinted with the dish's colour when it is shown dirty.
+var leftovers: Dictionary[StringName, Node3D] = {}
+var _leftover_meshes: Dictionary[StringName, Array] = {}
+## Height of each warmed recipe's food top above the serving origin (steam).
+var steam_heights: Dictionary[StringName, float] = {}
 var models: Dictionary[StringName, Node3D] = {}
 ## Takeaway food by recipe id, only for recipes with a takeaway model or vessel.
 var takeaway_models: Dictionary[StringName, Node3D] = {}
@@ -82,6 +90,14 @@ func rebuild(recipes: Array[RecipeDef]) -> void:
 	dirty_plate.visible = false
 	_shown = null
 	vessel = null
+	var plate_leftovers: Node3D = leftovers.get(RecipeDef.PLATE)
+	var plate_meshes: Array = _leftover_meshes.get(RecipeDef.PLATE, [])
+	leftovers.clear()
+	_leftover_meshes.clear()
+	if plate_leftovers != null:
+		leftovers[RecipeDef.PLATE] = plate_leftovers
+		_leftover_meshes[RecipeDef.PLATE] = plate_meshes
+	steam_heights.clear()
 	models.clear()
 	takeaway_models.clear()
 	_variant_models.clear()
@@ -100,6 +116,11 @@ func _prepare_recipe(recipe: RecipeDef) -> void:
 		return
 	_prepare_vessel(recipe.vessel, not recipe.is_drink())
 	models[recipe.id] = _prepare_food(recipe.view_model, recipe.vessel)
+	steam_heights[recipe.id] = models[recipe.id].position.y + _drawn_aabb(models[recipe.id]).end.y
+	if not recipe.is_drink():
+		_prepare_leftovers(recipe.vessel)
+		if DishVessels.LEFTOVERS.has(recipe.vessel) and bool(DishVessels.LEFTOVERS[recipe.vessel][3]):
+			_tint(recipe.view_color)
 	if not recipe.view_variants.is_empty():
 		var alternatives: Array[Node3D] = []
 		for variant: PackedScene in recipe.view_variants:
@@ -119,6 +140,39 @@ func _prepare_vessel(id: StringName, can_be_dirty: bool) -> void:
 	if can_be_dirty and dirty_vessels.get(id) == null and scene != null:
 		dirty_vessels[id] = _model(scene, DishVessels.scale(id))
 		_darken(dirty_vessels[id])
+
+
+## The leftovers of a cleared serving, inside this serving's dirty vessel.
+func _prepare_leftovers(id: StringName) -> void:
+	var holder: Node3D = dirty_vessels.get(id)
+	if leftovers.has(id) or holder == null or not DishVessels.LEFTOVERS.has(id):
+		return
+	var entry: Array = DishVessels.LEFTOVERS[id]
+	var bits: Node3D = (load(String(entry[0])) as PackedScene).instantiate() as Node3D
+	var vessel_scale: float = DishVessels.scale(id)
+	bits.scale = Vector3.ONE * vessel_scale * float(entry[2])
+	# The dirty wrapper stands the vessel on y = 0 and centres its footprint.
+	var model: Node3D = holder.get_child(0) as Node3D
+	bits.position = Vector3(0.0, model.position.y + float(entry[1]) * vessel_scale, 0.0)
+	holder.add_child(bits)
+	leftovers[id] = bits
+	var meshes: Array = []
+	if bool(entry[3]):
+		meshes.assign(bits.find_children("*", "MeshInstance3D", true, false))
+	_leftover_meshes[id] = meshes
+
+
+## One shared leftover material per dish colour, on the kit colormap's white.
+static func _tint(color: Color) -> Material:
+	var material: Material = _tint_materials.get(color)
+	if material == null:
+		var tint: StandardMaterial3D = StandardMaterial3D.new()
+		tint.albedo_texture = load("res://assets/kenney/food/Textures/colormap.png") as Texture2D
+		tint.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		tint.albedo_color = color
+		material = tint
+		_tint_materials[color] = material
+	return material
 
 
 ## Food is shared per (scene, vessel): the same model on one vessel is one node.
@@ -192,6 +246,11 @@ func show_dish(recipe: RecipeDef, dirty: bool, takeaway: bool = false) -> void:
 	vessel = (dirty_vessels if dirty else vessels)[vessel_id]
 	if vessel != null:
 		vessel.visible = true
+	if dirty and _leftover_meshes.has(vessel_id):
+		# Shared material, cached while warming: no allocation here.
+		var leftover_tint: Material = _tint_materials.get(recipe.view_color)
+		for mesh: MeshInstance3D in _leftover_meshes[vessel_id]:
+			mesh.material_override = leftover_tint
 	# The food (the plate itself for an unmapped dish) goes with the meal.
 	_shown.visible = not dirty
 	recipe_id = recipe.id

@@ -30,6 +30,12 @@ const TAKEAWAY_VESSELS: Array[StringName] = [&"paper_tray", &"paper_cup", &"pape
 ## model and vessel used instead. Empty keeps the dine-in serving.
 @export var takeaway_view_model: PackedScene
 @export var takeaway_vessel: StringName = &""
+## Presentation only: served hot, so a few puffs of steam rise from it on the
+## pass and early in the meal.
+@export var hot: bool = false
+## Presentation only: the dish's one strong colour; tints the smear and crumbs
+## left on its dirty plate.
+@export var view_color: Color = Color(0.69, 0.38, 0.25)
 @export var section: Section = Section.MAINS
 ## One unit per entry; repeated references represent multiple units.
 @export var ingredients: Array[IngredientDef] = []

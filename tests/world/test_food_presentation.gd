@@ -1206,8 +1206,9 @@ func test_pooled_servings_share_dirty_materials_and_skip_vessels_that_are_never_
 	for vessel: StringName in [&"coaster", &"paper_bag", &"none"]:
 		assert_null(first.dirty_vessels.get(vessel), String(vessel) + " has no dirty copy")
 	for vessel: StringName in first.dirty_vessels:
-		var a: Array[Node] = first.dirty_vessels[vessel].find_children("*", "MeshInstance3D", true, false)
-		var b: Array[Node] = second.dirty_vessels[vessel].find_children("*", "MeshInstance3D", true, false)
+		# The vessel itself (its first child); leftovers are tinted separately.
+		var a: Array[Node] = first.dirty_vessels[vessel].get_child(0).find_children("*", "MeshInstance3D", true, false)
+		var b: Array[Node] = second.dirty_vessels[vessel].get_child(0).find_children("*", "MeshInstance3D", true, false)
 		for index: int in range(a.size()):
 			var mesh: MeshInstance3D = a[index] as MeshInstance3D
 			for surface: int in range(mesh.get_surface_override_material_count()):
@@ -1333,3 +1334,154 @@ func test_an_unwarmed_recipe_is_built_once_on_demand_never_shown_as_an_empty_pla
 	dish.show_dish(off_menu, true)
 	assert_eq(_food_node_count(dish), count, "built once, then reused")
 	dish.clear_dish()
+
+
+func test_hot_dishes_are_marked_in_data() -> void:
+	var hot: Array[StringName] = []
+	for recipe: RecipeDef in _content.recipes():
+		if recipe.hot:
+			hot.append(recipe.id)
+	for id: StringName in [&"tomato_soup", &"seafood_stew", &"mussels_broth", &"coffee", &"tea", &"savoury_pie"]:
+		assert_true(hot.has(id), String(id) + " is served hot")
+	for id: StringName in [&"beer", &"wine", &"soft_drink", &"soft_serve", &"shaved_ice", &"ice_cream_sundae", &"cereal"]:
+		assert_false(hot.has(id), String(id) + " is not")
+
+
+func _hot_order(recipe_id: StringName, table: PlacedItem, seat: int) -> Order:
+	var order: Order = Order.new()
+	order.recipe_id = recipe_id
+	order.table_item_id = table.id
+	order.seat_cell = table.seat_cells[seat % table.seat_cells.size()]
+	_sim.orders.place(order, 0)
+	_sim.orders.set_state(order, Order.State.READY)
+	return order
+
+
+## Emitters serving a hot dish (they emit once the view is in the tree).
+func _steaming() -> int:
+	var count: int = 0
+	for order_id: int in _view.food._steam_order:
+		if order_id != 0:
+			count += 1
+	return count
+
+
+func test_plate_steam_is_pooled_and_capped_and_never_allocates() -> void:
+	var food: FoodPresentation = _view.food
+	assert_eq(food.dish_steam.size(), FoodPresentation.DISH_STEAM_CAP)
+	var children: int = food.get_child_count()
+	assert_eq(_steaming(), 0)
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var orders: Array[Order] = []
+	for index: int in range(FoodPresentation.DISH_STEAM_CAP + 4):
+		orders.append(_hot_order(&"tomato_soup", table, index))
+	_view._sync_agents()
+	var shown: int = 0
+	for order: Order in orders:
+		if _view.food.tickets[order.id].dish != null:
+			shown += 1
+	assert_true(shown > FoodPresentation.DISH_STEAM_CAP, "more hot servings are on the pass than emitters")
+	assert_eq(_steaming(), FoodPresentation.DISH_STEAM_CAP, "only the cap steams")
+	assert_eq(food.get_child_count(), children, "no emitter is made during service")
+	# A cold dish never steams; cancelling the hot ones frees every emitter.
+	for order: Order in orders:
+		_sim.orders.set_state(order, Order.State.CANCELLED)
+	_hot_order(&"burger", table, 0)
+	_view._sync_agents()
+	assert_eq(_steaming(), 0)
+	assert_eq(food.get_child_count(), children)
+
+
+func test_steam_rises_early_in_a_hot_meal_then_stops() -> void:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(_view)
+	_view.set_process(false)
+	await tree.process_frame
+	var table: PlacedItem = ShopBuilder.items_with_def(_sim.world, &"table_2")[0]
+	var guest: CustomerAgent = _sim.add_customer(_sim.world.grid.entries()[0], RandomNumberGenerator.new())
+	guest.table_item_id = table.id
+	guest.seat_cell = table.seat_cells[0]
+	_pose_guest_at_seat(guest, table, guest.seat_cell)
+	guest.state = CustomerAgent.State.EATING
+	var order: Order = _hot_order(&"tomato_soup", table, 0)
+	order.customer_id = guest.id
+	assert_true(_sim.kitchen.plates.take(order.id, table.id))
+	_sim.orders.set_state(order, Order.State.DELIVERED)
+	_view._sync_agents()
+	var ticket: FoodPresentation.Ticket = _view.food.tickets[order.id]
+	assert_eq(ticket.dish.stage, &"eating")
+	assert_eq(ticket.eating_since, _sim.world.now)
+	assert_eq(_steaming(), 1)
+	var puff: CPUParticles3D = null
+	for index: int in range(_view.food.dish_steam.size()):
+		if _view.food._steam_order[index] == order.id:
+			puff = _view.food.dish_steam[index]
+	assert_true(puff.position.y > ticket.dish.position.y + 0.02, "steam rises from the top of the soup")
+	assert_almost_eq(puff.color.a, 1.0, 0.001)
+	assert_true(puff.emitting, "in the tree, the emitter actually puffs")
+	# Late in the window it fades, and after it the steam stops.
+	var start: int = ticket.eating_since
+	_sim.world.now = start + FoodPresentation.DISH_STEAM_TICKS - 10
+	_view._sync_agents()
+	assert_eq(_steaming(), 1)
+	assert_true(puff.color.a < 0.5, "fading near the end of the window")
+	_sim.world.now = start + FoodPresentation.DISH_STEAM_TICKS
+	_view._sync_agents()
+	assert_eq(_steaming(), 0, "no steam once the first part of the meal is over")
+	assert_false(puff.emitting, "it stops emitting; its last puffs fade out")
+
+
+func test_a_cleared_serving_shows_tinted_leftovers_in_its_own_vessel_without_allocating() -> void:
+	var dish: DishVisual = _full_dish()
+	var count: int = _food_node_count(dish)
+	var seen: Dictionary[StringName, bool] = {}
+	for recipe: RecipeDef in _content.recipes():
+		if recipe.is_drink() or seen.has(recipe.vessel):
+			continue
+		seen[recipe.vessel] = true
+		dish.show_dish(recipe, true)
+		var bits: Node3D = dish.leftovers.get(recipe.vessel)
+		assert_not_null(bits, String(recipe.vessel) + " has leftovers")
+		if bits == null:
+			continue
+		assert_true(bits.get_parent() == dish.dirty_vessels[recipe.vessel], "inside the dirty vessel")
+		assert_true(dish.vessel.visible and bits.visible)
+		var tinted: bool = bool(DishVessels.LEFTOVERS[recipe.vessel][3])
+		for mesh: MeshInstance3D in bits.find_children("*", "MeshInstance3D", true, false):
+			if tinted:
+				var material: StandardMaterial3D = mesh.material_override as StandardMaterial3D
+				assert_not_null(material)
+				if material != null:
+					assert_eq(material.albedo_color, recipe.view_color, String(recipe.id) + " leftovers take its colour")
+			else:
+				assert_null(mesh.material_override, String(recipe.vessel) + " keeps plain crumpled paper")
+		dish.show_dish(recipe, false)
+		assert_false(dish.dirty_vessels[recipe.vessel].visible, "a clean serving shows no leftovers")
+	assert_true(seen.size() >= 10)
+	assert_eq(_food_node_count(dish), count, "showing leftovers never allocates")
+	# Shared meshes and materials: another serving uses the very same ones.
+	var other: DishVisual = DishVisual.new()
+	other.prepare([_content.recipe(&"burger")] as Array[RecipeDef])
+	var mine: MeshInstance3D = dish.leftovers[&"plate"].find_children("*", "MeshInstance3D", true, false)[0]
+	var theirs: MeshInstance3D = other.leftovers[&"plate"].find_children("*", "MeshInstance3D", true, false)[0]
+	assert_true(mine.mesh == theirs.mesh)
+	dish.free()
+	other.free()
+
+
+func test_vessels_that_are_never_dirty_get_no_leftovers_and_the_pool_only_for_the_menu() -> void:
+	var dish: DishVisual = DishVisual.new()
+	var drinks_and_takeaway: Array[RecipeDef] = []
+	for recipe: RecipeDef in _content.recipes():
+		if recipe.is_drink() or recipe.served_vessel(true) == &"paper_bag":
+			drinks_and_takeaway.append(recipe)
+	dish.prepare(drinks_and_takeaway)
+	for vessel: StringName in [&"coaster", &"paper_bag", &"cup_saucer", &"none"]:
+		assert_false(dish.leftovers.has(vessel), String(vessel) + " is never cleared at a table")
+	dish.free()
+	var menu_vessels: Array[StringName] = []
+	for recipe: RecipeDef in _sim.menu:
+		if not recipe.is_drink():
+			menu_vessels.append(recipe.vessel)
+	for vessel: StringName in _view.food.pool[0].leftovers:
+		assert_true(menu_vessels.has(vessel), String(vessel) + " leftovers are warmed only for the menu")

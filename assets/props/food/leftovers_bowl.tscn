@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/made/food/smear.glb" id="1_smear"]
+
+[node name="LeftoversBowl" type="Node3D"]
+
+[node name="Smear" parent="." instance=ExtResource("1_smear")]
+transform = Transform3D(0.766044, 0, 0.642788, 0, 1, 0, -0.642788, 0, 0.766044, 0.02, 0, -0.01)

@@ -16,6 +16,7 @@ duration_ticks = 16
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"bowl"
+view_color = Color(0.957, 0.792, 0.600, 1)
 id = &"cereal"
 display_name = "Cereal"
 section = 6

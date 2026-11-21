@@ -23,6 +23,7 @@ duration_ticks = 28
 script = ExtResource("1_recipe")
 view_model = ExtResource("view_model")
 vessel = &"board"
+view_color = Color(0.871, 0.631, 0.482, 1)
 id = &"club_sandwich"
 display_name = "Club sandwich"
 section = 1
