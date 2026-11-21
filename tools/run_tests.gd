@@ -99,6 +99,9 @@ func _initialize() -> void:
 				for f in failures:
 					print("FAIL %s::%s  %s" % [path.get_file(), name, f])
 		measured[path] = Time.get_ticks_msec() - file_started
+		# Slow files are named with their time, so a slow CI run shows where it went.
+		if measured[path] >= 10000:
+			print("SLOW FILE: %s %.1f s" % [path, measured[path] / 1000.0])
 	if write_durations and failed == 0:
 		_write_durations(measured)
 	print("TESTS: %d passed, %d failed" % [passed, failed])

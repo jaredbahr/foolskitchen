@@ -313,6 +313,7 @@ Each line ends with its PR number.
 - The Tier 1 "hole-in-the-wall" shop layout: a kitchen along the back, the pass in the dividing wall, three two-seat tables and the street door. (#26)
 
 ### Under the hood
+- The test runner names every test file that takes 10 seconds or more, with its time, so a slow CI run shows where the time went. (#713)
 - A test shard that runs too long now stops at 22 minutes, before the CI job's 25, so its log is printed, and every test file is named as it starts, which shows where it got stuck. (#714)
 - Playable builds no longer time out: the build runs its checks in four shards, like every PR, and has 35 minutes. (#712)
 - The build queue gains Wave O, six early-game feel fixes from a new-game playthrough (#704 to #709), ahead of Wave N. (#710)
